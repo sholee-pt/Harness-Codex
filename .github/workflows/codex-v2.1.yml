@@ -17,13 +17,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the release branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Create the harness environment
-        uses: conda-incubator/setup-miniconda@v3
+        uses: conda-incubator/setup-miniconda@v4.0.1
         with:
           activate-environment: harness
-          auto-activate-base: false
+          auto-activate: false
           environment-file: environment.yml
 
       - name: Run unit tests
