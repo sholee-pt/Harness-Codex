@@ -1,17 +1,19 @@
-# Harness Codex v2
+# Personal Codex Harness
 
-Use `.agents/skills/harness/SKILL.md` when asked to build, port, or audit a Codex harness.
+## 범위
 
-The `skills/` and `.claude-plugin/` trees are inherited Claude Code assets. Do not treat their runtime claims as authoritative: verify version-sensitive Claude behavior against current Anthropic documentation before changing or recommending it. Codex-native project assets belong under `.agents/skills/`, `.codex/agents/`, and `AGENTS.md`.
+- 이 저장소는 개인 사용 목적입니다. 배포, 마켓플레이스 등록, 공개 패키징을 전제로 작업하지 마세요.
+- 사용자 요구사항을 최우선 기준으로 삼고, 명시되지 않은 외부 변경이나 배포를 수행하지 마세요.
+- 기존 사용자 변경사항을 보존하고, 파괴적인 작업 전에 정확한 대상을 확인하세요.
 
-For upstream pull requests:
+## 하네스 사용
 
-- review against `v2`, not upstream `main`;
-- distinguish conflict-free from technically validated;
-- require primary documentation for runtime/API claims;
-- prefer selective adaptation when an old-base PR mixes useful changes with stale files;
-- preserve Apache-2.0 licensing and upstream attribution.
+- 사용자가 복잡한 구현, 다영역 리뷰, 조사와 검증의 분리를 요청하면 `personal-harness` 스킬을 사용하세요.
+- 단순한 한 단계 작업에는 하네스를 사용하지 마세요.
+- 하네스가 활성화되면 해당 스킬의 작업 분할 및 검증 기준을 따르세요.
 
-Before accepting changes, install the locked validator dependency with `python -m pip install --disable-pip-version-check --no-deps --only-binary=:all: --require-hashes -r .github/requirements-validation.txt`, run `python scripts/validate_repository.py`, and inspect `git diff --check`. Treat documentation-only validation as insufficient evidence for executable runtime claims.
+## 완료 기준
 
-Write generated documentation in the language explicitly requested by the user. Otherwise follow an applicable project language policy, then the current conversation language. Keep code identifiers and required schema keys unchanged.
+- 변경 결과를 관련 테스트나 정적 검사로 검증하세요.
+- 검증하지 못한 항목과 남은 위험을 사실대로 보고하세요.
+- 커밋, 푸시, PR 병합은 사용자가 해당 작업을 요청한 범위 안에서만 수행하세요.
