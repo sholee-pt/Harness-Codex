@@ -1,45 +1,115 @@
+<p align="center">
+  <img src="https://img.shields.io/badge/Version-v1-brightgreen.svg" alt="Version v1">
+  <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
+  <img src="https://img.shields.io/badge/Mode-Adaptive_Orchestration-orange.svg" alt="Adaptive Orchestration">
+  <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
+</p>
+
 # Harness for Codex
 
-복잡한 개발 및 코드 리뷰 작업을 범위화하고, 필요한 역할만 동적으로 구성하며, 검증 결과까지 일관된 형식으로 정리하는 Codex 워크플로입니다.
+> A repository-native workflow for scoping complex work, selecting the right execution mode, coordinating implementation, and validating the result.
 
-## 주요 기능
+## Overview
 
-- 작업 목표, 완료 조건, 변경 범위를 실행 전에 고정합니다.
-- 독립적인 작업이 여러 개일 때만 하위 에이전트를 사용합니다.
-- 구현과 검증을 분리하고 결과를 근거와 함께 통합합니다.
-- 테스트, 정적 검사, 코드 리뷰를 위한 공통 품질 기준을 제공합니다.
-- 사용자 범위를 벗어난 커밋, 병합, 배포를 제한합니다.
+Harness adds a structured operating layer to Codex without imposing a fixed roster of agents. It derives roles from the task, delegates only when independent work can run safely, and keeps final integration and verification under the primary agent.
 
-## 구성
+The workflow is designed for complex implementation, multi-area code review, and tasks that benefit from a clear separation between execution and validation.
 
-| 경로 | 역할 |
-| --- | --- |
-| `AGENTS.md` | 저장소 전체에 적용되는 작업 원칙 |
-| `.agents/skills/harness/SKILL.md` | Harness 실행 절차와 호출 규칙 |
-| `.agents/skills/harness/references/orchestration.md` | 단일 실행과 병렬 실행의 선택 기준 |
-| `.agents/skills/harness/references/quality-gates.md` | 구현·리뷰·최종 보고의 품질 기준 |
-| `CONTRIBUTING.md` | 브랜치 및 커밋 관리 규칙 |
+## Key Features
 
-## 설치
+- **Scope control** — Defines the goal, completion criteria, writable surface, and constraints before execution.
+- **Adaptive delegation** — Uses subagents only when the work can be split into independent, well-owned units.
+- **Evidence-based integration** — Verifies delegated findings against the repository before adopting them.
+- **Quality gates** — Applies consistent checks to implementation, review findings, and final reporting.
+- **Safe boundaries** — Prevents unrequested commits, merges, deployments, and external changes.
 
-`codex/v1` 브랜치의 파일을 대상 저장소 루트에 복사합니다. 기존 `AGENTS.md`가 있다면 내용을 검토한 후 필요한 규칙만 병합하세요.
-
-## 사용
-
-Codex에서 스킬 이름과 작업을 함께 요청합니다.
+## Workflow
 
 ```text
-$harness 인증 모듈을 구현하고 관련 테스트까지 검증해줘.
+Phase 1: Scope the task
+    ↓
+Phase 2: Select single-agent or delegated execution
+    ↓
+Phase 3: Define outputs, ownership, and dependencies
+    ↓
+Phase 4: Execute and integrate
+    ↓
+Phase 5: Validate with tests, checks, or reproducible evidence
+    ↓
+Phase 6: Report outcomes, gaps, and remaining risk
 ```
 
-단일 파일 수정이나 짧은 질의처럼 작업 분할의 이점이 없는 경우에는 Harness를 호출하지 않아도 됩니다.
+## Installation
 
-## 버전 관리
+Clone the Codex branch:
 
-- Codex 버전: `codex/v1`, `codex/v2`, ...
-- Claude Code 버전: `claude/v1`, `claude/v2`, ...
-- 새 버전은 같은 도구 계열의 직전 버전에서 분기합니다.
+```shell
+git clone --branch codex/v1 --single-branch https://github.com/sholee-pt/Harness.git harness-codex
+```
 
-## 라이선스
+Copy the following into the root of the target repository:
 
-이 저장소의 신규 작성물은 독점 저작물입니다. 사용 조건은 `LICENSE`를 확인하세요.
+```text
+AGENTS.md
+.agents/skills/harness/
+```
+
+If the target repository already has an `AGENTS.md`, merge the relevant rules instead of replacing the file.
+
+## Project Structure
+
+```text
+.
+├── .agents/
+│   └── skills/
+│       └── harness/
+│           ├── SKILL.md
+│           └── references/
+│               ├── orchestration.md
+│               └── quality-gates.md
+├── AGENTS.md
+├── CONTRIBUTING.md
+├── LICENSE
+└── README.md
+```
+
+## Usage
+
+Invoke the skill with a concrete objective:
+
+```text
+$harness implement the authentication module and validate the related tests.
+```
+
+For review-oriented work:
+
+```text
+$harness review this pull request for correctness, security boundaries, and missing tests.
+```
+
+### Execution Modes
+
+| Mode | Behavior | Best suited for |
+| --- | --- | --- |
+| **Single-agent** | The primary agent investigates, implements, and validates sequentially. | Focused changes with tightly coupled steps |
+| **Delegated** | Independent work is assigned with explicit ownership and integrated by the primary agent. | Multi-module work and multi-perspective reviews |
+
+## Use Cases
+
+- Cross-module feature implementation
+- Architecture, security, and test-gap reviews
+- Refactoring with independent verification
+- Research that requires source validation before implementation
+- Repository-wide changes with clearly separated ownership
+
+## Versioning
+
+- Codex releases use `codex/vN` branches.
+- Claude Code releases use `claude/vN` branches.
+- Each new version starts from the previous version of the same runtime.
+
+See the [Claude Code branch](https://github.com/sholee-pt/Harness/tree/claude/v1) for the Claude-native layout.
+
+## License
+
+The original content in this repository is proprietary. See [LICENSE](LICENSE) for the applicable terms.
