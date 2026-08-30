@@ -1,51 +1,69 @@
 ---
 name: harness
-description: 복잡한 구현이나 다영역 코드 리뷰를 범위화하고, 필요한 역할만 동적으로 나누며, 결과를 교차 검증하는 개인용 Codex 워크플로입니다. 단순 질의, 한 단계 수정, 배포·플러그인 패키징에는 사용하지 않습니다.
+description: Analyze a repository and create, audit, or safely update a project-specific Codex harness with native custom agents, reusable skills, orchestration, and validation. Use for requests such as "configure the harness", "create project agents and skills", "하네스를 구성해줘", or auditing an existing `.harness/manifest.json`. Do not use merely to execute an already generated project workflow; use `project-harness` for that.
 ---
 
-# Harness
+# Harness Generator
 
-작업마다 필요한 역할을 새로 정하세요. 미리 정해진 에이전트 목록을 기계적으로 실행하지 마세요.
+Build the smallest useful Codex-native harness for the current repository. Resolve every bundled path relative to this `SKILL.md`.
 
-## 1. 범위를 고정하기
+## Invariants
 
-- 사용자의 목표, 완료 조건, 변경 가능 범위, 금지 사항을 짧게 정리하세요.
-- 저장소 지침과 현재 변경사항을 확인하세요.
-- 불확실성이 결과를 크게 바꾸는 경우에만 질문하세요. 안전한 가정은 명시하고 진행하세요.
+- Derive boundaries from repository evidence, not a fixed role roster or a frontend/backend assumption.
+- Separate agents as **who owns a bounded decision** and skills as **how a repeatable procedure is performed**.
+- Create no agent or project skill without a concrete benefit and evidence.
+- Preserve user-owned files. Never overwrite an existing untracked-by-Harness path.
+- Update a managed file only when its current hash matches `.harness/manifest.json`; otherwise preserve it and report the conflict.
+- Do not change `.codex/config.toml`, external services, Git state, or deployment settings unless separately requested.
+- Write generated machine-facing instructions in English.
 
-## 2. 작업 형태를 선택하기
+## Phase 0 — Audit
 
-다음 조건을 모두 만족할 때만 하위 에이전트를 사용하세요.
+1. Find the repository root and read all applicable instructions.
+2. Run `scripts/inventory.py <repo-root>` for a bounded structural inventory. Do not inspect secret values.
+3. If `.harness/manifest.json` exists, run `scripts/harness_state.py status --root <repo-root> --runtime codex`.
+4. Classify the run as new, safe update, or conflict-bearing audit. Read [safe-update.md](references/safe-update.md) before any update or merge.
 
-- 서로 독립적인 작업 단위가 두 개 이상입니다.
-- 각 작업 단위의 입력, 출력, 소유 파일 또는 읽기 전용 범위를 분명히 지정할 수 있습니다.
-- 병렬화가 검토 품질이나 완료 시간을 실질적으로 개선합니다.
+## Phase 1 — Profile the project
 
-그 외에는 주 에이전트가 단독으로 수행하세요. 판단 기준이 더 필요하면 `references/orchestration.md`를 읽으세요.
+Read [project-analysis.md](references/project-analysis.md). Identify responsibilities, execution environments, data and contract boundaries, high-risk quality boundaries, and recurring workflows. Record file-level evidence for each conclusion.
 
-## 3. 실행 계획 만들기
+If the repository is too small or homogeneous to justify specialist agents, generate only the project orchestrator and manifest.
 
-- 산출물 단위로 작업을 나누고 의존 순서를 표시하세요.
-- 각 작업에 임시 역할 이름을 붙이세요. 예: `API 계약 검토`, `테스트 공백 확인`, `보안 경계 점검`.
-- 역할은 과업에서 도출하고, 필요 없는 역할은 만들지 마세요.
-- 동시에 수정하는 에이전트가 같은 파일을 소유하지 않도록 하세요.
+## Phase 2 — Design the topology
 
-## 4. 작업 수행하기
+Read [agent-design.md](references/agent-design.md) and select from the pattern catalog only as useful design vocabulary: pipeline, fan-out/fan-in, expert pool, producer-reviewer, supervisor, or hierarchical delegation.
 
-- 읽기 중심 조사와 독립 검토는 병렬로 처리할 수 있습니다.
-- 쓰기 작업은 파일 소유권을 분리하거나 순차적으로 수행하세요.
-- 각 하위 작업에는 목표, 범위, 반환 형식, 검증 방법을 포함하세요.
-- 하위 에이전트의 결론을 그대로 채택하지 말고 근거와 저장소 상태를 확인하세요.
+For each proposed agent, record its unique responsibility, evidence, input, output, write boundary, and why the primary agent alone is insufficient. Remove roles that duplicate each other or only rename a technology layer.
 
-## 5. 통합하고 검증하기
+Read [skill-design.md](references/skill-design.md). Create a project skill only for repeatable procedures, repository-specific knowledge, or deterministic resources that materially improve future work. Skills may be shared by multiple agents.
 
-- 중복되거나 충돌하는 결과를 정리하고 최종 변경에 반영하세요.
-- 관련 테스트, 정적 검사, 빌드 또는 재현 절차를 실행하세요.
-- 코드 리뷰라면 발견 사항을 심각도와 근거 위치에 따라 정리하세요.
-- `references/quality-gates.md`의 완료 기준을 적용하세요.
+## Phase 3 — Generate native artifacts
 
-## 6. 결과 보고하기
+Use the templates in `assets/` as structural starting points, then tailor them to the project:
 
-- 먼저 완료된 결과를 말하고, 그 다음 검증 결과와 남은 위험을 적으세요.
-- 실행하지 못한 검사나 확인하지 못한 가정은 숨기지 마세요.
-- 사용자가 요청하지 않은 커밋, 푸시, 병합, 배포를 수행하지 마세요.
+- `.codex/agents/<role>.toml` for justified agents
+- `.agents/skills/<skill>/SKILL.md` for justified project skills
+- `.agents/skills/project-harness/SKILL.md` for orchestration
+- a single managed pointer block in `AGENTS.md`
+- `.harness/manifest.json`
+
+Codex agent definitions require `name`, `description`, and `developer_instructions`. Inherit the current model and permissions by default. Add an override only when supported and justified. Keep review-only agents read-only through instructions and supported configuration, without inventing tool names.
+
+Read [orchestration.md](references/orchestration.md) before writing `project-harness`.
+
+## Phase 4 — Record ownership and validate
+
+1. Complete the manifest topology and project evidence.
+2. Run `scripts/harness_state.py record --root <repo-root> --runtime codex --file <generated-path> ... --block-file AGENTS.md` for every generated dedicated file and the managed root instruction block.
+3. Run `scripts/validate_harness.py <repo-root> --runtime codex`.
+4. Read [validation.md](references/validation.md) and perform the applicable behavioral checks.
+5. Account for every planned artifact as created, unchanged, conflicted, skipped, or failed. Do not silently drop outputs.
+
+## Audit and update mode
+
+On later runs, repeat the evidence scan and compare the proposed topology with the manifest. Make the minimum justified change. Unchanged inputs should produce no diff. Do not remove obsolete managed artifacts automatically; report removal candidates unless the user explicitly authorizes deletion.
+
+## Completion report
+
+Report the selected topology, generated and unchanged files, preserved conflicts, validation results, and remaining risks. Distinguish runtime verification from structural validation.

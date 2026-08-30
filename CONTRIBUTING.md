@@ -1,29 +1,29 @@
-# 관리 규칙
+# Contributing
 
-## 브랜치
+Harness is maintained as a private personal project. Changes should keep the generator small, runtime-native, and safe to rerun.
 
-- Codex 버전은 `codex/vN`, Claude 버전은 `claude/vN` 형식을 사용합니다.
-- 다음 버전은 같은 계열의 최신 버전에서 생성합니다.
-- 이미 사용 중인 버전 브랜치에는 호환성을 깨는 구조 변경을 추가하지 않습니다. 그런 변경은 다음 버전 브랜치에서 진행합니다.
-- `reference/revfactory-review`는 참고 이력 보존용이며 Codex·Claude 버전 계열과 병합하지 않습니다.
+## Branches
 
-## 커밋
+- Codex releases use `codex/vN`.
+- Claude Code releases use `claude/vN`.
+- Breaking changes start the next version branch from the latest branch for the same runtime.
 
-새 버전의 최초 커밋은 다음 형식을 사용합니다.
+## Commit messages
 
-```text
-[Init] Codex v1: Harness structure
-```
+Use one of these prefixes after the initial version commit:
 
-최초 커밋 본문에는 추가된 모든 폴더와 파일의 목적을 한 줄씩 적습니다.
+- `[Feat]` for user-visible capability
+- `[Fix]` for incorrect behavior
+- `[Docs]` for documentation-only changes
+- `[Refactor]` for structural changes without intended behavior changes
+- `[Test]` for test changes
+- `[Chore]` for maintenance
 
-후속 커밋은 아래 접두사를 사용합니다.
+Keep each commit focused and use an imperative, descriptive subject.
 
-- `[Feat]`: 사용자 관점의 기능 추가
-- `[Fix]`: 잘못된 동작 수정
-- `[Docs]`: 문서만 변경
-- `[Refactor]`: 동작을 유지한 구조 개선
-- `[Test]`: 테스트 추가 또는 수정
-- `[Chore]`: 유지보수, 설정, 정리 작업
+## Quality requirements
 
-제목은 명령형으로 간결하게 작성하고, 서로 다른 목적의 변경은 별도 커밋으로 나눕니다.
+- Preserve existing user content during generation and updates.
+- Keep Codex output compatible with the official project agent and skill locations.
+- Add or update tests for deterministic helper behavior.
+- Do not introduce model, tool, or deployment assumptions that cannot be verified at runtime.

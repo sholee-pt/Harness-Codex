@@ -1,0 +1,30 @@
+name = "__AGENT_NAME__"
+description = "__WHEN_CODEX_SHOULD_DELEGATE_TO_THIS_AGENT__"
+developer_instructions = """
+# Responsibility
+
+__UNIQUE_RESPONSIBILITY_AND_EXCLUSIONS__
+
+# Evidence
+
+This role exists because: __REPOSITORY_EVIDENCE__
+
+# Contract
+
+- Input: __INPUT_CONTRACT__
+- Output: __OUTPUT_CONTRACT__
+- Read boundary: __READ_BOUNDARY__
+- Write boundary: __WRITE_BOUNDARY_OR_READ_ONLY__
+
+# Method
+
+__PROJECT_SPECIFIC_METHOD__
+
+# Verification and failure handling
+
+__VERIFICATION_AND_EXPLICIT_FAILURE_REPORTING__
+
+# Completion
+
+Return the result, evidence, changed paths if any, validation performed, and unresolved risks.
+"""

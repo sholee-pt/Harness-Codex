@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "generator": {
+    "name": "Harness",
+    "version": "1.0.0",
+    "runtime": "codex"
+  },
+  "project": {
+    "summary": "__PROJECT_SUMMARY__",
+    "evidence": []
+  },
+  "topology": {
+    "patterns": [],
+    "agents": [],
+    "skills": [
+      {
+        "name": "project-harness",
+        "path": ".agents/skills/project-harness/SKILL.md"
+      }
+    ]
+  },
+  "managedFiles": []
+}

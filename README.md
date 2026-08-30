@@ -1,115 +1,91 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Version-v1-brightgreen.svg" alt="Version v1">
   <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
-  <img src="https://img.shields.io/badge/Mode-Adaptive_Orchestration-orange.svg" alt="Adaptive Orchestration">
+  <img src="https://img.shields.io/badge/Type-Harness_Generator-orange.svg" alt="Harness Generator">
   <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
 </p>
 
 # Harness for Codex
 
-> A repository-native workflow for scoping complex work, selecting the right execution mode, coordinating implementation, and validating the result.
+> Generate a small, project-specific agent system from evidence in the repository.
 
-## Overview
+Harness is a user-level Codex skill. Run it inside a project and it analyzes the repository, selects only justified agent and skill boundaries, and writes a native project harness that can be reused in later sessions.
 
-Harness adds a structured operating layer to Codex without imposing a fixed roster of agents. It derives roles from the task, delegates only when independent work can run safely, and keeps final integration and verification under the primary agent.
-
-The workflow is designed for complex implementation, multi-area code review, and tasks that benefit from a clear separation between execution and validation.
-
-## Key Features
-
-- **Scope control** — Defines the goal, completion criteria, writable surface, and constraints before execution.
-- **Adaptive delegation** — Uses subagents only when the work can be split into independent, well-owned units.
-- **Evidence-based integration** — Verifies delegated findings against the repository before adopting them.
-- **Quality gates** — Applies consistent checks to implementation, review findings, and final reporting.
-- **Safe boundaries** — Prevents unrequested commits, merges, deployments, and external changes.
-
-## Workflow
+## What It Generates
 
 ```text
-Phase 1: Scope the task
-    ↓
-Phase 2: Select single-agent or delegated execution
-    ↓
-Phase 3: Define outputs, ownership, and dependencies
-    ↓
-Phase 4: Execute and integrate
-    ↓
-Phase 5: Validate with tests, checks, or reproducible evidence
-    ↓
-Phase 6: Report outcomes, gaps, and remaining risk
+target-project/
+├── .codex/agents/                 # Project-specific custom agents, when justified
+├── .agents/skills/
+│   ├── project-harness/           # Project orchestration skill
+│   └── <project-skill>/           # Reusable project procedures, when justified
+├── .harness/manifest.json         # Ownership, topology, and content hashes
+└── AGENTS.md                      # A small managed pointer; existing content is preserved
 ```
+
+Simple projects may receive only `project-harness`. Harness does not create a fixed team or assume a frontend/backend architecture.
 
 ## Installation
 
-Clone the Codex branch:
+Clone this branch and copy the generator to the user skill directory.
+
+### PowerShell
+
+```powershell
+git clone --branch codex/v1 --single-branch https://github.com/sholee-pt/Harness.git Harness
+New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
+Copy-Item -Recurse -Force "Harness/.agents/skills/harness" "$HOME/.agents/skills/harness"
+```
+
+### macOS and Linux
 
 ```shell
-git clone --branch codex/v1 --single-branch https://github.com/sholee-pt/Harness.git harness-codex
+git clone --branch codex/v1 --single-branch https://github.com/sholee-pt/Harness.git Harness
+mkdir -p ~/.agents/skills
+cp -R Harness/.agents/skills/harness ~/.agents/skills/harness
 ```
 
-Copy the following into the root of the target repository:
-
-```text
-AGENTS.md
-.agents/skills/harness/
-```
-
-If the target repository already has an `AGENTS.md`, merge the relevant rules instead of replacing the file.
-
-## Project Structure
-
-```text
-.
-├── .agents/
-│   └── skills/
-│       └── harness/
-│           ├── SKILL.md
-│           └── references/
-│               ├── orchestration.md
-│               └── quality-gates.md
-├── AGENTS.md
-├── CONTRIBUTING.md
-├── LICENSE
-└── README.md
-```
+Restart Codex if the user skill directory did not exist when the current session started.
 
 ## Usage
 
-Invoke the skill with a concrete objective:
+Open the target repository in Codex and run:
 
 ```text
-$harness implement the authentication module and validate the related tests.
+$harness configure a project harness for this repository.
 ```
 
-For review-oriented work:
+The skill also recognizes direct requests such as “configure the harness” and “하네스를 구성해줘”. Run the same command later to audit or update an existing generated harness.
 
-```text
-$harness review this pull request for correctness, security boundaries, and missing tests.
+## Design Rules
+
+- Repository evidence determines roles, skills, and orchestration.
+- Six collaboration patterns are available as design vocabulary, not mandatory templates.
+- User-owned files and edits are never silently overwritten.
+- Generated files are updated only when their recorded hash still matches.
+- Phase outputs are frozen before downstream validation.
+- Authentication, permission, and quota failures are reported without pointless retries.
+- Runtime and model settings are inherited unless repository evidence requires an override.
+
+## Validation
+
+The generator includes standard-library-only tools:
+
+```shell
+python .agents/skills/harness/scripts/inventory.py .
+python .agents/skills/harness/scripts/harness_state.py status --root . --runtime codex
+python .agents/skills/harness/scripts/validate_harness.py . --runtime codex
+python -m unittest discover -s tests -v
 ```
-
-### Execution Modes
-
-| Mode | Behavior | Best suited for |
-| --- | --- | --- |
-| **Single-agent** | The primary agent investigates, implements, and validates sequentially. | Focused changes with tightly coupled steps |
-| **Delegated** | Independent work is assigned with explicit ownership and integrated by the primary agent. | Multi-module work and multi-perspective reviews |
-
-## Use Cases
-
-- Cross-module feature implementation
-- Architecture, security, and test-gap reviews
-- Refactoring with independent verification
-- Research that requires source validation before implementation
-- Repository-wide changes with clearly separated ownership
 
 ## Versioning
 
 - Codex releases use `codex/vN` branches.
 - Claude Code releases use `claude/vN` branches.
-- Each new version starts from the previous version of the same runtime.
+- Breaking generator changes start a new branch version.
 
-See the [Claude Code branch](https://github.com/sholee-pt/Harness/tree/claude/v1) for the Claude-native layout.
+The Claude-native edition is available on [`claude/v1`](https://github.com/sholee-pt/Harness/tree/claude/v1).
 
 ## License
 
-The original content in this repository is proprietary. See [LICENSE](LICENSE) for the applicable terms.
+This repository is proprietary and intended for the copyright holder's private use. See [LICENSE](LICENSE).

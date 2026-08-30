@@ -1,19 +1,27 @@
-# Harness for Codex
+# Harness Repository Instructions
 
-## 범위
+## Scope
 
-- 이 저장소는 개인 사용 목적입니다. 배포, 마켓플레이스 등록, 공개 패키징을 전제로 작업하지 마세요.
-- 사용자 요구사항을 최우선 기준으로 삼고, 명시되지 않은 외부 변경이나 배포를 수행하지 마세요.
-- 기존 사용자 변경사항을 보존하고, 파괴적인 작업 전에 정확한 대상을 확인하세요.
+- This branch contains the Codex v1 user-level harness generator.
+- Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
+- Do not add deployment, marketplace publishing, telemetry, or external service dependencies.
+- Preserve the proprietary license and independently authored implementation.
 
-## 하네스 사용
+## Skill maintenance
 
-- 사용자가 복잡한 구현, 다영역 리뷰, 조사와 검증의 분리를 요청하면 `harness` 스킬을 사용하세요.
-- 단순한 한 단계 작업에는 하네스를 사용하지 마세요.
-- 하네스가 활성화되면 해당 스킬의 작업 분할 및 검증 기준을 따르세요.
+- Treat `.agents/skills/harness/SKILL.md` as the concise router.
+- Put conditional design guidance in `references/`, deterministic helpers in `scripts/`, and output templates in `assets/`.
+- Generate agents and project skills only when repository evidence justifies them.
+- Preserve user-owned content and test idempotent updates.
 
-## 완료 기준
+## Validation
 
-- 변경 결과를 관련 테스트나 정적 검사로 검증하세요.
-- 검증하지 못한 항목과 남은 위험을 사실대로 보고하세요.
-- 커밋, 푸시, PR 병합은 사용자가 해당 작업을 요청한 범위 안에서만 수행하세요.
+- Run `python -m unittest discover -s tests -v`.
+- Run the system skill validator against `.agents/skills/harness` when available.
+- Report any validation that could not be executed.
+
+## Git conventions
+
+- Version branches use `codex/vN` and `claude/vN`.
+- Later commits use `[Feat]`, `[Fix]`, `[Docs]`, `[Refactor]`, `[Test]`, or `[Chore]`.
+- Do not commit, push, merge, or rewrite history unless the user has authorized it.
