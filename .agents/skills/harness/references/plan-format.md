@@ -41,6 +41,7 @@ Create one UTF-8 JSON plan with this structure and pass it to `scripts/harness_a
 
 - Agent entry points use `.codex/agents/<snake_case_name>.toml`.
 - Skill entry points use `.agents/skills/<kebab-case-name>/SKILL.md`.
+- Generated skill frontmatter uses only single-line scalar `name` and `description` fields; full YAML syntax is outside the v2.1 contract.
 - Include every generated dedicated file in `artifacts`, including supporting references, scripts, and assets.
 - Every topology entry point must have a matching artifact.
 - Every skill records its purpose and repository evidence.

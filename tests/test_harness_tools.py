@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -177,9 +178,54 @@ class ApplyTests(unittest.TestCase):
             first_manifest = (root / ".harness" / "manifest.json").read_bytes()
             second = harness_apply.build_application(root, plan)
             self.assertTrue(all(item["action"] == "unchanged" for item in second["report"]["actions"]))
-            harness_apply.apply_application(second)
+            with mock.patch.object(
+                harness_state, "atomic_write_text", wraps=harness_state.atomic_write_text
+            ) as atomic_write:
+                harness_apply.apply_application(second)
+            atomic_write.assert_not_called()
             self.assertEqual((root / ".harness" / "manifest.json").read_bytes(), first_manifest)
             self.assertTrue(validate_harness.Validator(root).run()["valid"])
+
+    def test_apply_writes_only_changed_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            harness_apply.apply_application(harness_apply.build_application(root, minimal_plan()))
+
+            updated = harness_apply.build_application(root, minimal_plan(skill_suffix="\nUpdated\n"))
+            actions = {item["path"]: item["action"] for item in updated["report"]["actions"]}
+            self.assertEqual(actions[".agents/skills/project-harness/SKILL.md"], "update")
+            self.assertEqual(actions["AGENTS.md"], "unchanged")
+            self.assertEqual(actions[".harness/manifest.json"], "update")
+
+            with mock.patch.object(
+                harness_state, "atomic_write_text", wraps=harness_state.atomic_write_text
+            ) as atomic_write:
+                harness_apply.apply_application(updated)
+
+            written_paths = {Path(call.args[0]) for call in atomic_write.call_args_list}
+            self.assertEqual(
+                written_paths,
+                {
+                    root / ".agents" / "skills" / "project-harness" / "SKILL.md",
+                    root / ".harness" / "manifest.json",
+                },
+            )
+            self.assertTrue(validate_harness.Validator(root).run()["valid"])
+
+    def test_apply_rejects_incomplete_action_map_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            application = harness_apply.build_application(root, minimal_plan())
+            application["report"]["actions"].pop()
+
+            with mock.patch.object(
+                harness_state, "atomic_write_text", wraps=harness_state.atomic_write_text
+            ) as atomic_write:
+                with self.assertRaises(harness_apply.PlanError):
+                    harness_apply.apply_application(application)
+
+            atomic_write.assert_not_called()
+            self.assertFalse((root / ".harness" / "manifest.json").exists())
 
     def test_apply_uses_active_agents_override(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

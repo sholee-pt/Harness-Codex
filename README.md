@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-v1-brightgreen.svg" alt="Version v1">
+  <img src="https://img.shields.io/badge/Version-v2.1-brightgreen.svg" alt="Version v2.1">
   <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
   <img src="https://img.shields.io/badge/Type-Harness_Generator-orange.svg" alt="Harness Generator">
   <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
@@ -32,7 +32,7 @@ Harness requires Anaconda or Miniconda. Clone this branch, create the dedicated 
 ### PowerShell
 
 ```powershell
-git clone --branch codex/v2 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v2.1 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file "Harness/environment.yml"
 New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
 New-Item -ItemType Directory -Force "$HOME/.agents/skills/harness" | Out-Null
@@ -42,7 +42,7 @@ Copy-Item -Recurse -Force "Harness/.agents/skills/harness/*" "$HOME/.agents/skil
 ### macOS and Linux
 
 ```shell
-git clone --branch codex/v2 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v2.1 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 mkdir -p ~/.agents/skills
 mkdir -p ~/.agents/skills/harness
@@ -71,6 +71,7 @@ Harness first creates a structured proposal and runs a no-write dry-run. It appl
 - Six collaboration patterns are available as design vocabulary, not mandatory templates.
 - User-owned files and edits are never silently overwritten.
 - Generated files are updated only when their recorded hash still matches.
+- Outputs classified as unchanged are not rewritten.
 - Phase outputs are treated as frozen only when hashes were actually recorded.
 - Authentication, permission, and quota failures are reported without pointless retries.
 - Runtime and model settings are inherited unless repository evidence requires an override.
@@ -89,13 +90,13 @@ conda run -n harness python -m unittest discover -s tests -v
 
 ## Versioning
 
-- Codex releases use `codex/vN` branches.
-- Claude Code releases use `claude/vN` branches.
+- Codex releases use `codex/vN` or `codex/vN.M` branches.
+- Claude Code releases use runtime-specific `claude/*` branches.
 - Breaking generator changes start a new branch version.
 
 See [VERSIONS.md](VERSIONS.md) for compatibility, migration, and release differences.
 
-The Claude-native edition is available on [`claude/v1`](https://github.com/sholee-pt/Harness/tree/claude/v1).
+Claude-native editions are maintained independently on the repository's `claude/*` branches.
 
 ## License
 

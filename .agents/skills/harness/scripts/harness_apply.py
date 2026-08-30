@@ -18,7 +18,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ is required
 
 
 PLAN_SCHEMA_VERSION = 1
-GENERATOR_VERSION = "2.0.0"
+GENERATOR_VERSION = "2.1.0"
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 AGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 ALLOWED_PREFIXES = (".codex/agents/", ".agents/skills/")
@@ -354,6 +354,7 @@ def build_application(root: Path, plan: dict) -> dict:
 
     return {
         "artifacts": artifacts,
+        "instructionRelative": instruction_relative,
         "instructionPath": instruction_path,
         "instructionText": merged_instruction,
         "manifestPath": manifest_path,
@@ -368,12 +369,45 @@ def build_application(root: Path, plan: dict) -> dict:
 
 
 def apply_application(application: dict) -> None:
+    report = application.get("report")
+    if not isinstance(report, dict):
+        raise PlanError("application must contain a report object")
+    actions = report.get("actions")
+    if not isinstance(actions, list):
+        raise PlanError("application report must contain an action list")
+
+    action_by_path: dict[str, str] = {}
+    for item in actions:
+        if not isinstance(item, dict):
+            raise PlanError("application actions must be objects")
+        relative = item.get("path")
+        action = item.get("action")
+        if not isinstance(relative, str) or relative in action_by_path:
+            raise PlanError(f"invalid or duplicate application action path: {relative!r}")
+        if action not in {"create", "update", "unchanged"}:
+            raise PlanError(f"invalid application action for {relative!r}: {action!r}")
+        action_by_path[relative] = action
+
+    instruction_relative = application.get("instructionRelative")
+    if not isinstance(instruction_relative, str):
+        raise PlanError("application is missing instructionRelative")
+    expected_paths = set(application["artifacts"]) | {
+        instruction_relative,
+        ".harness/manifest.json",
+    }
+    if set(action_by_path) != expected_paths:
+        raise PlanError("application action paths do not match the planned outputs")
+
+    root = application["manifestPath"].parents[1]
     for relative, content in sorted(application["artifacts"].items()):
-        root = application["manifestPath"].parents[1]
+        if action_by_path[relative] == "unchanged":
+            continue
         path = harness_state.resolve_inside(root, relative)
         harness_state.atomic_write_text(path, content)
-    harness_state.atomic_write_text(application["instructionPath"], application["instructionText"])
-    harness_state.atomic_write_text(application["manifestPath"], application["manifestText"])
+    if action_by_path[instruction_relative] != "unchanged":
+        harness_state.atomic_write_text(application["instructionPath"], application["instructionText"])
+    if action_by_path[".harness/manifest.json"] != "unchanged":
+        harness_state.atomic_write_text(application["manifestPath"], application["manifestText"])
 
 
 def main() -> int:

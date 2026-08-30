@@ -66,7 +66,7 @@ Read [orchestration.md](references/orchestration.md) before planning `project-ha
 
 ## Audit and update mode
 
-On later runs, repeat the evidence scan and compare the proposed topology with the manifest. Make the minimum justified change. Unchanged inputs should produce no diff. Do not remove obsolete managed artifacts automatically; report removal candidates unless the user explicitly authorizes deletion.
+On later runs, repeat the evidence scan and compare the proposed topology with the manifest. Make the minimum justified change. Unchanged inputs should perform no file write or replacement. Do not remove obsolete managed artifacts automatically; report removal candidates unless the user explicitly authorizes deletion.
 
 ## Completion report
 

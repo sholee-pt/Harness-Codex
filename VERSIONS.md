@@ -1,13 +1,14 @@
 # Version History
 
-Harness versions are maintained as runtime-specific branches. A major branch is created when the generation contract, state format, ownership model, or required workflow changes.
+Harness versions are maintained as runtime-specific branches. A major branch is created when the generation contract, state format, ownership model, or required workflow changes. A minor branch contains backward-compatible corrections and validation improvements.
 
 ## Codex Editions
 
 | Branch | Generator | Manifest | Status | Recommended for |
 | --- | --- | --- | --- | --- |
 | `codex/v1` | `1.0.0` | Schema 1 | Maintenance | Existing installations that need the original direct-generation workflow |
-| `codex/v2` | `2.0.0` | Schema 2 | Current | New installations and guarded updates to existing project harnesses |
+| `codex/v2` | `2.0.0` | Schema 2 | Maintenance | Existing guarded-generation installations |
+| `codex/v2.1` | `2.1.0` | Schema 2 | Current | New installations and backward-compatible updates from Codex v2 |
 
 ## Codex v1
 
@@ -39,14 +40,27 @@ Codex v2 adds a guarded and reproducible generation lifecycle.
 ## Migrating from Codex v1
 
 1. Create or preserve a recovery branch for the target project.
-2. Install Harness from `codex/v2`.
+2. Install Harness from `codex/v2.1`.
 3. Run analysis and review the generated plan.
 4. Run the fixture or project dry-run and inspect every proposed action.
 5. Apply only when validation passes and no ownership conflict is reported.
 6. Start a new Codex task so newly written instructions and custom agents are discovered.
 
-Codex v2 can read and migrate a clean v1 manifest. User-modified managed files are not silently re-baselined or overwritten.
+Codex v2.1 can read and migrate a clean v1 manifest. User-modified managed files are not silently re-baselined or overwritten.
+
+## Codex v2.1
+
+Codex v2.1 is a backward-compatible correction release built on the v2 plan and manifest contracts.
+
+- Skips writes for artifacts, root instructions, and manifests classified as unchanged.
+- Validates the complete action map before the first write.
+- Adds regression coverage proving unchanged applies perform no writes.
+- Adds automated unit-test and fixture dry-run checks for this release branch.
+- Declares the intentionally limited generated skill-frontmatter contract and removes the unused YAML dependency.
+- Corrects release documentation without changing manifest schema 2.
+
+Existing Codex v2 manifests remain compatible. The first v2.1 apply may update only the generator version recorded in the manifest; later unchanged applies perform no writes.
 
 ## Claude Code Editions
 
-Claude Code versions are maintained independently under `claude/vN`. `claude/v1` remains the current Claude-native edition; a `claude/v2` branch has not been released.
+Claude Code editions are maintained independently on `claude/*` branches. Their release status is documented on those branches so Codex release notes do not duplicate mutable Claude version state.

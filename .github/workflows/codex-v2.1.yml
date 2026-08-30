@@ -1,0 +1,41 @@
+name: Codex v2.1 checks
+
+on:
+  push:
+    branches:
+      - codex/v2.1
+  pull_request:
+    branches:
+      - codex/v2.1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the release branch
+        uses: actions/checkout@v4
+
+      - name: Create the harness environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: harness
+          auto-activate-base: false
+          environment-file: environment.yml
+
+      - name: Run unit tests
+        shell: bash -el {0}
+        run: conda run -n harness python -m unittest discover -s tests -v
+
+      - name: Run the no-write fixture dry-run
+        shell: bash -el {0}
+        run: |
+          conda run -n harness python .agents/skills/harness/scripts/harness_apply.py \
+            --root tests/fixtures/minimal-project \
+            --plan tests/fixtures/minimal-plan.json \
+            --dry-run
+          test ! -e tests/fixtures/minimal-project/.harness/manifest.json
+          git diff --exit-code

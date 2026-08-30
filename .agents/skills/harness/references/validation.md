@@ -23,7 +23,7 @@ Test the applicable cases, using an isolated temporary repository when possible:
 4. A same-language monorepo is divided only when package responsibilities justify it.
 5. Existing root instructions survive managed-block insertion.
 6. A user-modified managed file is preserved and reported.
-7. A second run over unchanged inputs produces no diff.
+7. A second run over unchanged inputs performs no file write or replacement.
 8. Missing tools, post-freeze mutation, and non-retryable failures are surfaced.
 9. An existing `AGENTS.override.md` receives the managed pointer instead of an inactive `AGENTS.md`.
 10. A modified managed file makes both dry-run and apply refuse all writes.
