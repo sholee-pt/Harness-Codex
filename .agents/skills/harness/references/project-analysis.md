@@ -32,13 +32,16 @@ A frontend/backend split is one possible contract boundary, not a default archit
 For each proposed boundary, capture:
 
 - concise boundary name;
-- supporting paths or configuration;
+- supporting normalized file paths and SHA-256 values from `harness_state.py evidence`;
+- a specific claim for each file and, when useful, an inclusive one-based line range;
 - inputs and outputs;
 - dependencies on other boundaries;
 - recurring work it receives;
 - failure impact and applicable verification.
 
 Do not infer an agent merely because a directory or framework exists. A boundary must lead to materially different expertise, independent work, context isolation, reuse, or a quality contract.
+
+The hash proves that the plan refers to the same bytes that were inspected. It does not prove that the claim is logically correct; review claims before apply.
 
 ## Profile outcome
 

@@ -1,10 +1,26 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "project": {
     "summary": "A small single-package Python fixture.",
     "evidence": [
-      "README.md",
-      "pyproject.toml"
+      {
+        "path": "README.md",
+        "sha256": "7b38f883473eb6c37127259f213206f7c2c7097e96f1f06d54bfbebedfe32fd5",
+        "claim": "Describes the fixture as a deliberately small project.",
+        "lines": {
+          "start": 1,
+          "end": 3
+        }
+      },
+      {
+        "path": "pyproject.toml",
+        "sha256": "38bf71dd0a970e24635dded38e71bbae98938b0763568eb72f59f6290cfd1cf2",
+        "claim": "Defines a single Python package and its runtime requirement.",
+        "lines": {
+          "start": 1,
+          "end": 5
+        }
+      }
     ],
     "rationale": {
       "summary": "The fixture has one responsibility boundary, so only the project orchestrator is justified.",
@@ -20,7 +36,11 @@
         "path": ".agents/skills/project-harness/SKILL.md",
         "purpose": "Coordinate the repository-wide workflow.",
         "evidence": [
-          "pyproject.toml"
+          {
+            "path": "pyproject.toml",
+            "sha256": "38bf71dd0a970e24635dded38e71bbae98938b0763568eb72f59f6290cfd1cf2",
+            "claim": "Shows that the fixture has one package boundary."
+          }
         ]
       }
     ]
@@ -28,6 +48,7 @@
   "artifacts": [
     {
       "path": ".agents/skills/project-harness/SKILL.md",
+      "mode": "0644",
       "content": "---\nname: project-harness\ndescription: Coordinate repository-wide work for the minimal Python fixture.\n---\n\n# Project Harness\n\nUse direct execution because the repository has one responsibility boundary.\n"
     }
   ],

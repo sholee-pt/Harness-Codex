@@ -18,10 +18,11 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ is required
     tomllib = None
 
 
-PLAN_SCHEMA_VERSION = 1
-GENERATOR_VERSION = "3.1.0"
+PLAN_SCHEMA_VERSION = 2
+GENERATOR_VERSION = "4.0.0"
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 AGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 ALLOWED_PREFIXES = (".codex/agents/", ".agents/skills/")
 ALLOWED_PATTERNS = {
     "pipeline",
@@ -85,14 +86,67 @@ def load_plan(path: Path) -> dict:
     return plan
 
 
-def validate_project(plan: dict) -> dict:
+def validate_evidence(root: Path, value: object, label: str) -> list[dict]:
+    evidence = require_list(value, label)
+    if not evidence:
+        raise PlanError(f"{label} must contain at least one evidence object")
+    validated: list[dict] = []
+    for index, item in enumerate(evidence):
+        entry = require_object(item, f"{label}[{index}]")
+        relative = entry.get("path")
+        claim = entry.get("claim")
+        expected_hash = entry.get("sha256")
+        if not isinstance(relative, str):
+            raise PlanError(f"{label}[{index}].path must be text")
+        try:
+            path = harness_state.resolve_inside(root, relative)
+        except harness_state.StateError as exc:
+            raise PlanError(f"invalid {label}[{index}].path: {exc}") from exc
+        if not path.is_file():
+            raise PlanError(f"{label}[{index}].path does not exist: {relative}")
+        if not isinstance(claim, str) or not claim.strip():
+            raise PlanError(f"{label}[{index}].claim must be a non-empty string")
+        if not isinstance(expected_hash, str) or not HASH_RE.fullmatch(expected_hash):
+            raise PlanError(f"{label}[{index}].sha256 must be a SHA-256 hash")
+        actual_hash = harness_state.digest_bytes(path.read_bytes())
+        if actual_hash != expected_hash:
+            raise PlanError(f"{label}[{index}] changed after analysis: {relative}")
+        lines = entry.get("lines")
+        if lines is not None:
+            line_range = require_object(lines, f"{label}[{index}].lines")
+            start = line_range.get("start")
+            end = line_range.get("end")
+            if (
+                not isinstance(start, int)
+                or isinstance(start, bool)
+                or not isinstance(end, int)
+                or isinstance(end, bool)
+                or start < 1
+                or end < start
+            ):
+                raise PlanError(
+                    f"{label}[{index}].lines must contain integers with 1 <= start <= end"
+                )
+            try:
+                line_count = len(path.read_text(encoding="utf-8").splitlines())
+            except (OSError, UnicodeError) as exc:
+                raise PlanError(
+                    f"{label}[{index}] uses lines for a non-UTF-8 file: {relative}"
+                ) from exc
+            if end > line_count:
+                raise PlanError(
+                    f"{label}[{index}].lines ends at {end}, but {relative} has {line_count} lines"
+                )
+        validated.append(entry)
+    return validated
+
+
+def validate_project(root: Path, plan: dict) -> dict:
     project = require_object(plan.get("project"), "project")
     summary = project.get("summary")
     if not isinstance(summary, str) or not summary.strip():
         raise PlanError("project.summary must be a non-empty string")
-    evidence = require_list(project.get("evidence"), "project.evidence")
-    if not all(isinstance(item, str) and item.strip() for item in evidence):
-        raise PlanError("project.evidence entries must be non-empty strings")
+    validate_evidence(root, project.get("evidence"), "project.evidence")
     rationale = require_object(project.get("rationale"), "project.rationale")
     rationale_summary = rationale.get("summary")
     if not isinstance(rationale_summary, str) or not rationale_summary.strip():
@@ -103,48 +157,15 @@ def validate_project(plan: dict) -> dict:
     return project
 
 
-def evidence_warnings(root: Path, plan: dict) -> list[str]:
-    """Report string evidence that does not resolve to an existing repository file."""
-    references: list[tuple[str, str]] = []
-    project = plan.get("project", {})
-    if isinstance(project, dict):
-        references.extend(
-            (f"project.evidence[{index}]", value)
-            for index, value in enumerate(project.get("evidence", []))
-            if isinstance(value, str)
-        )
-    topology = plan.get("topology", {})
-    if isinstance(topology, dict):
-        for kind in ("skills", "agents"):
-            for index, item in enumerate(topology.get(kind, [])):
-                if not isinstance(item, dict):
-                    continue
-                name = item.get("name", index)
-                references.extend(
-                    (f"topology.{kind}[{name!r}].evidence[{evidence_index}]", value)
-                    for evidence_index, value in enumerate(item.get("evidence", []))
-                    if isinstance(value, str)
-                )
-
-    warnings: list[str] = []
-    for label, relative in references:
-        try:
-            path = harness_state.resolve_inside(root, relative)
-        except harness_state.StateError as exc:
-            warnings.append(f"{label} is not a normalized repository path: {exc}")
-            continue
-        if not path.is_file():
-            warnings.append(f"{label} does not reference an existing file: {relative}")
-    return warnings
-
-
-def validate_artifacts(root: Path, plan: dict) -> dict[str, str]:
+def validate_artifacts(root: Path, plan: dict) -> tuple[dict[str, str], dict[str, int]]:
     artifact_items = require_list(plan.get("artifacts"), "artifacts")
     artifacts: dict[str, str] = {}
+    modes: dict[str, int] = {}
     for index, item in enumerate(artifact_items):
         artifact = require_object(item, f"artifacts[{index}]")
         relative = artifact.get("path")
         content = artifact.get("content")
+        mode_value = artifact.get("mode")
         if not isinstance(relative, str) or not relative.startswith(ALLOWED_PREFIXES):
             raise PlanError(f"artifact path is outside Codex Harness output roots: {relative!r}")
         if not harness_transaction.is_allowed_target(relative):
@@ -153,14 +174,19 @@ def validate_artifacts(root: Path, plan: dict) -> dict[str, str]:
             raise PlanError(f"duplicate artifact path: {relative}")
         if not isinstance(content, str):
             raise PlanError(f"artifact content must be text: {relative}")
+        try:
+            mode = harness_state.parse_mode(mode_value, f"artifact mode for {relative}")
+        except harness_state.StateError as exc:
+            raise PlanError(str(exc)) from exc
         harness_state.resolve_inside(root, relative)
         if any(token in content for token in FORBIDDEN_TOKENS):
             raise PlanError(f"artifact contains an obsolete runtime token: {relative}")
         artifacts[relative] = content
-    return artifacts
+        modes[relative] = mode
+    return artifacts, modes
 
 
-def validate_topology(plan: dict, artifacts: dict[str, str]) -> dict:
+def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> dict:
     topology = require_object(plan.get("topology"), "topology")
     patterns = require_list(topology.get("patterns"), "topology.patterns")
     if not all(isinstance(pattern, str) and pattern in ALLOWED_PATTERNS for pattern in patterns):
@@ -181,9 +207,7 @@ def validate_topology(plan: dict, artifacts: dict[str, str]) -> dict:
         purpose = skill.get("purpose")
         if not isinstance(purpose, str) or not purpose.strip():
             raise PlanError(f"skill {name} purpose must be a non-empty string")
-        evidence = require_list(skill.get("evidence"), f"skill {name} evidence")
-        if not all(isinstance(value, str) and value.strip() for value in evidence):
-            raise PlanError(f"skill {name} evidence entries must be non-empty strings")
+        validate_evidence(root, skill.get("evidence"), f"skill {name} evidence")
         expected = f".agents/skills/{name}/SKILL.md"
         if relative != expected:
             raise PlanError(f"skill {name} path must be {expected}")
@@ -211,9 +235,7 @@ def validate_topology(plan: dict, artifacts: dict[str, str]) -> dict:
             value = agent.get(field)
             if not isinstance(value, str) or not value.strip():
                 raise PlanError(f"agent {name} {field} must be a non-empty string")
-        evidence = require_list(agent.get("evidence"), f"agent {name} evidence")
-        if not all(isinstance(value, str) and value.strip() for value in evidence):
-            raise PlanError(f"agent {name} evidence entries must be non-empty strings")
+        validate_evidence(root, agent.get("evidence"), f"agent {name} evidence")
         expected = f".codex/agents/{name}.toml"
         if relative != expected:
             raise PlanError(f"agent {name} path must be {expected}")
@@ -258,6 +280,22 @@ def validate_instruction(plan: dict) -> str:
     return extracted
 
 
+def evidence_paths(project: dict, topology: dict) -> set[str]:
+    paths = {
+        item["path"]
+        for item in project["evidence"]
+        if isinstance(item, dict) and isinstance(item.get("path"), str)
+    }
+    for kind in ("skills", "agents"):
+        for component in topology[kind]:
+            paths.update(
+                item["path"]
+                for item in component["evidence"]
+                if isinstance(item, dict) and isinstance(item.get("path"), str)
+            )
+    return paths
+
+
 def merge_managed_block(existing: str, managed_block: str) -> str:
     begin_count = existing.count(harness_state.BEGIN_MARKER)
     end_count = existing.count(harness_state.END_MARKER)
@@ -271,12 +309,19 @@ def merge_managed_block(existing: str, managed_block: str) -> str:
     return f"{existing[:start]}{managed_block.rstrip()}{existing[start + len(old_block):]}"
 
 
-def managed_entry(relative: str, content: str, kind: str = "file") -> dict:
-    return {
+def managed_entry(
+    relative: str, content: str, kind: str = "file", mode: int | None = None
+) -> dict:
+    entry = {
         "path": relative,
         "kind": kind,
         "sha256": harness_state.digest_bytes(content.encode("utf-8")),
     }
+    if kind == "file":
+        if mode is None:
+            raise PlanError(f"managed file mode is missing: {relative}")
+        entry["mode"] = harness_state.mode_text(mode)
+    return entry
 
 
 def existing_manifest_state(root: Path) -> tuple[dict | None, dict[str, dict]]:
@@ -304,7 +349,13 @@ def existing_manifest_state(root: Path) -> tuple[dict | None, dict[str, dict]]:
     return manifest, by_path
 
 
-def classify_file(root: Path, relative: str, desired: str, managed: dict[str, dict]) -> str:
+def classify_file(
+    root: Path,
+    relative: str,
+    desired: str,
+    desired_mode: int,
+    managed: dict[str, dict],
+) -> str:
     path = harness_state.resolve_inside(root, relative)
     if path.exists() and not path.is_file():
         raise PlanError(f"target path is not a regular file: {relative}")
@@ -316,19 +367,26 @@ def classify_file(root: Path, relative: str, desired: str, managed: dict[str, di
         current = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
         raise PlanError(f"cannot read managed target {relative}: {exc}") from exc
-    return "unchanged" if current == desired else "update"
+    content_matches = current == desired
+    mode_matches = harness_state.mode_matches(path, desired_mode)
+    return "unchanged" if content_matches and mode_matches else "update"
 
 
 def build_application(root: Path, plan: dict) -> dict:
     harness_transaction.ensure_no_pending_transaction(root)
-    project = validate_project(plan)
-    artifacts = validate_artifacts(root, plan)
-    topology = validate_topology(plan, artifacts)
+    project = validate_project(root, plan)
+    artifacts, artifact_modes = validate_artifacts(root, plan)
+    topology = validate_topology(root, plan, artifacts)
     managed_block = validate_instruction(plan)
-    warnings = evidence_warnings(root, plan)
     manifest, old_managed = existing_manifest_state(root)
 
     instruction_relative = harness_state.active_instruction_relative(root)
+    planned_paths = set(artifacts) | {instruction_relative, ".harness/manifest.json"}
+    overlap = sorted(evidence_paths(project, topology) & planned_paths)
+    if overlap:
+        raise PlanError(
+            "evidence files cannot also be planned outputs: " + ", ".join(overlap)
+        )
     old_instruction = manifest.get("instructionFile") if manifest else None
     if old_instruction is not None and old_instruction != instruction_relative:
         raise PlanError(
@@ -339,13 +397,18 @@ def build_application(root: Path, plan: dict) -> dict:
     actions: list[dict] = []
     desired_entries: dict[str, dict] = {}
     original_hashes: dict[str, str] = {}
+    original_modes: dict[str, int] = {}
+    desired_modes: dict[str, int] = {}
     for relative, content in sorted(artifacts.items()):
-        action = classify_file(root, relative, content, old_managed)
+        desired_mode = artifact_modes[relative]
+        action = classify_file(root, relative, content, desired_mode, old_managed)
         actions.append({"path": relative, "action": action})
-        desired_entries[relative] = managed_entry(relative, content)
+        desired_entries[relative] = managed_entry(relative, content, mode=desired_mode)
+        desired_modes[relative] = desired_mode
         if action != "create":
             path = harness_state.resolve_inside(root, relative, must_exist=True)
             original_hashes[relative] = harness_state.digest_bytes(path.read_bytes())
+            original_modes[relative] = harness_state.current_mode(path)
 
     instruction_path = harness_state.resolve_inside(root, instruction_relative)
     if instruction_path.exists() and not instruction_path.is_file():
@@ -369,6 +432,10 @@ def build_application(root: Path, plan: dict) -> dict:
         original_hashes[instruction_relative] = harness_state.digest_bytes(
             instruction_path.read_bytes()
         )
+        original_modes[instruction_relative] = harness_state.current_mode(instruction_path)
+        desired_modes[instruction_relative] = original_modes[instruction_relative]
+    else:
+        desired_modes[instruction_relative] = harness_state.DEFAULT_FILE_MODE
     desired_entries[instruction_relative] = managed_entry(
         instruction_relative, managed_block, kind="managed-block"
     )
@@ -410,22 +477,29 @@ def build_application(root: Path, plan: dict) -> dict:
         original_hashes[".harness/manifest.json"] = harness_state.digest_bytes(
             manifest_path.read_bytes()
         )
+        original_modes[".harness/manifest.json"] = harness_state.current_mode(manifest_path)
+        desired_modes[".harness/manifest.json"] = original_modes[".harness/manifest.json"]
+    else:
+        desired_modes[".harness/manifest.json"] = harness_state.DEFAULT_FILE_MODE
 
     return {
         "artifacts": artifacts,
+        "artifactModes": artifact_modes,
         "instructionRelative": instruction_relative,
         "instructionPath": instruction_path,
         "instructionText": merged_instruction,
         "manifestPath": manifest_path,
         "manifestText": manifest_text,
         "originalHashes": original_hashes,
+        "originalModes": original_modes,
+        "desiredModes": desired_modes,
         "managedPreconditions": list(old_managed.values()),
         "report": {
             "runtime": harness_state.RUNTIME,
             "valid": True,
             "actions": actions,
             "removalCandidates": removal_candidates,
-            "warnings": warnings,
+            "warnings": [],
         },
     }
 
@@ -469,14 +543,30 @@ def application_actions(application: dict) -> dict[str, str]:
     return action_by_path
 
 
+def application_modes(application: dict) -> dict[str, int]:
+    modes = application.get("desiredModes")
+    if not isinstance(modes, dict):
+        raise PlanError("application is missing desiredModes")
+    expected_paths = set(application_outputs(application))
+    if set(modes) != expected_paths:
+        raise PlanError("application desired mode paths do not match the planned outputs")
+    for relative, mode in modes.items():
+        if not isinstance(mode, int) or isinstance(mode, bool) or not 0 <= mode <= 0o777:
+            raise PlanError(f"invalid desired mode for {relative}: {mode!r}")
+    return modes
+
+
 def apply_application(application: dict) -> dict:
     action_by_path = application_actions(application)
+    desired_modes = application_modes(application)
     root = application["manifestPath"].parents[1]
     journal = harness_transaction.prepare_transaction(
         root,
         application_outputs(application),
         action_by_path,
         application["originalHashes"],
+        application["originalModes"],
+        desired_modes,
         application["managedPreconditions"],
     )
     if journal is None:

@@ -1,18 +1,24 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "generator": {
     "name": "Harness",
-    "version": "3.1.0",
+    "version": "4.0.0",
     "runtime": "codex"
   },
   "application": {
     "mode": "journaled",
-    "transactionSchemaVersion": 1
+    "transactionSchemaVersion": 2
   },
   "instructionFile": "AGENTS.md",
   "project": {
     "summary": "__PROJECT_SUMMARY__",
-    "evidence": [],
+    "evidence": [
+      {
+        "path": "__EVIDENCE_PATH__",
+        "sha256": "__EVIDENCE_SHA256__",
+        "claim": "__EVIDENCE_CLAIM__"
+      }
+    ],
     "rationale": {
       "summary": "__TOPOLOGY_RATIONALE__",
       "uncertainties": []
@@ -26,7 +32,13 @@
         "name": "project-harness",
         "path": ".agents/skills/project-harness/SKILL.md",
         "purpose": "__PROJECT_ORCHESTRATION_PURPOSE__",
-        "evidence": []
+        "evidence": [
+          {
+            "path": "__EVIDENCE_PATH__",
+            "sha256": "__EVIDENCE_SHA256__",
+            "claim": "__EVIDENCE_CLAIM__"
+          }
+        ]
       }
     ]
   },

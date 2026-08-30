@@ -10,8 +10,9 @@ Read this reference after artifacts have been generated or updated.
 - The root instruction file has at most one complete managed block.
 - The manifest points to the root instruction file Codex will actually load (`AGENTS.override.md` before `AGENTS.md`).
 - Managed hashes match after generation.
-- Manifest schema 3 declares journaled application with transaction schema 1.
-- File-level evidence resolves to repository files; unresolved evidence is reviewed as a warning.
+- Manifest schema 4 declares journaled application with transaction schema 2.
+- Every evidence object resolves to the recorded repository file hash, and optional line ranges remain valid.
+- Every Harness-owned complete file declares a valid permission mode; POSIX validation detects mode drift.
 - No transaction journal or staging directory remains after a successful apply.
 - Generated files contain no Claude-only or obsolete Agent Teams primitives.
 - A clean plan dry-run reports the same create, update, or unchanged actions that the actual apply performs.

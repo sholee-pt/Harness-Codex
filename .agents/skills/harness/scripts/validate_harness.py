@@ -99,8 +99,8 @@ class Validator:
         project = self.manifest.get("project")
         if not isinstance(project, dict) or not isinstance(project.get("summary"), str) or not project.get("summary", "").strip():
             self.error("project.summary must be a non-empty string")
-        elif not isinstance(project.get("evidence"), list):
-            self.error("project.evidence must be an array")
+        elif not isinstance(project.get("evidence"), list) or not project["evidence"]:
+            self.error("project.evidence must be a non-empty array")
         elif not isinstance(project.get("rationale"), dict):
             self.error("project.rationale must be an object")
         else:
@@ -148,15 +148,55 @@ class Validator:
                             for evidence_index, value in enumerate(evidence)
                         )
         for label, relative in references:
-            if not isinstance(relative, str) or not relative.strip():
+            if not isinstance(relative, dict):
+                self.error(f"{label} must be an object")
+                continue
+            evidence_path = relative.get("path")
+            claim = relative.get("claim")
+            expected_hash = relative.get("sha256")
+            if not isinstance(evidence_path, str):
+                self.error(f"{label}.path must be text")
+                continue
+            if not isinstance(claim, str) or not claim.strip():
+                self.error(f"{label}.claim must be non-empty text")
+            if not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+                self.error(f"{label}.sha256 must be a SHA-256 hash")
                 continue
             try:
-                path = harness_state.resolve_inside(self.root, relative)
+                path = harness_state.resolve_inside(self.root, evidence_path)
             except harness_state.StateError as exc:
-                self.warning(f"{label} is not a normalized repository path: {exc}")
+                self.error(f"{label}.path is invalid: {exc}")
                 continue
             if not path.is_file():
-                self.warning(f"{label} does not reference an existing file: {relative}")
+                self.error(f"{label}.path does not exist: {evidence_path}")
+                continue
+            actual_hash = harness_state.digest_bytes(path.read_bytes())
+            if actual_hash != expected_hash:
+                self.error(f"{label} changed after harness generation: {evidence_path}")
+            lines = relative.get("lines")
+            if lines is not None:
+                if not isinstance(lines, dict):
+                    self.error(f"{label}.lines must be an object")
+                    continue
+                start = lines.get("start")
+                end = lines.get("end")
+                if (
+                    not isinstance(start, int)
+                    or isinstance(start, bool)
+                    or not isinstance(end, int)
+                    or isinstance(end, bool)
+                    or start < 1
+                    or end < start
+                ):
+                    self.error(f"{label}.lines must satisfy 1 <= start <= end")
+                    continue
+                try:
+                    line_count = len(path.read_text(encoding="utf-8").splitlines())
+                except (OSError, UnicodeError):
+                    self.error(f"{label}.lines requires a UTF-8 file: {evidence_path}")
+                    continue
+                if end > line_count:
+                    self.error(f"{label}.lines exceeds {evidence_path}")
 
     def validate_skill(self, item: dict) -> str | None:
         name = item.get("name")
@@ -167,10 +207,10 @@ class Validator:
         if not isinstance(item.get("purpose"), str) or not item["purpose"].strip():
             self.error(f"skill {name} purpose must be a non-empty string")
         evidence = item.get("evidence")
-        if not isinstance(evidence, list) or not all(
-            isinstance(value, str) and value.strip() for value in evidence
+        if not isinstance(evidence, list) or not evidence or not all(
+            isinstance(value, dict) for value in evidence
         ):
-            self.error(f"skill {name} evidence must be an array of non-empty strings")
+            self.error(f"skill {name} evidence must be a non-empty array of objects")
         if not isinstance(relative, str):
             self.error(f"skill {name} has no path")
             return name
@@ -217,10 +257,10 @@ class Validator:
             if not isinstance(item.get(field), str) or not item[field].strip():
                 self.error(f"agent {name} {field} must be a non-empty string")
         evidence = item.get("evidence")
-        if not isinstance(evidence, list) or not all(
-            isinstance(value, str) and value.strip() for value in evidence
+        if not isinstance(evidence, list) or not evidence or not all(
+            isinstance(value, dict) for value in evidence
         ):
-            self.error(f"agent {name} evidence must be an array of non-empty strings")
+            self.error(f"agent {name} evidence must be a non-empty array of objects")
         if not isinstance(relative, str):
             self.error(f"agent {name} has no path")
             return
@@ -284,6 +324,11 @@ class Validator:
                 self.error(f"duplicate managed path: {relative}")
             elif isinstance(relative, str):
                 managed_paths.add(relative)
+            if entry.get("kind", "file") == "file":
+                try:
+                    harness_state.parse_mode(entry.get("mode"), f"managed mode for {relative}")
+                except harness_state.StateError as exc:
+                    self.error(str(exc))
             result = harness_state.entry_status(self.root, entry)
             if result.get("state") != "unchanged":
                 self.error(f"managed file {relative!r} is {result.get('state')}")

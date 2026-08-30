@@ -25,12 +25,12 @@ Build the smallest useful Codex-native harness for the current repository. Resol
 1. Find the repository root and read all applicable instructions.
 2. Run `conda run -n harness python <harness-skill-root>/scripts/inventory.py <repo-root>` for a bounded structural inventory. Do not inspect secret values.
 3. If `.harness/manifest.json`, `.harness/transaction.json`, or `.harness/transactions/` exists, run `conda run -n harness python <harness-skill-root>/scripts/harness_state.py status --root <repo-root>`. Inspect transaction state before recovery or explicit orphan cleanup. Resolve it before continuing.
-4. If the manifest uses schema v1 or v2, run the guarded `migrate` command only while every managed entry is unchanged.
+4. If the manifest uses schema v1, v2, or v3, recover any pending v3 transaction with v3.1 first, then run the guarded `migrate` command only while every managed entry is unchanged and every legacy evidence path resolves.
 5. Classify the run as new, safe update, or conflict-bearing audit. Read [safe-update.md](references/safe-update.md) before any update or merge.
 
 ## Phase 1 — Profile the project
 
-Read [project-analysis.md](references/project-analysis.md). Identify responsibilities, execution environments, data and contract boundaries, high-risk quality boundaries, and recurring workflows. Record file-level evidence for each conclusion.
+Read [project-analysis.md](references/project-analysis.md). Identify responsibilities, execution environments, data and contract boundaries, high-risk quality boundaries, and recurring workflows. Record file-level evidence for each conclusion. Use the read-only `harness_state.py evidence` command to capture normalized paths and SHA-256 values, then add a specific claim and optional line range.
 
 If the repository is too small or homogeneous to justify specialist agents, generate only the project orchestrator and manifest.
 
@@ -44,7 +44,7 @@ Read [skill-design.md](references/skill-design.md). Create a project skill only 
 
 ## Phase 3 — Plan native artifacts
 
-Use the templates in `assets/` as structural starting points, then tailor them to the project. Read [plan-format.md](references/plan-format.md) and write a schema-valid generation plan to a temporary file. The plan contains the complete desired content for:
+Use the templates in `assets/` as structural starting points, then tailor them to the project. Read [plan-format.md](references/plan-format.md) and write a schema 2 generation plan to a temporary file. The plan contains the complete desired content and permission mode for:
 
 - `.codex/agents/<role>.toml` for justified agents
 - `.agents/skills/<skill>/SKILL.md` for justified project skills

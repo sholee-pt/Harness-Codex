@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains the Codex v3.1 user-level harness generator.
+- This branch contains the Codex v4 user-level harness generator.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add deployment, marketplace publishing, telemetry, or external service dependencies.
 - Preserve the proprietary license and independently authored implementation.

@@ -1,3 +1,3 @@
 # Minimal Fixture
 
-A small single-package Python project used for Harness dry-runs.
+A small single-package Python project used for deterministic Harness dry-runs.

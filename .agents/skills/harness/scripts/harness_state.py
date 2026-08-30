@@ -8,6 +8,8 @@ import errno
 import hashlib
 import json
 import os
+import re
+import stat
 import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Iterable
@@ -16,10 +18,12 @@ from typing import Iterable
 BEGIN_MARKER = "<!-- harness:begin -->"
 END_MARKER = "<!-- harness:end -->"
 RUNTIME = "codex"
-CURRENT_SCHEMA_VERSION = 3
-GENERATOR_VERSION = "3.1.0"
+CURRENT_SCHEMA_VERSION = 4
+GENERATOR_VERSION = "4.0.0"
 TRANSACTION_JOURNAL_RELATIVE = ".harness/transaction.json"
-TRANSACTION_SCHEMA_VERSION = 1
+TRANSACTION_SCHEMA_VERSION = 2
+MODE_RE = re.compile(r"^0[0-7]{3}$")
+DEFAULT_FILE_MODE = 0o644
 
 
 class StateError(ValueError):
@@ -28,6 +32,26 @@ class StateError(ValueError):
 
 def digest_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def mode_text(mode: int) -> str:
+    if not isinstance(mode, int) or isinstance(mode, bool) or not 0 <= mode <= 0o777:
+        raise StateError(f"file mode must contain only permission bits: {mode!r}")
+    return f"{mode:04o}"
+
+
+def parse_mode(value: object, label: str = "file mode") -> int:
+    if not isinstance(value, str) or not MODE_RE.fullmatch(value):
+        raise StateError(f"{label} must be a four-digit octal string such as '0644'")
+    return int(value, 8)
+
+
+def current_mode(path: Path) -> int:
+    return stat.S_IMODE(path.stat().st_mode)
+
+
+def mode_matches(path: Path, expected: int) -> bool:
+    return os.name == "nt" or current_mode(path) == expected
 
 
 def sync_directory(path: Path) -> bool:
@@ -53,7 +77,7 @@ def sync_directory(path: Path) -> bool:
     return True
 
 
-def atomic_write_bytes(path: Path, data: bytes) -> None:
+def atomic_write_bytes(path: Path, data: bytes, *, mode: int | None = None) -> None:
     """Replace a file atomically after writing it in the same directory."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_name: str | None = None
@@ -66,6 +90,8 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
             delete=False,
         ) as temporary:
             temporary.write(data)
+            if mode is not None and os.name != "nt":
+                os.fchmod(temporary.fileno(), mode)
             temporary.flush()
             os.fsync(temporary.fileno())
             temporary_name = temporary.name
@@ -77,8 +103,8 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
             Path(temporary_name).unlink(missing_ok=True)
 
 
-def atomic_write_text(path: Path, text: str) -> None:
-    atomic_write_bytes(path, text.encode("utf-8"))
+def atomic_write_text(path: Path, text: str, *, mode: int | None = None) -> None:
+    atomic_write_bytes(path, text.encode("utf-8"), mode=mode)
 
 
 def resolve_inside(root: Path, relative: str, *, must_exist: bool = False) -> Path:
@@ -185,6 +211,17 @@ def entry_status(root: Path, entry: dict) -> dict:
         if not path.is_file():
             return {"path": relative, "kind": kind, "state": "missing"}
         actual = digest_bytes(content_for_entry(path, kind))
+        expected_mode = entry.get("mode")
+        if kind == "file" and expected_mode is not None:
+            parsed_mode = parse_mode(expected_mode, f"managed mode for {relative}")
+            if not mode_matches(path, parsed_mode):
+                return {
+                    "path": relative,
+                    "kind": kind,
+                    "state": "modified-mode",
+                    "sha256": actual,
+                    "mode": mode_text(current_mode(path)),
+                }
     except (OSError, UnicodeError, StateError) as exc:
         return {"path": relative, "kind": kind, "state": "invalid", "detail": str(exc)}
     state = "unchanged" if actual == expected else "modified"
@@ -229,13 +266,14 @@ def build_entries(root: Path, files: Iterable[str], block_files: Iterable[str]) 
                 raise StateError(f"duplicate managed path: {relative}")
             seen.add(relative)
             path = resolve_inside(root, relative, must_exist=True)
-            entries.append(
-                {
-                    "path": relative,
-                    "kind": kind,
-                    "sha256": digest_bytes(content_for_entry(path, kind)),
-                }
-            )
+            entry = {
+                "path": relative,
+                "kind": kind,
+                "sha256": digest_bytes(content_for_entry(path, kind)),
+            }
+            if kind == "file":
+                entry["mode"] = mode_text(current_mode(path))
+            entries.append(entry)
     return sorted(entries, key=lambda item: item["path"])
 
 
@@ -249,7 +287,11 @@ def record_manifest(root: Path, files: list[str], block_files: list[str]) -> dic
             "managed files are already recorded; use harness_apply.py so existing hashes are checked before update"
         )
     manifest["managedFiles"] = build_entries(root, files, block_files)
-    atomic_write_text(manifest_path, json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
+    atomic_write_text(
+        manifest_path,
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+        mode=current_mode(manifest_path),
+    )
     return manifest
 
 
@@ -263,7 +305,7 @@ def migrate_manifest(root: Path) -> dict:
     version = manifest.get("schemaVersion")
     if version == CURRENT_SCHEMA_VERSION:
         return manifest
-    if version not in {1, 2}:
+    if version not in {1, 2, 3}:
         raise StateError(f"unsupported manifest schemaVersion: {version!r}")
 
     report = status_report(root)
@@ -293,6 +335,55 @@ def migrate_manifest(root: Path) -> dict:
             managed_blocks[0] if managed_blocks else active_instruction_relative(root)
         )
 
+    def migrate_evidence(values: object, label: str) -> list[dict]:
+        if not isinstance(values, list) or not values:
+            raise StateError(f"{label} must contain evidence before schema 4 migration")
+        migrated: list[dict] = []
+        for index, value in enumerate(values):
+            if not isinstance(value, str) or not value.strip():
+                raise StateError(f"{label}[{index}] is not a legacy file path")
+            path = resolve_inside(root, value)
+            if not path.is_file():
+                raise StateError(f"{label}[{index}] does not exist: {value}")
+            migrated.append(
+                {
+                    "path": value,
+                    "sha256": digest_bytes(path.read_bytes()),
+                    "claim": "Migrated from a legacy evidence path; review semantic support.",
+                }
+            )
+        return migrated
+
+    project = manifest.get("project")
+    if not isinstance(project, dict):
+        raise StateError("manifest project must be an object")
+    project["evidence"] = migrate_evidence(project.get("evidence"), "project.evidence")
+    topology = manifest.get("topology")
+    if not isinstance(topology, dict):
+        raise StateError("manifest topology must be an object")
+    for kind in ("skills", "agents"):
+        items = topology.get(kind)
+        if not isinstance(items, list):
+            raise StateError(f"manifest topology.{kind} must be an array")
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                raise StateError(f"manifest topology.{kind}[{index}] must be an object")
+            item["evidence"] = migrate_evidence(
+                item.get("evidence"), f"topology.{kind}[{index}].evidence"
+            )
+
+    managed_files = manifest.get("managedFiles")
+    if not isinstance(managed_files, list):
+        raise StateError("manifest managedFiles must be an array")
+    for entry in managed_files:
+        if not isinstance(entry, dict) or entry.get("kind", "file") != "file":
+            continue
+        relative = entry.get("path")
+        if not isinstance(relative, str):
+            raise StateError("managed file path must be text")
+        path = resolve_inside(root, relative, must_exist=True)
+        entry["mode"] = mode_text(current_mode(path))
+
     generator = manifest.get("generator")
     if not isinstance(generator, dict):
         raise StateError("manifest generator must be an object")
@@ -302,13 +393,30 @@ def migrate_manifest(root: Path) -> dict:
         "mode": "journaled",
         "transactionSchemaVersion": TRANSACTION_SCHEMA_VERSION,
     }
-    atomic_write_text(manifest_path, json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
+    atomic_write_text(
+        manifest_path,
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+        mode=current_mode(manifest_path),
+    )
     return manifest
 
 
 def snapshot_data(root: Path, files: list[str]) -> dict:
     entries = build_entries(root, files, [])
     return {"schemaVersion": 1, "files": entries}
+
+
+def evidence_data(root: Path, paths: list[str]) -> dict:
+    records: list[dict] = []
+    seen: set[str] = set()
+    for value in paths:
+        relative = normalize_relative(root, value)
+        if relative in seen:
+            raise StateError(f"duplicate evidence path: {relative}")
+        seen.add(relative)
+        path = resolve_inside(root, relative, must_exist=True)
+        records.append({"path": relative, "sha256": digest_bytes(path.read_bytes())})
+    return {"schemaVersion": 1, "evidence": records}
 
 
 def write_snapshot(root: Path, output: str, files: list[str]) -> dict:
@@ -362,6 +470,10 @@ def main() -> int:
     verify_parser.add_argument("--root", default=".")
     verify_parser.add_argument("--snapshot", required=True)
 
+    evidence_parser = subparsers.add_parser("evidence")
+    evidence_parser.add_argument("--root", default=".")
+    evidence_parser.add_argument("--path", action="append", required=True)
+
     args = parser.parse_args()
     root = Path(args.root).resolve()
     if not root.is_dir():
@@ -383,6 +495,10 @@ def main() -> int:
         if args.command == "snapshot":
             data = write_snapshot(root, args.output, args.file)
             print(json.dumps({"snapshotted": len(data["files"]), "output": args.output}, indent=2))
+            return 0
+        if args.command == "evidence":
+            data = evidence_data(root, args.path)
+            print(json.dumps(data, indent=2, ensure_ascii=False))
             return 0
         report = verify_snapshot(root, args.snapshot)
         print(json.dumps(report, indent=2, ensure_ascii=False))

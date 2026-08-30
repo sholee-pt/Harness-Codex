@@ -10,7 +10,8 @@ Harness versions are maintained as runtime-specific branches. A major branch is 
 | `codex/v2` | `2.0.0` | Schema 2 | Maintenance | Existing guarded-generation installations |
 | `codex/v2.1` | `2.1.0` | Schema 2 | Maintenance | Existing no-op-safe v2 installations |
 | `codex/v3` | `3.0.0` | Schema 3 | Maintenance | Existing recoverable multi-file installations |
-| `codex/v3.1` | `3.1.0` | Schema 3 | Current | New installations with review-driven validation and recovery hardening |
+| `codex/v3.1` | `3.1.0` | Schema 3 | Maintenance | Existing review-hardened v3 installations |
+| `codex/v4` | `4.0.0` | Schema 4 | Current | New installations requiring hashed evidence and permission-aware recovery |
 
 ## Codex v1
 
@@ -90,6 +91,20 @@ Codex v3.1 is a backward-compatible hardening release based on review of the v3 
 - Documents a repeatable live Codex discovery and delegation smoke test.
 
 Plan schema 1, manifest schema 3, and transaction schema 1 remain unchanged. Existing clean v3 manifests can be updated by applying a reviewed v3.1 plan.
+
+## Codex v4
+
+Codex v4 makes evidence and portable file permission behavior part of the deterministic contract.
+
+- Introduces generation plan schema 2 with structured evidence objects containing `path`, `sha256`, `claim`, and an optional line range.
+- Rejects missing, escaped, stale, or out-of-range evidence before planning any output mutation.
+- Introduces manifest schema 4 so evidence hashes and generated-file modes remain auditable after generation.
+- Introduces transaction schema 2 with original and desired permission modes for every changed output.
+- Applies and restores POSIX permission modes together with content; Windows keeps its platform-native permission behavior.
+- Adds a read-only evidence helper that calculates normalized repository paths and SHA-256 values.
+- Migrates clean schema 1, 2, and 3 manifests when all legacy evidence paths still resolve.
+
+Recover any pending transaction with Codex v3.1 before installing v4. Semantic truth is still a review responsibility: schema 2 proves which unchanged bytes a claim refers to, not that the claim is logically correct.
 
 ## Claude Code Editions
 

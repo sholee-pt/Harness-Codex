@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-v3.1-brightgreen.svg" alt="Version v3.1">
+  <img src="https://img.shields.io/badge/Version-v4-brightgreen.svg" alt="Version v4">
   <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
   <img src="https://img.shields.io/badge/Type-Harness_Generator-orange.svg" alt="Harness Generator">
   <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
@@ -33,7 +33,7 @@ Harness requires Anaconda or Miniconda. Clone this branch, create the dedicated 
 ### PowerShell
 
 ```powershell
-git clone --branch codex/v3.1 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v4 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file "Harness/environment.yml"
 New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
 New-Item -ItemType Directory -Force "$HOME/.agents/skills/harness" | Out-Null
@@ -43,7 +43,7 @@ Copy-Item -Recurse -Force "Harness/.agents/skills/harness/*" "$HOME/.agents/skil
 ### macOS and Linux
 
 ```shell
-git clone --branch codex/v3.1 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v4 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 mkdir -p ~/.agents/skills
 mkdir -p ~/.agents/skills/harness
@@ -68,12 +68,12 @@ Harness first creates a structured proposal and runs a no-write dry-run. It appl
 
 ## Design Rules
 
-- Repository evidence determines roles, skills, and orchestration.
+- Repository evidence determines roles, skills, and orchestration. Every evidence claim is bound to an existing file hash and may identify an exact line range.
 - Six collaboration patterns are available as design vocabulary, not mandatory templates.
 - User-owned files and edits are never silently overwritten.
 - Generated files are updated only when their recorded hash still matches.
 - Outputs classified as unchanged are not rewritten.
-- A failed multi-file apply is rolled back from verified backups before another plan may run.
+- A failed multi-file apply is rolled back from verified backups before another plan may run. POSIX file permission modes are restored with content.
 - Phase outputs are treated as frozen only when hashes were actually recorded.
 - Authentication, permission, and quota failures are reported without pointless retries.
 - Runtime and model settings are inherited unless repository evidence requires an override.
@@ -84,6 +84,7 @@ The generator includes standard-library-only Python tools. Run them through the 
 
 ```shell
 conda run -n harness python .agents/skills/harness/scripts/inventory.py .
+conda run -n harness python .agents/skills/harness/scripts/harness_state.py evidence --root . --path PATH_TO_EVIDENCE
 conda run -n harness python .agents/skills/harness/scripts/harness_state.py status --root .
 conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --plan PATH_TO_PLAN.json --dry-run
 conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --inspect-transaction
@@ -94,6 +95,10 @@ conda run -n harness python -m unittest discover -s tests -v
 ```
 
 Use `--recover` only when status or a failed apply reports a pending journal. Use `--inspect-transaction` before maintenance. `--clean-orphaned-transaction` is restricted to the reserved staging directory when no journal exists; it never replaces recovery for a valid journal. Recovery first verifies that interrupted outputs were not edited externally and refuses destructive cleanup when their hashes are unknown.
+
+If Windows Conda raises `UnicodeEncodeError` while forwarding a child-process error, inspect transaction status before retrying and rerun the diagnostic with `conda run --no-capture-output -n harness python ...`. This keeps the required environment while exposing the original Harness result.
+
+Codex v4 requires generation plan schema 2, manifest schema 4, and transaction schema 2. Recover any pending v3 transaction with v3.1 before upgrading. Clean v1-v3 manifests can be migrated only when every legacy evidence path still resolves to a file.
 
 ## Versioning
 

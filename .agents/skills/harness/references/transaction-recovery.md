@@ -6,8 +6,8 @@ Read this reference when status or apply reports `.harness/transaction.json`.
 
 1. Harness revalidates every managed hash, full target hash, and create-path absence.
 2. It atomically writes a `preparing` journal before creating staging or backup files.
-3. It writes desired outputs under `.harness/transactions/<id>/staged/`, copies update targets under `backups/`, and marks the journal `prepared`.
-4. It replaces create and update targets, recording progress after each replacement.
+3. It writes desired outputs under `.harness/transactions/<id>/staged/`, copies update targets under `backups/`, records original and desired permission modes, and marks the journal `prepared`.
+4. It replaces create and update targets with their desired modes, recording progress after each replacement.
 5. It replaces `.harness/manifest.json` last, marks the transaction `committed`, and removes the journal workspace.
 
 An ordinary write error triggers rollback in the same process. A process termination, machine restart, or cleanup failure may leave the journal for the next run.
@@ -26,11 +26,11 @@ Recovery does not trust only the recorded applied-path list. It checks every ope
 
 - An unchanged original is left in place.
 - A transaction-created file matching the staged hash is removed.
-- An updated target matching the staged hash is restored from its verified backup.
+- An updated target matching the staged hash and mode is restored from its verified backup with the original mode.
 - A missing updated target is treated as an external deletion and preserved as a recovery conflict.
 - A target with any other hash is treated as an external edit and is preserved.
 
-Recovery validates all operations before restoring or removing any target. If one target conflicts, no recovery mutation begins and the journal remains available for inspection.
+Recovery validates all content hashes and portable permission modes before restoring or removing any target. If one target conflicts, no recovery mutation begins and the journal remains available for inspection. Ownership, ACLs, and timestamps remain platform-managed and are outside transaction schema 2.
 
 Inspect the current state without mutation:
 

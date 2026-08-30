@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 import harness_state
 
 
-TRANSACTION_SCHEMA_VERSION = 1
+TRANSACTION_SCHEMA_VERSION = 2
 JOURNAL_RELATIVE = ".harness/transaction.json"
 TRANSACTIONS_RELATIVE = ".harness/transactions"
 TRANSACTION_ID_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -155,6 +155,12 @@ def _validate_hash(value: object, label: str) -> str:
     return value
 
 
+def _validate_mode(value: object, label: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 0o777:
+        raise TransactionError(f"{label} must contain only POSIX permission bits")
+    return value
+
+
 def validate_journal(root: Path, journal: object) -> dict:
     if not isinstance(journal, dict):
         raise TransactionError("transaction journal root must be an object")
@@ -198,12 +204,18 @@ def validate_journal(root: Path, journal: object) -> dict:
         harness_state.resolve_inside(root, expected_stage)
         if had_original:
             _validate_hash(operation.get("originalSha256"), f"{relative} originalSha256")
+            _validate_mode(operation.get("originalMode"), f"{relative} originalMode")
             expected_backup = _backup_relative(transaction_id, relative)
             if operation.get("backup") != expected_backup:
                 raise TransactionError(f"invalid backup path for {relative}")
             harness_state.resolve_inside(root, expected_backup)
-        elif operation.get("originalSha256") is not None or operation.get("backup") is not None:
-            raise TransactionError(f"create operation contains an original backup: {relative}")
+        elif (
+            operation.get("originalSha256") is not None
+            or operation.get("originalMode") is not None
+            or operation.get("backup") is not None
+        ):
+            raise TransactionError(f"create operation contains original metadata: {relative}")
+        _validate_mode(operation.get("desiredMode"), f"{relative} desiredMode")
 
     applied = journal.get("applied")
     if not isinstance(applied, list) or not all(isinstance(value, str) for value in applied):
@@ -237,6 +249,7 @@ def _validate_preconditions(
     root: Path,
     actions: dict[str, str],
     original_hashes: dict[str, str],
+    original_modes: dict[str, int],
     managed_preconditions: list[dict],
 ) -> None:
     for entry in managed_preconditions:
@@ -262,6 +275,11 @@ def _validate_preconditions(
         actual = _digest_path(path)
         if actual != expected:
             raise TransactionError(f"existing target changed before apply: {relative}")
+        expected_mode = original_modes.get(relative)
+        if not isinstance(expected_mode, int) or isinstance(expected_mode, bool):
+            raise TransactionError(f"missing original mode precondition for {relative}")
+        if not harness_state.mode_matches(path, expected_mode):
+            raise TransactionError(f"existing target mode changed before apply: {relative}")
 
 
 def prepare_transaction(
@@ -269,18 +287,26 @@ def prepare_transaction(
     outputs: dict[str, str],
     actions: dict[str, str],
     original_hashes: dict[str, str],
+    original_modes: dict[str, int],
+    desired_modes: dict[str, int],
     managed_preconditions: list[dict],
 ) -> dict | None:
     ensure_no_pending_transaction(root)
     if set(outputs) != set(actions):
         raise TransactionError("transaction outputs and action paths do not match")
+    if set(outputs) != set(desired_modes):
+        raise TransactionError("transaction desired modes and output paths do not match")
     for relative in outputs:
         if not isinstance(relative, str) or not is_allowed_target(relative):
             raise TransactionError(f"transaction target is not allowed: {relative!r}")
         harness_state.resolve_inside(root, relative)
     if not all(isinstance(entry, dict) for entry in managed_preconditions):
         raise TransactionError("managed preconditions must be objects")
-    _validate_preconditions(root, actions, original_hashes, managed_preconditions)
+    for relative, desired_mode in desired_modes.items():
+        _validate_mode(desired_mode, f"{relative} desired mode")
+    _validate_preconditions(
+        root, actions, original_hashes, original_modes, managed_preconditions
+    )
 
     active_paths = [relative for relative, action in actions.items() if action != "unchanged"]
     if not active_paths:
@@ -309,7 +335,9 @@ def prepare_transaction(
                 "action": action,
                 "hadOriginal": action == "update",
                 "originalSha256": None,
+                "originalMode": None,
                 "desiredSha256": harness_state.digest_bytes(desired),
+                "desiredMode": desired_modes[relative],
                 "stage": stage_relative,
                 "backup": None,
             }
@@ -323,6 +351,9 @@ def prepare_transaction(
                     raise TransactionError(f"update target changed while staging: {relative}")
                 backup_relative = _backup_relative(transaction_id, relative)
                 operation["originalSha256"] = original_hash
+                operation["originalMode"] = harness_state.current_mode(target)
+                if not harness_state.mode_matches(target, original_modes[relative]):
+                    raise TransactionError(f"update target mode changed while staging: {relative}")
                 operation["backup"] = backup_relative
             elif target.exists():
                 raise TransactionError(f"create target appeared while staging: {relative}")
@@ -360,6 +391,10 @@ def _validated_operation_data(root: Path, operation: dict) -> tuple[Path, bytes,
     return target, desired, original
 
 
+def _mode_matches(path: Path, expected: int) -> bool:
+    return path.is_file() and harness_state.mode_matches(path, expected)
+
+
 def recover_transaction(root: Path) -> dict:
     journal = load_journal(root)
     if journal["state"] in {"preparing", "committed", "rolled-back"}:
@@ -367,7 +402,7 @@ def recover_transaction(root: Path) -> dict:
         _cleanup_transaction(root, journal)
         return {"state": previous_state, "cleaned": True, "restored": 0, "removed": 0}
 
-    prepared: list[tuple[dict, Path, bytes, bytes | None, str | None]] = []
+    prepared: list[tuple[dict, Path, bytes, bytes | None, str | None, int | None]] = []
     conflicts: list[str] = []
     for operation in journal["operations"]:
         target, desired, original = _validated_operation_data(root, operation)
@@ -376,31 +411,45 @@ def recover_transaction(root: Path) -> dict:
             current_hash = None
         else:
             current_hash = _digest_path(target) if target.is_file() else None
+        current_mode = harness_state.current_mode(target) if target.is_file() else None
         if operation["hadOriginal"]:
             if current_hash is None:
                 conflicts.append(f"{operation['path']}: original target was removed externally")
-            elif current_hash not in {
-                operation["originalSha256"],
-                operation["desiredSha256"],
-            }:
+            elif not (
+                current_hash == operation["originalSha256"]
+                and _mode_matches(target, operation["originalMode"])
+            ) and not (
+                current_hash == operation["desiredSha256"]
+                and _mode_matches(target, operation["desiredMode"])
+            ):
                 conflicts.append(f"{operation['path']}: content changed outside the transaction")
-        elif current_hash not in {None, operation["desiredSha256"]}:
+        elif current_hash is not None and not (
+            current_hash == operation["desiredSha256"]
+            and _mode_matches(target, operation["desiredMode"])
+        ):
             conflicts.append(f"{operation['path']}: created target was modified after interruption")
-        prepared.append((operation, target, desired, original, current_hash))
+        prepared.append((operation, target, desired, original, current_hash, current_mode))
 
     if conflicts:
         raise TransactionError("recovery refused: " + "; ".join(conflicts))
 
     restored = 0
     removed = 0
-    for operation, target, _desired, original, current_hash in reversed(prepared):
+    for operation, target, _desired, original, current_hash, _current_mode in reversed(prepared):
         if operation["hadOriginal"]:
-            if current_hash != operation["originalSha256"]:
+            if not (
+                current_hash == operation["originalSha256"]
+                and _mode_matches(target, operation["originalMode"])
+            ):
                 if original is None:
                     raise TransactionError(f"missing recovery backup: {operation['path']}")
-                harness_state.atomic_write_bytes(target, original)
+                harness_state.atomic_write_bytes(
+                    target, original, mode=operation["originalMode"]
+                )
                 restored += 1
-        elif current_hash == operation["desiredSha256"]:
+        elif current_hash == operation["desiredSha256"] and _mode_matches(
+            target, operation["desiredMode"]
+        ):
             target.unlink()
             harness_state.sync_directory(target.parent)
             removed += 1
@@ -422,7 +471,11 @@ def apply_transaction(root: Path, journal: dict) -> dict:
         for operation in journal["operations"]:
             target, desired, _original = _validated_operation_data(root, operation)
             if operation["hadOriginal"]:
-                if not target.is_file() or _digest_path(target) != operation["originalSha256"]:
+                if (
+                    not target.is_file()
+                    or _digest_path(target) != operation["originalSha256"]
+                    or not _mode_matches(target, operation["originalMode"])
+                ):
                     raise TransactionError(
                         f"update target changed after transaction preparation: {operation['path']}"
                     )
@@ -440,7 +493,11 @@ def apply_transaction(root: Path, journal: dict) -> dict:
         _write_journal(root, journal)
         for operation, target, desired in prepared:
             if operation["hadOriginal"]:
-                if not target.is_file() or _digest_path(target) != operation["originalSha256"]:
+                if (
+                    not target.is_file()
+                    or _digest_path(target) != operation["originalSha256"]
+                    or not _mode_matches(target, operation["originalMode"])
+                ):
                     raise TransactionError(
                         f"update target changed during transaction apply: {operation['path']}"
                     )
@@ -448,7 +505,7 @@ def apply_transaction(root: Path, journal: dict) -> dict:
                 raise TransactionError(
                     f"create target appeared during transaction apply: {operation['path']}"
                 )
-            harness_state.atomic_write_bytes(target, desired)
+            harness_state.atomic_write_bytes(target, desired, mode=operation["desiredMode"])
             if operation["path"] not in journal["applied"]:
                 journal["applied"].append(operation["path"])
             _write_journal(root, journal)
