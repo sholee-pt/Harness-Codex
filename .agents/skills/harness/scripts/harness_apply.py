@@ -18,7 +18,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ is required
 
 
 PLAN_SCHEMA_VERSION = 1
-GENERATOR_VERSION = "1.1.0"
+GENERATOR_VERSION = "2.0.0"
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 AGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 ALLOWED_PREFIXES = (".codex/agents/", ".agents/skills/")

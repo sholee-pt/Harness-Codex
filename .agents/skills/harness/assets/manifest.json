@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "generator": {
     "name": "Harness",
-    "version": "1.1.0",
+    "version": "2.0.0",
     "runtime": "codex"
   },
   "instructionFile": "AGENTS.md",

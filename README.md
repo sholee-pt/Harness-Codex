@@ -32,7 +32,7 @@ Harness requires Anaconda or Miniconda. Clone this branch, create the dedicated 
 ### PowerShell
 
 ```powershell
-git clone --branch codex/v1 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v2 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file "Harness/environment.yml"
 New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
 New-Item -ItemType Directory -Force "$HOME/.agents/skills/harness" | Out-Null
@@ -42,7 +42,7 @@ Copy-Item -Recurse -Force "Harness/.agents/skills/harness/*" "$HOME/.agents/skil
 ### macOS and Linux
 
 ```shell
-git clone --branch codex/v1 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v2 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 mkdir -p ~/.agents/skills
 mkdir -p ~/.agents/skills/harness
@@ -92,6 +92,8 @@ conda run -n harness python -m unittest discover -s tests -v
 - Codex releases use `codex/vN` branches.
 - Claude Code releases use `claude/vN` branches.
 - Breaking generator changes start a new branch version.
+
+See [VERSIONS.md](VERSIONS.md) for compatibility, migration, and release differences.
 
 The Claude-native edition is available on [`claude/v1`](https://github.com/sholee-pt/Harness/tree/claude/v1).
 
