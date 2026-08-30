@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a generated Codex or Claude project harness."""
+"""Validate a generated Codex project harness."""
 
 from __future__ import annotations
 
@@ -17,7 +17,8 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ is expected
     tomllib = None
 
 
-NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+AGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 FORBIDDEN_TOKENS = (
     "TeamCreate",
     "TeamDelete",
@@ -47,9 +48,8 @@ def read_frontmatter(path: Path) -> dict[str, str]:
 
 
 class Validator:
-    def __init__(self, root: Path, runtime: str):
+    def __init__(self, root: Path):
         self.root = root
-        self.runtime = runtime
         self.errors: list[str] = []
         self.warnings: list[str] = []
         self.manifest: dict = {}
@@ -73,7 +73,7 @@ class Validator:
             if manifest is None:
                 self.error("missing .harness/manifest.json")
                 return
-            harness_state.validate_runtime(manifest, self.runtime)
+            harness_state.validate_runtime(manifest)
             self.manifest = manifest
         except harness_state.StateError as exc:
             self.error(str(exc))
@@ -81,14 +81,27 @@ class Validator:
     def validate_manifest_shape(self) -> None:
         if not self.manifest:
             return
-        if self.manifest.get("schemaVersion") != 1:
-            self.error("schemaVersion must be 1")
+        if self.manifest.get("schemaVersion") != harness_state.CURRENT_SCHEMA_VERSION:
+            self.error(f"schemaVersion must be {harness_state.CURRENT_SCHEMA_VERSION}")
         generator = self.manifest.get("generator")
         if not isinstance(generator, dict) or not all(generator.get(key) for key in ("name", "version", "runtime")):
             self.error("generator must contain name, version, and runtime")
         project = self.manifest.get("project")
         if not isinstance(project, dict) or not isinstance(project.get("summary"), str) or not project.get("summary", "").strip():
             self.error("project.summary must be a non-empty string")
+        elif not isinstance(project.get("evidence"), list):
+            self.error("project.evidence must be an array")
+        elif not isinstance(project.get("rationale"), dict):
+            self.error("project.rationale must be an object")
+        else:
+            rationale = project["rationale"]
+            if not isinstance(rationale.get("summary"), str) or not rationale["summary"].strip():
+                self.error("project.rationale.summary must be a non-empty string")
+            if not isinstance(rationale.get("uncertainties"), list):
+                self.error("project.rationale.uncertainties must be an array")
+        instruction_file = self.manifest.get("instructionFile")
+        if instruction_file not in {"AGENTS.md", "AGENTS.override.md"}:
+            self.error("instructionFile must be AGENTS.md or AGENTS.override.md")
         topology = self.manifest.get("topology")
         if not isinstance(topology, dict):
             self.error("topology must be an object")
@@ -102,14 +115,20 @@ class Validator:
     def validate_skill(self, item: dict) -> str | None:
         name = item.get("name")
         relative = item.get("path")
-        if not isinstance(name, str) or not NAME_RE.fullmatch(name):
+        if not isinstance(name, str) or not SKILL_NAME_RE.fullmatch(name):
             self.error(f"invalid skill name: {name!r}")
             return None
+        if not isinstance(item.get("purpose"), str) or not item["purpose"].strip():
+            self.error(f"skill {name} purpose must be a non-empty string")
+        evidence = item.get("evidence")
+        if not isinstance(evidence, list) or not all(
+            isinstance(value, str) and value.strip() for value in evidence
+        ):
+            self.error(f"skill {name} evidence must be an array of non-empty strings")
         if not isinstance(relative, str):
             self.error(f"skill {name} has no path")
             return name
-        prefix = ".agents/skills/" if self.runtime == "codex" else ".claude/skills/"
-        expected = f"{prefix}{name}/SKILL.md"
+        expected = f".agents/skills/{name}/SKILL.md"
         if relative != expected:
             self.error(f"skill {name} path must be {expected}")
         path = self.path(relative)
@@ -126,50 +145,44 @@ class Validator:
             self.error(f"skill description is missing in {relative}")
         return name
 
-    def validate_codex_agent(self, name: str, path: Path, relative: str) -> None:
+    def validate_codex_agent(self, name: str, path: Path, relative: str) -> dict | None:
         if tomllib is None:
             self.error("Python 3.11+ is required to validate Codex agent TOML")
-            return
+            return None
         try:
             data = tomllib.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
             self.error(f"invalid Codex agent {relative}: {exc}")
-            return
+            return None
         for key in ("name", "description", "developer_instructions"):
             if not isinstance(data.get(key), str) or not data[key].strip():
                 self.error(f"Codex agent {relative} is missing {key}")
         if data.get("name") != name:
             self.error(f"agent name mismatch in {relative}")
-
-    def validate_claude_agent(self, name: str, path: Path, relative: str) -> None:
-        try:
-            frontmatter = read_frontmatter(path)
-        except (OSError, UnicodeError, ValueError) as exc:
-            self.error(f"invalid Claude agent {relative}: {exc}")
-            return
-        if frontmatter.get("name") != name:
-            self.error(f"agent name mismatch in {relative}")
-        if not frontmatter.get("description"):
-            self.error(f"Claude agent description is missing in {relative}")
+        return data
 
     def validate_agent(self, item: dict, known_skills: set[str]) -> None:
         name = item.get("name")
         relative = item.get("path")
-        if not isinstance(name, str) or not NAME_RE.fullmatch(name):
+        if not isinstance(name, str) or not AGENT_NAME_RE.fullmatch(name):
             self.error(f"invalid agent name: {name!r}")
             return
+        for field in ("responsibility", "whyDelegate"):
+            if not isinstance(item.get(field), str) or not item[field].strip():
+                self.error(f"agent {name} {field} must be a non-empty string")
+        evidence = item.get("evidence")
+        if not isinstance(evidence, list) or not all(
+            isinstance(value, str) and value.strip() for value in evidence
+        ):
+            self.error(f"agent {name} evidence must be an array of non-empty strings")
         if not isinstance(relative, str):
             self.error(f"agent {name} has no path")
             return
-        expected = f".codex/agents/{name}.toml" if self.runtime == "codex" else f".claude/agents/{name}.md"
+        expected = f".codex/agents/{name}.toml"
         if relative != expected:
             self.error(f"agent {name} path must be {expected}")
         path = self.path(relative)
-        if path is not None:
-            if self.runtime == "codex":
-                self.validate_codex_agent(name, path, relative)
-            else:
-                self.validate_claude_agent(name, path, relative)
+        data = self.validate_codex_agent(name, path, relative) if path is not None else None
         skills = item.get("skills", [])
         if not isinstance(skills, list):
             self.error(f"agent {name} skills must be an array")
@@ -177,9 +190,15 @@ class Validator:
             for skill in skills:
                 if skill not in known_skills:
                     self.error(f"agent {name} references unknown skill {skill!r}")
+                elif data is not None and skill not in data.get("developer_instructions", ""):
+                    self.error(
+                        f"agent {name} must mention linked skill {skill!r} in developer_instructions"
+                    )
 
     def validate_topology(self) -> None:
         topology = self.manifest.get("topology", {})
+        if not isinstance(topology, dict):
+            return
         skill_items = topology.get("skills", []) if isinstance(topology, dict) else []
         agent_items = topology.get("agents", []) if isinstance(topology, dict) else []
         known_skills: set[str] = set()
@@ -234,7 +253,12 @@ class Validator:
             self.error(f"topology path is not recorded as managed: {relative}")
 
     def validate_root_pointer(self) -> None:
-        filename = "AGENTS.md" if self.runtime == "codex" else "CLAUDE.md"
+        filename = self.manifest.get("instructionFile")
+        if not isinstance(filename, str):
+            return
+        active = harness_state.active_instruction_relative(self.root)
+        if filename != active:
+            self.error(f"instructionFile {filename!r} is inactive; Codex will prefer {active!r}")
         path = self.root / filename
         if not path.exists():
             self.error(f"missing root instruction file: {filename}")
@@ -243,12 +267,20 @@ class Validator:
             harness_state.extract_managed_block(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, harness_state.StateError) as exc:
             self.error(f"invalid managed block in {filename}: {exc}")
-        matching = [entry for entry in self.manifest.get("managedFiles", []) if entry.get("path") == filename]
+        entries = self.manifest.get("managedFiles", [])
+        matching = (
+            [entry for entry in entries if isinstance(entry, dict) and entry.get("path") == filename]
+            if isinstance(entries, list)
+            else []
+        )
         if len(matching) != 1 or matching[0].get("kind") != "managed-block":
             self.error(f"{filename} must be recorded once as managed-block")
 
     def validate_forbidden_tokens(self) -> None:
-        for entry in self.manifest.get("managedFiles", []):
+        entries = self.manifest.get("managedFiles", [])
+        for entry in entries if isinstance(entries, list) else []:
+            if not isinstance(entry, dict):
+                continue
             if entry.get("kind", "file") != "file":
                 continue
             relative = entry.get("path")
@@ -274,7 +306,7 @@ class Validator:
             self.validate_root_pointer()
             self.validate_forbidden_tokens()
         return {
-            "runtime": self.runtime,
+            "runtime": harness_state.RUNTIME,
             "valid": not self.errors,
             "errors": self.errors,
             "warnings": self.warnings,
@@ -284,13 +316,12 @@ class Validator:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", nargs="?", default=".")
-    parser.add_argument("--runtime", choices=sorted(harness_state.SUPPORTED_RUNTIMES), required=True)
     args = parser.parse_args()
 
     root = Path(args.root).resolve()
     if not root.is_dir():
         parser.error(f"repository root is not a directory: {root}")
-    report = Validator(root, args.runtime).run()
+    report = Validator(root).run()
     print(json.dumps(report, indent=2, ensure_ascii=False))
     return 0 if report["valid"] else 1
 

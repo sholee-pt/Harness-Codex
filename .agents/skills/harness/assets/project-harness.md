@@ -23,8 +23,8 @@ Use direct execution when delegation has no material benefit. Use only agents an
 2. Confirm that every required runtime capability is actually available. Fall back to supported direct or sequential execution when it is not.
 3. Run independent scopes in parallel only when their write boundaries do not overlap.
 4. Collect an explicit completion status for every planned output.
-5. Freeze completed phase artifacts by recording hashes before downstream review or validation.
-6. If a frozen artifact changes, invalidate dependent validation and repeat it.
+5. When dependent phases need immutable inputs and a deterministic hash mechanism is available, freeze completed phase artifacts before downstream review or validation. Do not claim a phase is frozen without recorded hashes.
+6. If a recorded frozen artifact changes, invalidate dependent validation and repeat it.
 7. Integrate results and run project-native checks.
 
 ## Failure policy

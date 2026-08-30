@@ -1,13 +1,18 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "generator": {
     "name": "Harness",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "runtime": "codex"
   },
+  "instructionFile": "AGENTS.md",
   "project": {
     "summary": "__PROJECT_SUMMARY__",
-    "evidence": []
+    "evidence": [],
+    "rationale": {
+      "summary": "__TOPOLOGY_RATIONALE__",
+      "uncertainties": []
+    }
   },
   "topology": {
     "patterns": [],
@@ -15,7 +20,9 @@
     "skills": [
       {
         "name": "project-harness",
-        "path": ".agents/skills/project-harness/SKILL.md"
+        "path": ".agents/skills/project-harness/SKILL.md",
+        "purpose": "__PROJECT_ORCHESTRATION_PURPOSE__",
+        "evidence": []
       }
     ]
   },

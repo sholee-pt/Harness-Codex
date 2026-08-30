@@ -16,7 +16,10 @@
 
 ## Validation
 
-- Run `python -m unittest discover -s tests -v`.
+- Run every Python command inside the Anaconda environment named `harness`; prefer `conda run -n harness python ...` so the environment is explicit.
+- Never use the base Anaconda environment or an unrelated bundled Python for Harness maintenance.
+- After any repository modification, run a lightweight fixture dry-run before broader tests and include the dry-run result in the completion report.
+- Run `conda run -n harness python -m unittest discover -s tests -v`.
 - Run the system skill validator against `.agents/skills/harness` when available.
 - Report any validation that could not be executed.
 

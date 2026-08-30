@@ -20,32 +20,38 @@ target-project/
 │   ├── project-harness/           # Project orchestration skill
 │   └── <project-skill>/           # Reusable project procedures, when justified
 ├── .harness/manifest.json         # Ownership, topology, and content hashes
-└── AGENTS.md                      # A small managed pointer; existing content is preserved
+└── AGENTS.md or AGENTS.override.md # Managed pointer in the active root instruction file
 ```
 
 Simple projects may receive only `project-harness`. Harness does not create a fixed team or assume a frontend/backend architecture.
 
 ## Installation
 
-Clone this branch and copy the generator to the user skill directory.
+Harness requires Anaconda or Miniconda. Clone this branch, create the dedicated `harness` environment, and copy the generator to the user skill directory.
 
 ### PowerShell
 
 ```powershell
 git clone --branch codex/v1 --single-branch https://github.com/sholee-pt/Harness.git Harness
+conda env create --file "Harness/environment.yml"
 New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
-Copy-Item -Recurse -Force "Harness/.agents/skills/harness" "$HOME/.agents/skills/harness"
+New-Item -ItemType Directory -Force "$HOME/.agents/skills/harness" | Out-Null
+Copy-Item -Recurse -Force "Harness/.agents/skills/harness/*" "$HOME/.agents/skills/harness"
 ```
 
 ### macOS and Linux
 
 ```shell
 git clone --branch codex/v1 --single-branch https://github.com/sholee-pt/Harness.git Harness
+conda env create --file Harness/environment.yml
 mkdir -p ~/.agents/skills
-cp -R Harness/.agents/skills/harness ~/.agents/skills/harness
+mkdir -p ~/.agents/skills/harness
+cp -R Harness/.agents/skills/harness/. ~/.agents/skills/harness/
 ```
 
 Restart Codex if the user skill directory did not exist when the current session started.
+
+If the `harness` environment already exists, replace `conda env create` with `conda env update --name harness --file Harness/environment.yml`.
 
 ## Usage
 
@@ -57,25 +63,28 @@ $harness configure a project harness for this repository.
 
 The skill also recognizes direct requests such as “configure the harness” and “하네스를 구성해줘”. Run the same command later to audit or update an existing generated harness.
 
+Harness first creates a structured proposal and runs a no-write dry-run. It applies files only when all ownership and instruction-precedence checks pass. Start a new Codex task after generation to verify discovery of newly written project instructions and custom agents.
+
 ## Design Rules
 
 - Repository evidence determines roles, skills, and orchestration.
 - Six collaboration patterns are available as design vocabulary, not mandatory templates.
 - User-owned files and edits are never silently overwritten.
 - Generated files are updated only when their recorded hash still matches.
-- Phase outputs are frozen before downstream validation.
+- Phase outputs are treated as frozen only when hashes were actually recorded.
 - Authentication, permission, and quota failures are reported without pointless retries.
 - Runtime and model settings are inherited unless repository evidence requires an override.
 
 ## Validation
 
-The generator includes standard-library-only tools:
+The generator includes standard-library-only Python tools. Run them through the dedicated Conda environment:
 
 ```shell
-python .agents/skills/harness/scripts/inventory.py .
-python .agents/skills/harness/scripts/harness_state.py status --root . --runtime codex
-python .agents/skills/harness/scripts/validate_harness.py . --runtime codex
-python -m unittest discover -s tests -v
+conda run -n harness python .agents/skills/harness/scripts/inventory.py .
+conda run -n harness python .agents/skills/harness/scripts/harness_state.py status --root .
+conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --plan PATH_TO_PLAN.json --dry-run
+conda run -n harness python .agents/skills/harness/scripts/validate_harness.py .
+conda run -n harness python -m unittest discover -s tests -v
 ```
 
 ## Versioning

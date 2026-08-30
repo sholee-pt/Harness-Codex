@@ -6,7 +6,7 @@ Read this reference when profiling a new repository or when its structure has ma
 
 Inspect high-signal sources before sampling implementation files:
 
-1. repository instructions and top-level documentation;
+1. repository instructions and top-level documentation, including `AGENTS.override.md` precedence;
 2. package, workspace, build, and dependency manifests;
 3. application entry points and public interfaces;
 4. tests, CI workflows, schema or migration files;

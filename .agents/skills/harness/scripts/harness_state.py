@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""Record and verify Harness-managed files and frozen phase snapshots."""
+"""Record and verify Codex Harness-managed files and phase snapshots."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Iterable
 
 
 BEGIN_MARKER = "<!-- harness:begin -->"
 END_MARKER = "<!-- harness:end -->"
-SUPPORTED_RUNTIMES = {"codex", "claude"}
+RUNTIME = "codex"
+CURRENT_SCHEMA_VERSION = 2
 
 
 class StateError(ValueError):
@@ -21,6 +24,33 @@ class StateError(ValueError):
 
 def digest_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Replace a file atomically after writing it in the same directory."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=path.parent,
+            prefix=f".{path.name}.harness-",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary.write(data)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+            temporary_name = temporary.name
+        os.replace(temporary_name, path)
+        temporary_name = None
+    finally:
+        if temporary_name is not None:
+            Path(temporary_name).unlink(missing_ok=True)
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    atomic_write_bytes(path, text.encode("utf-8"))
 
 
 def resolve_inside(root: Path, relative: str, *, must_exist: bool = False) -> Path:
@@ -72,10 +102,18 @@ def load_manifest(root: Path) -> tuple[Path, dict | None]:
     return path, data
 
 
-def validate_runtime(manifest: dict, runtime: str) -> None:
-    recorded = manifest.get("generator", {}).get("runtime")
-    if recorded != runtime:
-        raise StateError(f"manifest runtime is {recorded!r}, expected {runtime!r}")
+def validate_runtime(manifest: dict) -> None:
+    generator = manifest.get("generator")
+    if not isinstance(generator, dict):
+        raise StateError("manifest generator must be an object")
+    recorded = generator.get("runtime")
+    if recorded != RUNTIME:
+        raise StateError(f"manifest runtime is {recorded!r}, expected {RUNTIME!r}")
+
+
+def active_instruction_relative(root: Path) -> str:
+    """Return the root instruction file Codex will prefer."""
+    return "AGENTS.override.md" if (root / "AGENTS.override.md").is_file() else "AGENTS.md"
 
 
 def entry_status(root: Path, entry: dict) -> dict:
@@ -95,11 +133,11 @@ def entry_status(root: Path, entry: dict) -> dict:
     return {"path": relative, "kind": kind, "state": state, "sha256": actual}
 
 
-def status_report(root: Path, runtime: str) -> dict:
+def status_report(root: Path) -> dict:
     _, manifest = load_manifest(root)
     if manifest is None:
-        return {"runtime": runtime, "manifest": "missing", "files": [], "counts": {}}
-    validate_runtime(manifest, runtime)
+        return {"runtime": RUNTIME, "manifest": "missing", "files": [], "counts": {}}
+    validate_runtime(manifest)
     entries = manifest.get("managedFiles", [])
     if not isinstance(entries, list):
         raise StateError("managedFiles must be an array")
@@ -107,7 +145,7 @@ def status_report(root: Path, runtime: str) -> dict:
     counts: dict[str, int] = {}
     for item in files:
         counts[item["state"]] = counts.get(item["state"], 0) + 1
-    return {"runtime": runtime, "manifest": "present", "files": files, "counts": counts}
+    return {"runtime": RUNTIME, "manifest": "present", "files": files, "counts": counts}
 
 
 def build_entries(root: Path, files: Iterable[str], block_files: Iterable[str]) -> list[dict]:
@@ -130,14 +168,56 @@ def build_entries(root: Path, files: Iterable[str], block_files: Iterable[str]) 
     return sorted(entries, key=lambda item: item["path"])
 
 
-def record_manifest(root: Path, runtime: str, files: list[str], block_files: list[str]) -> dict:
+def record_manifest(root: Path, files: list[str], block_files: list[str]) -> dict:
     manifest_path, manifest = load_manifest(root)
     if manifest is None:
         raise StateError("create .harness/manifest.json from the bundled template before recording files")
-    validate_runtime(manifest, runtime)
+    validate_runtime(manifest)
+    if manifest.get("managedFiles"):
+        raise StateError(
+            "managed files are already recorded; use harness_apply.py so existing hashes are checked before update"
+        )
     manifest["managedFiles"] = build_entries(root, files, block_files)
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_write_text(manifest_path, json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
+    return manifest
+
+
+def migrate_manifest(root: Path) -> dict:
+    manifest_path, manifest = load_manifest(root)
+    if manifest is None:
+        raise StateError("missing .harness/manifest.json")
+    validate_runtime(manifest)
+    version = manifest.get("schemaVersion")
+    if version == CURRENT_SCHEMA_VERSION:
+        return manifest
+    if version != 1:
+        raise StateError(f"unsupported manifest schemaVersion: {version!r}")
+
+    report = status_report(root)
+    if has_conflict(report["files"]):
+        raise StateError("cannot migrate a manifest while managed files are modified, missing, or invalid")
+
+    managed_blocks = [
+        entry.get("path")
+        for entry in manifest.get("managedFiles", [])
+        if isinstance(entry, dict) and entry.get("kind") == "managed-block"
+    ]
+    if len(managed_blocks) > 1:
+        raise StateError("schema v1 manifest contains multiple managed instruction blocks")
+
+    project = manifest.get("project")
+    if not isinstance(project, dict):
+        raise StateError("manifest project must be an object")
+    project.setdefault(
+        "rationale",
+        {
+            "summary": "Migrated from schema v1; regenerate the harness to record detailed topology rationale.",
+            "uncertainties": [],
+        },
+    )
+    manifest["schemaVersion"] = CURRENT_SCHEMA_VERSION
+    manifest["instructionFile"] = managed_blocks[0] if managed_blocks else active_instruction_relative(root)
+    atomic_write_text(manifest_path, json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
     return manifest
 
 
@@ -160,7 +240,12 @@ def verify_snapshot(root: Path, snapshot: str) -> dict:
         data = json.loads(snapshot_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise StateError(f"invalid snapshot: {exc}") from exc
-    results = [entry_status(root, entry) for entry in data.get("files", [])]
+    if not isinstance(data, dict) or data.get("schemaVersion") != 1:
+        raise StateError("snapshot root must be a schemaVersion 1 object")
+    entries = data.get("files")
+    if not isinstance(entries, list) or not all(isinstance(entry, dict) for entry in entries):
+        raise StateError("snapshot files must be an array of objects")
+    results = [entry_status(root, entry) for entry in entries]
     return {"snapshot": snapshot_path.relative_to(root).as_posix(), "files": results}
 
 
@@ -174,13 +259,14 @@ def main() -> int:
 
     status_parser = subparsers.add_parser("status")
     status_parser.add_argument("--root", default=".")
-    status_parser.add_argument("--runtime", choices=sorted(SUPPORTED_RUNTIMES), required=True)
 
     record_parser = subparsers.add_parser("record")
     record_parser.add_argument("--root", default=".")
-    record_parser.add_argument("--runtime", choices=sorted(SUPPORTED_RUNTIMES), required=True)
     record_parser.add_argument("--file", action="append", default=[])
     record_parser.add_argument("--block-file", action="append", default=[])
+
+    migrate_parser = subparsers.add_parser("migrate")
+    migrate_parser.add_argument("--root", default=".")
 
     snapshot_parser = subparsers.add_parser("snapshot")
     snapshot_parser.add_argument("--root", default=".")
@@ -198,12 +284,16 @@ def main() -> int:
 
     try:
         if args.command == "status":
-            report = status_report(root, args.runtime)
+            report = status_report(root)
             print(json.dumps(report, indent=2, ensure_ascii=False))
             return 2 if has_conflict(report["files"]) else 0
         if args.command == "record":
-            manifest = record_manifest(root, args.runtime, args.file, args.block_file)
+            manifest = record_manifest(root, args.file, args.block_file)
             print(json.dumps({"recorded": len(manifest["managedFiles"])}, indent=2))
+            return 0
+        if args.command == "migrate":
+            manifest = migrate_manifest(root)
+            print(json.dumps({"schemaVersion": manifest["schemaVersion"]}, indent=2))
             return 0
         if args.command == "snapshot":
             data = write_snapshot(root, args.output, args.file)

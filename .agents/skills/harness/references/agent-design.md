@@ -40,6 +40,6 @@ Every generated agent must state:
 - verification and failure reporting;
 - collaboration points and completion signal.
 
-Use kebab-case names. Keep descriptions discriminating enough for automatic selection. Inherit the parent model by default. Do not hard-code a model tier merely to signal importance.
+Use snake_case agent names and matching filenames as the Harness-managed convention. Keep descriptions discriminating enough for automatic selection. Inherit the parent model by default. Do not hard-code a model tier merely to signal importance.
 
 For read-only reviewers, prohibit edits in instructions and use only supported least-privilege settings. For writers, ensure the runtime actually exposes the tools required by the contract; do not assume a declared tool is available without a capability check.

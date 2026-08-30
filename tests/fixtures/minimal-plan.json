@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "summary": "A small single-package Python fixture.",
+    "evidence": [
+      "README.md",
+      "pyproject.toml"
+    ],
+    "rationale": {
+      "summary": "The fixture has one responsibility boundary, so only the project orchestrator is justified.",
+      "uncertainties": []
+    }
+  },
+  "topology": {
+    "patterns": [],
+    "agents": [],
+    "skills": [
+      {
+        "name": "project-harness",
+        "path": ".agents/skills/project-harness/SKILL.md",
+        "purpose": "Coordinate the repository-wide workflow.",
+        "evidence": [
+          "pyproject.toml"
+        ]
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "path": ".agents/skills/project-harness/SKILL.md",
+      "content": "---\nname: project-harness\ndescription: Coordinate repository-wide work for the minimal Python fixture.\n---\n\n# Project Harness\n\nUse direct execution because the repository has one responsibility boundary.\n"
+    }
+  ],
+  "instruction": {
+    "managedBlock": "<!-- harness:begin -->\n## Project Harness\n\nUse the `$project-harness` skill for repository-wide coordinated work.\n<!-- harness:end -->"
+  }
+}

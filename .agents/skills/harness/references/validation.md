@@ -8,8 +8,10 @@ Read this reference after artifacts have been generated or updated.
 - Every skill has valid frontmatter and a directory-matching name.
 - Manifest paths stay inside the repository and all topology references resolve.
 - The root instruction file has at most one complete managed block.
+- The manifest points to the root instruction file Codex will actually load (`AGENTS.override.md` before `AGENTS.md`).
 - Managed hashes match after generation.
 - Generated files contain no Claude-only or obsolete Agent Teams primitives.
+- A clean plan dry-run reports the same create, update, or unchanged actions that the actual apply performs.
 
 ## Behavioral scenarios
 
@@ -23,6 +25,8 @@ Test the applicable cases, using an isolated temporary repository when possible:
 6. A user-modified managed file is preserved and reported.
 7. A second run over unchanged inputs produces no diff.
 8. Missing tools, post-freeze mutation, and non-retryable failures are surfaced.
+9. An existing `AGENTS.override.md` receives the managed pointer instead of an inactive `AGENTS.md`.
+10. A modified managed file makes both dry-run and apply refuse all writes.
 
 ## Completion gate
 

@@ -14,14 +14,16 @@ Build the smallest useful Codex-native harness for the current repository. Resol
 - Create no agent or project skill without a concrete benefit and evidence.
 - Preserve user-owned files. Never overwrite an existing untracked-by-Harness path.
 - Update a managed file only when its current hash matches `.harness/manifest.json`; otherwise preserve it and report the conflict.
+- Apply generated content only through `scripts/harness_apply.py`; do not manually bypass its ownership checks.
 - Do not change `.codex/config.toml`, external services, Git state, or deployment settings unless separately requested.
 - Write generated machine-facing instructions in English.
+- Run bundled Python helpers through the Anaconda environment named `harness`.
 
 ## Phase 0 — Audit
 
 1. Find the repository root and read all applicable instructions.
-2. Run `scripts/inventory.py <repo-root>` for a bounded structural inventory. Do not inspect secret values.
-3. If `.harness/manifest.json` exists, run `scripts/harness_state.py status --root <repo-root> --runtime codex`.
+2. Run `conda run -n harness python <harness-skill-root>/scripts/inventory.py <repo-root>` for a bounded structural inventory. Do not inspect secret values.
+3. If `.harness/manifest.json` exists, run `conda run -n harness python <harness-skill-root>/scripts/harness_state.py status --root <repo-root>`. If it uses schema v1, run the guarded `migrate` command before planning an update.
 4. Classify the run as new, safe update, or conflict-bearing audit. Read [safe-update.md](references/safe-update.md) before any update or merge.
 
 ## Phase 1 — Profile the project
@@ -38,27 +40,29 @@ For each proposed agent, record its unique responsibility, evidence, input, outp
 
 Read [skill-design.md](references/skill-design.md). Create a project skill only for repeatable procedures, repository-specific knowledge, or deterministic resources that materially improve future work. Skills may be shared by multiple agents.
 
-## Phase 3 — Generate native artifacts
+## Phase 3 — Plan native artifacts
 
-Use the templates in `assets/` as structural starting points, then tailor them to the project:
+Use the templates in `assets/` as structural starting points, then tailor them to the project. Read [plan-format.md](references/plan-format.md) and write a schema-valid generation plan to a temporary file. The plan contains the complete desired content for:
 
 - `.codex/agents/<role>.toml` for justified agents
 - `.agents/skills/<skill>/SKILL.md` for justified project skills
 - `.agents/skills/project-harness/SKILL.md` for orchestration
-- a single managed pointer block in `AGENTS.md`
-- `.harness/manifest.json`
+- a single managed pointer block in the active root `AGENTS.md` or `AGENTS.override.md`
+
+The apply script derives `.harness/manifest.json` from the validated plan.
 
 Codex agent definitions require `name`, `description`, and `developer_instructions`. Inherit the current model and permissions by default. Add an override only when supported and justified. Keep review-only agents read-only through instructions and supported configuration, without inventing tool names.
 
-Read [orchestration.md](references/orchestration.md) before writing `project-harness`.
+Read [orchestration.md](references/orchestration.md) before planning `project-harness`. Do not write planned artifacts directly.
 
-## Phase 4 — Record ownership and validate
+## Phase 4 — Dry-run, apply, and validate
 
-1. Complete the manifest topology and project evidence.
-2. Run `scripts/harness_state.py record --root <repo-root> --runtime codex --file <generated-path> ... --block-file AGENTS.md` for every generated dedicated file and the managed root instruction block.
-3. Run `scripts/validate_harness.py <repo-root> --runtime codex`.
-4. Read [validation.md](references/validation.md) and perform the applicable behavioral checks.
-5. Account for every planned artifact as created, unchanged, conflicted, skipped, or failed. Do not silently drop outputs.
+1. Complete the plan topology, project evidence, rationale, artifacts, and managed instruction block.
+2. Run `conda run -n harness python <harness-skill-root>/scripts/harness_apply.py --root <repo-root> --plan <plan-file> --dry-run` and inspect every proposed action. Stop on any conflict.
+3. Run the same command without `--dry-run` only after the dry-run is clean.
+4. Run `conda run -n harness python <harness-skill-root>/scripts/validate_harness.py <repo-root>`.
+5. Read [validation.md](references/validation.md) and perform the applicable behavioral checks.
+6. Account for every planned artifact as created, unchanged, conflicted, skipped, or failed. Do not silently drop outputs.
 
 ## Audit and update mode
 
@@ -66,4 +70,4 @@ On later runs, repeat the evidence scan and compare the proposed topology with t
 
 ## Completion report
 
-Report the selected topology, generated and unchanged files, preserved conflicts, validation results, and remaining risks. Distinguish runtime verification from structural validation.
+Report the selected topology, dry-run result, generated and unchanged files, preserved conflicts, validation results, and remaining risks. Explain that newly written `AGENTS.md` or custom agent definitions require a fresh Codex run for discovery. Distinguish runtime verification from structural validation.

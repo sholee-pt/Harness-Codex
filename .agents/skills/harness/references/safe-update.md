@@ -14,13 +14,14 @@ An existing dedicated target path without a valid matching manifest entry is use
 ## Update sequence
 
 1. Run the state status command before writing.
-2. Recompute the project profile and topology from current evidence.
-3. Update only managed and unchanged files.
-4. Add new files only at unused paths.
-5. Replace or append exactly one managed pointer block while preserving all surrounding root instructions.
-6. Record new hashes only after final content is stable.
-7. Run status again; a second identical generation must produce no diff.
+2. If the manifest uses schema v1, run the guarded migration command only while every managed entry is unchanged.
+3. Recompute the project profile and topology from current evidence.
+4. Put the proposed content in a structured plan and run `harness_apply.py --dry-run`.
+5. Apply only when every existing managed entry is unchanged and every new target path is unused.
+6. Let the apply script replace or append exactly one managed pointer block in the instruction file Codex will actually load.
+7. Let the apply script derive and atomically write the new manifest after planned files are stable.
+8. Run status again; a second identical plan must produce no diff.
 
 Do not automatically delete obsolete managed files. List them as removal candidates and require explicit authorization. Never use a recursive delete against a repository root.
 
-If the manifest is malformed or belongs to another runtime, stop automatic updates and report the discrepancy.
+The legacy `record` command is initialization-only and refuses to replace an existing managed baseline. If the manifest is malformed or belongs to another runtime, stop automatic updates and report the discrepancy.

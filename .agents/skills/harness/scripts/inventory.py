@@ -57,7 +57,7 @@ MANIFEST_NAMES = {
     "Makefile",
 }
 
-INSTRUCTION_NAMES = {"AGENTS.md", "CLAUDE.md"}
+INSTRUCTION_NAMES = {"AGENTS.md", "AGENTS.override.md"}
 TEST_MARKERS = {"test", "tests", "spec", "specs", "__tests__"}
 
 
@@ -131,6 +131,9 @@ def build_inventory(root: Path, max_files: int) -> dict:
         "topLevel": dict(sorted(top_level_counts.items())),
         "manifests": sorted(manifests),
         "instructions": sorted(instructions),
+        "activeRootInstruction": (
+            "AGENTS.override.md" if "AGENTS.override.md" in instructions else "AGENTS.md"
+        ),
         "tests": sorted(tests)[:100],
         "ci": sorted(ci),
         "candidateBoundaries": candidate_boundaries[:50],
