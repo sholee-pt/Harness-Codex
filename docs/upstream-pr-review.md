@@ -4,9 +4,11 @@
 
 대상 저장소: [revfactory/harness](https://github.com/revfactory/harness)
 
-private `v2` 기준점: upstream PR [#56](https://github.com/revfactory/harness/pull/56)의 `40530d4`
+private `v2` 내용 검토 기준점: upstream PR [#56](https://github.com/revfactory/harness/pull/56)의 `40530d4`
 
 upstream에는 이름이 정확히 `v2`인 브랜치가 없었다. `release/v2.1.0` PR #51은 현재 `main`과 충돌했고, PR #56이 #51과 검증 gate를 포함해 충돌을 해소한 bridge였다. 따라서 #56을 운반용 기준점으로 사용한 뒤 공식 문서 불일치를 수정했다.
+
+이 private 저장소는 안전한 Git 자격 증명을 사용할 수 없는 게시 환경에서 검토 스냅샷으로 생성되었다. 따라서 `40530d4`는 내용 비교 기준이며 private 저장소의 실제 부모 커밋은 아니다. 판정과 산출물 검증에는 영향이 없지만, upstream ancestry를 보존한 mirror는 아니다.
 
 GitHub의 conflict-free 표시는 기술 승인이나 런타임 검증이 아니다. 검토 시점에 아래 PR에는 GitHub review가 없었으며, 오래된 `main` 기준 PR은 직접 병합하지 않고 현재 `v2` diff와 의미를 비교했다.
 
