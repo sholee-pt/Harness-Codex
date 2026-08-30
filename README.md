@@ -11,6 +11,7 @@ Codex에서 복잡한 개발·리뷰 작업을 개인적으로 정리하고 검�
 - `.agents/skills/personal-harness/references/orchestration.md`: 단일 작업과 병렬 작업을 구분하는 기준
 - `.agents/skills/personal-harness/references/quality-gates.md`: 완료 전에 확인할 품질 기준
 - `CONTRIBUTING.md`: 브랜치와 커밋 관리 규칙
+- `LICENSE`: 재사용 권한을 부여하지 않는 독점 저작권 고지
 
 ## 사용
 
@@ -30,3 +31,7 @@ $personal-harness 이 변경을 구현하고 검증해줘.
 - 두 계열은 서로 병합하지 않고 각 도구의 공식 구조에 맞춰 별도로 관리합니다.
 
 기존 `v2` 브랜치는 초기 조사와 참고 구현을 보존하는 용도이며, 새 버전 계열의 기준 브랜치로 사용하지 않습니다.
+
+## 저작권
+
+이 브랜치의 신규 작성물은 공개 또는 재배포용이 아닙니다. 자세한 내용은 `LICENSE`를 확인하세요.
