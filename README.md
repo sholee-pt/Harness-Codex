@@ -12,7 +12,7 @@
 
 > **Harness is a team-architecture factory for Claude Code.** One sentence — **"build a harness for this project"** · **"하네스 구성해줘"** — and the plugin turns your domain description into an agent team and the skills they use.
 
-> **Reviewed derivative:** this `v2` branch starts from upstream PR [#56](https://github.com/revfactory/harness/pull/56) at `40530d4`, corrects runtime claims against current primary documentation, and records selective PR decisions in [`docs/upstream-pr-review.md`](docs/upstream-pr-review.md). Codex users should use the repository skill at [`.agents/skills/harness/SKILL.md`](.agents/skills/harness/SKILL.md).
+> **Reviewed derivative:** this `v2` branch uses the content of upstream PR [#56](https://github.com/revfactory/harness/pull/56) at `40530d4` as its review baseline, corrects runtime claims against current primary documentation, and records selective PR decisions in [`docs/upstream-pr-review.md`](docs/upstream-pr-review.md). The SHA identifies the reviewed content and does not imply that every distribution preserves upstream commit ancestry. Codex users should use the repository skill at [`.agents/skills/harness/SKILL.md`](.agents/skills/harness/SKILL.md).
 
 ## What's new in v2
 
