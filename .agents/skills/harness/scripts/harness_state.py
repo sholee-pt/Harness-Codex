@@ -8,14 +8,17 @@ import hashlib
 import json
 import os
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Iterable
 
 
 BEGIN_MARKER = "<!-- harness:begin -->"
 END_MARKER = "<!-- harness:end -->"
 RUNTIME = "codex"
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
+GENERATOR_VERSION = "3.0.0"
+TRANSACTION_JOURNAL_RELATIVE = ".harness/transaction.json"
+TRANSACTION_SCHEMA_VERSION = 1
 
 
 class StateError(ValueError):
@@ -54,10 +57,16 @@ def atomic_write_text(path: Path, text: str) -> None:
 
 
 def resolve_inside(root: Path, relative: str, *, must_exist: bool = False) -> Path:
-    candidate_rel = Path(relative)
-    if candidate_rel.is_absolute():
-        raise StateError(f"managed path must be relative: {relative}")
-    candidate = (root / candidate_rel).resolve()
+    if not isinstance(relative, str) or "\\" in relative:
+        raise StateError(f"managed path must use POSIX separators: {relative!r}")
+    candidate_rel = PurePosixPath(relative)
+    if (
+        candidate_rel.is_absolute()
+        or candidate_rel.as_posix() != relative
+        or any(part in {".", ".."} for part in candidate_rel.parts)
+    ):
+        raise StateError(f"managed path must be a normalized relative path: {relative}")
+    candidate = root.joinpath(*candidate_rel.parts).resolve()
     if candidate == root or root not in candidate.parents:
         raise StateError(f"managed path escapes repository root: {relative}")
     if must_exist and not candidate.is_file():
@@ -102,6 +111,30 @@ def load_manifest(root: Path) -> tuple[Path, dict | None]:
     return path, data
 
 
+def transaction_status(root: Path) -> dict | None:
+    path = root / TRANSACTION_JOURNAL_RELATIVE
+    if not path.exists():
+        transaction_workspace = root / ".harness" / "transactions"
+        if transaction_workspace.exists():
+            return {
+                "state": "orphaned-workspace",
+                "detail": ".harness/transactions exists without a transaction journal",
+            }
+        return None
+    if not path.is_file():
+        return {"state": "invalid", "detail": "transaction journal is not a regular file"}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"state": "invalid", "detail": str(exc)}
+    if not isinstance(data, dict):
+        return {"state": "invalid", "detail": "transaction journal root is not an object"}
+    return {
+        "state": data.get("state", "invalid"),
+        "transactionId": data.get("transactionId"),
+    }
+
+
 def validate_runtime(manifest: dict) -> None:
     generator = manifest.get("generator")
     if not isinstance(generator, dict):
@@ -134,9 +167,16 @@ def entry_status(root: Path, entry: dict) -> dict:
 
 
 def status_report(root: Path) -> dict:
+    transaction = transaction_status(root)
     _, manifest = load_manifest(root)
     if manifest is None:
-        return {"runtime": RUNTIME, "manifest": "missing", "files": [], "counts": {}}
+        return {
+            "runtime": RUNTIME,
+            "manifest": "missing",
+            "transaction": transaction,
+            "files": [],
+            "counts": {},
+        }
     validate_runtime(manifest)
     entries = manifest.get("managedFiles", [])
     if not isinstance(entries, list):
@@ -145,7 +185,13 @@ def status_report(root: Path) -> dict:
     counts: dict[str, int] = {}
     for item in files:
         counts[item["state"]] = counts.get(item["state"], 0) + 1
-    return {"runtime": RUNTIME, "manifest": "present", "files": files, "counts": counts}
+    return {
+        "runtime": RUNTIME,
+        "manifest": "present",
+        "transaction": transaction,
+        "files": files,
+        "counts": counts,
+    }
 
 
 def build_entries(root: Path, files: Iterable[str], block_files: Iterable[str]) -> list[dict]:
@@ -183,6 +229,8 @@ def record_manifest(root: Path, files: list[str], block_files: list[str]) -> dic
 
 
 def migrate_manifest(root: Path) -> dict:
+    if transaction_status(root) is not None:
+        raise StateError("cannot migrate while a Harness transaction journal exists; recover it first")
     manifest_path, manifest = load_manifest(root)
     if manifest is None:
         raise StateError("missing .harness/manifest.json")
@@ -190,33 +238,45 @@ def migrate_manifest(root: Path) -> dict:
     version = manifest.get("schemaVersion")
     if version == CURRENT_SCHEMA_VERSION:
         return manifest
-    if version != 1:
+    if version not in {1, 2}:
         raise StateError(f"unsupported manifest schemaVersion: {version!r}")
 
     report = status_report(root)
     if has_conflict(report["files"]):
         raise StateError("cannot migrate a manifest while managed files are modified, missing, or invalid")
 
-    managed_blocks = [
-        entry.get("path")
-        for entry in manifest.get("managedFiles", [])
-        if isinstance(entry, dict) and entry.get("kind") == "managed-block"
-    ]
-    if len(managed_blocks) > 1:
-        raise StateError("schema v1 manifest contains multiple managed instruction blocks")
+    if version == 1:
+        managed_blocks = [
+            entry.get("path")
+            for entry in manifest.get("managedFiles", [])
+            if isinstance(entry, dict) and entry.get("kind") == "managed-block"
+        ]
+        if len(managed_blocks) > 1:
+            raise StateError("schema v1 manifest contains multiple managed instruction blocks")
 
-    project = manifest.get("project")
-    if not isinstance(project, dict):
-        raise StateError("manifest project must be an object")
-    project.setdefault(
-        "rationale",
-        {
-            "summary": "Migrated from schema v1; regenerate the harness to record detailed topology rationale.",
-            "uncertainties": [],
-        },
-    )
+        project = manifest.get("project")
+        if not isinstance(project, dict):
+            raise StateError("manifest project must be an object")
+        project.setdefault(
+            "rationale",
+            {
+                "summary": "Migrated from schema v1; regenerate the harness to record detailed topology rationale.",
+                "uncertainties": [],
+            },
+        )
+        manifest["instructionFile"] = (
+            managed_blocks[0] if managed_blocks else active_instruction_relative(root)
+        )
+
+    generator = manifest.get("generator")
+    if not isinstance(generator, dict):
+        raise StateError("manifest generator must be an object")
+    generator["version"] = GENERATOR_VERSION
     manifest["schemaVersion"] = CURRENT_SCHEMA_VERSION
-    manifest["instructionFile"] = managed_blocks[0] if managed_blocks else active_instruction_relative(root)
+    manifest["application"] = {
+        "mode": "journaled",
+        "transactionSchemaVersion": TRANSACTION_SCHEMA_VERSION,
+    }
     atomic_write_text(manifest_path, json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
     return manifest
 
@@ -286,7 +346,7 @@ def main() -> int:
         if args.command == "status":
             report = status_report(root)
             print(json.dumps(report, indent=2, ensure_ascii=False))
-            return 2 if has_conflict(report["files"]) else 0
+            return 2 if has_conflict(report["files"]) or report["transaction"] else 0
         if args.command == "record":
             manifest = record_manifest(root, args.file, args.block_file)
             print(json.dumps({"recorded": len(manifest["managedFiles"])}, indent=2))

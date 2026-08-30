@@ -4,8 +4,8 @@ Harness is maintained as a private personal project. Changes should keep the gen
 
 ## Branches
 
-- Codex releases use `codex/vN`.
-- Claude Code releases use `claude/vN`.
+- Codex releases use `codex/vN` or `codex/vN.M`.
+- Claude Code releases use runtime-specific `claude/*` branches.
 - Breaking changes start the next version branch from the latest branch for the same runtime.
 
 ## Commit messages

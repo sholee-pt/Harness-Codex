@@ -22,7 +22,7 @@ Do not create a skill solely because an agent exists. Keep one-off role instruct
 - Add `assets/` only for content copied or adapted into output.
 - Do not add a README, changelog, or empty resource directory inside a generated skill.
 
-The frontmatter must contain a kebab-case `name` matching the directory and a concise `description` that distinguishes when the skill should and should not be used. Harness generates and validates a deliberately limited frontmatter subset: `name` and `description` are single-line scalar values. Do not generate nested mappings, arrays, block scalars, anchors, or tags. Additional metadata is outside the v2.1 generation contract. Generated instructions are written in English.
+The frontmatter must contain a kebab-case `name` matching the directory and a concise `description` that distinguishes when the skill should and should not be used. Harness generates and validates a deliberately limited frontmatter subset: `name` and `description` are single-line scalar values. Do not generate nested mappings, arrays, block scalars, anchors, or tags. Additional metadata is outside the v3 generation contract. Generated instructions are written in English.
 
 ## Agent linkage
 

@@ -1,9 +1,13 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "generator": {
     "name": "Harness",
-    "version": "2.0.0",
+    "version": "3.0.0",
     "runtime": "codex"
+  },
+  "application": {
+    "mode": "journaled",
+    "transactionSchemaVersion": 1
   },
   "instructionFile": "AGENTS.md",
   "project": {

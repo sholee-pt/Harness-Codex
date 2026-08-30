@@ -86,6 +86,16 @@ class Validator:
         generator = self.manifest.get("generator")
         if not isinstance(generator, dict) or not all(generator.get(key) for key in ("name", "version", "runtime")):
             self.error("generator must contain name, version, and runtime")
+        application = self.manifest.get("application")
+        if not isinstance(application, dict):
+            self.error("application must be an object")
+        elif application.get("mode") != "journaled":
+            self.error("application.mode must be journaled")
+        elif application.get("transactionSchemaVersion") != harness_state.TRANSACTION_SCHEMA_VERSION:
+            self.error(
+                f"application.transactionSchemaVersion must be "
+                f"{harness_state.TRANSACTION_SCHEMA_VERSION}"
+            )
         project = self.manifest.get("project")
         if not isinstance(project, dict) or not isinstance(project.get("summary"), str) or not project.get("summary", "").strip():
             self.error("project.summary must be a non-empty string")
@@ -298,6 +308,12 @@ class Validator:
                     self.error(f"obsolete runtime token {token!r} found in {relative}")
 
     def run(self) -> dict:
+        transaction = harness_state.transaction_status(self.root)
+        if transaction is not None:
+            self.error(
+                f"pending Harness transaction must be recovered before validation: "
+                f"{transaction.get('state')}"
+            )
         self.load_manifest()
         self.validate_manifest_shape()
         if self.manifest:

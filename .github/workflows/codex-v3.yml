@@ -1,12 +1,12 @@
-name: Codex v2.1 checks
+name: Codex v3 checks
 
 on:
   push:
     branches:
-      - codex/v2.1
+      - codex/v3
   pull_request:
     branches:
-      - codex/v2.1
+      - codex/v3
   workflow_dispatch:
 
 permissions:
@@ -38,4 +38,5 @@ jobs:
             --plan tests/fixtures/minimal-plan.json \
             --dry-run
           test ! -e tests/fixtures/minimal-project/.harness/manifest.json
+          test ! -e tests/fixtures/minimal-project/.harness/transaction.json
           git diff --exit-code

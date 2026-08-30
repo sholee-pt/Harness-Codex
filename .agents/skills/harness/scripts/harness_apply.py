@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import harness_state
+import harness_transaction
 
 try:
     import tomllib
@@ -18,7 +19,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ is required
 
 
 PLAN_SCHEMA_VERSION = 1
-GENERATOR_VERSION = "2.1.0"
+GENERATOR_VERSION = "3.0.0"
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 AGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 ALLOWED_PREFIXES = (".codex/agents/", ".agents/skills/")
@@ -111,6 +112,8 @@ def validate_artifacts(root: Path, plan: dict) -> dict[str, str]:
         content = artifact.get("content")
         if not isinstance(relative, str) or not relative.startswith(ALLOWED_PREFIXES):
             raise PlanError(f"artifact path is outside Codex Harness output roots: {relative!r}")
+        if not harness_transaction.is_allowed_target(relative):
+            raise PlanError(f"artifact path is not a supported Codex Harness target: {relative!r}")
         if relative in artifacts:
             raise PlanError(f"duplicate artifact path: {relative}")
         if not isinstance(content, str):
@@ -247,7 +250,10 @@ def existing_manifest_state(root: Path) -> tuple[dict | None, dict[str, dict]]:
         return None, {}
     harness_state.validate_runtime(manifest)
     if manifest.get("schemaVersion") != harness_state.CURRENT_SCHEMA_VERSION:
-        raise PlanError("existing manifest must be migrated to schemaVersion 2 before apply")
+        raise PlanError(
+            f"existing manifest must be migrated to schemaVersion "
+            f"{harness_state.CURRENT_SCHEMA_VERSION} before apply"
+        )
     entries = require_list(manifest.get("managedFiles"), "existing managedFiles")
     if not all(isinstance(entry, dict) for entry in entries):
         raise PlanError("existing managedFiles entries must be objects")
@@ -279,6 +285,7 @@ def classify_file(root: Path, relative: str, desired: str, managed: dict[str, di
 
 
 def build_application(root: Path, plan: dict) -> dict:
+    harness_transaction.ensure_no_pending_transaction(root)
     project = validate_project(plan)
     artifacts = validate_artifacts(root, plan)
     topology = validate_topology(plan, artifacts)
@@ -295,10 +302,14 @@ def build_application(root: Path, plan: dict) -> dict:
 
     actions: list[dict] = []
     desired_entries: dict[str, dict] = {}
+    original_hashes: dict[str, str] = {}
     for relative, content in sorted(artifacts.items()):
         action = classify_file(root, relative, content, old_managed)
         actions.append({"path": relative, "action": action})
         desired_entries[relative] = managed_entry(relative, content)
+        if action != "create":
+            path = harness_state.resolve_inside(root, relative, must_exist=True)
+            original_hashes[relative] = harness_state.digest_bytes(path.read_bytes())
 
     instruction_path = harness_state.resolve_inside(root, instruction_relative)
     if instruction_path.exists() and not instruction_path.is_file():
@@ -318,6 +329,10 @@ def build_application(root: Path, plan: dict) -> dict:
     else:
         instruction_action = "unchanged" if merged_instruction == existing_instruction else "update"
     actions.append({"path": instruction_relative, "action": instruction_action, "kind": "managed-block"})
+    if instruction_action != "create":
+        original_hashes[instruction_relative] = harness_state.digest_bytes(
+            instruction_path.read_bytes()
+        )
     desired_entries[instruction_relative] = managed_entry(
         instruction_relative, managed_block, kind="managed-block"
     )
@@ -337,6 +352,10 @@ def build_application(root: Path, plan: dict) -> dict:
             "version": GENERATOR_VERSION,
             "runtime": harness_state.RUNTIME,
         },
+        "application": {
+            "mode": "journaled",
+            "transactionSchemaVersion": harness_transaction.TRANSACTION_SCHEMA_VERSION,
+        },
         "instructionFile": instruction_relative,
         "project": project,
         "topology": topology,
@@ -351,6 +370,10 @@ def build_application(root: Path, plan: dict) -> dict:
             "unchanged" if manifest_path.read_text(encoding="utf-8") == manifest_text else "update"
         )
     actions.append({"path": ".harness/manifest.json", "action": manifest_action})
+    if manifest_action != "create":
+        original_hashes[".harness/manifest.json"] = harness_state.digest_bytes(
+            manifest_path.read_bytes()
+        )
 
     return {
         "artifacts": artifacts,
@@ -359,6 +382,8 @@ def build_application(root: Path, plan: dict) -> dict:
         "instructionText": merged_instruction,
         "manifestPath": manifest_path,
         "manifestText": manifest_text,
+        "originalHashes": original_hashes,
+        "managedPreconditions": list(old_managed.values()),
         "report": {
             "runtime": harness_state.RUNTIME,
             "valid": True,
@@ -368,7 +393,14 @@ def build_application(root: Path, plan: dict) -> dict:
     }
 
 
-def apply_application(application: dict) -> None:
+def application_outputs(application: dict) -> dict[str, str]:
+    outputs = dict(application["artifacts"])
+    outputs[application["instructionRelative"]] = application["instructionText"]
+    outputs[".harness/manifest.json"] = application["manifestText"]
+    return outputs
+
+
+def application_actions(application: dict) -> dict[str, str]:
     report = application.get("report")
     if not isinstance(report, dict):
         raise PlanError("application must contain a report object")
@@ -397,42 +429,69 @@ def apply_application(application: dict) -> None:
     }
     if set(action_by_path) != expected_paths:
         raise PlanError("application action paths do not match the planned outputs")
+    return action_by_path
 
+
+def apply_application(application: dict) -> dict:
+    action_by_path = application_actions(application)
     root = application["manifestPath"].parents[1]
-    for relative, content in sorted(application["artifacts"].items()):
-        if action_by_path[relative] == "unchanged":
-            continue
-        path = harness_state.resolve_inside(root, relative)
-        harness_state.atomic_write_text(path, content)
-    if action_by_path[instruction_relative] != "unchanged":
-        harness_state.atomic_write_text(application["instructionPath"], application["instructionText"])
-    if action_by_path[".harness/manifest.json"] != "unchanged":
-        harness_state.atomic_write_text(application["manifestPath"], application["manifestText"])
+    journal = harness_transaction.prepare_transaction(
+        root,
+        application_outputs(application),
+        action_by_path,
+        application["originalHashes"],
+        application["managedPreconditions"],
+    )
+    if journal is None:
+        return {"state": "unchanged", "writes": 0, "cleaned": True}
+    return harness_transaction.apply_transaction(root, journal)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default=".")
-    parser.add_argument("--plan", required=True)
+    parser.add_argument("--plan")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--recover", action="store_true")
     args = parser.parse_args()
 
     root = Path(args.root).resolve()
-    plan_path = Path(args.plan).resolve()
     if not root.is_dir():
         parser.error(f"repository root is not a directory: {root}")
-    if not plan_path.is_file():
-        parser.error(f"plan is not a file: {plan_path}")
+    if args.recover:
+        if args.plan or args.dry_run:
+            parser.error("--recover cannot be combined with --plan or --dry-run")
+    elif not args.plan:
+        parser.error("--plan is required unless --recover is used")
 
     try:
+        if args.recover:
+            recovery = harness_transaction.recover_transaction(root)
+            print(
+                json.dumps(
+                    {"runtime": harness_state.RUNTIME, "valid": True, "recovery": recovery},
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        plan_path = Path(args.plan).resolve()
+        if not plan_path.is_file():
+            parser.error(f"plan is not a file: {plan_path}")
         application = build_application(root, load_plan(plan_path))
         report = application["report"]
         report["dryRun"] = args.dry_run
         if not args.dry_run:
-            apply_application(application)
+            report["transaction"] = apply_application(application)
         print(json.dumps(report, indent=2, ensure_ascii=False))
         return 0
-    except (OSError, UnicodeError, PlanError, harness_state.StateError) as exc:
+    except (
+        OSError,
+        UnicodeError,
+        PlanError,
+        harness_state.StateError,
+        harness_transaction.TransactionError,
+    ) as exc:
         print(
             json.dumps(
                 {"runtime": harness_state.RUNTIME, "valid": False, "error": str(exc), "dryRun": args.dry_run},

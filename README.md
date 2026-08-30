@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-v2.1-brightgreen.svg" alt="Version v2.1">
+  <img src="https://img.shields.io/badge/Version-v3-brightgreen.svg" alt="Version v3">
   <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
   <img src="https://img.shields.io/badge/Type-Harness_Generator-orange.svg" alt="Harness Generator">
   <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
@@ -20,6 +20,7 @@ target-project/
 │   ├── project-harness/           # Project orchestration skill
 │   └── <project-skill>/           # Reusable project procedures, when justified
 ├── .harness/manifest.json         # Ownership, topology, and content hashes
+├── .harness/transaction.json      # Present only while recovery or cleanup is required
 └── AGENTS.md or AGENTS.override.md # Managed pointer in the active root instruction file
 ```
 
@@ -32,7 +33,7 @@ Harness requires Anaconda or Miniconda. Clone this branch, create the dedicated 
 ### PowerShell
 
 ```powershell
-git clone --branch codex/v2.1 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v3 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file "Harness/environment.yml"
 New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
 New-Item -ItemType Directory -Force "$HOME/.agents/skills/harness" | Out-Null
@@ -42,7 +43,7 @@ Copy-Item -Recurse -Force "Harness/.agents/skills/harness/*" "$HOME/.agents/skil
 ### macOS and Linux
 
 ```shell
-git clone --branch codex/v2.1 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v3 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 mkdir -p ~/.agents/skills
 mkdir -p ~/.agents/skills/harness
@@ -63,7 +64,7 @@ $harness configure a project harness for this repository.
 
 The skill also recognizes direct requests such as “configure the harness” and “하네스를 구성해줘”. Run the same command later to audit or update an existing generated harness.
 
-Harness first creates a structured proposal and runs a no-write dry-run. It applies files only when all ownership and instruction-precedence checks pass. Start a new Codex task after generation to verify discovery of newly written project instructions and custom agents.
+Harness first creates a structured proposal and runs a no-write dry-run. It applies files only when all ownership and instruction-precedence checks pass. Changed outputs are staged with backups before a journaled apply, and the manifest is committed last. Start a new Codex task after generation to verify discovery of newly written project instructions and custom agents.
 
 ## Design Rules
 
@@ -72,6 +73,7 @@ Harness first creates a structured proposal and runs a no-write dry-run. It appl
 - User-owned files and edits are never silently overwritten.
 - Generated files are updated only when their recorded hash still matches.
 - Outputs classified as unchanged are not rewritten.
+- A failed multi-file apply is rolled back from verified backups before another plan may run.
 - Phase outputs are treated as frozen only when hashes were actually recorded.
 - Authentication, permission, and quota failures are reported without pointless retries.
 - Runtime and model settings are inherited unless repository evidence requires an override.
@@ -84,9 +86,12 @@ The generator includes standard-library-only Python tools. Run them through the 
 conda run -n harness python .agents/skills/harness/scripts/inventory.py .
 conda run -n harness python .agents/skills/harness/scripts/harness_state.py status --root .
 conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --plan PATH_TO_PLAN.json --dry-run
+conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --recover
 conda run -n harness python .agents/skills/harness/scripts/validate_harness.py .
 conda run -n harness python -m unittest discover -s tests -v
 ```
+
+Use `--recover` only when status or a failed apply reports a pending transaction. Recovery first verifies that interrupted outputs were not edited externally; it refuses destructive cleanup when their hashes are unknown.
 
 ## Versioning
 

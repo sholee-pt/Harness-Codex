@@ -8,7 +8,8 @@ Harness versions are maintained as runtime-specific branches. A major branch is 
 | --- | --- | --- | --- | --- |
 | `codex/v1` | `1.0.0` | Schema 1 | Maintenance | Existing installations that need the original direct-generation workflow |
 | `codex/v2` | `2.0.0` | Schema 2 | Maintenance | Existing guarded-generation installations |
-| `codex/v2.1` | `2.1.0` | Schema 2 | Current | New installations and backward-compatible updates from Codex v2 |
+| `codex/v2.1` | `2.1.0` | Schema 2 | Maintenance | Existing no-op-safe v2 installations |
+| `codex/v3` | `3.0.0` | Schema 3 | Current | New installations and recoverable multi-file updates |
 
 ## Codex v1
 
@@ -37,16 +38,16 @@ Codex v2 adds a guarded and reproducible generation lifecycle.
 - Validates agents and skills independently against Codex-native naming and structure rules.
 - Adds an Anaconda `harness` environment definition, fixture-based dry-run coverage, and expanded regression tests.
 
-## Migrating from Codex v1
+## Migrating to Codex v3
 
 1. Create or preserve a recovery branch for the target project.
-2. Install Harness from `codex/v2.1`.
+2. Install Harness from `codex/v3`.
 3. Run analysis and review the generated plan.
 4. Run the fixture or project dry-run and inspect every proposed action.
 5. Apply only when validation passes and no ownership conflict is reported.
 6. Start a new Codex task so newly written instructions and custom agents are discovered.
 
-Codex v2.1 can read and migrate a clean v1 manifest. User-modified managed files are not silently re-baselined or overwritten.
+Codex v3 can migrate clean schema 1 and schema 2 manifests directly to schema 3. User-modified managed files are not silently re-baselined or overwritten, and a pending transaction must be recovered before migration.
 
 ## Codex v2.1
 
@@ -60,6 +61,22 @@ Codex v2.1 is a backward-compatible correction release built on the v2 plan and 
 - Corrects release documentation without changing manifest schema 2.
 
 Existing Codex v2 manifests remain compatible. The first v2.1 apply may update only the generator version recorded in the manifest; later unchanged applies perform no writes.
+
+## Codex v3
+
+Codex v3 replaces sequential multi-file mutation with a recoverable, journaled application lifecycle while retaining plan schema 1.
+
+- Introduces manifest schema 3 with an explicit journaled-application contract.
+- Revalidates managed hashes, complete-file hashes, and create-path absence immediately before staging.
+- Requires normalized POSIX-relative managed paths and rejects traversal within otherwise allowed output prefixes.
+- Stages every changed output and preserves verified backups before target mutation begins.
+- Writes `.harness/transaction.json` before replacing targets and commits `.harness/manifest.json` last.
+- Automatically rolls back updates and transaction-created files after an ordinary mid-apply failure.
+- Supports explicit `--recover` after process interruption, including interruption before the applied-path marker is recorded.
+- Refuses recovery when an interrupted target was externally edited, preserving both that edit and the recovery journal.
+- Removes transaction staging and backup data only after commit or verified rollback completes.
+
+The filesystem cannot atomically replace unrelated paths as one operation. Schema 3 therefore defines recoverability and conflict-preserving rollback rather than claiming full multi-file atomicity.
 
 ## Claude Code Editions
 

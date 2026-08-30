@@ -14,6 +14,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import harness_apply  # noqa: E402
 import harness_state  # noqa: E402
+import harness_transaction  # noqa: E402
 import inventory  # noqa: E402
 import validate_harness  # noqa: E402
 
@@ -104,7 +105,7 @@ class StateTests(unittest.TestCase):
                 "User content\n\n<!-- harness:begin -->\nManaged\n<!-- harness:end -->\n",
                 encoding="utf-8",
             )
-            self.write_manifest(root, schema_version=2)
+            self.write_manifest(root, schema_version=3)
 
             harness_state.record_manifest(root, ["generated.txt"], ["AGENTS.md"])
             clean = harness_state.status_report(root)
@@ -129,10 +130,37 @@ class StateTests(unittest.TestCase):
 
             migrated = harness_state.migrate_manifest(root)
 
-            self.assertEqual(migrated["schemaVersion"], 2)
+            self.assertEqual(migrated["schemaVersion"], 3)
             self.assertEqual(migrated["instructionFile"], "AGENTS.md")
             self.assertIn("rationale", migrated["project"])
+            self.assertEqual(migrated["application"]["mode"], "journaled")
             self.assertEqual(harness_state.status_report(root)["counts"], {"unchanged": 1})
+
+    def test_schema_v2_migration_adds_journaled_application_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".harness").mkdir()
+            (root / "AGENTS.md").write_text(
+                "<!-- harness:begin -->\nManaged\n<!-- harness:end -->\n", encoding="utf-8"
+            )
+            self.write_manifest(root, schema_version=2)
+            harness_state.record_manifest(root, [], ["AGENTS.md"])
+
+            migrated = harness_state.migrate_manifest(root)
+
+            self.assertEqual(migrated["schemaVersion"], 3)
+            self.assertEqual(migrated["generator"]["version"], "3.0.0")
+            self.assertEqual(
+                migrated["application"],
+                {"mode": "journaled", "transactionSchemaVersion": 1},
+            )
+            self.assertEqual(harness_state.status_report(root)["counts"], {"unchanged": 1})
+
+            application = harness_apply.build_application(root, minimal_plan())
+            transaction = harness_apply.apply_application(application)
+
+            self.assertEqual(transaction["state"], "committed")
+            self.assertTrue(validate_harness.Validator(root).run()["valid"])
 
     def test_snapshot_detects_post_freeze_mutation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -148,6 +176,17 @@ class StateTests(unittest.TestCase):
             changed = harness_state.verify_snapshot(root, ".harness/phase-1.json")
             self.assertTrue(harness_state.has_conflict(changed["files"]))
 
+    def test_orphaned_transaction_workspace_blocks_new_plans(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".harness" / "transactions" / "orphan").mkdir(parents=True)
+
+            status = harness_state.status_report(root)
+
+            self.assertEqual(status["transaction"]["state"], "orphaned-workspace")
+            with self.assertRaises(harness_transaction.TransactionError):
+                harness_apply.build_application(root, minimal_plan())
+
     @staticmethod
     def write_manifest(root: Path, schema_version: int) -> None:
         manifest = {
@@ -157,9 +196,11 @@ class StateTests(unittest.TestCase):
             "topology": {"patterns": [], "agents": [], "skills": []},
             "managedFiles": [],
         }
-        if schema_version == 2:
+        if schema_version >= 2:
             manifest["instructionFile"] = "AGENTS.md"
             manifest["project"]["rationale"] = {"summary": "Fixture rationale", "uncertainties": []}
+        if schema_version >= 3:
+            manifest["application"] = {"mode": "journaled", "transactionSchemaVersion": 1}
         (root / ".harness" / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
 
@@ -179,7 +220,7 @@ class ApplyTests(unittest.TestCase):
             second = harness_apply.build_application(root, plan)
             self.assertTrue(all(item["action"] == "unchanged" for item in second["report"]["actions"]))
             with mock.patch.object(
-                harness_state, "atomic_write_text", wraps=harness_state.atomic_write_text
+                harness_state, "atomic_write_bytes", wraps=harness_state.atomic_write_bytes
             ) as atomic_write:
                 harness_apply.apply_application(second)
             atomic_write.assert_not_called()
@@ -198,18 +239,17 @@ class ApplyTests(unittest.TestCase):
             self.assertEqual(actions[".harness/manifest.json"], "update")
 
             with mock.patch.object(
-                harness_state, "atomic_write_text", wraps=harness_state.atomic_write_text
+                harness_state, "atomic_write_bytes", wraps=harness_state.atomic_write_bytes
             ) as atomic_write:
                 harness_apply.apply_application(updated)
 
             written_paths = {Path(call.args[0]) for call in atomic_write.call_args_list}
-            self.assertEqual(
+            self.assertIn(
+                root / ".agents" / "skills" / "project-harness" / "SKILL.md",
                 written_paths,
-                {
-                    root / ".agents" / "skills" / "project-harness" / "SKILL.md",
-                    root / ".harness" / "manifest.json",
-                },
             )
+            self.assertIn(root / ".harness" / "manifest.json", written_paths)
+            self.assertNotIn(root / "AGENTS.md", written_paths)
             self.assertTrue(validate_harness.Validator(root).run()["valid"])
 
     def test_apply_rejects_incomplete_action_map_before_writing(self) -> None:
@@ -219,13 +259,204 @@ class ApplyTests(unittest.TestCase):
             application["report"]["actions"].pop()
 
             with mock.patch.object(
-                harness_state, "atomic_write_text", wraps=harness_state.atomic_write_text
+                harness_state, "atomic_write_bytes", wraps=harness_state.atomic_write_bytes
             ) as atomic_write:
                 with self.assertRaises(harness_apply.PlanError):
                     harness_apply.apply_application(application)
 
             atomic_write.assert_not_called()
             self.assertFalse((root / ".harness" / "manifest.json").exists())
+
+    def test_apply_rolls_back_all_outputs_after_mid_transaction_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            application = harness_apply.build_application(root, minimal_plan())
+            original_write = harness_state.atomic_write_bytes
+            failed = False
+
+            def fail_once(path: Path, data: bytes) -> None:
+                nonlocal failed
+                if Path(path) == root / "AGENTS.md" and not failed:
+                    failed = True
+                    raise OSError("injected target failure")
+                original_write(Path(path), data)
+
+            with mock.patch.object(harness_state, "atomic_write_bytes", side_effect=fail_once):
+                with self.assertRaises(harness_transaction.TransactionError):
+                    harness_apply.apply_application(application)
+
+            self.assertTrue(failed)
+            self.assertFalse((root / ".agents" / "skills" / "project-harness" / "SKILL.md").exists())
+            self.assertFalse((root / "AGENTS.md").exists())
+            self.assertFalse((root / ".harness" / "manifest.json").exists())
+            self.assertFalse((root / ".harness" / "transaction.json").exists())
+
+    def test_recover_removes_a_created_file_even_without_applied_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            application = harness_apply.build_application(root, minimal_plan())
+            actions = harness_apply.application_actions(application)
+            journal = harness_transaction.prepare_transaction(
+                root,
+                harness_apply.application_outputs(application),
+                actions,
+                application["originalHashes"],
+                application["managedPreconditions"],
+            )
+            self.assertIsNotNone(journal)
+            operation = journal["operations"][0]
+            target = harness_state.resolve_inside(root, operation["path"])
+            stage = harness_state.resolve_inside(root, operation["stage"], must_exist=True)
+            harness_state.atomic_write_bytes(target, stage.read_bytes())
+
+            recovery = harness_transaction.recover_transaction(root)
+
+            self.assertEqual(recovery["state"], "rolled-back")
+            self.assertEqual(recovery["removed"], 1)
+            self.assertFalse(target.exists())
+            self.assertFalse((root / ".harness" / "transaction.json").exists())
+
+    def test_recover_cleans_an_interrupted_preparing_transaction(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            application = harness_apply.build_application(root, minimal_plan())
+            actions = harness_apply.application_actions(application)
+            original_write = harness_state.atomic_write_bytes
+            failed = False
+
+            def fail_first_stage(path: Path, data: bytes) -> None:
+                nonlocal failed
+                normalized = Path(path).as_posix()
+                if "/.harness/transactions/" in normalized and not failed:
+                    failed = True
+                    raise OSError("injected staging failure")
+                original_write(Path(path), data)
+
+            with mock.patch.object(
+                harness_state, "atomic_write_bytes", side_effect=fail_first_stage
+            ):
+                with self.assertRaises(OSError):
+                    harness_transaction.prepare_transaction(
+                        root,
+                        harness_apply.application_outputs(application),
+                        actions,
+                        application["originalHashes"],
+                        application["managedPreconditions"],
+                    )
+
+            self.assertTrue(failed)
+            self.assertEqual(harness_state.transaction_status(root)["state"], "preparing")
+            recovery = harness_transaction.recover_transaction(root)
+            self.assertEqual(recovery["state"], "preparing")
+            self.assertFalse((root / ".harness" / "transaction.json").exists())
+            self.assertFalse((root / ".harness" / "transactions").exists())
+
+    def test_update_failure_restores_the_previous_managed_content(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            harness_apply.apply_application(harness_apply.build_application(root, minimal_plan()))
+            skill = root / ".agents" / "skills" / "project-harness" / "SKILL.md"
+            manifest = root / ".harness" / "manifest.json"
+            skill_before = skill.read_bytes()
+            manifest_before = manifest.read_bytes()
+            updated = harness_apply.build_application(root, minimal_plan(skill_suffix="\nUpdated\n"))
+            original_write = harness_state.atomic_write_bytes
+            failed = False
+
+            def fail_manifest_once(path: Path, data: bytes) -> None:
+                nonlocal failed
+                if Path(path) == manifest and not failed:
+                    failed = True
+                    raise OSError("injected manifest failure")
+                original_write(Path(path), data)
+
+            with mock.patch.object(
+                harness_state, "atomic_write_bytes", side_effect=fail_manifest_once
+            ):
+                with self.assertRaises(harness_transaction.TransactionError):
+                    harness_apply.apply_application(updated)
+
+            self.assertTrue(failed)
+            self.assertEqual(skill.read_bytes(), skill_before)
+            self.assertEqual(manifest.read_bytes(), manifest_before)
+            self.assertFalse((root / ".harness" / "transaction.json").exists())
+            self.assertTrue(validate_harness.Validator(root).run()["valid"])
+
+    def test_apply_refuses_target_drift_before_transaction_writes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            application = harness_apply.build_application(root, minimal_plan())
+            (root / "AGENTS.md").write_text("user-owned late file\n", encoding="utf-8")
+
+            with self.assertRaises(harness_transaction.TransactionError):
+                harness_apply.apply_application(application)
+
+            self.assertEqual(
+                (root / "AGENTS.md").read_text(encoding="utf-8"), "user-owned late file\n"
+            )
+            self.assertFalse((root / ".agents" / "skills" / "project-harness" / "SKILL.md").exists())
+            self.assertFalse((root / ".harness" / "transaction.json").exists())
+
+    def test_plan_rejects_traversal_inside_an_allowed_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = minimal_plan()
+            plan["artifacts"].append(
+                {
+                    "path": ".agents/skills/../../escaped.md",
+                    "content": "must not be written\n",
+                }
+            )
+
+            with self.assertRaises(harness_apply.PlanError):
+                harness_apply.build_application(root, plan)
+
+            self.assertFalse((root / "escaped.md").exists())
+
+    def test_recovery_preserves_external_edits_and_keeps_journal(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            application = harness_apply.build_application(root, minimal_plan())
+            actions = harness_apply.application_actions(application)
+            journal = harness_transaction.prepare_transaction(
+                root,
+                harness_apply.application_outputs(application),
+                actions,
+                application["originalHashes"],
+                application["managedPreconditions"],
+            )
+            operation = journal["operations"][0]
+            target = harness_state.resolve_inside(root, operation["path"])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("external edit\n", encoding="utf-8")
+
+            with self.assertRaises(harness_transaction.TransactionError):
+                harness_transaction.recover_transaction(root)
+
+            self.assertEqual(target.read_text(encoding="utf-8"), "external edit\n")
+            self.assertTrue((root / ".harness" / "transaction.json").is_file())
+
+    def test_recovery_preserves_an_externally_deleted_update_target(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            harness_apply.apply_application(harness_apply.build_application(root, minimal_plan()))
+            updated = harness_apply.build_application(root, minimal_plan(skill_suffix="\nUpdated\n"))
+            actions = harness_apply.application_actions(updated)
+            harness_transaction.prepare_transaction(
+                root,
+                harness_apply.application_outputs(updated),
+                actions,
+                updated["originalHashes"],
+                updated["managedPreconditions"],
+            )
+            skill = root / ".agents" / "skills" / "project-harness" / "SKILL.md"
+            skill.unlink()
+
+            with self.assertRaises(harness_transaction.TransactionError):
+                harness_transaction.recover_transaction(root)
+
+            self.assertFalse(skill.exists())
+            self.assertTrue((root / ".harness" / "transaction.json").is_file())
 
     def test_apply_uses_active_agents_override(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
