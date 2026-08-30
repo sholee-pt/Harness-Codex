@@ -12,7 +12,7 @@
 새 버전의 최초 커밋은 다음 형식을 사용합니다.
 
 ```text
-[Init] Codex v1: personal harness structure
+[Init] Codex v1: Harness structure
 ```
 
 최초 커밋 본문에는 추가된 모든 폴더와 파일의 목적을 한 줄씩 적습니다.

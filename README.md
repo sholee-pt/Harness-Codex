@@ -1,4 +1,4 @@
-# Personal Harness for Codex — v1
+# Harness for Codex — v1
 
 Codex에서 복잡한 개발·리뷰 작업을 개인적으로 정리하고 검증하기 위한 최소 구성입니다.
 
@@ -7,9 +7,9 @@ Codex에서 복잡한 개발·리뷰 작업을 개인적으로 정리하고 검�
 ## 구성
 
 - `AGENTS.md`: 모든 작업에 적용할 범위와 안전 원칙
-- `.agents/skills/personal-harness/SKILL.md`: 복잡한 작업을 분석·분할·검증하는 실행 절차
-- `.agents/skills/personal-harness/references/orchestration.md`: 단일 작업과 병렬 작업을 구분하는 기준
-- `.agents/skills/personal-harness/references/quality-gates.md`: 완료 전에 확인할 품질 기준
+- `.agents/skills/harness/SKILL.md`: 복잡한 작업을 분석·분할·검증하는 실행 절차
+- `.agents/skills/harness/references/orchestration.md`: 단일 작업과 병렬 작업을 구분하는 기준
+- `.agents/skills/harness/references/quality-gates.md`: 완료 전에 확인할 품질 기준
 - `CONTRIBUTING.md`: 브랜치와 커밋 관리 규칙
 - `LICENSE`: 재사용 권한을 부여하지 않는 독점 저작권 고지
 
@@ -18,7 +18,7 @@ Codex에서 복잡한 개발·리뷰 작업을 개인적으로 정리하고 검�
 이 브랜치를 작업 저장소에 적용한 뒤 Codex에 다음과 같이 요청합니다.
 
 ```text
-$personal-harness 이 변경을 구현하고 검증해줘.
+$harness 이 변경을 구현하고 검증해줘.
 ```
 
 단순한 한 파일 수정이나 짧은 질의는 하네스를 호출하지 않는 편이 효율적입니다. 이 하네스는 작업 범위가 크거나, 구현과 검증을 분리해야 하거나, 여러 관점의 코드 리뷰가 필요한 경우를 대상으로 합니다.
