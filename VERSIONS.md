@@ -9,7 +9,8 @@ Harness versions are maintained as runtime-specific branches. A major branch is 
 | `codex/v1` | `1.0.0` | Schema 1 | Maintenance | Existing installations that need the original direct-generation workflow |
 | `codex/v2` | `2.0.0` | Schema 2 | Maintenance | Existing guarded-generation installations |
 | `codex/v2.1` | `2.1.0` | Schema 2 | Maintenance | Existing no-op-safe v2 installations |
-| `codex/v3` | `3.0.0` | Schema 3 | Current | New installations and recoverable multi-file updates |
+| `codex/v3` | `3.0.0` | Schema 3 | Maintenance | Existing recoverable multi-file installations |
+| `codex/v3.1` | `3.1.0` | Schema 3 | Current | New installations with review-driven validation and recovery hardening |
 
 ## Codex v1
 
@@ -77,6 +78,18 @@ Codex v3 replaces sequential multi-file mutation with a recoverable, journaled a
 - Removes transaction staging and backup data only after commit or verified rollback completes.
 
 The filesystem cannot atomically replace unrelated paths as one operation. Schema 3 therefore defines recoverability and conflict-preserving rollback rather than claiming full multi-file atomicity.
+
+## Codex v3.1
+
+Codex v3.1 is a backward-compatible hardening release based on review of the v3 implementation.
+
+- Corrects stale v2 branch text in the repository instructions.
+- Reports missing or non-normalized file-level evidence as warnings without rejecting schema 1 plans.
+- Adds non-mutating transaction inspection and explicit cleanup for an orphaned reserved staging directory.
+- Synchronizes parent directory entries after atomic replacement on supported POSIX filesystems.
+- Documents a repeatable live Codex discovery and delegation smoke test.
+
+Plan schema 1, manifest schema 3, and transaction schema 1 remain unchanged. Existing clean v3 manifests can be updated by applying a reviewed v3.1 plan.
 
 ## Claude Code Editions
 

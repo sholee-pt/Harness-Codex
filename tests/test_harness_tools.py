@@ -149,7 +149,7 @@ class StateTests(unittest.TestCase):
             migrated = harness_state.migrate_manifest(root)
 
             self.assertEqual(migrated["schemaVersion"], 3)
-            self.assertEqual(migrated["generator"]["version"], "3.0.0")
+            self.assertEqual(migrated["generator"]["version"], "3.1.0")
             self.assertEqual(
                 migrated["application"],
                 {"mode": "journaled", "transactionSchemaVersion": 1},
@@ -186,6 +186,35 @@ class StateTests(unittest.TestCase):
             self.assertEqual(status["transaction"]["state"], "orphaned-workspace")
             with self.assertRaises(harness_transaction.TransactionError):
                 harness_apply.build_application(root, minimal_plan())
+
+            inspection = harness_transaction.inspect_transaction(root)
+            self.assertEqual(inspection["workspaces"], ["orphan"])
+            self.assertTrue(inspection["cleanupAllowed"])
+            cleanup = harness_transaction.clean_orphaned_workspace(root)
+            self.assertTrue(cleanup["cleaned"])
+            self.assertIsNone(harness_state.transaction_status(root))
+            harness_apply.build_application(root, minimal_plan())
+
+    def test_evidence_locations_warn_without_blocking_the_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = minimal_plan()
+
+            application = harness_apply.build_application(root, plan)
+
+            self.assertTrue(application["report"]["valid"])
+            self.assertTrue(
+                any("pyproject.toml" in warning for warning in application["report"]["warnings"])
+            )
+
+    def test_atomic_write_requests_parent_directory_sync(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "managed.txt"
+            with mock.patch.object(harness_state, "sync_directory", return_value=True) as sync:
+                harness_state.atomic_write_bytes(target, b"durable\n")
+
+            self.assertEqual(target.read_bytes(), b"durable\n")
+            sync.assert_called_once_with(target.parent)
 
     @staticmethod
     def write_manifest(root: Path, schema_version: int) -> None:

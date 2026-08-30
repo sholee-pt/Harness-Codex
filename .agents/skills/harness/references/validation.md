@@ -11,6 +11,7 @@ Read this reference after artifacts have been generated or updated.
 - The manifest points to the root instruction file Codex will actually load (`AGENTS.override.md` before `AGENTS.md`).
 - Managed hashes match after generation.
 - Manifest schema 3 declares journaled application with transaction schema 1.
+- File-level evidence resolves to repository files; unresolved evidence is reviewed as a warning.
 - No transaction journal or staging directory remains after a successful apply.
 - Generated files contain no Claude-only or obsolete Agent Teams primitives.
 - A clean plan dry-run reports the same create, update, or unchanged actions that the actual apply performs.
@@ -36,3 +37,5 @@ Test the applicable cases, using an isolated temporary repository when possible:
 ## Completion gate
 
 Validation succeeds only when every planned artifact is accounted for and structural checks pass. Clearly separate structural validation from a live Codex discovery or delegation smoke test, which may require restarting the session.
+
+Follow [codex-smoke-test.md](codex-smoke-test.md) for a repeatable live check. Do not report structural validation as proof that Codex discovered or delegated to generated agents.

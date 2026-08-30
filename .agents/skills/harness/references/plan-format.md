@@ -44,8 +44,9 @@ Create one UTF-8 JSON plan with this structure and pass it to `scripts/harness_a
 - Generated skill frontmatter uses only single-line scalar `name` and `description` fields; full YAML syntax is outside the v3 contract.
 - Include every generated dedicated file in `artifacts`, including supporting references, scripts, and assets.
 - Every topology entry point must have a matching artifact.
-- Every skill records its purpose and repository evidence.
-- Every agent records its responsibility, delegation benefit, and repository evidence.
+- Every skill records its purpose and exact repository-relative file evidence.
+- Every agent records its responsibility, delegation benefit, and exact repository-relative file evidence.
+- Missing or non-normalized evidence paths are reported as warnings in v3.1. Review every warning before apply; the schema remains backward compatible and warnings do not automatically reject a plan.
 - If an agent lists a skill dependency, mention that skill in the agent's `developer_instructions`; the manifest alone is not a runtime binding.
 - Do not include `.harness/manifest.json`; the apply script derives it from the validated plan.
 - Do not include a root instruction path. The apply script selects `AGENTS.override.md` when it exists and otherwise selects `AGENTS.md`.

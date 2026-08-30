@@ -1,12 +1,12 @@
-name: Codex v3 checks
+name: Codex v3.1 checks
 
 on:
   push:
     branches:
-      - codex/v3
+      - codex/v3.1
   pull_request:
     branches:
-      - codex/v3
+      - codex/v3.1
   workflow_dispatch:
 
 permissions:

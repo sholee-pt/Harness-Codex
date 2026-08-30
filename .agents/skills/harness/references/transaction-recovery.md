@@ -32,6 +32,22 @@ Recovery does not trust only the recorded applied-path list. It checks every ope
 
 Recovery validates all operations before restoring or removing any target. If one target conflicts, no recovery mutation begins and the journal remains available for inspection.
 
+Inspect the current state without mutation:
+
+```shell
+conda run -n harness python <harness-skill-root>/scripts/harness_apply.py --root <repo-root> --inspect-transaction
+```
+
+## Orphaned staging workspace
+
+If `.harness/transactions/` exists without `.harness/transaction.json`, normal hash-based recovery is impossible because no journal identifies intended targets. Inspect first. If the output confirms `orphaned-workspace` and the contents are disposable staging data, remove only that reserved workspace with:
+
+```shell
+conda run -n harness python <harness-skill-root>/scripts/harness_apply.py --root <repo-root> --clean-orphaned-transaction
+```
+
+This command refuses to run when a journal exists and does not modify generated target files.
+
 ## Manual conflict handling
 
 Do not delete the journal or transaction directory to bypass a conflict. Preserve the external edit separately, then restore the conflicted target to either the recorded original content or the staged transaction content. Run `--recover` again and confirm that status reports no transaction before generating another plan.

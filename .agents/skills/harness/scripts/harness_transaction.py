@@ -91,16 +91,62 @@ def _cleanup_transaction_directory(root: Path, transaction_id: str) -> None:
         if not transaction_root.is_dir():
             raise TransactionError("transaction workspace is not a directory")
         shutil.rmtree(transaction_root)
+        harness_state.sync_directory(transactions_root)
     if transactions_root.is_dir():
         try:
             transactions_root.rmdir()
+            harness_state.sync_directory(transactions_root.parent)
         except OSError:
             pass
 
 
 def _cleanup_transaction(root: Path, journal: dict) -> None:
     _cleanup_transaction_directory(root, journal["transactionId"])
-    journal_path(root).unlink(missing_ok=True)
+    path = journal_path(root)
+    path.unlink(missing_ok=True)
+    harness_state.sync_directory(path.parent)
+
+
+def inspect_transaction(root: Path) -> dict:
+    """Return non-mutating details for a journal or an orphaned staging workspace."""
+    status = harness_state.transaction_status(root)
+    if status is None:
+        return {"state": "none", "workspaces": []}
+    if status.get("state") == "orphaned-workspace":
+        workspace = root / TRANSACTIONS_RELATIVE
+        if workspace.is_symlink() or not workspace.is_dir():
+            return {**status, "workspaces": [], "cleanupAllowed": False}
+        workspaces = sorted(path.name for path in workspace.iterdir())
+        return {**status, "workspaces": workspaces, "cleanupAllowed": True}
+    try:
+        journal = load_journal(root)
+    except TransactionError as exc:
+        return {**status, "detail": str(exc), "cleanupAllowed": False}
+    return {
+        "state": journal["state"],
+        "transactionId": journal["transactionId"],
+        "schemaVersion": journal["schemaVersion"],
+        "operations": [
+            {"path": item["path"], "action": item["action"]}
+            for item in journal["operations"]
+        ],
+        "applied": list(journal["applied"]),
+        "cleanupAllowed": False,
+    }
+
+
+def clean_orphaned_workspace(root: Path) -> dict:
+    """Remove the reserved staging root only when no recovery journal exists."""
+    status = harness_state.transaction_status(root)
+    if status is None or status.get("state") != "orphaned-workspace":
+        raise TransactionError("no orphaned Harness transaction workspace was found")
+    workspace = root / TRANSACTIONS_RELATIVE
+    if workspace.is_symlink() or not workspace.is_dir():
+        raise TransactionError("orphaned transaction workspace is not a regular directory")
+    workspaces = sorted(path.name for path in workspace.iterdir())
+    shutil.rmtree(workspace)
+    harness_state.sync_directory(workspace.parent)
+    return {"state": "orphaned-workspace", "cleaned": True, "workspaces": workspaces}
 
 
 def _validate_hash(value: object, label: str) -> str:
@@ -356,6 +402,7 @@ def recover_transaction(root: Path) -> dict:
                 restored += 1
         elif current_hash == operation["desiredSha256"]:
             target.unlink()
+            harness_state.sync_directory(target.parent)
             removed += 1
 
     journal["state"] = "rolled-back"

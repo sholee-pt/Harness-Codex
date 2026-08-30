@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-v3-brightgreen.svg" alt="Version v3">
+  <img src="https://img.shields.io/badge/Version-v3.1-brightgreen.svg" alt="Version v3.1">
   <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
   <img src="https://img.shields.io/badge/Type-Harness_Generator-orange.svg" alt="Harness Generator">
   <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
@@ -33,7 +33,7 @@ Harness requires Anaconda or Miniconda. Clone this branch, create the dedicated 
 ### PowerShell
 
 ```powershell
-git clone --branch codex/v3 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v3.1 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file "Harness/environment.yml"
 New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
 New-Item -ItemType Directory -Force "$HOME/.agents/skills/harness" | Out-Null
@@ -43,7 +43,7 @@ Copy-Item -Recurse -Force "Harness/.agents/skills/harness/*" "$HOME/.agents/skil
 ### macOS and Linux
 
 ```shell
-git clone --branch codex/v3 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v3.1 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 mkdir -p ~/.agents/skills
 mkdir -p ~/.agents/skills/harness
@@ -86,12 +86,14 @@ The generator includes standard-library-only Python tools. Run them through the 
 conda run -n harness python .agents/skills/harness/scripts/inventory.py .
 conda run -n harness python .agents/skills/harness/scripts/harness_state.py status --root .
 conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --plan PATH_TO_PLAN.json --dry-run
+conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --inspect-transaction
 conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --recover
+conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --clean-orphaned-transaction
 conda run -n harness python .agents/skills/harness/scripts/validate_harness.py .
 conda run -n harness python -m unittest discover -s tests -v
 ```
 
-Use `--recover` only when status or a failed apply reports a pending transaction. Recovery first verifies that interrupted outputs were not edited externally; it refuses destructive cleanup when their hashes are unknown.
+Use `--recover` only when status or a failed apply reports a pending journal. Use `--inspect-transaction` before maintenance. `--clean-orphaned-transaction` is restricted to the reserved staging directory when no journal exists; it never replaces recovery for a valid journal. Recovery first verifies that interrupted outputs were not edited externally and refuses destructive cleanup when their hashes are unknown.
 
 ## Versioning
 

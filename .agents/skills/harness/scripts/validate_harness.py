@@ -122,6 +122,42 @@ class Validator:
         if not isinstance(self.manifest.get("managedFiles"), list):
             self.error("managedFiles must be an array")
 
+    def validate_evidence_locations(self) -> None:
+        references: list[tuple[str, object]] = []
+        project = self.manifest.get("project", {})
+        project_evidence = project.get("evidence", []) if isinstance(project, dict) else []
+        if isinstance(project_evidence, list):
+            references.extend(
+                (f"project.evidence[{index}]", value)
+                for index, value in enumerate(project_evidence)
+            )
+        topology = self.manifest.get("topology", {})
+        if isinstance(topology, dict):
+            for kind in ("skills", "agents"):
+                items = topology.get(kind, [])
+                if not isinstance(items, list):
+                    continue
+                for index, item in enumerate(items):
+                    if not isinstance(item, dict):
+                        continue
+                    name = item.get("name", index)
+                    evidence = item.get("evidence", [])
+                    if isinstance(evidence, list):
+                        references.extend(
+                            (f"topology.{kind}[{name!r}].evidence[{evidence_index}]", value)
+                            for evidence_index, value in enumerate(evidence)
+                        )
+        for label, relative in references:
+            if not isinstance(relative, str) or not relative.strip():
+                continue
+            try:
+                path = harness_state.resolve_inside(self.root, relative)
+            except harness_state.StateError as exc:
+                self.warning(f"{label} is not a normalized repository path: {exc}")
+                continue
+            if not path.is_file():
+                self.warning(f"{label} does not reference an existing file: {relative}")
+
     def validate_skill(self, item: dict) -> str | None:
         name = item.get("name")
         relative = item.get("path")
@@ -317,6 +353,7 @@ class Validator:
         self.load_manifest()
         self.validate_manifest_shape()
         if self.manifest:
+            self.validate_evidence_locations()
             self.validate_topology()
             self.validate_managed_files()
             self.validate_root_pointer()

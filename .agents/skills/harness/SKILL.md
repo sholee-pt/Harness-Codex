@@ -24,7 +24,7 @@ Build the smallest useful Codex-native harness for the current repository. Resol
 
 1. Find the repository root and read all applicable instructions.
 2. Run `conda run -n harness python <harness-skill-root>/scripts/inventory.py <repo-root>` for a bounded structural inventory. Do not inspect secret values.
-3. If `.harness/manifest.json` or `.harness/transaction.json` exists, run `conda run -n harness python <harness-skill-root>/scripts/harness_state.py status --root <repo-root>`. Recover a pending transaction before continuing.
+3. If `.harness/manifest.json`, `.harness/transaction.json`, or `.harness/transactions/` exists, run `conda run -n harness python <harness-skill-root>/scripts/harness_state.py status --root <repo-root>`. Inspect transaction state before recovery or explicit orphan cleanup. Resolve it before continuing.
 4. If the manifest uses schema v1 or v2, run the guarded `migrate` command only while every managed entry is unchanged.
 5. Classify the run as new, safe update, or conflict-bearing audit. Read [safe-update.md](references/safe-update.md) before any update or merge.
 
@@ -64,7 +64,7 @@ Read [orchestration.md](references/orchestration.md) before planning `project-ha
 3. Run the same command without `--dry-run` only after the dry-run is clean.
 4. If apply reports a pending transaction, stop planning, read [transaction-recovery.md](references/transaction-recovery.md), and run `conda run -n harness python <harness-skill-root>/scripts/harness_apply.py --root <repo-root> --recover` before retrying.
 5. Run `conda run -n harness python <harness-skill-root>/scripts/validate_harness.py <repo-root>`.
-6. Read [validation.md](references/validation.md) and perform the applicable behavioral checks.
+6. Read [validation.md](references/validation.md) and perform the applicable behavioral checks. Use [codex-smoke-test.md](references/codex-smoke-test.md) when live discovery or delegation verification is required.
 7. Account for every planned artifact as created, unchanged, conflicted, skipped, or failed. Do not silently drop outputs.
 
 ## Audit and update mode

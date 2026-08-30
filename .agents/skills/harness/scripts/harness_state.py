@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -16,7 +17,7 @@ BEGIN_MARKER = "<!-- harness:begin -->"
 END_MARKER = "<!-- harness:end -->"
 RUNTIME = "codex"
 CURRENT_SCHEMA_VERSION = 3
-GENERATOR_VERSION = "3.0.0"
+GENERATOR_VERSION = "3.1.0"
 TRANSACTION_JOURNAL_RELATIVE = ".harness/transaction.json"
 TRANSACTION_SCHEMA_VERSION = 1
 
@@ -27,6 +28,29 @@ class StateError(ValueError):
 
 def digest_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def sync_directory(path: Path) -> bool:
+    """Best-effort persistence for directory entry changes on POSIX filesystems."""
+    if os.name == "nt":
+        return False
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        if exc.errno in {errno.EACCES, errno.EINVAL, errno.ENOTSUP}:
+            return False
+        raise
+    try:
+        try:
+            os.fsync(descriptor)
+        except OSError as exc:
+            if exc.errno in {errno.EINVAL, errno.ENOTSUP}:
+                return False
+            raise
+    finally:
+        os.close(descriptor)
+    return True
 
 
 def atomic_write_bytes(path: Path, data: bytes) -> None:
@@ -47,6 +71,7 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
             temporary_name = temporary.name
         os.replace(temporary_name, path)
         temporary_name = None
+        sync_directory(path.parent)
     finally:
         if temporary_name is not None:
             Path(temporary_name).unlink(missing_ok=True)

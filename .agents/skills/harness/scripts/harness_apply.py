@@ -19,7 +19,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ is required
 
 
 PLAN_SCHEMA_VERSION = 1
-GENERATOR_VERSION = "3.0.0"
+GENERATOR_VERSION = "3.1.0"
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 AGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 ALLOWED_PREFIXES = (".codex/agents/", ".agents/skills/")
@@ -101,6 +101,41 @@ def validate_project(plan: dict) -> dict:
     if not all(isinstance(item, str) for item in uncertainties):
         raise PlanError("project.rationale.uncertainties entries must be strings")
     return project
+
+
+def evidence_warnings(root: Path, plan: dict) -> list[str]:
+    """Report string evidence that does not resolve to an existing repository file."""
+    references: list[tuple[str, str]] = []
+    project = plan.get("project", {})
+    if isinstance(project, dict):
+        references.extend(
+            (f"project.evidence[{index}]", value)
+            for index, value in enumerate(project.get("evidence", []))
+            if isinstance(value, str)
+        )
+    topology = plan.get("topology", {})
+    if isinstance(topology, dict):
+        for kind in ("skills", "agents"):
+            for index, item in enumerate(topology.get(kind, [])):
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("name", index)
+                references.extend(
+                    (f"topology.{kind}[{name!r}].evidence[{evidence_index}]", value)
+                    for evidence_index, value in enumerate(item.get("evidence", []))
+                    if isinstance(value, str)
+                )
+
+    warnings: list[str] = []
+    for label, relative in references:
+        try:
+            path = harness_state.resolve_inside(root, relative)
+        except harness_state.StateError as exc:
+            warnings.append(f"{label} is not a normalized repository path: {exc}")
+            continue
+        if not path.is_file():
+            warnings.append(f"{label} does not reference an existing file: {relative}")
+    return warnings
 
 
 def validate_artifacts(root: Path, plan: dict) -> dict[str, str]:
@@ -290,6 +325,7 @@ def build_application(root: Path, plan: dict) -> dict:
     artifacts = validate_artifacts(root, plan)
     topology = validate_topology(plan, artifacts)
     managed_block = validate_instruction(plan)
+    warnings = evidence_warnings(root, plan)
     manifest, old_managed = existing_manifest_state(root)
 
     instruction_relative = harness_state.active_instruction_relative(root)
@@ -389,6 +425,7 @@ def build_application(root: Path, plan: dict) -> dict:
             "valid": True,
             "actions": actions,
             "removalCandidates": removal_candidates,
+            "warnings": warnings,
         },
     }
 
@@ -452,17 +489,23 @@ def main() -> int:
     parser.add_argument("--root", default=".")
     parser.add_argument("--plan")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--recover", action="store_true")
+    maintenance = parser.add_mutually_exclusive_group()
+    maintenance.add_argument("--recover", action="store_true")
+    maintenance.add_argument("--inspect-transaction", action="store_true")
+    maintenance.add_argument("--clean-orphaned-transaction", action="store_true")
     args = parser.parse_args()
 
     root = Path(args.root).resolve()
     if not root.is_dir():
         parser.error(f"repository root is not a directory: {root}")
-    if args.recover:
+    maintenance_requested = (
+        args.recover or args.inspect_transaction or args.clean_orphaned_transaction
+    )
+    if maintenance_requested:
         if args.plan or args.dry_run:
-            parser.error("--recover cannot be combined with --plan or --dry-run")
+            parser.error("transaction maintenance cannot be combined with --plan or --dry-run")
     elif not args.plan:
-        parser.error("--plan is required unless --recover is used")
+        parser.error("--plan is required unless transaction maintenance is used")
 
     try:
         if args.recover:
@@ -470,6 +513,26 @@ def main() -> int:
             print(
                 json.dumps(
                     {"runtime": harness_state.RUNTIME, "valid": True, "recovery": recovery},
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        if args.inspect_transaction:
+            inspection = harness_transaction.inspect_transaction(root)
+            print(
+                json.dumps(
+                    {"runtime": harness_state.RUNTIME, "valid": True, "transaction": inspection},
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        if args.clean_orphaned_transaction:
+            cleanup = harness_transaction.clean_orphaned_workspace(root)
+            print(
+                json.dumps(
+                    {"runtime": harness_state.RUNTIME, "valid": True, "cleanup": cleanup},
                     indent=2,
                     ensure_ascii=False,
                 )
