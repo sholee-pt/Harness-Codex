@@ -12,7 +12,7 @@
 
 > **Harness는 Claude Code용 팀 아키텍처 팩토리입니다.** **"하네스 구성해줘"** 한 문장으로, 플러그인이 도메인 설명을 에이전트 팀과 그들이 쓸 스킬로 변환합니다.
 
-> **검토된 파생 브랜치:** 이 `v2` 브랜치는 upstream PR [#56](https://github.com/revfactory/harness/pull/56)의 `40530d4`를 시작점으로 사용하고, 현재 공식 문서와 충돌하는 런타임 설명을 수정했습니다. 선별 PR 판정은 [`docs/upstream-pr-review.md`](docs/upstream-pr-review.md)에 기록합니다. Codex에서는 [`.agents/skills/harness/SKILL.md`](.agents/skills/harness/SKILL.md)를 사용합니다.
+> **검토된 파생 브랜치:** 이 `v2` 브랜치는 upstream PR [#56](https://github.com/revfactory/harness/pull/56)의 `40530d4` 내용을 검토 기준점으로 사용하고, 현재 공식 문서와 충돌하는 런타임 설명을 수정했습니다. 이 SHA는 검토한 내용을 식별하며, 모든 배포 방식이 upstream 커밋 ancestry까지 보존한다는 뜻은 아닙니다. 선별 PR 판정은 [`docs/upstream-pr-review.md`](docs/upstream-pr-review.md)에 기록합니다. Codex에서는 [`.agents/skills/harness/SKILL.md`](.agents/skills/harness/SKILL.md)를 사용합니다.
 
 ## v2에서 달라진 것
 
