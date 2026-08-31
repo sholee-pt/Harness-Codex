@@ -170,6 +170,23 @@ class InventoryTests(unittest.TestCase):
 
 
 class StateTests(unittest.TestCase):
+    def test_resolve_inside_normalizes_the_repository_root(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "repository"
+            root.mkdir()
+            (root / "evidence.txt").write_text("evidence\n", encoding="utf-8")
+            relative_root = Path(os.path.relpath(root, Path.cwd()))
+
+            resolved = harness_state.resolve_inside(
+                relative_root, "evidence.txt", must_exist=True
+            )
+
+            self.assertEqual(resolved, (root / "evidence.txt").resolve())
+            self.assertEqual(
+                harness_state.normalize_relative(relative_root, "evidence.txt"),
+                "evidence.txt",
+            )
+
     def test_record_status_and_rebaseline_refusal(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

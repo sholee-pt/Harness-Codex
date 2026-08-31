@@ -119,8 +119,9 @@ def resolve_inside(root: Path, relative: str, *, must_exist: bool = False) -> Pa
         or any(part in {".", ".."} for part in candidate_rel.parts)
     ):
         raise StateError(f"managed path must be a normalized relative path: {relative}")
-    candidate = root.joinpath(*candidate_rel.parts).resolve()
-    if candidate == root or root not in candidate.parents:
+    resolved_root = root.resolve()
+    candidate = resolved_root.joinpath(*candidate_rel.parts).resolve()
+    if candidate == resolved_root or resolved_root not in candidate.parents:
         raise StateError(f"managed path escapes repository root: {relative}")
     if must_exist and not candidate.is_file():
         raise StateError(f"managed file is missing: {relative}")
@@ -129,7 +130,7 @@ def resolve_inside(root: Path, relative: str, *, must_exist: bool = False) -> Pa
 
 def normalize_relative(root: Path, value: str) -> str:
     path = resolve_inside(root, value, must_exist=True)
-    return path.relative_to(root).as_posix()
+    return path.relative_to(root.resolve()).as_posix()
 
 
 def extract_managed_block(text: str) -> str:
@@ -441,7 +442,7 @@ def verify_snapshot(root: Path, snapshot: str) -> dict:
     if not isinstance(entries, list) or not all(isinstance(entry, dict) for entry in entries):
         raise StateError("snapshot files must be an array of objects")
     results = [entry_status(root, entry) for entry in entries]
-    return {"snapshot": snapshot_path.relative_to(root).as_posix(), "files": results}
+    return {"snapshot": snapshot_path.relative_to(root.resolve()).as_posix(), "files": results}
 
 
 def has_conflict(states: Iterable[dict]) -> bool:
