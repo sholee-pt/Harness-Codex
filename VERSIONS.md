@@ -14,6 +14,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v4` | Harness for Codex v4.0 | Schema 2 | Schema 4 | Schema 2 | SHA-256-bound structured evidence, line ranges, POSIX permission tracking and recovery |
 | `codex/v5` | Harness for Codex v5.0 | Schema 3 | Schema 5 | Schema 2 | Machine-verifiable material boundaries, persistent topology classes, routing and quality contracts, deterministic golden evaluation |
 | `codex/v5.1` | Harness for Codex v5.1 | Schema 3 | Schema 5 | Schema 2 | Literal/prefix scope correction, portable case collision checks, topology cross-validation, unambiguous routing, exact quality budgets, expanded fixtures and Windows CI |
+| `codex/v5.2` | Harness for Codex v5.2 | Schema 3 | Schema 5 | Schema 2 | Portable output namespace validation, complete-overlap handoffs, unique decision ownership, linked coordination witnesses, coordinated full-plan integration |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -127,6 +128,22 @@ Harness for Codex v5.1 stabilizes the v5.0 contract without changing plan, manif
 - Uses two-component Harness and generator versions such as `5.1`.
 
 Harness for Codex v5.0 plans and manifests remain on schema 3 and schema 5. The stricter validator may reject previously accepted ambiguous topology declarations; regenerate and review such plans before applying them.
+
+## Harness for Codex v5.2
+
+Harness for Codex v5.2 hardens v5.1 without changing plan, manifest, or transaction schemas.
+
+- Rejects case-only artifact, application, manifest, and transaction target collisions before staging.
+- Rejects output sets in which one file target is an ancestor of another file target.
+- Requires ordered writer handoffs to name the complete intersection of their write scopes.
+- Requires `decisionAreaIds` to have one topology-wide owner.
+- Requires cross-contract coordination to reference at least two contract boundaries through a component, policy, or handoff.
+- Defines deterministic handling for zero, one, compatible multiple, and conflicting multiple runtime category matches.
+- Adds direct relative-root regression coverage on the same drive.
+- Adds a coordinated full-plan fixture covering dry-run, journaled apply, manifest validation, and a no-op second apply.
+- Keeps generation plan schema 3, manifest schema 5, and transaction schema 2.
+
+Harness for Codex v5.1 plans remain structurally compatible, but the stricter portable namespace, decision ownership, coordination witness, and handoff checks may reject previously accepted ambiguous plans. Regenerate and review those plans before applying them with v5.2.
 
 Trigger-profile evaluation and optional live model comparisons remain future work. Evolution history, feedback approval, privacy, retention, and automated self-modification remain future Harness for Codex v6.0 scope.
 

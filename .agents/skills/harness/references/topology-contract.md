@@ -16,7 +16,7 @@ Boundary count is not a coordinated-topology trigger. Four or more modular bound
 
 Every retained boundary must include:
 
-- a unique kebab-case `id` and one or more stable `decisionAreaIds`;
+- a unique kebab-case `id` and one or more topology-wide unique, stable `decisionAreaIds`;
 - one or more types from `responsibility`, `execution-environment`, `contract`, `data-flow`, `quality-risk`, and `recurring-workflow`;
 - structured repository evidence;
 - concrete inputs, outputs, contracts, or read/write scopes;
@@ -27,7 +27,7 @@ Every retained boundary must include:
 
 Use `overlapWith` only when two retained boundaries share material inputs, decisions, outputs, or scopes. Such a boundary requires a `separationRationale` with distinct decisions and failure modes. Record removed candidates in `classification.mergedCandidates`; `materialBoundaryCount` is the retained post-merge count.
 
-`dependencyShape` must agree with the relationship graph. `independent` has no `dependsOn` edges, `cyclic-contract` has a cycle in `interactsWith`, and `dynamic` uses coordinated topology with the `dynamic-allocation` reason. Coordination reasons must also have supporting structure: fan-out/fan-in declares its collaboration pattern, cross-contract verification has two contract boundaries or a cross-boundary component, reviewer chains use producer-reviewer collaboration with ordered phases, and phase freezing has ordered lanes plus a verified handoff.
+`dependencyShape` must agree with the relationship graph. `independent` has no `dependsOn` edges, `cyclic-contract` has a cycle in `interactsWith`, and `dynamic` uses coordinated topology with the `dynamic-allocation` reason. `static-dag` summarizes the acyclic execution graph and may coexist with non-ordering structural interaction cycles; select `cyclic-contract` when such a cycle is the material topology driver. Coordination reasons must also have supporting structure: fan-out/fan-in declares its collaboration pattern, cross-contract verification has a component, policy, or handoff that actually references at least two contract boundaries, reviewer chains use producer-reviewer collaboration with ordered phases, and phase freezing has ordered lanes plus a verified handoff.
 
 Evidence hashes bind a claim to inspected bytes. They do not prove the semantic truth of the claim. Review the claim and persistence conclusion before apply.
 
@@ -53,7 +53,7 @@ Each execution phase has a non-negative order and one or more concurrency groups
 }
 ```
 
-Two writers in the same lane may not use overlapping scopes. Writers in different ordered lanes may overlap only when a directional handoff names both agents, both lanes, the shared scope, a freeze precondition, and verification. Producer-write/reviewer-read overlap is allowed.
+Two writers in the same lane may not use overlapping scopes. Writers in different ordered lanes may overlap only when a directional handoff names both agents, both lanes, their complete shared scope, a freeze precondition, and verification. A handoff for only a descendant of the shared scope is insufficient. Producer-write/reviewer-read overlap is allowed.
 
 ## Collaboration and quality policies
 
@@ -79,7 +79,7 @@ Harness for Codex v5 does not add a persistent model-selection policy. Generated
 
 ## Routing policies
 
-Persistent routing policies describe evidence-backed task categories and refer only to existing boundaries, declared collaboration patterns, quality policies, and capability policies. A task category belongs to at most one route. A direct route cannot declare collaboration patterns. If no persistent route matches, classify the current task at runtime; do not assume direct execution. Routes recommend an execution class but do not persist the current request's selected class or agent list.
+Persistent routing policies describe evidence-backed task categories and refer only to existing boundaries, declared collaboration patterns, quality policies, and capability policies. A task category belongs to at most one route. A direct route cannot declare collaboration patterns. Multiple matching categories may select one route only when all matches resolve to that same route; conflicting matches are reported as ambiguous and require an explicit runtime choice. If no persistent route matches, classify the current task at runtime; do not assume direct execution. Routes recommend an execution class but do not persist the current request's selected class or agent list.
 
 ## Deterministic evaluation boundary
 

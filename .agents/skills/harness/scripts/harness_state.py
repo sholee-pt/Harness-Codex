@@ -20,7 +20,7 @@ END_MARKER = "<!-- harness:end -->"
 RUNTIME = "codex"
 CURRENT_SCHEMA_VERSION = 5
 UPGRADE_SOURCE_SCHEMA_VERSION = 4
-GENERATOR_VERSION = "5.1"
+GENERATOR_VERSION = "5.2"
 LEGACY_MIGRATION_GENERATOR_VERSION = "4.0"
 TRANSACTION_JOURNAL_RELATIVE = ".harness/transaction.json"
 TRANSACTION_SCHEMA_VERSION = 2
@@ -126,6 +126,41 @@ def resolve_inside(root: Path, relative: str, *, must_exist: bool = False) -> Pa
     if must_exist and not candidate.is_file():
         raise StateError(f"managed file is missing: {relative}")
     return candidate
+
+
+def portable_path_key(relative: str) -> tuple[str, ...]:
+    if not isinstance(relative, str) or "\\" in relative:
+        raise StateError(f"managed path must use POSIX separators: {relative!r}")
+    path = PurePosixPath(relative)
+    if (
+        path.is_absolute()
+        or path.as_posix() != relative
+        or any(part in {".", ".."} for part in path.parts)
+    ):
+        raise StateError(f"managed path must be a normalized relative path: {relative}")
+    return tuple(part.casefold() for part in path.parts)
+
+
+def validate_file_namespace(paths: Iterable[str], *, label: str = "managed paths") -> None:
+    entries: list[tuple[str, tuple[str, ...]]] = []
+    for relative in paths:
+        key = portable_path_key(relative)
+        for previous, previous_key in entries:
+            if key == previous_key:
+                raise StateError(
+                    f"{label} contains a portable path collision: {previous!r} and {relative!r}"
+                )
+            if (
+                len(previous_key) < len(key)
+                and key[: len(previous_key)] == previous_key
+            ) or (
+                len(key) < len(previous_key)
+                and previous_key[: len(key)] == key
+            ):
+                raise StateError(
+                    f"{label} contains a file/child path conflict: {previous!r} and {relative!r}"
+                )
+        entries.append((relative, key))
 
 
 def normalize_relative(root: Path, value: str) -> str:
@@ -246,6 +281,12 @@ def status_report(root: Path) -> dict:
     entries = manifest.get("managedFiles", [])
     if not isinstance(entries, list):
         raise StateError("managedFiles must be an array")
+    managed_paths = [
+        entry.get("path")
+        for entry in entries
+        if isinstance(entry, dict) and isinstance(entry.get("path"), str)
+    ]
+    validate_file_namespace(managed_paths, label="manifest managedFiles")
     files = [entry_status(root, entry) for entry in entries if isinstance(entry, dict)]
     counts: dict[str, int] = {}
     for item in files:
@@ -260,6 +301,9 @@ def status_report(root: Path) -> dict:
 
 
 def build_entries(root: Path, files: Iterable[str], block_files: Iterable[str]) -> list[dict]:
+    files = list(files)
+    block_files = list(block_files)
+    validate_file_namespace([*files, *block_files], label="managed files")
     entries: list[dict] = []
     seen: set[str] = set()
     for kind, values in (("file", files), ("managed-block", block_files)):

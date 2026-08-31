@@ -16,7 +16,7 @@ description: Coordinate __PROJECT_DOMAIN__ work across the repository's generate
 
 __TASK_TO_AGENT_AND_SKILL_ROUTING__
 
-Classify each current task as direct, delegated, or coordinated without changing the persistent project topology. Use direct execution when delegation has no material benefit. Use only agents and skills justified by the active boundaries and task risks.
+Classify each current task as direct, delegated, or coordinated without changing the persistent project topology. If multiple task categories match, use a persistent route only when every match resolves to the same route; otherwise report the ambiguity and require an explicit runtime selection. Never merge conflicting routes or select the first route by ordering. Use direct execution when delegation has no material benefit. Use only agents and skills justified by the active boundaries and task risks.
 
 ## Run protocol
 

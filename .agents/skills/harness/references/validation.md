@@ -12,14 +12,15 @@ Read this reference after artifacts have been generated or updated.
 - Managed hashes match after generation.
 - Manifest schema 5 declares journaled application with transaction schema 2.
 - Every evidence object resolves to the recorded repository file hash, and optional line ranges remain valid.
-- Material boundaries have stable decision-area identifiers, persistence evidence, verifiable contracts, and material separation benefits.
+- Material boundaries have topology-wide unique decision-area identifiers, persistence evidence, verifiable contracts, and material separation benefits.
 - Persistent topology classification agrees with post-merge boundary structure and recurring coordination evidence.
 - Task-execution state and runtime-only task risks are absent from the project manifest.
 - Specialist and cross-boundary agents reference existing boundaries; `project-harness` alone uses project scope.
-- Concurrent writers do not overlap, and sequential overlapping writers have an ordered verified handoff.
+- Concurrent writers do not overlap, and sequential overlapping writers have an ordered verified handoff for their complete shared scope.
 - Literal scopes do not authorize recursive descendants, and case-only writer scopes collide portably.
+- Artifact, manifest, and transaction targets reject case-only collisions and file/child target conflicts before staging.
 - Persistent quality policies have repository evidence, finite budgets, stopping conditions, and failure policies.
-- Routing categories are globally unique, dependency shapes match relationship graphs, and coordination reasons have supporting topology.
+- Routing categories are globally unique, multi-category runtime matches cannot select conflicting routes implicitly, dependency shapes match relationship graphs, and coordination reasons have directly linked supporting topology.
 - Required runtime capabilities have a probe declaration and a contract-preserving fallback. Live support remains a runtime check.
 - Every Harness-owned complete file declares a valid permission mode; POSIX validation detects mode drift.
 - No transaction journal or staging directory remains after a successful apply.
@@ -49,6 +50,9 @@ Test the applicable cases, using an isolated temporary repository when possible:
 17. A modular expert pool remains modular even with four independent specialist boundaries.
 18. A coordinated cross-contract fixture binds recurring reasons to patterns, phases, and a verified handoff.
 19. Golden evaluation labels its topology-only scope and does not claim evidence validation.
+20. Case-only artifact names and file/child output targets fail before a transaction journal is written.
+21. A handoff covering only part of two writers' shared scope is rejected.
+22. A coordinated full-plan fixture completes dry-run, journaled apply, manifest validation, and a no-op second apply.
 
 ## Completion gate
 

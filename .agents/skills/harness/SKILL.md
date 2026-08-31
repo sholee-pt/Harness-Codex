@@ -32,7 +32,7 @@ Build the smallest useful Codex-native harness for the current repository. Resol
 
 Read [project-analysis.md](references/project-analysis.md). Identify responsibilities, execution environments, data and contract boundaries, high-risk quality boundaries, and recurring workflows. Record file-level evidence for each conclusion. Use the read-only `harness_state.py evidence` command to capture normalized paths and SHA-256 values, then add a specific claim and optional line range.
 
-Normalize candidates into material boundaries with stable `decisionAreaIds`, repository evidence, persistence, contracts, verification, and separation benefits. Physical size, directory count, language, and framework names do not determine topology. A repository with zero or one material boundary and no recurring coordination remains `minimal`, regardless of file count.
+Normalize candidates into material boundaries with topology-wide unique `decisionAreaIds`, repository evidence, persistence, contracts, verification, and separation benefits. Physical size, directory count, language, and framework names do not determine topology. A repository with zero or one material boundary and no recurring coordination remains `minimal`, regardless of file count.
 
 ## Phase 2 — Design the topology
 

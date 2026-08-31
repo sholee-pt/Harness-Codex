@@ -65,7 +65,7 @@
       {"id": "produce", "order": 0, "concurrencyGroups": [{"id": "producer", "order": 0}]},
       {"id": "review", "order": 1, "concurrencyGroups": [{"id": "reviewer", "order": 0}]}
     ],
-    "handoffs": [{"fromAgent": "api_producer", "toAgent": "contract_reviewer", "scope": "contracts/**", "fromPhase": "produce", "fromConcurrencyGroup": "producer", "toPhase": "review", "toConcurrencyGroup": "reviewer", "precondition": "The API schema is frozen and hashed.", "verification": "The reviewer verifies the frozen API schema hash."}]
+    "handoffs": [{"fromAgent": "api_producer", "toAgent": "contract_reviewer", "scope": "contracts/generated/**", "fromPhase": "produce", "fromConcurrencyGroup": "producer", "toPhase": "review", "toConcurrencyGroup": "reviewer", "precondition": "The API schema is frozen and hashed.", "verification": "The reviewer verifies the frozen API schema hash."}]
   },
   "capabilityPolicies": [{"id": "direct-default", "semanticMode": "deterministic-orchestration", "requiredCapabilities": [], "preferredRuntimeMapping": "instruction-driven", "reason": "Ordered local instructions preserve the producer-reviewer contract."}]
 }

@@ -20,7 +20,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ is required
 
 
 PLAN_SCHEMA_VERSION = 3
-GENERATOR_VERSION = "5.1"
+GENERATOR_VERSION = "5.2"
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 AGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -183,6 +183,10 @@ def validate_artifacts(root: Path, plan: dict) -> tuple[dict[str, str], dict[str
             raise PlanError(f"artifact contains an obsolete runtime token: {relative}")
         artifacts[relative] = content
         modes[relative] = mode
+    try:
+        harness_state.validate_file_namespace(artifacts, label="plan artifacts")
+    except harness_state.StateError as exc:
+        raise PlanError(str(exc)) from exc
     return artifacts, modes
 
 
@@ -524,6 +528,10 @@ def application_outputs(application: dict) -> dict[str, str]:
     outputs = dict(application["artifacts"])
     outputs[application["instructionRelative"]] = application["instructionText"]
     outputs[".harness/manifest.json"] = application["manifestText"]
+    try:
+        harness_state.validate_file_namespace(outputs, label="application outputs")
+    except harness_state.StateError as exc:
+        raise PlanError(str(exc)) from exc
     return outputs
 
 

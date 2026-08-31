@@ -60,13 +60,13 @@ Read [topology-contract.md](topology-contract.md) before filling the topology. T
 
 Allowed dependency shapes are `independent`, `static-dag`, `cyclic-contract`, and `dynamic`. Allowed recurring coordination reasons are `dynamic-allocation`, `fan-out-fan-in`, `cross-contract-verification`, `reviewer-chain`, and `phase-freeze`.
 
-The dependency shape is not free-form audit metadata. `independent` requires empty `dependsOn` relationships, `cyclic-contract` requires an `interactsWith` cycle, and `dynamic` requires coordinated topology with `dynamic-allocation`. Every coordination reason must be backed by the corresponding declared collaboration or execution structure.
+The dependency shape is not free-form audit metadata. `independent` requires empty `dependsOn` relationships, `cyclic-contract` requires an `interactsWith` cycle, and `dynamic` requires coordinated topology with `dynamic-allocation`. `static-dag` describes the acyclic `dependsOn` execution graph and does not by itself prohibit non-ordering `interactsWith` cycles; use `cyclic-contract` when a structural interaction cycle is the material topology driver. Every coordination reason must be backed by the corresponding declared collaboration or execution structure.
 
 `minimal` permits at most one boundary and no recurring coordination. `modular` permits two or more statically coordinated boundaries. `coordinated` requires repository-level recurring coordination and at least one explicit reason. Boundary count alone never forces `coordinated`.
 
 ## Boundary and component linkage
 
-Every boundary follows the material-boundary contract and provides stable `decisionAreaIds`. Use `dependsOn` only for acyclic execution order and `interactsWith` for structural relationships that may be cyclic.
+Every boundary follows the material-boundary contract and provides topology-wide unique `decisionAreaIds`. Use `dependsOn` only for acyclic execution order and `interactsWith` for structural relationships that may be cyclic.
 
 Every specialist agent or skill has `scope` and `boundaryRefs`. `project-harness` uses:
 
@@ -123,7 +123,7 @@ Scopes are literal POSIX-relative paths or directory prefixes ending in `/**`. A
 }
 ```
 
-Sequential overlapping writers require a matching directional handoff. Concurrent writers in the same lane may not overlap.
+Sequential overlapping writers require a matching directional handoff whose scope equals the complete intersection of the two write scopes. A handoff covering only a descendant of the shared scope is invalid. Concurrent writers in the same lane may not overlap.
 
 ## Quality, capability, and routing policies
 
@@ -143,12 +143,13 @@ A direct capability policy may require no special runtime feature:
 
 When `requiredCapabilities` is non-empty or `preferredRuntimeMapping` is `runtime-native`, add `probe: {"mode": "runtime-check"}` and a fallback containing `semanticMode`, `implementation`, and `preserves: ["input", "output", "verification"]`.
 
-Routing policies require evidence-backed task categories, boundary references, a recommended execution class, declared collaboration patterns, quality-policy references, and one capability-policy reference. Task categories are globally unique across routes, and a direct route has no collaboration patterns. If no route matches, runtime task classification selects the lightest safe execution class. Persistent routes do not store the current task decision.
+Routing policies require evidence-backed task categories, boundary references, a recommended execution class, declared collaboration patterns, quality-policy references, and one capability-policy reference. Task categories are globally unique across routes, and a direct route has no collaboration patterns. If multiple categories match, use the persistent route only when all matches resolve to that same route; otherwise report ambiguity and require an explicit runtime selection. If no route matches, runtime task classification selects the lightest safe execution class. Persistent routes do not store the current task decision.
 
 ## Artifact and safety constraints
 
 - Generated skill frontmatter supports only single-line scalar `name` and `description` fields.
 - Include every generated dedicated file in `artifacts`, including supporting references, scripts, and assets.
+- Artifact paths must remain unique under portable case-folded comparison. Two file outputs may not have an ancestor/descendant relationship.
 - Every project, boundary, persistence record, quality policy, route, skill, and agent that requires evidence uses at least one structured evidence object.
 - Optional evidence line ranges are inclusive and one-based and apply only to UTF-8 text files.
 - Every artifact declares a four-digit POSIX permission mode such as `0644` or `0755`; special permission bits are unsupported.

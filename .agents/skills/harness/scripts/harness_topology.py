@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the machine-readable Harness for Codex v5.1 topology contract."""
+"""Validate the machine-readable Harness for Codex v5.2 topology contract."""
 
 from __future__ import annotations
 
@@ -162,6 +162,30 @@ def scope_contains(container: str, candidate: str) -> bool:
             container_base + "/"
         )
     return not candidate_prefix and candidate_base == container_base
+
+
+def scope_intersection(first: str, second: str) -> str | None:
+    first_base, first_prefix = normalize_scope(first, "first scope")
+    second_base, second_prefix = normalize_scope(second, "second scope")
+    first_key = first_base.casefold()
+    second_key = second_base.casefold()
+    if first_key == second_key:
+        if first_prefix and not second_prefix:
+            return second
+        if second_prefix and not first_prefix:
+            return first
+        return first
+    if first_prefix and second_key.startswith(first_key + "/"):
+        return second
+    if second_prefix and first_key.startswith(second_key + "/"):
+        return first
+    return None
+
+
+def scopes_equivalent(first: str, second: str) -> bool:
+    first_base, first_prefix = normalize_scope(first, "first scope")
+    second_base, second_prefix = normalize_scope(second, "second scope")
+    return first_prefix == second_prefix and first_base.casefold() == second_base.casefold()
 
 
 def _has_interaction_cycle(boundaries: list[dict]) -> bool:
@@ -546,9 +570,9 @@ def _validate_components(
             else:
                 source_agent, target_agent = second_agent, first_agent
                 source_lane, target_lane = second_lane, first_lane
-            has_handoff = any(
-                scopes_overlap(scope, first["scope"])
-                and scopes_overlap(scope, second["scope"])
+            shared_scope = scope_intersection(first["scope"], second["scope"])
+            has_handoff = shared_scope is not None and any(
+                scopes_equivalent(scope, shared_scope)
                 and source == source_agent
                 and target == target_agent
                 and from_lane == source_lane
@@ -557,7 +581,8 @@ def _validate_components(
             )
             if not has_handoff:
                 raise TopologyError(
-                    f"sequential writers {first_agent} and {second_agent} require a verified handoff"
+                    f"sequential writers {first_agent} and {second_agent} require a verified "
+                    "handoff for their complete overlapping scope"
                 )
 
 
@@ -726,15 +751,52 @@ def _validate_coordination_bindings(
             "fan-out-fan-in coordination reason requires the fan-out/fan-in pattern"
         )
     if "cross-contract-verification" in reasons:
-        contract_boundaries = sum("contract" in boundary.get("types", []) for boundary in boundaries)
+        contract_boundary_ids = {
+            boundary["id"]
+            for boundary in boundaries
+            if "contract" in boundary.get("types", [])
+        }
         cross_boundary_component = any(
-            isinstance(component, dict) and component.get("scope") == "cross-boundary"
+            isinstance(component, dict)
+            and component.get("scope") == "cross-boundary"
+            and len(contract_boundary_ids.intersection(component.get("boundaryRefs", []))) >= 2
             for collection in (topology.get("agents", []), topology.get("skills", []))
             for component in collection
         )
-        if contract_boundaries < 2 and not cross_boundary_component:
+        policy_witness = any(
+            isinstance(policy, dict)
+            and len(
+                contract_boundary_ids.intersection(
+                    policy.get("activeBoundaryRefs", policy.get("boundaryRefs", []))
+                )
+            )
+            >= 2
+            for collection in (
+                topology.get("routingPolicies", []),
+                topology.get("qualityPatternPolicies", []),
+            )
+            for policy in collection
+        )
+        agent_contract_refs = {
+            agent.get("name"): contract_boundary_ids.intersection(agent.get("boundaryRefs", []))
+            for agent in topology.get("agents", [])
+            if isinstance(agent, dict) and isinstance(agent.get("name"), str)
+        }
+        handoff_witness = any(
+            isinstance(handoff, dict)
+            and len(
+                agent_contract_refs.get(handoff.get("fromAgent"), set())
+                | agent_contract_refs.get(handoff.get("toAgent"), set())
+            )
+            >= 2
+            for handoff in topology.get("handoffs", [])
+        )
+        if len(contract_boundary_ids) < 2 or not (
+            cross_boundary_component or policy_witness or handoff_witness
+        ):
             raise TopologyError(
-                "cross-contract-verification requires two contract boundaries or a cross-boundary component"
+                "cross-contract-verification requires a component, policy, or handoff that "
+                "references at least two contract boundaries"
             )
     if "reviewer-chain" in reasons:
         phase_count = len({order[0] for order in lane_orders.values()})
@@ -791,6 +853,16 @@ def validate_contract(topology_value: object, capability_value: object) -> list[
     boundary_ids = [item["id"] for item in boundaries]
     if len(boundary_ids) != len(set(boundary_ids)):
         raise TopologyError("topology.boundaries contains duplicate ids")
+    decision_area_owners: dict[str, str] = {}
+    for boundary in boundaries:
+        for decision_area_id in boundary["decisionAreaIds"]:
+            previous_owner = decision_area_owners.get(decision_area_id)
+            if previous_owner is not None:
+                raise TopologyError(
+                    f"decisionAreaId {decision_area_id!r} is assigned to multiple boundaries: "
+                    f"{previous_owner!r} and {boundary['id']!r}"
+                )
+            decision_area_owners[decision_area_id] = boundary["id"]
     _validate_dependency_graph(boundaries)
     warnings = _validate_classification(topology.get("classification"), boundaries)
     patterns = require_string_list(

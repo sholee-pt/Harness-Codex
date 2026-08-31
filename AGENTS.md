@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v5.1, a user-level harness generator for Codex projects.
+- This branch contains Harness for Codex v5.2, a user-level harness generator for Codex projects.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add deployment, marketplace publishing, telemetry, or external service dependencies.
 - Preserve the proprietary license and independently authored implementation.

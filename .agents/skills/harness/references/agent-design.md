@@ -44,7 +44,7 @@ Every generated agent must state:
 
 Do not generate one agent per material boundary automatically. A boundary is a persistent project fact; an agent is justified only when delegation materially improves judgment, independence, context isolation, reuse, or review quality. The project-level `project-harness` is a skill rather than a specialist agent and does not reference a single boundary.
 
-Two agents may not write overlapping scopes in the same execution lane. Sequential overlapping writers require an ordered, verified handoff. Read-only review may overlap a producer's write scope in a later lane.
+Two agents may not write overlapping scopes in the same execution lane. Sequential overlapping writers require an ordered, verified handoff whose scope equals their complete shared scope. Read-only review may overlap a producer's write scope in a later lane.
 
 Use snake_case agent names and matching filenames as the Harness-managed convention. Keep descriptions discriminating enough for automatic selection. Inherit the parent model by default. Do not hard-code a model tier merely to signal importance.
 

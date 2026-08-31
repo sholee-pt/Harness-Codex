@@ -181,6 +181,7 @@ def validate_journal(root: Path, journal: object) -> dict:
         raise TransactionError("transaction operations must be a non-empty array")
 
     seen: set[str] = set()
+    operation_paths: list[str] = []
     for index, operation in enumerate(operations):
         if not isinstance(operation, dict):
             raise TransactionError(f"transaction operation {index} must be an object")
@@ -191,6 +192,7 @@ def validate_journal(root: Path, journal: object) -> dict:
         if relative in seen:
             raise TransactionError(f"duplicate transaction target: {relative}")
         seen.add(relative)
+        operation_paths.append(relative)
         harness_state.resolve_inside(root, relative)
         if action not in {"create", "update"}:
             raise TransactionError(f"invalid transaction action for {relative}: {action!r}")
@@ -216,6 +218,11 @@ def validate_journal(root: Path, journal: object) -> dict:
         ):
             raise TransactionError(f"create operation contains original metadata: {relative}")
         _validate_mode(operation.get("desiredMode"), f"{relative} desiredMode")
+
+    try:
+        harness_state.validate_file_namespace(operation_paths, label="transaction operations")
+    except harness_state.StateError as exc:
+        raise TransactionError(str(exc)) from exc
 
     applied = journal.get("applied")
     if not isinstance(applied, list) or not all(isinstance(value, str) for value in applied):
@@ -296,6 +303,10 @@ def prepare_transaction(
         raise TransactionError("transaction outputs and action paths do not match")
     if set(outputs) != set(desired_modes):
         raise TransactionError("transaction desired modes and output paths do not match")
+    try:
+        harness_state.validate_file_namespace(outputs, label="transaction outputs")
+    except harness_state.StateError as exc:
+        raise TransactionError(str(exc)) from exc
     for relative in outputs:
         if not isinstance(relative, str) or not is_allowed_target(relative):
             raise TransactionError(f"transaction target is not allowed: {relative!r}")

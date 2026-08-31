@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Harness_for_Codex-v5.1-brightgreen.svg" alt="Harness for Codex v5.1">
+  <img src="https://img.shields.io/badge/Harness_for_Codex-v5.2-brightgreen.svg" alt="Harness for Codex v5.2">
   <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
   <img src="https://img.shields.io/badge/Type-Harness_Generator-orange.svg" alt="Harness Generator">
   <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
@@ -33,7 +33,7 @@ Harness requires Anaconda or Miniconda. Clone this branch, create the dedicated 
 ### PowerShell
 
 ```powershell
-git clone --branch codex/v5.1 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v5.2 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file "Harness/environment.yml"
 New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
 New-Item -ItemType Directory -Force "$HOME/.agents/skills/harness" | Out-Null
@@ -43,7 +43,7 @@ Copy-Item -Recurse -Force "Harness/.agents/skills/harness/*" "$HOME/.agents/skil
 ### macOS and Linux
 
 ```shell
-git clone --branch codex/v5.1 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v5.2 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 mkdir -p ~/.agents/skills
 mkdir -p ~/.agents/skills/harness
@@ -69,16 +69,17 @@ Harness first creates a structured proposal and runs a no-write dry-run. It appl
 ## Design Rules
 
 - Repository evidence determines roles, skills, and orchestration. Every evidence claim is bound to an existing file hash and may identify an exact line range.
-- Persistent material boundaries record stable decision-area IDs, project persistence, contracts, verification, failure impact, and separation benefits.
+- Persistent material boundaries record topology-wide unique decision-area IDs, project persistence, contracts, verification, failure impact, and separation benefits.
 - Project topology is `minimal`, `modular`, or `coordinated`. Boundary count alone does not force coordination; recurring repository-level coordination does.
 - Current tasks are routed independently as `direct`, `delegated`, or `coordinated`. One-off task risk is never persisted as project topology.
 - Six collaboration patterns are available as design vocabulary, not mandatory templates.
 - Quality patterns are separate policies with repository evidence, finite budgets, stopping conditions, and failure handling.
-- Concurrent writers may not overlap. Ordered overlapping writers require a verified handoff between explicit execution lanes.
+- Concurrent writers may not overlap. Ordered overlapping writers require a verified handoff covering their complete shared scope between explicit execution lanes.
 - Literal file scopes cannot authorize recursive directory scopes. Writer overlap is compared case-insensitively for portable Windows safety.
-- A persistent task category belongs to at most one route. If no route matches, the current task is classified at runtime instead of defaulting blindly to direct execution.
+- A persistent task category belongs to at most one route. Multiple matches may share one route; conflicting routes are reported as ambiguous instead of being merged or selected by order. If no route matches, the current task is classified at runtime instead of defaulting blindly to direct execution.
 - Runtime capability declarations require a probe and contract-preserving fallback when a special capability is needed.
 - User-owned files and edits are never silently overwritten.
+- Planned and recorded output paths reject case-only collisions and file/child target conflicts before transaction staging.
 - Generated files are updated only when their recorded hash still matches.
 - Outputs classified as unchanged are not rewritten.
 - A failed multi-file apply is rolled back from verified backups before another plan may run. POSIX file permission modes are restored with content.
@@ -109,7 +110,7 @@ Use `--recover` only when status or a failed apply reports a pending journal. Us
 
 If Windows Conda raises `UnicodeEncodeError` while forwarding a child-process error, inspect transaction status before retrying and rerun the diagnostic with `conda run --no-capture-output -n harness python ...`. This keeps the required environment while exposing the original Harness result.
 
-Harness for Codex v5.1 requires generation plan schema 3, manifest schema 5, and transaction schema 2. Clean schema 4 installations are upgraded through repository re-analysis and a reviewed schema 3 plan; boundaries are not inferred from legacy manifest fields. Clean schema 1-3 manifests can first be prepared as schema 4 only when every legacy evidence path still resolves.
+Harness for Codex v5.2 requires generation plan schema 3, manifest schema 5, and transaction schema 2. Clean schema 4 installations are upgraded through repository re-analysis and a reviewed schema 3 plan; boundaries are not inferred from legacy manifest fields. Clean schema 1-3 manifests can first be prepared as schema 4 only when every legacy evidence path still resolves.
 
 ## Versioning
 

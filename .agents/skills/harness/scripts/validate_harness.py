@@ -332,8 +332,20 @@ class Validator:
 
     def validate_managed_files(self) -> None:
         entries = self.manifest.get("managedFiles", [])
+        entry_items = entries if isinstance(entries, list) else []
+        managed_path_values = [
+            entry.get("path")
+            for entry in entry_items if isinstance(entry, dict)
+            if isinstance(entry.get("path"), str)
+        ]
+        try:
+            harness_state.validate_file_namespace(
+                managed_path_values, label="manifest managedFiles"
+            )
+        except harness_state.StateError as exc:
+            self.error(str(exc))
         managed_paths: set[str] = set()
-        for entry in entries if isinstance(entries, list) else []:
+        for entry in entry_items:
             if not isinstance(entry, dict):
                 self.error("managedFiles entries must be objects")
                 continue

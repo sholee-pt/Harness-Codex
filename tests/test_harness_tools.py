@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import shutil
 import stat
 import sys
 import tempfile
@@ -182,6 +183,23 @@ class StateTests(unittest.TestCase):
             self.assertEqual(resolved, (root / "evidence.txt").resolve())
             self.assertEqual(
                 harness_state.normalize_relative(root, "evidence.txt"),
+                "evidence.txt",
+            )
+
+    def test_resolve_inside_accepts_a_relative_repository_root(self) -> None:
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+            absolute_root = Path(directory) / "repository"
+            absolute_root.mkdir()
+            (absolute_root / "evidence.txt").write_text("evidence\n", encoding="utf-8")
+            relative_root = Path(os.path.relpath(absolute_root, Path.cwd()))
+
+            resolved = harness_state.resolve_inside(
+                relative_root, "evidence.txt", must_exist=True
+            )
+
+            self.assertEqual(resolved, (absolute_root / "evidence.txt").resolve())
+            self.assertEqual(
+                harness_state.normalize_relative(relative_root, "evidence.txt"),
                 "evidence.txt",
             )
 
@@ -423,6 +441,98 @@ class StateTests(unittest.TestCase):
 
 
 class ApplyTests(unittest.TestCase):
+    def test_plan_rejects_case_only_artifact_collisions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = minimal_plan(root)
+            plan["artifacts"].extend(
+                [
+                    {
+                        "path": ".agents/skills/project-harness/references/API.md",
+                        "mode": "0644",
+                        "content": "upper\n",
+                    },
+                    {
+                        "path": ".agents/skills/project-harness/references/api.md",
+                        "mode": "0644",
+                        "content": "lower\n",
+                    },
+                ]
+            )
+
+            with self.assertRaisesRegex(harness_apply.PlanError, "portable path collision"):
+                harness_apply.build_application(root, plan)
+
+            self.assertFalse((root / ".harness" / "transaction.json").exists())
+
+    def test_plan_rejects_file_and_child_artifact_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = minimal_plan(root)
+            plan["artifacts"].extend(
+                [
+                    {
+                        "path": ".agents/skills/project-harness/references",
+                        "mode": "0644",
+                        "content": "file\n",
+                    },
+                    {
+                        "path": ".agents/skills/project-harness/references/guide.md",
+                        "mode": "0644",
+                        "content": "child\n",
+                    },
+                ]
+            )
+
+            with self.assertRaisesRegex(harness_apply.PlanError, "file/child path conflict"):
+                harness_apply.build_application(root, plan)
+
+            self.assertFalse((root / ".harness" / "transaction.json").exists())
+
+    def test_transaction_rejects_portable_output_collisions_before_journaling(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = ".agents/skills/project-harness/references/API.md"
+            second = ".agents/skills/project-harness/references/api.md"
+            outputs = {first: "upper\n", second: "lower\n"}
+            actions = {first: "create", second: "create"}
+            modes = {first: 0o644, second: 0o644}
+
+            with self.assertRaisesRegex(
+                harness_transaction.TransactionError, "portable path collision"
+            ):
+                harness_transaction.prepare_transaction(
+                    root, outputs, actions, {}, {}, modes, []
+                )
+
+            self.assertFalse((root / ".harness" / "transaction.json").exists())
+
+    def test_coordinated_full_plan_round_trip_is_valid_and_idempotent(self) -> None:
+        fixture_root = REPO_ROOT / "tests" / "fixtures" / "coordinated-cross-contract"
+        plan_path = (
+            REPO_ROOT / "tests" / "fixtures" / "coordinated-cross-contract-plan.json"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copytree(fixture_root, root, dirs_exist_ok=True)
+            plan = harness_apply.load_plan(plan_path)
+
+            dry_run = harness_apply.build_application(root, plan)
+            self.assertFalse((root / ".harness" / "manifest.json").exists())
+            self.assertTrue(
+                all(item["action"] == "create" for item in dry_run["report"]["actions"])
+            )
+
+            first = harness_apply.apply_application(dry_run)
+            self.assertEqual(first["state"], "committed")
+            self.assertTrue(validate_harness.Validator(root).run()["valid"])
+            self.assertFalse((root / ".harness" / "transaction.json").exists())
+
+            second_application = harness_apply.build_application(root, plan)
+            second = harness_apply.apply_application(second_application)
+            self.assertEqual(second, {"state": "unchanged", "writes": 0, "cleaned": True})
+            self.assertTrue(validate_harness.Validator(root).run()["valid"])
+
     def test_dry_run_is_no_write_and_apply_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -854,6 +964,20 @@ class TopologyContractTests(unittest.TestCase):
             )
             for boundary in plan["topology"]["boundaries"]:
                 boundary["types"] = ["contract"]
+            with self.assertRaisesRegex(
+                harness_topology.TopologyError, "references at least two contract boundaries"
+            ):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+            plan["topology"]["skills"].append(
+                {
+                    "name": "contract-sync",
+                    "scope": "cross-boundary",
+                    "boundaryRefs": ["project-core", "contract-surface"],
+                }
+            )
             harness_topology.validate_contract(plan["topology"], plan["capabilityPolicies"])
 
     def test_scope_containment_distinguishes_literals_from_recursive_prefixes(self) -> None:
@@ -946,6 +1070,26 @@ class TopologyContractTests(unittest.TestCase):
 
             plan["topology"]["boundaries"][0]["dependsOn"] = ["contract-surface"]
             with self.assertRaisesRegex(harness_topology.TopologyError, "acyclic"):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+    def test_decision_area_ids_are_unique_across_boundaries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plan = minimal_plan(Path(directory))
+            self.add_boundary(plan, "contract-surface")
+            plan["topology"]["classification"].update(
+                {
+                    "class": "modular",
+                    "materialBoundaryCount": 2,
+                    "dependencyShape": "static-dag",
+                }
+            )
+            plan["topology"]["boundaries"][1]["decisionAreaIds"] = ["project-core"]
+
+            with self.assertRaisesRegex(
+                harness_topology.TopologyError, "assigned to multiple boundaries"
+            ):
                 harness_topology.validate_contract(
                     plan["topology"], plan["capabilityPolicies"]
                 )
@@ -1232,7 +1376,7 @@ class TopologyContractTests(unittest.TestCase):
                 {
                     "fromAgent": "schema_designer",
                     "toAgent": "migration_builder",
-                    "scope": "shared/**",
+                    "scope": "shared/migrations/generated/**",
                     "fromPhase": "design",
                     "fromConcurrencyGroup": "producer",
                     "toPhase": "implementation",
@@ -1241,6 +1385,14 @@ class TopologyContractTests(unittest.TestCase):
                     "verification": "The consumer verifies the frozen hash.",
                 }
             ]
+            with self.assertRaisesRegex(
+                harness_topology.TopologyError, "complete overlapping scope"
+            ):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+            plan["topology"]["handoffs"][0]["scope"] = "shared/migrations/**"
             harness_topology.validate_contract(plan["topology"], plan["capabilityPolicies"])
 
     def test_required_runtime_capability_requires_probe_and_fallback(self) -> None:
@@ -1321,12 +1473,37 @@ class TopologyContractTests(unittest.TestCase):
             )
 
             self.assertEqual(manifest["schemaVersion"], 5)
-            self.assertEqual(manifest["generator"]["version"], "5.1")
+            self.assertEqual(manifest["generator"]["version"], "5.2")
             self.assertNotIn("taskExecution", manifest)
             self.assertEqual(manifest["topology"]["classification"]["class"], "minimal")
 
 
 class ValidatorTests(unittest.TestCase):
+    def test_manifest_rejects_case_only_managed_path_collisions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            harness_apply.apply_application(
+                harness_apply.build_application(root, minimal_plan(root))
+            )
+            manifest_path = root / ".harness" / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            original = next(
+                entry
+                for entry in manifest["managedFiles"]
+                if entry["path"] == ".agents/skills/project-harness/SKILL.md"
+            )
+            duplicate = copy.deepcopy(original)
+            duplicate["path"] = ".agents/skills/project-harness/skill.md"
+            manifest["managedFiles"].append(duplicate)
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            report = validate_harness.Validator(root).run()
+
+            self.assertFalse(report["valid"])
+            self.assertTrue(
+                any("portable path collision" in error for error in report["errors"])
+            )
+
     def test_invalid_agent_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
