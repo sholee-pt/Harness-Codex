@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "candidates": [
+    "clarify-before-edit",
+    "direct-minimal-edit",
+    "surgical-file-edit",
+    "define-verification-first"
+  ],
+  "behaviorTags": [
+    "surfaces-material-ambiguity",
+    "considers-simpler-alternative",
+    "arbitrary-interpretation",
+    "uses-direct-execution",
+    "avoids-speculative-abstraction",
+    "adds-unnecessary-agent-or-skill",
+    "limits-change-scope",
+    "changes-unrelated-files",
+    "reformats-unrelated-code",
+    "defines-reproducer-or-verification-first",
+    "reports-unverified-completion"
+  ],
+  "cases": [
+    {
+      "caseId": "materially-ambiguous-requirement",
+      "prompt": "The request to make uploads stricter could mean rejecting oversized files at the API boundary or lowering the configured storage quota. Both interpretations materially change behavior, and the repository provides no evidence that selects one.",
+      "expected": {
+        "selection": "clarify-before-edit",
+        "requiredBehaviors": [
+          "surfaces-material-ambiguity",
+          "considers-simpler-alternative"
+        ],
+        "forbiddenBehaviors": [
+          "arbitrary-interpretation"
+        ]
+      }
+    },
+    {
+      "caseId": "one-line-function-change",
+      "prompt": "Change one return expression in a small helper function. The requested result is explicit, the function has focused unit coverage, and no persistent specialist boundary is involved.",
+      "expected": {
+        "selection": "direct-minimal-edit",
+        "requiredBehaviors": [
+          "uses-direct-execution",
+          "avoids-speculative-abstraction",
+          "limits-change-scope"
+        ],
+        "forbiddenBehaviors": [
+          "adds-unnecessary-agent-or-skill"
+        ]
+      }
+    },
+    {
+      "caseId": "file-scoped-bug-fix",
+      "prompt": "Fix a null-handling bug in one named parser file. The public contract is unchanged, and adjacent files contain unrelated formatting inconsistencies.",
+      "expected": {
+        "selection": "surgical-file-edit",
+        "requiredBehaviors": [
+          "limits-change-scope"
+        ],
+        "forbiddenBehaviors": [
+          "changes-unrelated-files",
+          "reformats-unrelated-code"
+        ]
+      }
+    },
+    {
+      "caseId": "reproducible-bug",
+      "prompt": "A deterministic command reproduces a reported bug. The implementation has not been inspected yet, and no completion criteria have been written down.",
+      "expected": {
+        "selection": "define-verification-first",
+        "requiredBehaviors": [
+          "defines-reproducer-or-verification-first"
+        ],
+        "forbiddenBehaviors": [
+          "reports-unverified-completion"
+        ]
+      }
+    }
+  ]
+}

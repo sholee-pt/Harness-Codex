@@ -19,7 +19,7 @@ Separate collaboration patterns, which distribute work, from quality patterns, w
 
 ## Required run protocol
 
-1. Define the objective, completion criteria, scopes, and planned artifacts.
+1. Define the objective, completion criteria, scopes, planned artifacts, material assumptions, conflicting interpretations, simpler alternatives, and verification method before implementation.
 2. Resolve the selected routing policy and probe required runtime capabilities before assignment. If a required capability is absent, select the declared fallback or stop that path. Static manifest validation does not prove live capability availability.
 3. Give every delegated task an owner, input, output contract, write boundary, and verification method.
 4. Collect explicit completion reports and account for every planned artifact.
@@ -36,4 +36,4 @@ Separate collaboration patterns, which distribute work, from quality patterns, w
 
 ## Generated orchestrator contents
 
-The `project-harness` skill should contain the project-specific trigger, topology, task-routing rules, inputs and outputs, phase boundaries, capability fallback, freeze protocol, verification, and safe stopping conditions. Keep detailed domain procedures in separate project skills.
+The `project-harness` skill should contain the project-specific trigger, topology, task-routing rules, inputs and outputs, phase boundaries, capability fallback, freeze protocol, verification, safe stopping conditions, and the common change discipline from the bundled template. Keep detailed domain procedures in separate project skills.

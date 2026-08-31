@@ -53,6 +53,10 @@ Test the applicable cases, using an isolated temporary repository when possible:
 20. Case-only artifact names and file/child output targets fail before a transaction journal is written.
 21. A handoff covering only part of two writers' shared scope is rejected.
 22. A coordinated full-plan fixture completes dry-run, journaled apply, manifest validation, and a no-op second apply.
+23. Materially ambiguous requirements surface the competing interpretations instead of selecting one arbitrarily.
+24. A one-line function change uses direct execution without unnecessary agents, skills, or abstractions.
+25. A file-scoped bug fix avoids unrelated files and formatting changes.
+26. A reproducible bug defines the reproducer or explicit verification criteria before implementation.
 
 ## Completion gate
 

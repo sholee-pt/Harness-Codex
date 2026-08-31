@@ -20,7 +20,7 @@ COMPARISON_PLAN_SCHEMA_VERSION = 1
 COMPARISON_SCHEMA_VERSION = 1
 PROPOSAL_SCHEMA_VERSION = 1
 PARSER_VERSION = "1"
-HARNESS_VERSION = "5.3"
+HARNESS_VERSION = "5.4"
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 PSEUDONYM_RE = re.compile(r"^[a-z][a-z0-9-]*:[0-9a-f]{32}$")
 
@@ -422,7 +422,7 @@ def validate_run_record(value: Any, *, verify_hash: bool = True) -> dict[str, An
     validate_measurement(capture["malformedEventCount"], "capture.malformedEventCount")
     validate_measurement(capture["unknownEventCount"], "capture.unknownEventCount")
     if capture["rawEventsStored"] is not False:
-        raise EvaluationError("v5.3 never stores raw JSONL events")
+        raise EvaluationError("v5.4 never stores raw JSONL events")
 
     timestamps = _require_object(record["timestamps"], "timestamps")
     _require_keys(timestamps, {"startedAt", "endedAt"}, {"startedAt", "endedAt"}, "timestamps")
@@ -608,7 +608,7 @@ def validate_run_record(value: Any, *, verify_hash: bool = True) -> dict[str, An
     privacy_fields = {"rawPromptStored", "rawTranscriptStored", "sourceContentStored", "absolutePathStored", "remoteUrlStored", "rawEventsStored"}
     _require_keys(privacy, privacy_fields, privacy_fields, "privacy")
     if any(privacy[key] is not False for key in privacy_fields):
-        raise EvaluationError("v5.3 run records must not retain raw or identifying content")
+        raise EvaluationError("v5.4 run records must not retain raw or identifying content")
 
     result = _require_object(record["result"], "result")
     _require_keys(result, {"resultFingerprint", "verificationProfileFingerprint", "processCleanupVerified"}, {"resultFingerprint", "verificationProfileFingerprint", "processCleanupVerified"}, "result")
@@ -633,7 +633,7 @@ def validate_annotation(value: Any, *, verify_hash: bool = True) -> dict[str, An
     _require_uuid(annotation["runId"], "runId")
     _require_timestamp(annotation["createdAt"], "createdAt")
     if annotation["source"] != "user":
-        raise EvaluationError("v5.3 annotations must use source user")
+        raise EvaluationError("v5.4 annotations must use source user")
     if annotation["acceptance"] not in {"accepted", "accepted-with-corrections", "rejected", "unknown"}:
         raise EvaluationError("annotation acceptance is invalid")
     validate_measurement(annotation["correctionCount"], "annotation.correctionCount")
@@ -735,7 +735,7 @@ def validate_comparison_record(value: Any, *, verify_hash: bool = True) -> dict[
     if len(confounders) != len(set(confounders)):
         raise EvaluationError("confounders must not contain duplicates")
     if record["causalClaimAllowed"] is not False:
-        raise EvaluationError("v5.3 comparison records cannot allow causal claims")
+        raise EvaluationError("v5.4 comparison records cannot allow causal claims")
     seed = record.get("randomizationSeed")
     if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int) or seed < 0):
         raise EvaluationError("randomizationSeed must be a non-negative integer")
@@ -769,7 +769,7 @@ def validate_proposal_record(value: Any, *, verify_hash: bool = True) -> dict[st
     _require_enum(record["proposalType"], {"experiment-suggestion", "configuration-proposal", "no-change", "negative-signal"}, "proposalType")
     _require_enum(record["status"], {"observed", "proposed", "rejected"}, "status")
     if record["autoApplicable"] is not False:
-        raise EvaluationError("v5.3 proposals must not be auto-applicable")
+        raise EvaluationError("v5.4 proposals must not be auto-applicable")
 
     condition = _require_object(record["condition"], "condition")
     _require_keys(condition, {"taskCategory", "complexityLevel", "impactLevel"}, {"taskCategory", "complexityLevel", "impactLevel"}, "condition")
@@ -836,7 +836,7 @@ def validate_proposal_record(value: Any, *, verify_hash: bool = True) -> dict[st
     language = _require_object(record["language"], "language")
     _require_keys(language, {"causalClaimAllowed", "requiredSummaryCode"}, {"causalClaimAllowed", "requiredSummaryCode"}, "language")
     if language["causalClaimAllowed"] is not False or language["requiredSummaryCode"] != "association-observed-causality-unconfirmed":
-        raise EvaluationError("proposal language must retain the non-causal v5.3 contract")
+        raise EvaluationError("proposal language must retain the non-causal v5.4 contract")
     if verify_hash:
         verify_integrity(record)
     return record

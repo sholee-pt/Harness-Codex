@@ -1,6 +1,6 @@
 # Evaluation Contract
 
-Harness for Codex v5.3 adds an optional evaluation layer. It does not change generation plan schema 3, manifest schema 5, transaction schema 2, managed-file ownership, or the normal configure workflow.
+Harness for Codex v5.4 retains the optional evaluation layer introduced in v5.3 and adds a synthetic change-discipline probe. It does not change generation plan schema 3, manifest schema 5, transaction schema 2, managed-file ownership, or the normal configure workflow.
 
 ## Boundary
 
@@ -33,14 +33,18 @@ conda run -n harness python scripts/harness_eval.py inspect --run RUN_ID
 conda run -n harness python scripts/harness_eval.py export --repository REPOSITORY_ID
 conda run -n harness python scripts/harness_eval.py repair --repository REPOSITORY_ID
 conda run -n harness python scripts/harness_eval.py paired-run --root REPOSITORY --task-file TASK.txt --comparison-plan PLAN.json --verification VERIFY.json --codex-home CLEAN_CODEX_HOME --repetitions 3 --order randomized
+conda run -n harness python scripts/harness_eval.py change-discipline-suite --root REPOSITORY --cases CASES.json
+conda run -n harness python scripts/harness_eval.py change-discipline-suite --cases CASES.json --validate-only
 ```
 
 Prompt text is read from stdin or a user-owned file. Do not pass it as a positional shell argument.
+
+The change-discipline suite is a live classification probe over synthetic prompts. It scores both the selected action and required or forbidden behavior tags, but it does not prove that a separate code-changing run followed the declared policy. `--validate-only` checks fixture structure and invokes no Codex process.
 
 ## Platform support
 
 The canonical store, parser, locking, and fixture tests support Linux and Windows. Live process-tree isolation is Linux-first. Windows live execution uses a new process group and `taskkill` fallback, but remains experimental until a platform smoke test verifies that no child process survives a timeout.
 
-## Compatibility invariant
+## Compatibility
 
-With evaluation unused, v5.3 produces the same generated artifacts, managed instruction, action map, topology warnings, and transaction operations as v5.2. The only allowed manifest difference is `manifest.generator.version`.
+Harness for Codex v5.4 keeps v5.3 evaluation records and all v5 generation, ownership, and transaction schemas compatible. Regeneration may update `project-harness`, writer instructions, and `manifest.generator.version` to add the change-discipline contract. Existing user-owned edits remain protected by the normal ownership and hash checks.

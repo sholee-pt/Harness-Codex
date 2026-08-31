@@ -49,3 +49,5 @@ Two agents may not write overlapping scopes in the same execution lane. Sequenti
 Use snake_case agent names and matching filenames as the Harness-managed convention. Keep descriptions discriminating enough for automatic selection. Inherit the parent model by default. Do not hard-code a model tier merely to signal importance.
 
 For read-only reviewers, prohibit edits in instructions and use only supported least-privilege settings. For writers, ensure the runtime actually exposes the tools required by the contract; do not assume a declared tool is available without a capability check.
+
+Every writer's `developer_instructions` must carry a concise, self-contained change-discipline rule. It must require the writer to surface material ambiguity and simpler alternatives before editing, make the smallest scoped change without speculative additions or adjacent cleanup, define verification before implementation, and report completion only after checks pass. Do not rely on the writer implicitly inheriting or loading `project-harness`.

@@ -28,6 +28,15 @@ Classify each current task as direct, delegated, or coordinated without changing
 6. If a recorded frozen artifact changes, invalidate dependent validation and repeat it.
 7. Stop every quality loop at its declared budget or stopping condition, preserve unresolved disagreement under its failure policy, then integrate results and run project-native checks.
 
+## Change discipline
+
+For code-changing work:
+
+- Surface material assumptions, conflicting interpretations, and simpler alternatives before editing.
+- Implement the smallest change that satisfies the stated objective. Do not add speculative abstractions, configuration, or unrelated features.
+- Limit edits to the requested responsibility and scope. Do not refactor, reformat, or clean up adjacent code unless the current change requires it. Remove only artifacts made obsolete by the current change.
+- Define verification before implementation. Report completion only after the checks pass, or report the failure and remaining uncertainty explicitly.
+
 ## Failure policy
 
 - Retry only a clearly transient failure, at most once.

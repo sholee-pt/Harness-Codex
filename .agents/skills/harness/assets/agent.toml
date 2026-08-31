@@ -22,6 +22,8 @@ This role exists because: __REPOSITORY_EVIDENCE__
 
 __PROJECT_SPECIFIC_METHOD__
 
+For code-changing work, follow the project-harness change discipline: surface material ambiguity and simpler alternatives before editing, make the smallest scoped change without adjacent cleanup, define verification before implementation, and report completion only after the checks pass.
+
 # Verification and failure handling
 
 __VERIFICATION_AND_EXPLICIT_FAILURE_REPORTING__

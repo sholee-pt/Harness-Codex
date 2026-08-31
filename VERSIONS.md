@@ -16,6 +16,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v5.1` | Harness for Codex v5.1 | Schema 3 | Schema 5 | Schema 2 | Literal/prefix scope correction, portable case collision checks, topology cross-validation, unambiguous routing, exact quality budgets, expanded fixtures and Windows CI |
 | `codex/v5.2` | Harness for Codex v5.2 | Schema 3 | Schema 5 | Schema 2 | Portable output namespace validation, complete-overlap handoffs, unique decision ownership, linked coordination witnesses, coordinated full-plan integration |
 | `codex/v5.3` | Harness for Codex v5.3 | Schema 3 | Schema 5 | Schema 2 | Default-off local evaluation, JSONL provenance, isolated paired comparison, immutable records, non-binding evidence proposals |
+| `codex/v5.4` | Harness for Codex v5.4 | Schema 3 | Schema 5 | Schema 2 | Minimal-change discipline, self-contained writer safeguards, four-case behavioral classification probe |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -163,6 +164,19 @@ Harness for Codex v5.3 adds an optional evaluation layer without changing the v5
 - Keeps generation plan schema 3, manifest schema 5, and transaction schema 2.
 
 Harness for Codex v5.2 installations require no migration. Regenerating with v5.3 changes only the generator version when the same reviewed plan is applied; project artifacts and the managed instruction remain equivalent.
+
+## Harness for Codex v5.4
+
+Harness for Codex v5.4 adds a backward-compatible change-discipline contract without changing the v5 plan, manifest, or transaction schemas.
+
+- Adds a common code-change discipline to generated `project-harness` skills: surface material ambiguity and simpler alternatives, make the smallest scoped change, avoid unrelated cleanup, and define verification before implementation.
+- Requires every generated writer's `developer_instructions` to carry a concise self-contained form of the same contract because delegated agents are not guaranteed to load `project-harness`.
+- Adds four synthetic evaluation cases covering ambiguous requirements, one-line direct edits, file-scoped bug fixes, and verification-first handling of reproducible bugs.
+- Scores both the selected action and required or forbidden behavior tags.
+- Adds `--validate-only` fixture validation that does not invoke Codex and keeps live behavioral probing explicitly opt-in.
+- Keeps generation plan schema 3, manifest schema 5, transaction schema 2, and evaluation auxiliary schema 1.
+
+Harness for Codex v5.3 installations require no state migration. A reviewed regeneration may update generated `project-harness` and writer instructions; ownership conflicts continue to stop the full apply before changes are written.
 
 ## Harness for Claude Code releases
 

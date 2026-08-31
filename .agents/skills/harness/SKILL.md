@@ -57,6 +57,8 @@ The apply script derives `.harness/manifest.json` from the validated plan.
 
 Codex agent definitions require `name`, `description`, and `developer_instructions`. Inherit the current model and permissions by default. Add an override only when supported and justified. Keep review-only agents read-only through instructions and supported configuration, without inventing tool names.
 
+Retain the bundled `project-harness` change discipline in the generated orchestration skill. Because a delegated writer is not guaranteed to load that skill, also include the concise self-contained change-discipline rule required by [agent-design.md](references/agent-design.md) in every writer's `developer_instructions`.
+
 Read [orchestration.md](references/orchestration.md) before planning `project-harness`. Do not write planned artifacts directly.
 
 ## Phase 4 — Dry-run, apply, and validate

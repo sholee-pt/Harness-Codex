@@ -509,6 +509,75 @@ class PairedIsolationTests(unittest.TestCase):
 
 
 class DisabledEvaluationTests(unittest.TestCase):
+    def test_change_discipline_suite_has_four_valid_behavioral_cases(self) -> None:
+        suite = types.load_json(FIXTURES / "change-discipline-cases.json")
+        cases, candidates, behavior_tags = harness_eval._validate_probe_suite(
+            suite,
+            kind="change-discipline",
+        )
+        self.assertEqual(
+            [case["caseId"] for case in cases],
+            [
+                "materially-ambiguous-requirement",
+                "one-line-function-change",
+                "file-scoped-bug-fix",
+                "reproducible-bug",
+            ],
+        )
+        self.assertEqual(len(candidates), 4)
+        self.assertIn("limits-change-scope", behavior_tags)
+
+    def test_change_discipline_scoring_requires_selection_and_behavior_contract(self) -> None:
+        expected = {
+            "selection": "surgical-file-edit",
+            "requiredBehaviors": ["limits-change-scope"],
+            "forbiddenBehaviors": ["changes-unrelated-files"],
+        }
+        passing = harness_eval._score_probe_case(
+            selected={
+                "selection": "surgical-file-edit",
+                "behaviors": ["limits-change-scope"],
+            },
+            expected=expected,
+            kind="change-discipline",
+            behavior_tags=["limits-change-scope", "changes-unrelated-files"],
+        )
+        failing = harness_eval._score_probe_case(
+            selected={
+                "selection": "surgical-file-edit",
+                "behaviors": ["limits-change-scope", "changes-unrelated-files"],
+            },
+            expected=expected,
+            kind="change-discipline",
+            behavior_tags=["limits-change-scope", "changes-unrelated-files"],
+        )
+        self.assertTrue(passing["matched"])
+        self.assertFalse(failing["matched"])
+
+    def test_change_discipline_templates_are_self_contained_for_writers(self) -> None:
+        project_harness = (
+            REPO_ROOT / ".agents" / "skills" / "harness" / "assets" / "project-harness.md"
+        ).read_text(encoding="utf-8")
+        agent_template = (
+            REPO_ROOT / ".agents" / "skills" / "harness" / "assets" / "agent.toml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("## Change discipline", project_harness)
+        self.assertIn("Define verification before implementation", project_harness)
+        self.assertIn("surface material ambiguity and simpler alternatives", agent_template)
+        self.assertIn("report completion only after the checks pass", agent_template)
+
+    def test_change_discipline_fixture_validates_without_live_codex(self) -> None:
+        parser = harness_eval.build_parser()
+        args = parser.parse_args(
+            [
+                "change-discipline-suite",
+                "--cases",
+                str(FIXTURES / "change-discipline-cases.json"),
+                "--validate-only",
+            ]
+        )
+        self.assertEqual(args.handler(args), 0)
+
     def test_building_cli_parser_does_not_create_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "state"

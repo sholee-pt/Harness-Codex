@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in local evaluation and observability CLI for Harness for Codex v5.3."""
+"""Opt-in local evaluation and observability CLI for Harness for Codex v5.4."""
 
 from __future__ import annotations
 
@@ -639,23 +639,119 @@ def command_paired_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _probe_suite(args: argparse.Namespace, *, kind: str) -> int:
-    suite = types.load_json(Path(args.cases))
+def _validate_probe_suite(suite: Any, *, kind: str) -> tuple[list[dict[str, Any]], list[str], list[str]]:
     if not isinstance(suite, dict) or suite.get("schemaVersion") != 1:
         raise types.EvaluationError("probe suite must be a schemaVersion 1 object")
     cases = suite.get("cases")
     candidates = suite.get("candidates")
     if not isinstance(cases, list) or not isinstance(candidates, list):
         raise types.EvaluationError("probe suite requires cases and candidates arrays")
-    root = Path(args.root).resolve()
-    results = []
+    if not candidates or any(not isinstance(value, str) or not value for value in candidates):
+        raise types.EvaluationError("probe suite candidates must be non-empty strings")
+    if len(candidates) != len(set(candidates)):
+        raise types.EvaluationError("probe suite candidates must be unique")
+    behavior_tags = suite.get("behaviorTags", [])
+    if not isinstance(behavior_tags, list) or any(
+        not isinstance(value, str) or not value for value in behavior_tags
+    ):
+        raise types.EvaluationError("probe suite behaviorTags must be strings")
+    if len(behavior_tags) != len(set(behavior_tags)):
+        raise types.EvaluationError("probe suite behaviorTags must be unique")
+    if kind == "change-discipline" and not behavior_tags:
+        raise types.EvaluationError("change-discipline suite requires behaviorTags")
+    seen_case_ids: set[str] = set()
     for case in cases:
         if not isinstance(case, dict) or not isinstance(case.get("prompt"), str) or not isinstance(case.get("caseId"), str):
             raise types.EvaluationError("probe case fields are invalid")
-        instruction = (
-            f"Classify the following {kind} selection case. Return only JSON with keys selection and ambiguity. "
-            f"Candidates: {json.dumps(candidates, ensure_ascii=False)}\nCase: {case['prompt']}"
+        if not case["caseId"] or case["caseId"] in seen_case_ids:
+            raise types.EvaluationError("probe caseId values must be non-empty and unique")
+        seen_case_ids.add(case["caseId"])
+        expected = case.get("expected")
+        if not isinstance(expected, dict) or expected.get("selection") not in candidates:
+            raise types.EvaluationError("probe expected selection must name a candidate")
+        if kind == "change-discipline":
+            required = expected.get("requiredBehaviors")
+            forbidden = expected.get("forbiddenBehaviors")
+            if not isinstance(required, list) or not isinstance(forbidden, list):
+                raise types.EvaluationError(
+                    "change-discipline expectations require requiredBehaviors and forbiddenBehaviors arrays"
+                )
+            if any(value not in behavior_tags for value in required + forbidden):
+                raise types.EvaluationError("change-discipline expectation uses an unknown behavior tag")
+            if len(required) != len(set(required)) or len(forbidden) != len(set(forbidden)):
+                raise types.EvaluationError("change-discipline behavior expectations must be unique")
+            if set(required) & set(forbidden):
+                raise types.EvaluationError("required and forbidden behaviors must be disjoint")
+    return cases, candidates, behavior_tags
+
+
+def _score_probe_case(
+    *,
+    selected: Any,
+    expected: dict[str, Any],
+    kind: str,
+    behavior_tags: list[str] | None = None,
+) -> dict[str, Any]:
+    actual_selection = selected.get("selection") if isinstance(selected, dict) else None
+    expected_selection = expected["selection"]
+    result: dict[str, Any] = {
+        "expected": expected_selection,
+        "actual": actual_selection,
+        "matched": actual_selection == expected_selection,
+    }
+    if kind == "change-discipline":
+        actual_behaviors = selected.get("behaviors") if isinstance(selected, dict) else None
+        if not isinstance(actual_behaviors, list) or any(not isinstance(value, str) for value in actual_behaviors):
+            actual_behaviors = []
+        actual_set = set(actual_behaviors)
+        required = expected["requiredBehaviors"]
+        forbidden = expected["forbiddenBehaviors"]
+        unknown = actual_set - set(behavior_tags or [])
+        behaviors_matched = set(required) <= actual_set and not (set(forbidden) & actual_set) and not unknown
+        result.update(
+            {
+                "requiredBehaviors": required,
+                "forbiddenBehaviors": forbidden,
+                "actualBehaviors": sorted(actual_set),
+                "unknownBehaviors": sorted(unknown),
+                "behaviorsMatched": behaviors_matched,
+                "matched": result["matched"] and behaviors_matched,
+            }
         )
+    return result
+
+
+def _probe_suite(args: argparse.Namespace, *, kind: str) -> int:
+    suite = types.load_json(Path(args.cases))
+    cases, candidates, behavior_tags = _validate_probe_suite(suite, kind=kind)
+    if args.validate_only:
+        _print(
+            {
+                "schemaVersion": 1,
+                "probeType": f"{kind}-selection-probe",
+                "caseCount": len(cases),
+                "valid": True,
+                "liveCodexInvoked": False,
+            }
+        )
+        return 0
+    if not args.root:
+        raise types.EvaluationError("provide --root unless --validate-only is used")
+    root = Path(args.root).resolve()
+    results = []
+    for case in cases:
+        if kind == "change-discipline":
+            instruction = (
+                "Classify the following change-discipline case. Return only JSON with keys selection, "
+                "ambiguity, and behaviors. The behaviors value must be an array containing only listed tags. "
+                f"Candidates: {json.dumps(candidates, ensure_ascii=False)}. "
+                f"Behavior tags: {json.dumps(behavior_tags, ensure_ascii=False)}\nCase: {case['prompt']}"
+            )
+        else:
+            instruction = (
+                f"Classify the following {kind} selection case. Return only JSON with keys selection and ambiguity. "
+                f"Candidates: {json.dumps(candidates, ensure_ascii=False)}\nCase: {case['prompt']}"
+            )
         summary, exit_code, _, cleanup, version = capture.run_codex_jsonl(
             repository=root,
             prompt=instruction,
@@ -673,21 +769,20 @@ def _probe_suite(args: argparse.Namespace, *, kind: str) -> int:
                 selected = json.loads(summary.final_message)
             except json.JSONDecodeError:
                 selected = {"selection": "unknown", "ambiguity": True}
-        expected = case.get("expected")
-        actual_selection = selected.get("selection") if isinstance(selected, dict) else None
-        expected_selection = expected.get("selection") if isinstance(expected, dict) else None
-        results.append(
-            {
-                "caseId": case["caseId"],
-                "expected": expected_selection,
-                "actual": actual_selection,
-                "matched": actual_selection == expected_selection,
-                "captureCompleteness": "complete" if summary.terminal_event_observed and summary.parser_compatibility == "supported" else "partial",
-                "processExitCode": exit_code,
-                "processCleanupVerified": cleanup,
-                "codexVersion": version,
-            }
-        )
+        result = {
+            "caseId": case["caseId"],
+            **_score_probe_case(
+                selected=selected,
+                expected=case["expected"],
+                kind=kind,
+                behavior_tags=behavior_tags,
+            ),
+            "captureCompleteness": "complete" if summary.terminal_event_observed and summary.parser_compatibility == "supported" else "partial",
+            "processExitCode": exit_code,
+            "processCleanupVerified": cleanup,
+            "codexVersion": version,
+        }
+        results.append(result)
     matched = sum(item["matched"] for item in results)
     _print(
         {
@@ -709,6 +804,10 @@ def command_skill_suite(args: argparse.Namespace) -> int:
 
 def command_route_suite(args: argparse.Namespace) -> int:
     return _probe_suite(args, kind="route")
+
+
+def command_change_discipline_suite(args: argparse.Namespace) -> int:
+    return _probe_suite(args, kind="change-discipline")
 
 
 def _add_state_home(parser: argparse.ArgumentParser) -> None:
@@ -831,10 +930,15 @@ def build_parser() -> argparse.ArgumentParser:
     _add_state_home(paired)
     paired.set_defaults(handler=command_paired_run)
 
-    for name, handler in (("skill-selection-suite", command_skill_suite), ("route-selection-suite", command_route_suite)):
+    for name, handler in (
+        ("skill-selection-suite", command_skill_suite),
+        ("route-selection-suite", command_route_suite),
+        ("change-discipline-suite", command_change_discipline_suite),
+    ):
         suite = subparsers.add_parser(name)
-        suite.add_argument("--root", required=True)
+        suite.add_argument("--root")
         suite.add_argument("--cases", required=True)
+        suite.add_argument("--validate-only", action="store_true")
         _add_runtime(suite)
         suite.set_defaults(handler=handler)
     return parser
