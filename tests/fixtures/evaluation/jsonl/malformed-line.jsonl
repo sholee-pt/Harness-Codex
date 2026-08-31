@@ -1,0 +1,3 @@
+{"type":"thread.started","thread_id":"fixture-thread"}
+this is not json
+{"type":"turn.completed","usage":{}}

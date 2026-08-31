@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Harness_for_Codex-v5.2-brightgreen.svg" alt="Harness for Codex v5.2">
+  <img src="https://img.shields.io/badge/Harness_for_Codex-v5.3-brightgreen.svg" alt="Harness for Codex v5.3">
   <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
   <img src="https://img.shields.io/badge/Type-Harness_Generator-orange.svg" alt="Harness Generator">
   <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
@@ -33,7 +33,7 @@ Harness requires Anaconda or Miniconda. Clone this branch, create the dedicated 
 ### PowerShell
 
 ```powershell
-git clone --branch codex/v5.2 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v5.3 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file "Harness/environment.yml"
 New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
 New-Item -ItemType Directory -Force "$HOME/.agents/skills/harness" | Out-Null
@@ -43,7 +43,7 @@ Copy-Item -Recurse -Force "Harness/.agents/skills/harness/*" "$HOME/.agents/skil
 ### macOS and Linux
 
 ```shell
-git clone --branch codex/v5.2 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v5.3 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 mkdir -p ~/.agents/skills
 mkdir -p ~/.agents/skills/harness
@@ -65,6 +65,25 @@ $harness configure a project harness for this repository.
 The skill also recognizes direct requests such as “configure the harness” and “하네스를 구성해줘”. Run the same command later to audit or update an existing generated harness.
 
 Harness first creates a structured proposal and runs a no-write dry-run. It applies files only when all ownership and instruction-precedence checks pass. Changed outputs are staged with backups before a journaled apply, and the manifest is committed last. Start a new Codex task after generation to verify discovery of newly written project instructions and custom agents.
+
+## Optional Evaluation
+
+Harness for Codex v5.3 can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, and create a non-binding experiment or configuration proposal. Evaluation is disabled by default and does not change generation, ownership, apply, or recovery behavior.
+
+```shell
+conda run -n harness python .agents/skills/harness/scripts/harness_eval.py run \
+  --root TARGET_REPOSITORY \
+  --task-file TASK.txt \
+  --sandbox read-only
+
+conda run -n harness python .agents/skills/harness/scripts/harness_eval.py list
+```
+
+Run records distinguish measured zero from unavailable values and preserve metric-level provenance. Raw prompts, transcripts, commands, paths, source content, and JSONL events are not written to Harness evaluation state. `--ephemeral` prevents local Codex rollout persistence; service-side processing still follows the configured Codex account and provider policy.
+
+See [evaluation-contract.md](.agents/skills/harness/references/evaluation-contract.md) for the boundary, [run-record-schema.md](.agents/skills/harness/references/run-record-schema.md) for schemas, and [evaluation-isolation.md](.agents/skills/harness/references/evaluation-isolation.md) before paired runs.
+
+Paired runs accept `--repetitions` and an `--order` policy of `randomized`, `counterbalanced`, `baseline-first`, or `harness-first`. Fixed arm order is retained as an explicit confounder.
 
 ## Design Rules
 
@@ -101,6 +120,7 @@ conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --ro
 conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --clean-orphaned-transaction
 conda run -n harness python .agents/skills/harness/scripts/validate_harness.py .
 conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py --plan PATH_TO_PLAN.json --golden PATH_TO_GOLDEN.json
+conda run -n harness python .agents/skills/harness/scripts/harness_eval.py --help
 conda run -n harness python -m unittest discover -s tests -v
 ```
 
@@ -110,7 +130,7 @@ Use `--recover` only when status or a failed apply reports a pending journal. Us
 
 If Windows Conda raises `UnicodeEncodeError` while forwarding a child-process error, inspect transaction status before retrying and rerun the diagnostic with `conda run --no-capture-output -n harness python ...`. This keeps the required environment while exposing the original Harness result.
 
-Harness for Codex v5.2 requires generation plan schema 3, manifest schema 5, and transaction schema 2. Clean schema 4 installations are upgraded through repository re-analysis and a reviewed schema 3 plan; boundaries are not inferred from legacy manifest fields. Clean schema 1-3 manifests can first be prepared as schema 4 only when every legacy evidence path still resolves.
+Harness for Codex v5.3 requires generation plan schema 3, manifest schema 5, and transaction schema 2. Its optional evaluation records use auxiliary schema 1 files outside the target repository and require no manifest migration. Clean schema 4 installations are upgraded through repository re-analysis and a reviewed schema 3 plan; boundaries are not inferred from legacy manifest fields. Clean schema 1-3 manifests can first be prepared as schema 4 only when every legacy evidence path still resolves.
 
 ## Versioning
 

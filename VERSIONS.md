@@ -15,6 +15,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v5` | Harness for Codex v5.0 | Schema 3 | Schema 5 | Schema 2 | Machine-verifiable material boundaries, persistent topology classes, routing and quality contracts, deterministic golden evaluation |
 | `codex/v5.1` | Harness for Codex v5.1 | Schema 3 | Schema 5 | Schema 2 | Literal/prefix scope correction, portable case collision checks, topology cross-validation, unambiguous routing, exact quality budgets, expanded fixtures and Windows CI |
 | `codex/v5.2` | Harness for Codex v5.2 | Schema 3 | Schema 5 | Schema 2 | Portable output namespace validation, complete-overlap handoffs, unique decision ownership, linked coordination witnesses, coordinated full-plan integration |
+| `codex/v5.3` | Harness for Codex v5.3 | Schema 3 | Schema 5 | Schema 2 | Default-off local evaluation, JSONL provenance, isolated paired comparison, immutable records, non-binding evidence proposals |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -145,7 +146,23 @@ Harness for Codex v5.2 hardens v5.1 without changing plan, manifest, or transact
 
 Harness for Codex v5.1 plans remain structurally compatible, but the stricter portable namespace, decision ownership, coordination witness, and handoff checks may reject previously accepted ambiguous plans. Regenerate and review those plans before applying them with v5.2.
 
-Trigger-profile evaluation and optional live model comparisons remain future work. Evolution history, feedback approval, privacy, retention, and automated self-modification remain future Harness for Codex v6.0 scope.
+Runtime enforcement, automatic adaptation, Hooks, and an SDK controller remain outside the v5 generation contract.
+
+## Harness for Codex v5.3
+
+Harness for Codex v5.3 adds an optional evaluation layer without changing the v5.2 generation, ownership, or transaction contracts.
+
+- Records evaluator-started `codex exec --json` metadata without retaining raw JSONL, prompts, transcripts, commands, paths, or source content.
+- Distinguishes measured zero, unavailable values, reported values, and partial metric coverage.
+- Records parser compatibility, Codex version, model pseudonym, reasoning effort, sandbox, process cleanup, and result fingerprints.
+- Stores per-run canonical JSON in a locked, atomic, user-local state tree outside the target repository.
+- Keeps completed records immutable and stores user acceptance or corrections as separate annotations.
+- Requires a predeclared primary outcome, correctness gate, verification profile, and complete isolation before labelling paired evidence controlled.
+- Creates only non-binding proposals with `causalClaimAllowed: false` and `autoApplicable: false`.
+- Keeps evaluation disabled unless `harness_eval.py` is invoked explicitly.
+- Keeps generation plan schema 3, manifest schema 5, and transaction schema 2.
+
+Harness for Codex v5.2 installations require no migration. Regenerating with v5.3 changes only the generator version when the same reviewed plan is applied; project artifacts and the managed instruction remain equivalent.
 
 ## Harness for Claude Code releases
 

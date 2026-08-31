@@ -1,0 +1,14 @@
+{
+  "correctnessGate": "no-regression",
+  "primaryOutcome": {
+    "direction": "higher-is-better",
+    "metric": "verification-pass-rate",
+    "minimumEffect": 0.05
+  },
+  "schemaVersion": 1,
+  "secondaryOutcomes": [
+    "wall-time-ms",
+    "output-tokens"
+  ],
+  "verificationProfileFingerprint": null
+}

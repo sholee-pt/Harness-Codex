@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"fixture-thread"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item-1","type":"command_execution","command":"redacted by parser test","status":"completed"}}
+{"type":"item.completed","item":{"id":"item-2","type":"agent_message","text":"sensitive fixture message"}}
+{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":25,"output_tokens":10,"reasoning_output_tokens":5}}

@@ -74,6 +74,10 @@ Read [orchestration.md](references/orchestration.md) before planning `project-ha
 
 On later runs, repeat the evidence scan and compare the proposed topology with the manifest. Make the minimum justified change. Unchanged inputs should perform no file write or replacement. Do not remove obsolete managed artifacts automatically; report removal candidates unless the user explicitly authorizes deletion.
 
+## Optional evaluation mode
+
+Evaluation is separate from configuration and never runs implicitly. When the user explicitly asks to measure, compare, or audit Harness behavior, read [evaluation-contract.md](references/evaluation-contract.md) and use `scripts/harness_eval.py`. Read [capture-provenance.md](references/capture-provenance.md) when interpreting metrics, [evaluation-isolation.md](references/evaluation-isolation.md) before paired runs, and [experience-evidence.md](references/experience-evidence.md) before creating a proposal. Keep raw project content out of evaluation state and never apply a proposal automatically.
+
 ## Completion report
 
 Report the selected topology, dry-run result, generated and unchanged files, preserved conflicts, validation results, and remaining risks. Explain that newly written `AGENTS.md` or custom agent definitions require a fresh Codex run for discovery. Distinguish runtime verification from structural validation.
