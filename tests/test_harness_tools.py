@@ -175,15 +175,13 @@ class StateTests(unittest.TestCase):
             root = Path(directory) / "repository"
             root.mkdir()
             (root / "evidence.txt").write_text("evidence\n", encoding="utf-8")
-            relative_root = Path(os.path.relpath(root, Path.cwd()))
-
             resolved = harness_state.resolve_inside(
-                relative_root, "evidence.txt", must_exist=True
+                root, "evidence.txt", must_exist=True
             )
 
             self.assertEqual(resolved, (root / "evidence.txt").resolve())
             self.assertEqual(
-                harness_state.normalize_relative(relative_root, "evidence.txt"),
+                harness_state.normalize_relative(root, "evidence.txt"),
                 "evidence.txt",
             )
 
@@ -467,11 +465,11 @@ class ApplyTests(unittest.TestCase):
 
             written_paths = {Path(call.args[0]) for call in atomic_write.call_args_list}
             self.assertIn(
-                root / ".agents" / "skills" / "project-harness" / "SKILL.md",
+                (root / ".agents" / "skills" / "project-harness" / "SKILL.md").resolve(),
                 written_paths,
             )
-            self.assertIn(root / ".harness" / "manifest.json", written_paths)
-            self.assertNotIn(root / "AGENTS.md", written_paths)
+            self.assertIn((root / ".harness" / "manifest.json").resolve(), written_paths)
+            self.assertNotIn((root / "AGENTS.md").resolve(), written_paths)
             self.assertTrue(validate_harness.Validator(root).run()["valid"])
 
     @unittest.skipIf(os.name == "nt", "POSIX permission bits are not enforceable on Windows")
@@ -570,7 +568,7 @@ class ApplyTests(unittest.TestCase):
 
             def fail_once(path: Path, data: bytes, *, mode: int | None = None) -> None:
                 nonlocal failed
-                if Path(path) == root / "AGENTS.md" and not failed:
+                if Path(path) == (root / "AGENTS.md").resolve() and not failed:
                     failed = True
                     raise OSError("injected target failure")
                 original_write(Path(path), data, mode=mode)
@@ -667,7 +665,7 @@ class ApplyTests(unittest.TestCase):
 
             def fail_manifest_once(path: Path, data: bytes, *, mode: int | None = None) -> None:
                 nonlocal failed
-                if Path(path) == manifest and not failed:
+                if Path(path) == manifest.resolve() and not failed:
                     failed = True
                     raise OSError("injected manifest failure")
                 original_write(Path(path), data, mode=mode)
