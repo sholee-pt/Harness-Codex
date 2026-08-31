@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "project": {
     "summary": "A small single-package Python fixture.",
     "evidence": [
@@ -7,28 +7,76 @@
         "path": "README.md",
         "sha256": "7b38f883473eb6c37127259f213206f7c2c7097e96f1f06d54bfbebedfe32fd5",
         "claim": "Describes the fixture as a deliberately small project.",
-        "lines": {
-          "start": 1,
-          "end": 3
-        }
+        "lines": {"start": 1, "end": 3}
       },
       {
         "path": "pyproject.toml",
         "sha256": "38bf71dd0a970e24635dded38e71bbae98938b0763568eb72f59f6290cfd1cf2",
         "claim": "Defines a single Python package and its runtime requirement.",
-        "lines": {
-          "start": 1,
-          "end": 5
-        }
+        "lines": {"start": 1, "end": 5}
       }
     ],
     "rationale": {
-      "summary": "The fixture has one responsibility boundary, so only the project orchestrator is justified.",
+      "summary": "The fixture has one persistent responsibility boundary and no recurring coordination.",
       "uncertainties": []
     }
   },
   "topology": {
-    "patterns": [],
+    "classification": {
+      "class": "minimal",
+      "materialBoundaryCount": 1,
+      "dependencyShape": "independent",
+      "recurringCoordination": false,
+      "coordinationReasons": [],
+      "rationale": "One persistent decision boundary requires no recurring coordination.",
+      "mergedCandidates": [],
+      "uncertainties": []
+    },
+    "boundaries": [
+      {
+        "id": "project-core",
+        "name": "Project core",
+        "types": ["responsibility"],
+        "summary": "Owns the fixture's single Python package responsibility.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "sha256": "38bf71dd0a970e24635dded38e71bbae98938b0763568eb72f59f6290cfd1cf2",
+            "claim": "Defines the fixture's single package boundary."
+          }
+        ],
+        "decisionAreaIds": ["project-core"],
+        "inputs": ["repository task"],
+        "outputs": ["verified project change"],
+        "contracts": [],
+        "readScopes": ["pyproject.toml"],
+        "writeScopes": [],
+        "verification": ["project-native tests"],
+        "failureImpact": "A requested project change may be incorrect.",
+        "persistence": {
+          "kind": "stable-structure",
+          "evidence": [
+            {
+              "path": "pyproject.toml",
+              "sha256": "38bf71dd0a970e24635dded38e71bbae98938b0763568eb72f59f6290cfd1cf2",
+              "claim": "Defines a stable package structure."
+            }
+          ]
+        },
+        "separationBenefits": {
+          "specializedJudgment": false,
+          "parallelizable": false,
+          "contextIsolation": false,
+          "reusable": true,
+          "independentReview": false
+        },
+        "dependsOn": [],
+        "interactsWith": [],
+        "overlapWith": []
+      }
+    ],
+    "collaborationPatterns": [],
+    "qualityPatternPolicies": [],
     "agents": [],
     "skills": [
       {
@@ -41,15 +89,29 @@
             "sha256": "38bf71dd0a970e24635dded38e71bbae98938b0763568eb72f59f6290cfd1cf2",
             "claim": "Shows that the fixture has one package boundary."
           }
-        ]
+        ],
+        "scope": "project",
+        "boundaryRefs": []
       }
-    ]
+    ],
+    "routingPolicies": [],
+    "executionPhases": [],
+    "handoffs": []
   },
+  "capabilityPolicies": [
+    {
+      "id": "direct-default",
+      "semanticMode": "direct-execution",
+      "requiredCapabilities": [],
+      "preferredRuntimeMapping": "instruction-driven",
+      "reason": "The minimal fixture requires no orchestration primitive."
+    }
+  ],
   "artifacts": [
     {
       "path": ".agents/skills/project-harness/SKILL.md",
       "mode": "0644",
-      "content": "---\nname: project-harness\ndescription: Coordinate repository-wide work for the minimal Python fixture.\n---\n\n# Project Harness\n\nUse direct execution because the repository has one responsibility boundary.\n"
+      "content": "---\nname: project-harness\ndescription: Coordinate repository-wide work for the minimal Python fixture.\n---\n\n# Project Harness\n\nUse direct execution because the repository has one persistent responsibility boundary.\n"
     }
   ],
   "instruction": {

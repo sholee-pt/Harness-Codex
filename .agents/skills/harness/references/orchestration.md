@@ -4,6 +4,7 @@ Read this reference before generating or updating `project-harness`.
 
 ## Choose the lightest execution shape
 
+- Classify the current task as `direct`, `delegated`, or `coordinated` without changing the persistent project topology.
 - Use direct execution for tightly coupled or small work.
 - Use sequential delegation when later work depends on reviewed upstream output.
 - Use parallel delegation only for independent scopes with a defined merge contract.
@@ -12,10 +13,14 @@ Read this reference before generating or updating `project-harness`.
 
 Express orchestration in native Codex instructions. Do not emit Claude-specific tool syntax or depend on an unverified capability.
 
+Persistent routing policies may recommend an execution class for evidence-backed task categories. The selected class, active agent list, and one-off task risks remain runtime state and are not written to the project manifest.
+
+Separate collaboration patterns, which distribute work, from quality patterns, which challenge or check results. Every quality pattern must have a finite pattern-specific budget, a stopping condition, and a failure policy. Repository-default quality policies require structured evidence; one-off task-risk policies remain runtime-only.
+
 ## Required run protocol
 
 1. Define the objective, completion criteria, scopes, and planned artifacts.
-2. Probe required runtime capabilities before assignment. If a required capability is absent, select a supported fallback or stop that path.
+2. Resolve the selected routing policy and probe required runtime capabilities before assignment. If a required capability is absent, select the declared fallback or stop that path. Static manifest validation does not prove live capability availability.
 3. Give every delegated task an owner, input, output contract, write boundary, and verification method.
 4. Collect explicit completion reports and account for every planned artifact.
 5. Freeze phase outputs before downstream validation: record content hashes and tell earlier writers not to mutate them.

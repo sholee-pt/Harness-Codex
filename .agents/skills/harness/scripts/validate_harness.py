@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import harness_state
+import harness_topology
 
 try:
     import tomllib
@@ -83,6 +84,8 @@ class Validator:
             return
         if self.manifest.get("schemaVersion") != harness_state.CURRENT_SCHEMA_VERSION:
             self.error(f"schemaVersion must be {harness_state.CURRENT_SCHEMA_VERSION}")
+        if "taskExecution" in self.manifest or "taskExecutionClass" in self.manifest:
+            self.error("runtime task execution state must not be stored in the project manifest")
         generator = self.manifest.get("generator")
         if not isinstance(generator, dict) or not all(generator.get(key) for key in ("name", "version", "runtime")):
             self.error("generator must contain name, version, and runtime")
@@ -116,9 +119,22 @@ class Validator:
         if not isinstance(topology, dict):
             self.error("topology must be an object")
             return
-        for key in ("patterns", "agents", "skills"):
+        for key in (
+            "boundaries",
+            "collaborationPatterns",
+            "qualityPatternPolicies",
+            "agents",
+            "skills",
+            "routingPolicies",
+            "executionPhases",
+            "handoffs",
+        ):
             if not isinstance(topology.get(key), list):
                 self.error(f"topology.{key} must be an array")
+        if not isinstance(topology.get("classification"), dict):
+            self.error("topology.classification must be an object")
+        if not isinstance(self.manifest.get("capabilityPolicies"), list):
+            self.error("capabilityPolicies must be an array")
         if not isinstance(self.manifest.get("managedFiles"), list):
             self.error("managedFiles must be an array")
 
@@ -133,20 +149,12 @@ class Validator:
             )
         topology = self.manifest.get("topology", {})
         if isinstance(topology, dict):
-            for kind in ("skills", "agents"):
-                items = topology.get(kind, [])
-                if not isinstance(items, list):
-                    continue
-                for index, item in enumerate(items):
-                    if not isinstance(item, dict):
-                        continue
-                    name = item.get("name", index)
-                    evidence = item.get("evidence", [])
-                    if isinstance(evidence, list):
-                        references.extend(
-                            (f"topology.{kind}[{name!r}].evidence[{evidence_index}]", value)
-                            for evidence_index, value in enumerate(evidence)
-                        )
+            for label, evidence in harness_topology.iter_evidence(topology):
+                if isinstance(evidence, list):
+                    references.extend(
+                        (f"{label}[{evidence_index}]", value)
+                        for evidence_index, value in enumerate(evidence)
+                    )
         for label, relative in references:
             if not isinstance(relative, dict):
                 self.error(f"{label} must be an object")
@@ -285,8 +293,18 @@ class Validator:
         topology = self.manifest.get("topology", {})
         if not isinstance(topology, dict):
             return
-        skill_items = topology.get("skills", []) if isinstance(topology, dict) else []
-        agent_items = topology.get("agents", []) if isinstance(topology, dict) else []
+        try:
+            warnings = harness_topology.validate_contract(
+                topology, self.manifest.get("capabilityPolicies")
+            )
+            for warning in warnings:
+                self.warning(warning)
+        except harness_topology.TopologyError as exc:
+            self.error(str(exc))
+        skill_value = topology.get("skills", [])
+        agent_value = topology.get("agents", [])
+        skill_items = skill_value if isinstance(skill_value, list) else []
+        agent_items = agent_value if isinstance(agent_value, list) else []
         known_skills: set[str] = set()
         for item in skill_items:
             if not isinstance(item, dict):
@@ -333,11 +351,12 @@ class Validator:
             if result.get("state") != "unchanged":
                 self.error(f"managed file {relative!r} is {result.get('state')}")
 
-        topology = self.manifest.get("topology", {})
+        topology_value = self.manifest.get("topology", {})
+        topology = topology_value if isinstance(topology_value, dict) else {}
         topology_paths = {
             item.get("path")
             for key in ("agents", "skills")
-            for item in topology.get(key, [])
+            for item in (topology.get(key, []) if isinstance(topology.get(key, []), list) else [])
             if isinstance(item, dict) and isinstance(item.get("path"), str)
         }
         for relative in sorted(topology_paths - managed_paths):

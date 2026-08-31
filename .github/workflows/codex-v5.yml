@@ -1,12 +1,12 @@
-name: Codex v4 checks
+name: Harness for Codex v5 checks
 
 on:
   push:
     branches:
-      - codex/v4
+      - codex/v5
   pull_request:
     branches:
-      - codex/v4
+      - codex/v5
   workflow_dispatch:
 
 permissions:
@@ -16,7 +16,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the release branch
+      - name: Check out the Harness release branch
         uses: actions/checkout@v7.0.1
 
       - name: Create the harness environment
@@ -29,6 +29,13 @@ jobs:
       - name: Run unit tests
         shell: bash -el {0}
         run: conda run -n harness python -m unittest discover -s tests -v
+
+      - name: Run deterministic topology evaluation
+        shell: bash -el {0}
+        run: |
+          conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py \
+            --plan tests/fixtures/minimal-plan.json \
+            --golden tests/fixtures/minimal-golden.json
 
       - name: Run the no-write fixture dry-run
         shell: bash -el {0}

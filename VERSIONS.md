@@ -1,21 +1,24 @@
-# Version History
+# Harness Version History
 
-Harness versions are maintained as runtime-specific branches. A major branch is created when the generation contract, state format, ownership model, or required workflow changes. A minor branch contains backward-compatible corrections and validation improvements.
+Harness releases are maintained as runtime-specific branches. Names such as `codex/v5` mean **Harness for Codex v5**; they do not identify the Codex product or model version. A major Harness version changes a generation contract, state format, ownership model, or required workflow. A minor Harness version contains backward-compatible corrections and validation improvements.
 
-## Codex Editions
+## Harness for Codex releases
 
-| Branch | Generator | Manifest | Status | Recommended for |
-| --- | --- | --- | --- | --- |
-| `codex/v1` | `1.0.0` | Schema 1 | Maintenance | Existing installations that need the original direct-generation workflow |
-| `codex/v2` | `2.0.0` | Schema 2 | Maintenance | Existing guarded-generation installations |
-| `codex/v2.1` | `2.1.0` | Schema 2 | Maintenance | Existing no-op-safe v2 installations |
-| `codex/v3` | `3.0.0` | Schema 3 | Maintenance | Existing recoverable multi-file installations |
-| `codex/v3.1` | `3.1.0` | Schema 3 | Maintenance | Existing review-hardened v3 installations |
-| `codex/v4` | `4.0.0` | Schema 4 | Current | New installations requiring hashed evidence and permission-aware recovery |
+| Branch | Harness release | Plan | Manifest | Transaction | Main change or patch |
+| --- | --- | --- | --- | --- | --- |
+| `codex/v1` | Harness for Codex v1.0.0 | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+| `codex/v2` | Harness for Codex v2.0.0 | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
+| `codex/v2.1` | Harness for Codex v2.1.0 | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
+| `codex/v3` | Harness for Codex v3.0.0 | Schema 1 | Schema 3 | Schema 1 | Journaled multi-file apply, verified staging, rollback, recovery, manifest-last commit |
+| `codex/v3.1` | Harness for Codex v3.1.0 | Schema 1 | Schema 3 | Schema 1 | Recovery hardening, orphan inspection and cleanup, directory sync, live smoke-test guide |
+| `codex/v4` | Harness for Codex v4.0.0 | Schema 2 | Schema 4 | Schema 2 | SHA-256-bound structured evidence, line ranges, POSIX permission tracking and recovery |
+| `codex/v5` | Harness for Codex v5.0.0 | Schema 3 | Schema 5 | Schema 2 | Machine-verifiable material boundaries, persistent topology classes, routing and quality contracts, deterministic golden evaluation |
 
-## Codex v1
+All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
-Codex v1 introduced the project-adaptive generator.
+## Harness for Codex v1
+
+Harness for Codex v1 introduced the project-adaptive generator.
 
 - Inspects repository evidence before choosing a topology.
 - Generates native Codex artifacts under `.codex/agents/`, `.agents/skills/`, and `AGENTS.md`.
@@ -23,89 +26,92 @@ Codex v1 introduced the project-adaptive generator.
 - Supports role, skill, and orchestrator generation without assuming a frontend/backend split.
 - Uses the original direct-generation and validation workflow.
 
-Codex v1 remains available for compatibility. It receives documentation or critical maintenance corrections only; new workflow features belong on a later major branch.
+This branch receives documentation or critical maintenance corrections only.
 
-## Codex v2
+## Harness for Codex v2
 
-Codex v2 adds a guarded and reproducible generation lifecycle.
+Harness for Codex v2 added a guarded and reproducible generation lifecycle.
 
-- Separates analysis from mutation through a structured JSON plan.
+- Separates analysis from mutation through generation plan schema 1.
 - Requires a no-write dry-run before applying a plan.
-- Applies generated artifacts through the deterministic `harness_apply.py` entry point.
-- Refuses the entire update before writing when ownership checks or managed hashes conflict.
-- Writes managed files atomically and preserves user-owned content outside managed boundaries.
-- Detects the active root instruction file, including `AGENTS.override.md` precedence.
-- Migrates compatible schema 1 manifests to schema 2 while preserving clean managed hashes.
-- Records topology rationale, artifact purpose, evidence, and the active instruction file.
-- Validates agents and skills independently against Codex-native naming and structure rules.
-- Adds an Anaconda `harness` environment definition, fixture-based dry-run coverage, and expanded regression tests.
+- Applies artifacts through deterministic `harness_apply.py` validation.
+- Refuses the complete update before writing when ownership checks or managed hashes conflict.
+- Preserves user-owned content and detects `AGENTS.override.md` precedence.
+- Introduces manifest schema 2 with topology rationale, artifact purpose, and the active instruction path.
+- Adds the dedicated Anaconda `harness` environment and fixture-based validation.
 
-## Migrating to Codex v3
+## Harness for Codex v2.1
 
-1. Create or preserve a recovery branch for the target project.
-2. Install Harness from `codex/v3`.
-3. Run analysis and review the generated plan.
-4. Run the fixture or project dry-run and inspect every proposed action.
-5. Apply only when validation passes and no ownership conflict is reported.
-6. Start a new Codex task so newly written instructions and custom agents are discovered.
-
-Codex v3 can migrate clean schema 1 and schema 2 manifests directly to schema 3. User-modified managed files are not silently re-baselined or overwritten, and a pending transaction must be recovered before migration.
-
-## Codex v2.1
-
-Codex v2.1 is a backward-compatible correction release built on the v2 plan and manifest contracts.
+Harness for Codex v2.1 patched the v2 lifecycle without changing its plan or manifest schemas.
 
 - Skips writes for artifacts, root instructions, and manifests classified as unchanged.
 - Validates the complete action map before the first write.
 - Adds regression coverage proving unchanged applies perform no writes.
-- Adds automated unit-test and fixture dry-run checks for this release branch.
-- Declares the intentionally limited generated skill-frontmatter contract and removes the unused YAML dependency.
-- Corrects release documentation without changing manifest schema 2.
+- Adds automated unit-test and fixture dry-run checks.
+- Declares the limited generated skill-frontmatter contract and removes an unused YAML dependency.
 
-Existing Codex v2 manifests remain compatible. The first v2.1 apply may update only the generator version recorded in the manifest; later unchanged applies perform no writes.
+Existing clean Harness for Codex v2 manifests remain compatible.
 
-## Codex v3
+## Harness for Codex v3
 
-Codex v3 replaces sequential multi-file mutation with a recoverable, journaled application lifecycle while retaining plan schema 1.
+Harness for Codex v3 replaced sequential multi-file mutation with a recoverable journaled lifecycle.
 
-- Introduces manifest schema 3 with an explicit journaled-application contract.
-- Revalidates managed hashes, complete-file hashes, and create-path absence immediately before staging.
-- Requires normalized POSIX-relative managed paths and rejects traversal within otherwise allowed output prefixes.
-- Stages every changed output and preserves verified backups before target mutation begins.
-- Writes `.harness/transaction.json` before replacing targets and commits `.harness/manifest.json` last.
-- Automatically rolls back updates and transaction-created files after an ordinary mid-apply failure.
-- Supports explicit `--recover` after process interruption, including interruption before the applied-path marker is recorded.
-- Refuses recovery when an interrupted target was externally edited, preserving both that edit and the recovery journal.
-- Removes transaction staging and backup data only after commit or verified rollback completes.
+- Introduces manifest schema 3 and transaction schema 1.
+- Revalidates managed hashes and create-path absence immediately before staging.
+- Requires normalized POSIX-relative managed paths and rejects traversal.
+- Stages every changed output and preserves verified backups before mutation.
+- Writes `.harness/transaction.json` before replacing targets and commits the manifest last.
+- Rolls back updates and transaction-created files after ordinary mid-apply failures.
+- Supports explicit recovery after process interruption.
+- Preserves externally edited interrupted targets and leaves the journal for manual resolution.
 
-The filesystem cannot atomically replace unrelated paths as one operation. Schema 3 therefore defines recoverability and conflict-preserving rollback rather than claiming full multi-file atomicity.
+The filesystem cannot atomically replace unrelated paths as one operation. Transaction schema 1 therefore defines recoverability rather than claiming full multi-file atomicity.
 
-## Codex v3.1
+## Harness for Codex v3.1
 
-Codex v3.1 is a backward-compatible hardening release based on review of the v3 implementation.
+Harness for Codex v3.1 hardened v3 without changing the generation or state schemas.
 
-- Corrects stale v2 branch text in the repository instructions.
-- Reports missing or non-normalized file-level evidence as warnings without rejecting schema 1 plans.
-- Adds non-mutating transaction inspection and explicit cleanup for an orphaned reserved staging directory.
+- Corrects stale release text in repository instructions.
+- Reports incomplete legacy evidence without silently fabricating semantic claims.
+- Adds non-mutating transaction inspection and explicit orphaned-workspace cleanup.
 - Synchronizes parent directory entries after atomic replacement on supported POSIX filesystems.
 - Documents a repeatable live Codex discovery and delegation smoke test.
 
-Plan schema 1, manifest schema 3, and transaction schema 1 remain unchanged. Existing clean v3 manifests can be updated by applying a reviewed v3.1 plan.
+## Harness for Codex v4
 
-## Codex v4
+Harness for Codex v4 made evidence and portable permission behavior deterministic contracts.
 
-Codex v4 makes evidence and portable file permission behavior part of the deterministic contract.
+- Introduces generation plan schema 2 with `path`, `sha256`, `claim`, and optional line ranges.
+- Rejects missing, escaped, stale, or out-of-range evidence before planning mutations.
+- Introduces manifest schema 4 for auditable evidence hashes and generated-file modes.
+- Introduces transaction schema 2 with original and desired permission modes.
+- Applies and restores POSIX permissions with content; Windows retains platform-native behavior.
+- Adds a read-only evidence helper for normalized paths and SHA-256 values.
+- Prepares clean schema 1-3 manifests as schema 4 when all legacy evidence paths still resolve.
 
-- Introduces generation plan schema 2 with structured evidence objects containing `path`, `sha256`, `claim`, and an optional line range.
-- Rejects missing, escaped, stale, or out-of-range evidence before planning any output mutation.
-- Introduces manifest schema 4 so evidence hashes and generated-file modes remain auditable after generation.
-- Introduces transaction schema 2 with original and desired permission modes for every changed output.
-- Applies and restores POSIX permission modes together with content; Windows keeps its platform-native permission behavior.
-- Adds a read-only evidence helper that calculates normalized repository paths and SHA-256 values.
-- Migrates clean schema 1, 2, and 3 manifests when all legacy evidence paths still resolve.
+Evidence hashes prove which unchanged bytes a claim references; semantic truth remains a review responsibility.
 
-Recover any pending transaction with Codex v3.1 before installing v4. Semantic truth is still a review responsibility: schema 2 proves which unchanged bytes a claim refers to, not that the claim is logically correct.
+## Harness for Codex v5
 
-## Claude Code Editions
+Harness for Codex v5 promotes v4 topology guidance into a machine-verifiable contract while retaining transaction schema 2.
 
-Claude Code editions are maintained independently on `claude/*` branches. Their release status is documented on those branches so Codex release notes do not duplicate mutable Claude version state.
+- Introduces generation plan schema 3 and manifest schema 5.
+- Records persistent material boundaries with stable decision-area IDs, repository evidence, persistence, contracts, verification, and separation benefits.
+- Separates persistent project topology (`minimal`, `modular`, `coordinated`) from runtime task execution (`direct`, `delegated`, `coordinated`).
+- Prevents one-off task risk from permanently promoting project topology.
+- Records boundary merge results and requires explicit rationale for retained overlaps.
+- Separates collaboration patterns from bounded, evidence-backed quality policies.
+- Links specialist and cross-boundary agents to material boundaries while keeping `project-harness` project-scoped.
+- Rejects concurrent writer overlap and requires verified handoffs for ordered overlapping writers.
+- Adds capability policies with runtime probes and contract-preserving fallbacks.
+- Adds evidence-backed routing policies without persisting the current task's selected route.
+- Adds deterministic golden evaluation based on stable decision-area IDs rather than semantic string similarity.
+- Keeps model inheritance as the default and does not add an unverified persistent model-selection schema.
+
+Harness for Codex v4 → v5 is a reviewed regeneration upgrade. Harness validates the clean v4 ownership state, re-analyzes the repository, dry-runs a schema 3 plan, and writes schema 5 only through the existing journaled apply. It does not infer material boundaries from legacy manifest fields.
+
+Trigger-profile evaluation and optional live model comparisons remain future Harness for Codex v5.1 scope. Evolution history, feedback approval, privacy, retention, and automated self-modification remain future Harness for Codex v6 scope; no corresponding branches are created by the v5 release.
+
+## Harness for Claude Code releases
+
+Harness for Claude Code editions are maintained independently on `claude/*` branches. Their version numbers identify Harness releases for that runtime, not Claude Code product versions. Release details remain on those branches so this document does not duplicate mutable Claude-specific state.

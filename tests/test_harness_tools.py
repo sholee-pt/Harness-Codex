@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 import stat
@@ -16,7 +17,9 @@ sys.path.insert(0, str(SCRIPTS))
 
 import harness_apply  # noqa: E402
 import harness_state  # noqa: E402
+import harness_topology  # noqa: E402
 import harness_transaction  # noqa: E402
+import evaluate_topology  # noqa: E402
 import inventory  # noqa: E402
 import validate_harness  # noqa: E402
 
@@ -41,7 +44,7 @@ def minimal_plan(root: Path, *, skill_suffix: str = "", skill_mode: str = "0644"
         f"{skill_suffix}"
     )
     return {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "project": {
             "summary": "Fixture project",
             "evidence": [evidence],
@@ -51,7 +54,49 @@ def minimal_plan(root: Path, *, skill_suffix: str = "", skill_mode: str = "0644"
             },
         },
         "topology": {
-            "patterns": [],
+            "classification": {
+                "class": "minimal",
+                "materialBoundaryCount": 1,
+                "dependencyShape": "independent",
+                "recurringCoordination": False,
+                "coordinationReasons": [],
+                "rationale": "One persistent decision boundary requires no recurring coordination.",
+                "mergedCandidates": [],
+                "uncertainties": [],
+            },
+            "boundaries": [
+                {
+                    "id": "project-core",
+                    "name": "Project core",
+                    "types": ["responsibility"],
+                    "summary": "Owns the fixture's single project responsibility.",
+                    "evidence": [evidence],
+                    "decisionAreaIds": ["project-core"],
+                    "inputs": ["user request"],
+                    "outputs": ["verified project change"],
+                    "contracts": [],
+                    "readScopes": ["pyproject.toml"],
+                    "writeScopes": [],
+                    "verification": ["project-native tests"],
+                    "failureImpact": "The requested project change may be incorrect.",
+                    "persistence": {
+                        "kind": "stable-structure",
+                        "evidence": [evidence],
+                    },
+                    "separationBenefits": {
+                        "specializedJudgment": False,
+                        "parallelizable": False,
+                        "contextIsolation": False,
+                        "reusable": True,
+                        "independentReview": False,
+                    },
+                    "dependsOn": [],
+                    "interactsWith": [],
+                    "overlapWith": [],
+                }
+            ],
+            "collaborationPatterns": [],
+            "qualityPatternPolicies": [],
             "agents": [],
             "skills": [
                 {
@@ -59,9 +104,23 @@ def minimal_plan(root: Path, *, skill_suffix: str = "", skill_mode: str = "0644"
                     "path": ".agents/skills/project-harness/SKILL.md",
                     "purpose": "Coordinate repository-wide fixture work.",
                     "evidence": [evidence],
+                    "scope": "project",
+                    "boundaryRefs": [],
                 }
             ],
+            "routingPolicies": [],
+            "executionPhases": [],
+            "handoffs": [],
         },
+        "capabilityPolicies": [
+            {
+                "id": "direct-default",
+                "semanticMode": "direct-execution",
+                "requiredCapabilities": [],
+                "preferredRuntimeMapping": "instruction-driven",
+                "reason": "The minimal topology does not require runtime orchestration primitives.",
+            }
+        ],
         "artifacts": [
             {
                 "path": ".agents/skills/project-harness/SKILL.md",
@@ -197,6 +256,44 @@ class StateTests(unittest.TestCase):
                 item for item in migrated["managedFiles"] if item["path"] == "generated.txt"
             )
             self.assertRegex(generated["mode"], r"^0[0-7]{3}$")
+
+    def test_schema_v4_state_upgrades_only_through_a_schema_v3_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".harness").mkdir()
+            (root / "AGENTS.md").write_text(
+                "<!-- harness:begin -->\nManaged\n<!-- harness:end -->\n", encoding="utf-8"
+            )
+            self.write_manifest(root, schema_version=4)
+            harness_state.record_manifest(root, [], ["AGENTS.md"])
+
+            unchanged = harness_state.migrate_manifest(root)
+            self.assertEqual(unchanged["schemaVersion"], 4)
+
+            harness_apply.apply_application(
+                harness_apply.build_application(root, minimal_plan(root))
+            )
+            upgraded = json.loads(
+                (root / ".harness" / "manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(upgraded["schemaVersion"], 5)
+            self.assertEqual(upgraded["topology"]["classification"]["class"], "minimal")
+
+    def test_schema_v4_upgrade_rejects_stale_legacy_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".harness").mkdir()
+            (root / "AGENTS.md").write_text(
+                "<!-- harness:begin -->\nManaged\n<!-- harness:end -->\n", encoding="utf-8"
+            )
+            self.write_manifest(root, schema_version=4)
+            harness_state.record_manifest(root, [], ["AGENTS.md"])
+            (root / "pyproject.toml").write_text(
+                "[project]\nname = 'changed-before-upgrade'\n", encoding="utf-8"
+            )
+
+            with self.assertRaisesRegex(harness_apply.PlanError, "changed after analysis"):
+                harness_apply.build_application(root, minimal_plan(root))
 
     def test_snapshot_detects_post_freeze_mutation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -686,11 +783,354 @@ class ApplyTests(unittest.TestCase):
             self.assertEqual(skill.read_text(encoding="utf-8"), "user modification\n")
 
 
+class TopologyContractTests(unittest.TestCase):
+    @staticmethod
+    def add_boundary(plan: dict, identifier: str, *, depends_on: list[str] | None = None) -> None:
+        boundary = copy.deepcopy(plan["topology"]["boundaries"][0])
+        boundary["id"] = identifier
+        boundary["name"] = identifier.replace("-", " ").title()
+        boundary["decisionAreaIds"] = [identifier]
+        boundary["dependsOn"] = list(depends_on or [])
+        plan["topology"]["boundaries"].append(boundary)
+
+    def test_four_static_boundaries_remain_modular_with_a_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plan = minimal_plan(Path(directory))
+            for identifier in ("contract-surface", "data-flow", "quality-review"):
+                self.add_boundary(plan, identifier)
+            classification = plan["topology"]["classification"]
+            classification.update(
+                {
+                    "class": "modular",
+                    "materialBoundaryCount": 4,
+                    "dependencyShape": "static-dag",
+                }
+            )
+
+            warnings = harness_topology.validate_contract(
+                plan["topology"], plan["capabilityPolicies"]
+            )
+
+            self.assertEqual(len(warnings), 1)
+            self.assertIn("four or more", warnings[0])
+
+    def test_coordinated_topology_requires_repository_level_recurrence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plan = minimal_plan(Path(directory))
+            self.add_boundary(plan, "contract-surface")
+            plan["topology"]["classification"].update(
+                {
+                    "class": "coordinated",
+                    "materialBoundaryCount": 2,
+                    "dependencyShape": "static-dag",
+                }
+            )
+
+            with self.assertRaisesRegex(harness_topology.TopologyError, "recurring coordination"):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+            plan["topology"]["classification"].update(
+                {
+                    "recurringCoordination": True,
+                    "coordinationReasons": ["cross-contract-verification"],
+                }
+            )
+            harness_topology.validate_contract(plan["topology"], plan["capabilityPolicies"])
+
+    def test_generation_plan_rejects_runtime_task_execution_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = minimal_plan(root)
+            plan["taskExecution"] = {"class": "coordinated"}
+            path = root / "plan.json"
+            path.write_text(json.dumps(plan), encoding="utf-8")
+
+            with self.assertRaisesRegex(harness_apply.PlanError, "runtime-only"):
+                harness_apply.load_plan(path)
+
+    def test_dependency_order_and_structural_interaction_are_distinct(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plan = minimal_plan(Path(directory))
+            self.add_boundary(plan, "contract-surface", depends_on=["project-core"])
+            plan["topology"]["boundaries"][0]["interactsWith"] = ["contract-surface"]
+            plan["topology"]["boundaries"][1]["interactsWith"] = ["project-core"]
+            plan["topology"]["classification"].update(
+                {
+                    "class": "modular",
+                    "materialBoundaryCount": 2,
+                    "dependencyShape": "static-dag",
+                }
+            )
+            harness_topology.validate_contract(plan["topology"], plan["capabilityPolicies"])
+
+            plan["topology"]["boundaries"][0]["dependsOn"] = ["contract-surface"]
+            with self.assertRaisesRegex(harness_topology.TopologyError, "acyclic"):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+    def test_concurrent_writers_with_overlapping_scopes_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plan = minimal_plan(Path(directory))
+            self.add_boundary(plan, "contract-surface")
+            plan["topology"]["classification"].update(
+                {
+                    "class": "modular",
+                    "materialBoundaryCount": 2,
+                    "dependencyShape": "static-dag",
+                }
+            )
+            plan["topology"]["executionPhases"] = [
+                {
+                    "id": "implementation",
+                    "order": 0,
+                    "concurrencyGroups": [{"id": "parallel", "order": 0}],
+                }
+            ]
+            plan["topology"]["boundaries"][0]["writeScopes"] = ["src/**"]
+            plan["topology"]["boundaries"][1]["writeScopes"] = ["src/contracts/**"]
+            plan["topology"]["agents"] = [
+                {
+                    "name": "core_writer",
+                    "scope": "boundary",
+                    "boundaryRefs": ["project-core"],
+                    "fileAccess": [
+                        {
+                            "scope": "src/**",
+                            "mode": "write",
+                            "phase": "implementation",
+                            "concurrencyGroup": "parallel",
+                        }
+                    ],
+                },
+                {
+                    "name": "contract_writer",
+                    "scope": "boundary",
+                    "boundaryRefs": ["contract-surface"],
+                    "fileAccess": [
+                        {
+                            "scope": "src/contracts/**",
+                            "mode": "write",
+                            "phase": "implementation",
+                            "concurrencyGroup": "parallel",
+                        }
+                    ],
+                },
+            ]
+
+            with self.assertRaisesRegex(harness_topology.TopologyError, "concurrent writers"):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+    def test_persistent_quality_policy_cannot_use_runtime_task_risk(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plan = minimal_plan(Path(directory))
+            evidence = plan["project"]["evidence"]
+            plan["topology"]["qualityPatternPolicies"] = [
+                {
+                    "id": "safety-review",
+                    "name": "independent-safety-review",
+                    "justificationSource": "runtime-task-risk",
+                    "evidence": evidence,
+                    "boundaryRefs": ["project-core"],
+                    "budget": {"maxReviewers": 1},
+                    "stoppingCondition": "Stop after one review.",
+                    "failurePolicy": "Stop before mutation.",
+                }
+            ]
+
+            with self.assertRaisesRegex(harness_topology.TopologyError, "repository-evidence"):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+    def test_repository_quality_and_routing_policies_are_reference_safe(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = minimal_plan(root)
+            evidence = copy.deepcopy(plan["project"]["evidence"])
+            plan["topology"]["collaborationPatterns"] = ["producer-reviewer"]
+            plan["topology"]["qualityPatternPolicies"] = [
+                {
+                    "id": "completeness-check",
+                    "name": "completeness-critic",
+                    "justificationSource": "repository-evidence",
+                    "evidence": evidence,
+                    "boundaryRefs": ["project-core"],
+                    "budget": {"maxRounds": 1},
+                    "stoppingCondition": "Stop after one independent completeness pass.",
+                    "failurePolicy": "Report unresolved omissions and stop.",
+                }
+            ]
+            plan["topology"]["routingPolicies"] = [
+                {
+                    "id": "release-review",
+                    "evidence": evidence,
+                    "taskCategories": ["release-review"],
+                    "activeBoundaryRefs": ["project-core"],
+                    "recommendedExecutionClass": "delegated",
+                    "collaborationPatterns": ["producer-reviewer"],
+                    "qualityPolicyRefs": ["completeness-check"],
+                    "capabilityPolicyRef": "direct-default",
+                }
+            ]
+
+            application = harness_apply.build_application(root, plan)
+
+            self.assertTrue(application["report"]["valid"])
+            manifest = json.loads(application["manifestText"])
+            self.assertEqual(
+                manifest["topology"]["routingPolicies"][0]["qualityPolicyRefs"],
+                ["completeness-check"],
+            )
+
+    def test_ordered_overlapping_writers_require_and_accept_a_verified_handoff(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plan = minimal_plan(Path(directory))
+            self.add_boundary(plan, "contract-surface")
+            plan["topology"]["classification"].update(
+                {
+                    "class": "modular",
+                    "materialBoundaryCount": 2,
+                    "dependencyShape": "static-dag",
+                }
+            )
+            for boundary in plan["topology"]["boundaries"]:
+                boundary["writeScopes"] = ["shared/**"]
+            plan["topology"]["executionPhases"] = [
+                {
+                    "id": "design",
+                    "order": 0,
+                    "concurrencyGroups": [{"id": "producer", "order": 0}],
+                },
+                {
+                    "id": "implementation",
+                    "order": 1,
+                    "concurrencyGroups": [{"id": "consumer", "order": 0}],
+                },
+            ]
+            plan["topology"]["agents"] = [
+                {
+                    "name": "schema_designer",
+                    "scope": "boundary",
+                    "boundaryRefs": ["project-core"],
+                    "fileAccess": [
+                        {
+                            "scope": "shared/**",
+                            "mode": "write",
+                            "phase": "design",
+                            "concurrencyGroup": "producer",
+                        }
+                    ],
+                },
+                {
+                    "name": "migration_builder",
+                    "scope": "boundary",
+                    "boundaryRefs": ["contract-surface"],
+                    "fileAccess": [
+                        {
+                            "scope": "shared/migrations/**",
+                            "mode": "write",
+                            "phase": "implementation",
+                            "concurrencyGroup": "consumer",
+                        }
+                    ],
+                },
+            ]
+
+            with self.assertRaisesRegex(harness_topology.TopologyError, "verified handoff"):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+            plan["topology"]["handoffs"] = [
+                {
+                    "fromAgent": "schema_designer",
+                    "toAgent": "migration_builder",
+                    "scope": "shared/**",
+                    "fromPhase": "design",
+                    "fromConcurrencyGroup": "producer",
+                    "toPhase": "implementation",
+                    "toConcurrencyGroup": "consumer",
+                    "precondition": "The design is frozen and hashed.",
+                    "verification": "The consumer verifies the frozen hash.",
+                }
+            ]
+            harness_topology.validate_contract(plan["topology"], plan["capabilityPolicies"])
+
+    def test_required_runtime_capability_requires_probe_and_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plan = minimal_plan(Path(directory))
+            policy = plan["capabilityPolicies"][0]
+            policy.update(
+                {
+                    "semanticMode": "deterministic-orchestration",
+                    "requiredCapabilities": ["parallel-delegation"],
+                    "preferredRuntimeMapping": "runtime-native",
+                }
+            )
+
+            with self.assertRaisesRegex(harness_topology.TopologyError, "probe"):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+            policy["probe"] = {"mode": "runtime-check"}
+            policy["fallback"] = {
+                "semanticMode": "one-shot-delegation",
+                "implementation": "Primary-agent-controlled sequential delegation.",
+                "preserves": ["input", "output", "verification"],
+            }
+            harness_topology.validate_contract(plan["topology"], plan["capabilityPolicies"])
+
+    def test_golden_evaluation_uses_stable_decision_area_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plan = minimal_plan(Path(directory))
+            report = evaluate_topology.evaluate(
+                plan,
+                {
+                    "expectedClass": "minimal",
+                    "minimumMaterialBoundaries": 1,
+                    "maximumMaterialBoundaries": 1,
+                    "maximumAgents": 0,
+                    "requiredDecisionAreaIds": ["project-core"],
+                    "forbiddenAgents": ["frontend_agent", "backend_agent"],
+                    "acceptableCollaborationPatterns": [],
+                },
+            )
+
+            self.assertTrue(report["valid"])
+            self.assertEqual(report["coverage"], 1.0)
+
+    def test_applied_manifest_uses_v5_contract_without_runtime_task_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            harness_apply.apply_application(harness_apply.build_application(root, minimal_plan(root)))
+            manifest = json.loads(
+                (root / ".harness" / "manifest.json").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(manifest["schemaVersion"], 5)
+            self.assertEqual(manifest["generator"]["version"], "5.0.0")
+            self.assertNotIn("taskExecution", manifest)
+            self.assertEqual(manifest["topology"]["classification"]["class"], "minimal")
+
+
 class ValidatorTests(unittest.TestCase):
     def test_invalid_agent_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             plan = minimal_plan(root)
+            plan["topology"]["executionPhases"] = [
+                {
+                    "id": "review",
+                    "order": 0,
+                    "concurrencyGroups": [{"id": "contract", "order": 0}],
+                }
+            ]
             plan["topology"]["agents"] = [
                 {
                     "name": "contract_reviewer",
@@ -699,6 +1139,16 @@ class ValidatorTests(unittest.TestCase):
                     "responsibility": "Review project contracts independently.",
                     "whyDelegate": "Independent review reduces confirmation bias.",
                     "evidence": list(plan["project"]["evidence"]),
+                    "scope": "boundary",
+                    "boundaryRefs": ["project-core"],
+                    "fileAccess": [
+                        {
+                            "scope": "pyproject.toml",
+                            "mode": "read",
+                            "phase": "review",
+                            "concurrencyGroup": "contract",
+                        }
+                    ],
                 }
             ]
             plan["artifacts"].append(

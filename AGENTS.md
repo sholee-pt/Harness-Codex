@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains the Codex v4 user-level harness generator.
+- This branch contains Harness for Codex v5, a user-level harness generator for Codex projects.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add deployment, marketplace publishing, telemetry, or external service dependencies.
 - Preserve the proprietary license and independently authored implementation.
@@ -25,6 +25,7 @@
 
 ## Git conventions
 
-- Version branches use `codex/vN` and `claude/vN`.
+- Harness for Codex version branches use `codex/vN` or `codex/vN.M`; the number identifies the Harness release, not the Codex product version.
+- Harness for Claude Code version branches use `claude/vN` or `claude/vN.M`.
 - Later commits use `[Feat]`, `[Fix]`, `[Docs]`, `[Refactor]`, `[Test]`, or `[Chore]`.
 - Do not commit, push, merge, or rewrite history unless the user has authorized it.

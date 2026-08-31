@@ -18,8 +18,10 @@ from typing import Iterable
 BEGIN_MARKER = "<!-- harness:begin -->"
 END_MARKER = "<!-- harness:end -->"
 RUNTIME = "codex"
-CURRENT_SCHEMA_VERSION = 4
-GENERATOR_VERSION = "4.0.0"
+CURRENT_SCHEMA_VERSION = 5
+UPGRADE_SOURCE_SCHEMA_VERSION = 4
+GENERATOR_VERSION = "5.0.0"
+LEGACY_MIGRATION_GENERATOR_VERSION = "4.0.0"
 TRANSACTION_JOURNAL_RELATIVE = ".harness/transaction.json"
 TRANSACTION_SCHEMA_VERSION = 2
 MODE_RE = re.compile(r"^0[0-7]{3}$")
@@ -303,7 +305,7 @@ def migrate_manifest(root: Path) -> dict:
         raise StateError("missing .harness/manifest.json")
     validate_runtime(manifest)
     version = manifest.get("schemaVersion")
-    if version == CURRENT_SCHEMA_VERSION:
+    if version in {UPGRADE_SOURCE_SCHEMA_VERSION, CURRENT_SCHEMA_VERSION}:
         return manifest
     if version not in {1, 2, 3}:
         raise StateError(f"unsupported manifest schemaVersion: {version!r}")
@@ -337,7 +339,7 @@ def migrate_manifest(root: Path) -> dict:
 
     def migrate_evidence(values: object, label: str) -> list[dict]:
         if not isinstance(values, list) or not values:
-            raise StateError(f"{label} must contain evidence before schema 4 migration")
+            raise StateError(f"{label} must contain evidence before schema 4 preparation")
         migrated: list[dict] = []
         for index, value in enumerate(values):
             if not isinstance(value, str) or not value.strip():
@@ -387,8 +389,8 @@ def migrate_manifest(root: Path) -> dict:
     generator = manifest.get("generator")
     if not isinstance(generator, dict):
         raise StateError("manifest generator must be an object")
-    generator["version"] = GENERATOR_VERSION
-    manifest["schemaVersion"] = CURRENT_SCHEMA_VERSION
+    generator["version"] = LEGACY_MIGRATION_GENERATOR_VERSION
+    manifest["schemaVersion"] = UPGRADE_SOURCE_SCHEMA_VERSION
     manifest["application"] = {
         "mode": "journaled",
         "transactionSchemaVersion": TRANSACTION_SCHEMA_VERSION,

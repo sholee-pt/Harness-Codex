@@ -1,0 +1,9 @@
+{
+  "expectedClass": "minimal",
+  "minimumMaterialBoundaries": 1,
+  "maximumMaterialBoundaries": 1,
+  "maximumAgents": 0,
+  "requiredDecisionAreaIds": ["project-core"],
+  "forbiddenAgents": ["frontend_agent", "backend_agent"],
+  "acceptableCollaborationPatterns": []
+}

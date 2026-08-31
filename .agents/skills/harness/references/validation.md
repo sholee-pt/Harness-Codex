@@ -10,8 +10,15 @@ Read this reference after artifacts have been generated or updated.
 - The root instruction file has at most one complete managed block.
 - The manifest points to the root instruction file Codex will actually load (`AGENTS.override.md` before `AGENTS.md`).
 - Managed hashes match after generation.
-- Manifest schema 4 declares journaled application with transaction schema 2.
+- Manifest schema 5 declares journaled application with transaction schema 2.
 - Every evidence object resolves to the recorded repository file hash, and optional line ranges remain valid.
+- Material boundaries have stable decision-area identifiers, persistence evidence, verifiable contracts, and material separation benefits.
+- Persistent topology classification agrees with post-merge boundary structure and recurring coordination evidence.
+- Task-execution state and runtime-only task risks are absent from the project manifest.
+- Specialist and cross-boundary agents reference existing boundaries; `project-harness` alone uses project scope.
+- Concurrent writers do not overlap, and sequential overlapping writers have an ordered verified handoff.
+- Persistent quality policies have repository evidence, finite budgets, stopping conditions, and failure policies.
+- Required runtime capabilities have a probe declaration and a contract-preserving fallback. Live support remains a runtime check.
 - Every Harness-owned complete file declares a valid permission mode; POSIX validation detects mode drift.
 - No transaction journal or staging directory remains after a successful apply.
 - Generated files contain no Claude-only or obsolete Agent Teams primitives.
@@ -21,7 +28,7 @@ Read this reference after artifacts have been generated or updated.
 
 Test the applicable cases, using an isolated temporary repository when possible:
 
-1. A small single-boundary project produces no unnecessary specialist agent.
+1. A physically large single-boundary project remains minimal and produces no unnecessary specialist agent.
 2. A composite project is divided by real responsibility, runtime, data, or contract boundaries.
 3. A non-layered research, data, documentation, library, or CLI project does not acquire frontend/backend roles.
 4. A same-language monorepo is divided only when package responsibilities justify it.
@@ -34,6 +41,9 @@ Test the applicable cases, using an isolated temporary repository when possible:
 11. A mid-apply failure restores updated files and removes files created by that transaction.
 12. Recovery works even when interruption occurs before the journal records the last replaced path.
 13. Recovery preserves an externally edited interrupted target and leaves the journal for manual resolution.
+14. Four or more independent static boundaries may remain modular with an explicit review warning.
+15. A minimal project's one-off destructive task may use coordinated runtime execution without changing the manifest topology.
+16. Golden evaluation computes coverage from stable decision-area identifiers without semantic string similarity.
 
 ## Completion gate
 

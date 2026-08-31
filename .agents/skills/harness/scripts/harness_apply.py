@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import harness_state
+import harness_topology
 import harness_transaction
 
 try:
@@ -18,20 +19,12 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ is required
     tomllib = None
 
 
-PLAN_SCHEMA_VERSION = 2
-GENERATOR_VERSION = "4.0.0"
+PLAN_SCHEMA_VERSION = 3
+GENERATOR_VERSION = "5.0.0"
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 AGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 ALLOWED_PREFIXES = (".codex/agents/", ".agents/skills/")
-ALLOWED_PATTERNS = {
-    "pipeline",
-    "fan-out/fan-in",
-    "expert-pool",
-    "producer-reviewer",
-    "supervisor",
-    "hierarchical-delegation",
-}
 FORBIDDEN_TOKENS = (
     "TeamCreate",
     "TeamDelete",
@@ -83,6 +76,13 @@ def load_plan(path: Path) -> dict:
     plan = require_object(data, "plan")
     if plan.get("schemaVersion") != PLAN_SCHEMA_VERSION:
         raise PlanError(f"plan schemaVersion must be {PLAN_SCHEMA_VERSION}")
+    if "taskExecution" in plan or "taskExecutionClass" in plan:
+        raise PlanError("task execution state is runtime-only and cannot be stored in a generation plan")
+    topology = plan.get("topology")
+    if isinstance(topology, dict) and (
+        "taskExecution" in topology or "taskExecutionClass" in topology
+    ):
+        raise PlanError("task execution state is runtime-only and cannot be stored in topology")
     return plan
 
 
@@ -186,11 +186,17 @@ def validate_artifacts(root: Path, plan: dict) -> tuple[dict[str, str], dict[str
     return artifacts, modes
 
 
-def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> dict:
+def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> tuple[dict, list[str]]:
     topology = require_object(plan.get("topology"), "topology")
-    patterns = require_list(topology.get("patterns"), "topology.patterns")
-    if not all(isinstance(pattern, str) and pattern in ALLOWED_PATTERNS for pattern in patterns):
-        raise PlanError("topology.patterns contains an unknown collaboration pattern")
+    capability_policies = plan.get("capabilityPolicies")
+    try:
+        warnings = harness_topology.validate_contract(topology, capability_policies)
+    except harness_topology.TopologyError as exc:
+        raise PlanError(str(exc)) from exc
+
+    for label, evidence in harness_topology.iter_evidence(topology):
+        validate_evidence(root, evidence, label)
+
     agents = require_list(topology.get("agents"), "topology.agents")
     skills = require_list(topology.get("skills"), "topology.skills")
 
@@ -207,7 +213,6 @@ def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> dict
         purpose = skill.get("purpose")
         if not isinstance(purpose, str) or not purpose.strip():
             raise PlanError(f"skill {name} purpose must be a non-empty string")
-        validate_evidence(root, skill.get("evidence"), f"skill {name} evidence")
         expected = f".agents/skills/{name}/SKILL.md"
         if relative != expected:
             raise PlanError(f"skill {name} path must be {expected}")
@@ -235,7 +240,6 @@ def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> dict
             value = agent.get(field)
             if not isinstance(value, str) or not value.strip():
                 raise PlanError(f"agent {name} {field} must be a non-empty string")
-        validate_evidence(root, agent.get("evidence"), f"agent {name} evidence")
         expected = f".codex/agents/{name}.toml"
         if relative != expected:
             raise PlanError(f"agent {name} path must be {expected}")
@@ -261,7 +265,7 @@ def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> dict
                 raise PlanError(
                     f"agent {name} must mention linked skill {linked_skill!r} in developer_instructions"
                 )
-    return topology
+    return topology, warnings
 
 
 def validate_instruction(plan: dict) -> str:
@@ -286,13 +290,7 @@ def evidence_paths(project: dict, topology: dict) -> set[str]:
         for item in project["evidence"]
         if isinstance(item, dict) and isinstance(item.get("path"), str)
     }
-    for kind in ("skills", "agents"):
-        for component in topology[kind]:
-            paths.update(
-                item["path"]
-                for item in component["evidence"]
-                if isinstance(item, dict) and isinstance(item.get("path"), str)
-            )
+    paths.update(harness_topology.evidence_paths(topology))
     return paths
 
 
@@ -329,11 +327,27 @@ def existing_manifest_state(root: Path) -> tuple[dict | None, dict[str, dict]]:
     if manifest is None:
         return None, {}
     harness_state.validate_runtime(manifest)
-    if manifest.get("schemaVersion") != harness_state.CURRENT_SCHEMA_VERSION:
+    if manifest.get("schemaVersion") not in {
+        harness_state.UPGRADE_SOURCE_SCHEMA_VERSION,
+        harness_state.CURRENT_SCHEMA_VERSION,
+    }:
         raise PlanError(
-            f"existing manifest must be migrated to schemaVersion "
-            f"{harness_state.CURRENT_SCHEMA_VERSION} before apply"
+            f"existing manifest must be schemaVersion {harness_state.UPGRADE_SOURCE_SCHEMA_VERSION} "
+            f"or {harness_state.CURRENT_SCHEMA_VERSION} before a v5 upgrade"
         )
+    if manifest.get("schemaVersion") == harness_state.UPGRADE_SOURCE_SCHEMA_VERSION:
+        validate_project(root, manifest)
+        legacy_topology = require_object(manifest.get("topology"), "existing topology")
+        for kind in ("skills", "agents"):
+            for index, item in enumerate(
+                require_list(legacy_topology.get(kind), f"existing topology.{kind}")
+            ):
+                component = require_object(item, f"existing topology.{kind}[{index}]")
+                validate_evidence(
+                    root,
+                    component.get("evidence"),
+                    f"existing topology.{kind}[{index}].evidence",
+                )
     entries = require_list(manifest.get("managedFiles"), "existing managedFiles")
     if not all(isinstance(entry, dict) for entry in entries):
         raise PlanError("existing managedFiles entries must be objects")
@@ -376,7 +390,8 @@ def build_application(root: Path, plan: dict) -> dict:
     harness_transaction.ensure_no_pending_transaction(root)
     project = validate_project(root, plan)
     artifacts, artifact_modes = validate_artifacts(root, plan)
-    topology = validate_topology(root, plan, artifacts)
+    topology, topology_warnings = validate_topology(root, plan, artifacts)
+    capability_policies = require_list(plan.get("capabilityPolicies"), "capabilityPolicies")
     managed_block = validate_instruction(plan)
     manifest, old_managed = existing_manifest_state(root)
 
@@ -462,6 +477,7 @@ def build_application(root: Path, plan: dict) -> dict:
         "instructionFile": instruction_relative,
         "project": project,
         "topology": topology,
+        "capabilityPolicies": capability_policies,
         "managedFiles": sorted(desired_entries.values(), key=lambda item: item["path"]),
     }
     manifest_text = json.dumps(desired_manifest, indent=2, ensure_ascii=False) + "\n"
@@ -499,7 +515,7 @@ def build_application(root: Path, plan: dict) -> dict:
             "valid": True,
             "actions": actions,
             "removalCandidates": removal_candidates,
-            "warnings": [],
+            "warnings": topology_warnings,
         },
     }
 

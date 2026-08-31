@@ -15,9 +15,9 @@ An existing dedicated target path without a valid matching manifest entry is use
 
 1. Run the state status command before writing.
 2. If status reports a transaction journal, read [transaction-recovery.md](transaction-recovery.md) and run `harness_apply.py --recover` before migration or planning. Recovery refuses targets whose content changed outside the interrupted transaction.
-3. If the manifest uses schema v1 or v2, run the guarded migration command only while every managed entry is unchanged.
-4. Recompute the project profile and topology from current evidence.
-5. Put the proposed content in a structured plan and run `harness_apply.py --dry-run`.
+3. If the manifest uses schema v1, v2, or v3, run the guarded migration command only while every managed entry is unchanged; this prepares schema 4 and does not invent v5 boundaries.
+4. For schema 4 or 5, recompute material boundaries, persistence, merge results, and project topology from current evidence. Treat schema 4 → 5 as a reviewed regeneration upgrade rather than an automatic schema inference.
+5. Put the proposed content in a schema 3 plan and run `harness_apply.py --dry-run`.
 6. Apply only when every existing managed entry is unchanged and every new target path is unused.
 7. Let the apply script stage desired content and verified backups, write the transaction journal, and replace exactly the outputs classified as create or update.
 8. Let the apply script write the derived manifest last and remove the journal only after every output is committed.

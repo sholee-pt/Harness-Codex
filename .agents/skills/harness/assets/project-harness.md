@@ -8,6 +8,7 @@ description: Coordinate __PROJECT_DOMAIN__ work across the repository's generate
 ## Project contract
 
 - Objective: __PROJECT_OBJECTIVE__
+- Persistent topology: __MINIMAL_MODULAR_OR_COORDINATED__
 - Boundaries: __PROJECT_BOUNDARIES__
 - Quality risks: __QUALITY_BOUNDARIES__
 
@@ -15,17 +16,17 @@ description: Coordinate __PROJECT_DOMAIN__ work across the repository's generate
 
 __TASK_TO_AGENT_AND_SKILL_ROUTING__
 
-Use direct execution when delegation has no material benefit. Use only agents and skills justified by the current task.
+Classify each current task as direct, delegated, or coordinated without changing the persistent project topology. Use direct execution when delegation has no material benefit. Use only agents and skills justified by the active boundaries and task risks.
 
 ## Run protocol
 
 1. State the objective, completion criteria, planned outputs, dependencies, and ownership.
-2. Confirm that every required runtime capability is actually available. Fall back to supported direct or sequential execution when it is not.
-3. Run independent scopes in parallel only when their write boundaries do not overlap.
+2. Resolve the applicable routing, quality, and capability policies. Confirm that every required runtime capability is actually available and use the declared contract-preserving fallback when it is not.
+3. Run independent scopes in parallel only when their write scopes do not overlap in the same execution lane. Require the planned verified handoff before an ordered writer changes a shared scope.
 4. Collect an explicit completion status for every planned output.
 5. When dependent phases need immutable inputs and a deterministic hash mechanism is available, freeze completed phase artifacts before downstream review or validation. Do not claim a phase is frozen without recorded hashes.
 6. If a recorded frozen artifact changes, invalidate dependent validation and repeat it.
-7. Integrate results and run project-native checks.
+7. Stop every quality loop at its declared budget or stopping condition, preserve unresolved disagreement under its failure policy, then integrate results and run project-native checks.
 
 ## Failure policy
 

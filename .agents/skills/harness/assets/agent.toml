@@ -13,8 +13,10 @@ This role exists because: __REPOSITORY_EVIDENCE__
 
 - Input: __INPUT_CONTRACT__
 - Output: __OUTPUT_CONTRACT__
-- Read boundary: __READ_BOUNDARY__
-- Write boundary: __WRITE_BOUNDARY_OR_READ_ONLY__
+- Material boundaries: __BOUNDARY_REFS__
+- Read scopes and lanes: __READ_SCOPES_AND_LANES__
+- Write scopes and lanes: __WRITE_SCOPES_AND_LANES_OR_READ_ONLY__
+- Required handoffs: __ORDERED_HANDOFFS_OR_NONE__
 
 # Method
 

@@ -1,8 +1,8 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "generator": {
     "name": "Harness",
-    "version": "4.0.0",
+    "version": "5.0.0",
     "runtime": "codex"
   },
   "application": {
@@ -25,7 +25,19 @@
     }
   },
   "topology": {
-    "patterns": [],
+    "classification": {
+      "class": "minimal",
+      "materialBoundaryCount": 0,
+      "dependencyShape": "independent",
+      "recurringCoordination": false,
+      "coordinationReasons": [],
+      "rationale": "__CLASSIFICATION_RATIONALE__",
+      "mergedCandidates": [],
+      "uncertainties": []
+    },
+    "boundaries": [],
+    "collaborationPatterns": [],
+    "qualityPatternPolicies": [],
     "agents": [],
     "skills": [
       {
@@ -38,9 +50,15 @@
             "sha256": "__EVIDENCE_SHA256__",
             "claim": "__EVIDENCE_CLAIM__"
           }
-        ]
+        ],
+        "scope": "project",
+        "boundaryRefs": []
       }
-    ]
+    ],
+    "routingPolicies": [],
+    "executionPhases": [],
+    "handoffs": []
   },
+  "capabilityPolicies": [],
   "managedFiles": []
 }
