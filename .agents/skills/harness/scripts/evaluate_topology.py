@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate a Codex v5 topology against deterministic golden expectations."""
+"""Evaluate a Harness for Codex v5.1 topology against golden expectations."""
 
 from __future__ import annotations
 
@@ -36,6 +36,8 @@ def evaluate(plan: dict, golden: dict) -> dict:
     except harness_topology.TopologyError as exc:
         return {
             "valid": False,
+            "validationScope": "topology-contract",
+            "evidenceValidated": False,
             "classificationMatch": False,
             "coverage": 0.0,
             "errors": [str(exc)],
@@ -123,6 +125,8 @@ def evaluate(plan: dict, golden: dict) -> dict:
 
     return {
         "valid": not errors,
+        "validationScope": "topology-contract",
+        "evidenceValidated": False,
         "classificationMatch": classification_match,
         "coverage": round(coverage, 6),
         "matchedDecisionAreaIds": matched,
@@ -145,7 +149,18 @@ def main() -> int:
         print(json.dumps(report, indent=2, ensure_ascii=False))
         return 0 if report["valid"] else 1
     except EvaluationError as exc:
-        print(json.dumps({"valid": False, "error": str(exc)}, indent=2, ensure_ascii=False))
+        print(
+            json.dumps(
+                {
+                    "valid": False,
+                    "validationScope": "topology-contract",
+                    "evidenceValidated": False,
+                    "error": str(exc),
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
         return 2
 
 

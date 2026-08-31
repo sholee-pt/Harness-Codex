@@ -1,0 +1,9 @@
+{
+  "expectedClass": "modular",
+  "minimumMaterialBoundaries": 4,
+  "maximumMaterialBoundaries": 4,
+  "maximumAgents": 4,
+  "requiredDecisionAreaIds": ["ingestion-contract", "reporting-contract", "policy-contract", "quality-contract"],
+  "forbiddenAgents": ["frontend_agent", "backend_agent"],
+  "acceptableCollaborationPatterns": ["expert-pool"]
+}

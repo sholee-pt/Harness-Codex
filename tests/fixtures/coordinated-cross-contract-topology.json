@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 3,
+  "topology": {
+    "classification": {
+      "class": "coordinated",
+      "materialBoundaryCount": 2,
+      "dependencyShape": "static-dag",
+      "recurringCoordination": true,
+      "coordinationReasons": ["cross-contract-verification", "reviewer-chain", "phase-freeze"],
+      "rationale": "Every release performs an ordered API-to-storage contract synchronization and review.",
+      "mergedCandidates": [],
+      "uncertainties": []
+    },
+    "boundaries": [
+      {
+        "id": "api-contract",
+        "name": "API contract",
+        "types": ["contract"],
+        "summary": "Owns the public API schema.",
+        "evidence": [{"path": "contracts/api.schema", "sha256": "64fd8ae3e56ec910cccfe2effc0a6fa170d7b24be244d925a7a1c287df363137", "claim": "Defines the API contract."}],
+        "decisionAreaIds": ["api-contract"],
+        "inputs": ["API requirements"],
+        "outputs": ["frozen API schema"],
+        "contracts": ["API schema"],
+        "readScopes": ["contracts/api.schema"],
+        "writeScopes": ["contracts/**"],
+        "verification": ["validate the API schema"],
+        "failureImpact": "Consumers may receive an incompatible API.",
+        "persistence": {"kind": "documented-recurring-workflow", "evidence": [{"path": "README.md", "sha256": "63afa3c0b3f2bcea27fb822c4e2a784fb167278e75c8398d05d39d9ec76c90ba", "claim": "Documents recurring release synchronization."}]},
+        "separationBenefits": {"specializedJudgment": true},
+        "dependsOn": [],
+        "interactsWith": ["storage-contract"],
+        "overlapWith": []
+      },
+      {
+        "id": "storage-contract",
+        "name": "Storage contract",
+        "types": ["contract"],
+        "summary": "Owns storage compatibility with the API schema.",
+        "evidence": [{"path": "contracts/storage.schema", "sha256": "c8cc7acdfe6246f2e476e90ae98f1f617055343b53cfcb9f7110658a3006c0fc", "claim": "Defines the storage contract."}],
+        "decisionAreaIds": ["storage-contract"],
+        "inputs": ["frozen API schema"],
+        "outputs": ["verified storage schema"],
+        "contracts": ["storage schema"],
+        "readScopes": ["contracts/storage.schema"],
+        "writeScopes": ["contracts/generated/**"],
+        "verification": ["validate API and storage compatibility"],
+        "failureImpact": "Stored data may become incompatible with the API.",
+        "persistence": {"kind": "documented-recurring-workflow", "evidence": [{"path": "README.md", "sha256": "63afa3c0b3f2bcea27fb822c4e2a784fb167278e75c8398d05d39d9ec76c90ba", "claim": "Documents recurring release synchronization."}]},
+        "separationBenefits": {"independentReview": true},
+        "dependsOn": ["api-contract"],
+        "interactsWith": ["api-contract"],
+        "overlapWith": []
+      }
+    ],
+    "collaborationPatterns": ["producer-reviewer"],
+    "qualityPatternPolicies": [{"id": "contract-completeness", "name": "completeness-critic", "justificationSource": "repository-evidence", "evidence": [{"path": "README.md", "sha256": "63afa3c0b3f2bcea27fb822c4e2a784fb167278e75c8398d05d39d9ec76c90ba", "claim": "Requires recurring verification."}], "boundaryRefs": ["api-contract", "storage-contract"], "budget": {"maxRounds": 2}, "stoppingCondition": "Stop after compatibility succeeds or two rounds complete.", "failurePolicy": "Report incompatible contracts and stop the release."}],
+    "agents": [
+      {"name": "api_producer", "evidence": [{"path": "contracts/api.schema", "sha256": "64fd8ae3e56ec910cccfe2effc0a6fa170d7b24be244d925a7a1c287df363137", "claim": "Requires API schema ownership."}], "scope": "boundary", "boundaryRefs": ["api-contract"], "fileAccess": [{"scope": "contracts/**", "mode": "write", "phase": "produce", "concurrencyGroup": "producer"}]},
+      {"name": "contract_reviewer", "evidence": [{"path": "README.md", "sha256": "63afa3c0b3f2bcea27fb822c4e2a784fb167278e75c8398d05d39d9ec76c90ba", "claim": "Requires cross-contract review."}], "scope": "cross-boundary", "boundaryRefs": ["api-contract", "storage-contract"], "fileAccess": [{"scope": "contracts/generated/**", "mode": "write", "phase": "review", "concurrencyGroup": "reviewer"}]}
+    ],
+    "skills": [{"name": "project-harness", "evidence": [{"path": "README.md", "sha256": "63afa3c0b3f2bcea27fb822c4e2a784fb167278e75c8398d05d39d9ec76c90ba", "claim": "Describes the coordinated cross-contract fixture."}], "scope": "project", "boundaryRefs": []}],
+    "routingPolicies": [{"id": "release-sync", "evidence": [{"path": "README.md", "sha256": "63afa3c0b3f2bcea27fb822c4e2a784fb167278e75c8398d05d39d9ec76c90ba", "claim": "Defines a recurring release route."}], "taskCategories": ["release-sync"], "activeBoundaryRefs": ["api-contract", "storage-contract"], "recommendedExecutionClass": "coordinated", "collaborationPatterns": ["producer-reviewer"], "qualityPolicyRefs": ["contract-completeness"], "capabilityPolicyRef": "direct-default"}],
+    "executionPhases": [
+      {"id": "produce", "order": 0, "concurrencyGroups": [{"id": "producer", "order": 0}]},
+      {"id": "review", "order": 1, "concurrencyGroups": [{"id": "reviewer", "order": 0}]}
+    ],
+    "handoffs": [{"fromAgent": "api_producer", "toAgent": "contract_reviewer", "scope": "contracts/**", "fromPhase": "produce", "fromConcurrencyGroup": "producer", "toPhase": "review", "toConcurrencyGroup": "reviewer", "precondition": "The API schema is frozen and hashed.", "verification": "The reviewer verifies the frozen API schema hash."}]
+  },
+  "capabilityPolicies": [{"id": "direct-default", "semanticMode": "deterministic-orchestration", "requiredCapabilities": [], "preferredRuntimeMapping": "instruction-driven", "reason": "Ordered local instructions preserve the producer-reviewer contract."}]
+}

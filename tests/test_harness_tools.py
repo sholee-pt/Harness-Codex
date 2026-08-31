@@ -223,7 +223,7 @@ class StateTests(unittest.TestCase):
             migrated = harness_state.migrate_manifest(root)
 
             self.assertEqual(migrated["schemaVersion"], 4)
-            self.assertEqual(migrated["generator"]["version"], "4.0.0")
+            self.assertEqual(migrated["generator"]["version"], "4.0")
             self.assertEqual(
                 migrated["application"],
                 {"mode": "journaled", "transactionSchemaVersion": 2},
@@ -837,7 +837,71 @@ class TopologyContractTests(unittest.TestCase):
                     "coordinationReasons": ["cross-contract-verification"],
                 }
             )
+            for boundary in plan["topology"]["boundaries"]:
+                boundary["types"] = ["contract"]
             harness_topology.validate_contract(plan["topology"], plan["capabilityPolicies"])
+
+    def test_scope_containment_distinguishes_literals_from_recursive_prefixes(self) -> None:
+        self.assertTrue(harness_topology.scope_contains("src/model.py", "src/model.py"))
+        self.assertFalse(harness_topology.scope_contains("src/model.py", "src/model.py/**"))
+        self.assertFalse(harness_topology.scope_contains("src/model", "src/model/**"))
+        self.assertTrue(harness_topology.scope_contains("src/model/**", "src/model"))
+        self.assertTrue(harness_topology.scope_contains("src/model/**", "src/model/item.py"))
+        self.assertTrue(harness_topology.scope_contains("src/model/**", "src/model/nested/**"))
+
+    def test_case_only_writer_scopes_conflict_portably(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plan = minimal_plan(Path(directory))
+            self.add_boundary(plan, "contract-surface")
+            plan["topology"]["classification"].update(
+                {
+                    "class": "modular",
+                    "materialBoundaryCount": 2,
+                    "dependencyShape": "static-dag",
+                }
+            )
+            plan["topology"]["executionPhases"] = [
+                {
+                    "id": "implementation",
+                    "order": 0,
+                    "concurrencyGroups": [{"id": "parallel", "order": 0}],
+                }
+            ]
+            plan["topology"]["boundaries"][0]["writeScopes"] = ["Src/Model/**"]
+            plan["topology"]["boundaries"][1]["writeScopes"] = ["src/model/**"]
+            plan["topology"]["agents"] = [
+                {
+                    "name": "upper_writer",
+                    "scope": "boundary",
+                    "boundaryRefs": ["project-core"],
+                    "fileAccess": [
+                        {
+                            "scope": "Src/Model/**",
+                            "mode": "write",
+                            "phase": "implementation",
+                            "concurrencyGroup": "parallel",
+                        }
+                    ],
+                },
+                {
+                    "name": "lower_writer",
+                    "scope": "boundary",
+                    "boundaryRefs": ["contract-surface"],
+                    "fileAccess": [
+                        {
+                            "scope": "src/model/**",
+                            "mode": "write",
+                            "phase": "implementation",
+                            "concurrencyGroup": "parallel",
+                        }
+                    ],
+                },
+            ]
+
+            with self.assertRaisesRegex(harness_topology.TopologyError, "concurrent writers"):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
 
     def test_generation_plan_rejects_runtime_task_execution_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -870,6 +934,52 @@ class TopologyContractTests(unittest.TestCase):
                 harness_topology.validate_contract(
                     plan["topology"], plan["capabilityPolicies"]
                 )
+
+    def test_dependency_shape_matches_declared_relationships(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plan = minimal_plan(Path(directory))
+            self.add_boundary(plan, "contract-surface", depends_on=["project-core"])
+            plan["topology"]["classification"].update(
+                {
+                    "class": "modular",
+                    "materialBoundaryCount": 2,
+                    "dependencyShape": "independent",
+                }
+            )
+            with self.assertRaisesRegex(harness_topology.TopologyError, "empty dependsOn"):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+            plan["topology"]["boundaries"][1]["dependsOn"] = []
+            plan["topology"]["classification"]["dependencyShape"] = "cyclic-contract"
+            with self.assertRaisesRegex(harness_topology.TopologyError, "cycle in interactsWith"):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+            plan["topology"]["boundaries"][0]["interactsWith"] = ["contract-surface"]
+            plan["topology"]["boundaries"][1]["interactsWith"] = ["project-core"]
+            harness_topology.validate_contract(plan["topology"], plan["capabilityPolicies"])
+
+    def test_coordination_reasons_require_supporting_topology(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plan = minimal_plan(Path(directory))
+            plan["topology"]["classification"].update(
+                {
+                    "class": "coordinated",
+                    "dependencyShape": "dynamic",
+                    "recurringCoordination": True,
+                    "coordinationReasons": ["dynamic-allocation"],
+                }
+            )
+            with self.assertRaisesRegex(harness_topology.TopologyError, "supervisor"):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+            plan["topology"]["collaborationPatterns"] = ["supervisor"]
+            harness_topology.validate_contract(plan["topology"], plan["capabilityPolicies"])
 
     def test_concurrent_writers_with_overlapping_scopes_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -987,6 +1097,63 @@ class TopologyContractTests(unittest.TestCase):
                 ["completeness-check"],
             )
 
+    def test_routing_categories_are_global_and_direct_routes_do_not_collaborate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plan = minimal_plan(Path(directory))
+            evidence = copy.deepcopy(plan["project"]["evidence"])
+            route = {
+                "id": "first-route",
+                "evidence": evidence,
+                "taskCategories": ["release-review"],
+                "activeBoundaryRefs": ["project-core"],
+                "recommendedExecutionClass": "direct",
+                "collaborationPatterns": [],
+                "qualityPolicyRefs": [],
+                "capabilityPolicyRef": "direct-default",
+            }
+            plan["topology"]["routingPolicies"] = [route, {**route, "id": "second-route"}]
+            with self.assertRaisesRegex(harness_topology.TopologyError, "globally assigned"):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+            plan["topology"]["routingPolicies"] = [route]
+            plan["topology"]["collaborationPatterns"] = ["supervisor"]
+            route["collaborationPatterns"] = ["supervisor"]
+            with self.assertRaisesRegex(harness_topology.TopologyError, "direct execution"):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+    def test_quality_budget_keys_and_relations_are_pattern_specific(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plan = minimal_plan(Path(directory))
+            evidence = copy.deepcopy(plan["project"]["evidence"])
+            policy = {
+                "id": "dry-review",
+                "name": "loop-until-dry",
+                "justificationSource": "repository-evidence",
+                "evidence": evidence,
+                "boundaryRefs": ["project-core"],
+                "budget": {"maxRounds": 2, "zeroFindingRounds": 1, "maxAngles": 4},
+                "stoppingCondition": "Stop after one zero-finding round or two total rounds.",
+                "failurePolicy": "Report unresolved findings and stop.",
+            }
+            plan["topology"]["qualityPatternPolicies"] = [policy]
+            with self.assertRaisesRegex(harness_topology.TopologyError, "exactly"):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+            policy["budget"] = {"maxRounds": 1, "zeroFindingRounds": 2}
+            with self.assertRaisesRegex(harness_topology.TopologyError, "must not exceed"):
+                harness_topology.validate_contract(
+                    plan["topology"], plan["capabilityPolicies"]
+                )
+
+            policy["budget"] = {"maxRounds": 2, "zeroFindingRounds": 1}
+            harness_topology.validate_contract(plan["topology"], plan["capabilityPolicies"])
+
     def test_ordered_overlapping_writers_require_and_accept_a_verified_handoff(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             plan = minimal_plan(Path(directory))
@@ -1103,7 +1270,32 @@ class TopologyContractTests(unittest.TestCase):
             )
 
             self.assertTrue(report["valid"])
+            self.assertEqual(report["validationScope"], "topology-contract")
+            self.assertFalse(report["evidenceValidated"])
             self.assertEqual(report["coverage"], 1.0)
+
+    def test_modular_and_coordinated_golden_fixtures_are_evidence_bound(self) -> None:
+        fixtures = (
+            ("modular-expert-pool", "modular-expert-pool"),
+            ("coordinated-cross-contract", "coordinated-cross-contract"),
+        )
+        for project_name, fixture_name in fixtures:
+            with self.subTest(fixture=fixture_name):
+                plan = json.loads(
+                    (REPO_ROOT / "tests" / "fixtures" / f"{fixture_name}-topology.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                golden = json.loads(
+                    (REPO_ROOT / "tests" / "fixtures" / f"{fixture_name}-golden.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                report = evaluate_topology.evaluate(plan, golden)
+                self.assertTrue(report["valid"], report)
+                root = REPO_ROOT / "tests" / "fixtures" / project_name
+                for label, evidence in harness_topology.iter_evidence(plan["topology"]):
+                    harness_apply.validate_evidence(root, evidence, label)
 
     def test_applied_manifest_uses_v5_contract_without_runtime_task_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1114,7 +1306,7 @@ class TopologyContractTests(unittest.TestCase):
             )
 
             self.assertEqual(manifest["schemaVersion"], 5)
-            self.assertEqual(manifest["generator"]["version"], "5.0.0")
+            self.assertEqual(manifest["generator"]["version"], "5.1")
             self.assertNotIn("taskExecution", manifest)
             self.assertEqual(manifest["topology"]["classification"]["class"], "minimal")
 

@@ -17,7 +17,9 @@ Read this reference after artifacts have been generated or updated.
 - Task-execution state and runtime-only task risks are absent from the project manifest.
 - Specialist and cross-boundary agents reference existing boundaries; `project-harness` alone uses project scope.
 - Concurrent writers do not overlap, and sequential overlapping writers have an ordered verified handoff.
+- Literal scopes do not authorize recursive descendants, and case-only writer scopes collide portably.
 - Persistent quality policies have repository evidence, finite budgets, stopping conditions, and failure policies.
+- Routing categories are globally unique, dependency shapes match relationship graphs, and coordination reasons have supporting topology.
 - Required runtime capabilities have a probe declaration and a contract-preserving fallback. Live support remains a runtime check.
 - Every Harness-owned complete file declares a valid permission mode; POSIX validation detects mode drift.
 - No transaction journal or staging directory remains after a successful apply.
@@ -44,6 +46,9 @@ Test the applicable cases, using an isolated temporary repository when possible:
 14. Four or more independent static boundaries may remain modular with an explicit review warning.
 15. A minimal project's one-off destructive task may use coordinated runtime execution without changing the manifest topology.
 16. Golden evaluation computes coverage from stable decision-area identifiers without semantic string similarity.
+17. A modular expert pool remains modular even with four independent specialist boundaries.
+18. A coordinated cross-contract fixture binds recurring reasons to patterns, phases, and a verified handoff.
+19. Golden evaluation labels its topology-only scope and does not claim evidence validation.
 
 ## Completion gate
 

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Harness_for_Codex-v5-brightgreen.svg" alt="Harness for Codex v5">
+  <img src="https://img.shields.io/badge/Harness_for_Codex-v5.1-brightgreen.svg" alt="Harness for Codex v5.1">
   <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
   <img src="https://img.shields.io/badge/Type-Harness_Generator-orange.svg" alt="Harness Generator">
   <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
@@ -33,7 +33,7 @@ Harness requires Anaconda or Miniconda. Clone this branch, create the dedicated 
 ### PowerShell
 
 ```powershell
-git clone --branch codex/v5 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v5.1 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file "Harness/environment.yml"
 New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
 New-Item -ItemType Directory -Force "$HOME/.agents/skills/harness" | Out-Null
@@ -43,7 +43,7 @@ Copy-Item -Recurse -Force "Harness/.agents/skills/harness/*" "$HOME/.agents/skil
 ### macOS and Linux
 
 ```shell
-git clone --branch codex/v5 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v5.1 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 mkdir -p ~/.agents/skills
 mkdir -p ~/.agents/skills/harness
@@ -75,6 +75,8 @@ Harness first creates a structured proposal and runs a no-write dry-run. It appl
 - Six collaboration patterns are available as design vocabulary, not mandatory templates.
 - Quality patterns are separate policies with repository evidence, finite budgets, stopping conditions, and failure handling.
 - Concurrent writers may not overlap. Ordered overlapping writers require a verified handoff between explicit execution lanes.
+- Literal file scopes cannot authorize recursive directory scopes. Writer overlap is compared case-insensitively for portable Windows safety.
+- A persistent task category belongs to at most one route. If no route matches, the current task is classified at runtime instead of defaulting blindly to direct execution.
 - Runtime capability declarations require a probe and contract-preserving fallback when a special capability is needed.
 - User-owned files and edits are never silently overwritten.
 - Generated files are updated only when their recorded hash still matches.
@@ -101,16 +103,19 @@ conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py 
 conda run -n harness python -m unittest discover -s tests -v
 ```
 
+`evaluate_topology.py` validates only the persistent topology contract and reports `evidenceValidated: false`. It does not replace the evidence, ownership, and no-write checks performed by `harness_apply.py --dry-run`.
+
 Use `--recover` only when status or a failed apply reports a pending journal. Use `--inspect-transaction` before maintenance. `--clean-orphaned-transaction` is restricted to the reserved staging directory when no journal exists; it never replaces recovery for a valid journal. Recovery first verifies that interrupted outputs were not edited externally and refuses destructive cleanup when their hashes are unknown.
 
 If Windows Conda raises `UnicodeEncodeError` while forwarding a child-process error, inspect transaction status before retrying and rerun the diagnostic with `conda run --no-capture-output -n harness python ...`. This keeps the required environment while exposing the original Harness result.
 
-Harness for Codex v5 requires generation plan schema 3, manifest schema 5, and transaction schema 2. Clean schema 4 installations are upgraded through repository re-analysis and a reviewed schema 3 plan; boundaries are not inferred from legacy manifest fields. Clean schema 1-3 manifests can first be prepared as schema 4 only when every legacy evidence path still resolves.
+Harness for Codex v5.1 requires generation plan schema 3, manifest schema 5, and transaction schema 2. Clean schema 4 installations are upgraded through repository re-analysis and a reviewed schema 3 plan; boundaries are not inferred from legacy manifest fields. Clean schema 1-3 manifests can first be prepared as schema 4 only when every legacy evidence path still resolves.
 
 ## Versioning
 
 - Harness for Codex releases use `codex/vN` or `codex/vN.M` branches. The number identifies the Harness release, not the Codex product version.
 - Harness for Claude Code releases use runtime-specific `claude/vN` or `claude/vN.M` branches.
+- Displayed Harness and generator versions use two components (`N.M`). Existing major branches such as `codex/v5` represent their `.0` release and remain unchanged.
 - Breaking generator changes start a new branch version.
 
 See [VERSIONS.md](VERSIONS.md) for compatibility, migration, and release differences.

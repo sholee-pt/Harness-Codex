@@ -27,6 +27,8 @@ Every retained boundary must include:
 
 Use `overlapWith` only when two retained boundaries share material inputs, decisions, outputs, or scopes. Such a boundary requires a `separationRationale` with distinct decisions and failure modes. Record removed candidates in `classification.mergedCandidates`; `materialBoundaryCount` is the retained post-merge count.
 
+`dependencyShape` must agree with the relationship graph. `independent` has no `dependsOn` edges, `cyclic-contract` has a cycle in `interactsWith`, and `dynamic` uses coordinated topology with the `dynamic-allocation` reason. Coordination reasons must also have supporting structure: fan-out/fan-in declares its collaboration pattern, cross-contract verification has two contract boundaries or a cross-boundary component, reviewer chains use producer-reviewer collaboration with ordered phases, and phase freezing has ordered lanes plus a verified handoff.
+
 Evidence hashes bind a claim to inspected bytes. They do not prove the semantic truth of the claim. Review the claim and persistence conclusion before apply.
 
 ## Agent and skill scope
@@ -38,7 +40,7 @@ Evidence hashes bind a claim to inspected bytes. They do not prove the semantic 
 
 ## File access lanes
 
-File scopes are either normalized literal POSIX-relative paths or directory prefixes ending in `/**`. Other wildcards are unsupported.
+File scopes are either normalized literal POSIX-relative paths or directory prefixes ending in `/**`. Other wildcards are unsupported. A literal scope authorizes only that exact path and cannot contain a recursive scope with the same base. Recursive scopes contain the base path and its descendants. Writer overlap comparison is case-insensitive on every platform so a plan cannot hide a Windows collision behind case-only differences.
 
 Each execution phase has a non-negative order and one or more concurrency groups, each with its own order. An agent file-access entry references one phase and one group:
 
@@ -65,6 +67,8 @@ Two writers in the same lane may not use overlapping scopes. Writers in differen
 
 Runtime-only task risks and their selected quality patterns are not persistent topology state.
 
+Each quality pattern accepts only its own budget keys: adversarial verification uses `maxAgents` and `maxRounds`; judge panel uses `maxCandidates` and `maxJudges`; loop-until-dry uses `maxRounds` and `zeroFindingRounds`; multi-angle sweep uses `maxAngles`; completeness critic uses `maxRounds`; and independent safety review uses `maxReviewers`. For loop-until-dry, `zeroFindingRounds` cannot exceed `maxRounds`.
+
 ## Capability policies
 
 Capability policies express semantic intent independently of a changing runtime. Direct instruction-driven execution may require no special capability. A policy that requires runtime capabilities or prefers runtime-native mapping must declare a runtime probe and a fallback that preserves input, output, and verification contracts.
@@ -75,8 +79,8 @@ Harness for Codex v5 does not add a persistent model-selection policy. Generated
 
 ## Routing policies
 
-Persistent routing policies describe evidence-backed task categories and refer only to existing boundaries, declared collaboration patterns, quality policies, and capability policies. They recommend a task execution class but do not persist the current request's selected class or agent list.
+Persistent routing policies describe evidence-backed task categories and refer only to existing boundaries, declared collaboration patterns, quality policies, and capability policies. A task category belongs to at most one route. A direct route cannot declare collaboration patterns. If no persistent route matches, classify the current task at runtime; do not assume direct execution. Routes recommend an execution class but do not persist the current request's selected class or agent list.
 
 ## Deterministic evaluation boundary
 
-Golden evaluation compares stable IDs, counts, enums, and references. It does not use semantic string similarity. A deterministic fixture proves that a proposed plan satisfies the topology contract; it does not prove that an LLM will infer the same plan from an arbitrary repository. Live discovery and generation-quality evaluation remain separate runtime checks.
+Golden evaluation compares stable IDs, counts, enums, and references. It does not use semantic string similarity. Its output declares `validationScope: topology-contract` and `evidenceValidated: false`. A deterministic fixture proves that a proposed plan satisfies the topology contract; it does not prove that evidence files or hashes are current and does not prove that an LLM will infer the same plan from an arbitrary repository. Run `harness_apply.py --dry-run` for evidence and ownership validation. Live discovery and generation-quality evaluation remain separate runtime checks.

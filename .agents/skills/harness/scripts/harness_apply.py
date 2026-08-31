@@ -20,7 +20,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ is required
 
 
 PLAN_SCHEMA_VERSION = 3
-GENERATOR_VERSION = "5.0.0"
+GENERATOR_VERSION = "5.1"
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 AGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -333,7 +333,7 @@ def existing_manifest_state(root: Path) -> tuple[dict | None, dict[str, dict]]:
     }:
         raise PlanError(
             f"existing manifest must be schemaVersion {harness_state.UPGRADE_SOURCE_SCHEMA_VERSION} "
-            f"or {harness_state.CURRENT_SCHEMA_VERSION} before a v5 upgrade"
+            f"or {harness_state.CURRENT_SCHEMA_VERSION} before a schema 5 upgrade"
         )
     if manifest.get("schemaVersion") == harness_state.UPGRADE_SOURCE_SCHEMA_VERSION:
         validate_project(root, manifest)

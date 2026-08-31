@@ -1,12 +1,12 @@
-name: Harness for Codex v5 checks
+name: Harness for Codex v5.1 checks
 
 on:
   push:
     branches:
-      - codex/v5
+      - codex/v5.1
   pull_request:
     branches:
-      - codex/v5
+      - codex/v5.1
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,11 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Check out the Harness release branch
         uses: actions/checkout@v7.0.1
@@ -30,12 +34,18 @@ jobs:
         shell: bash -el {0}
         run: conda run -n harness python -m unittest discover -s tests -v
 
-      - name: Run deterministic topology evaluation
+      - name: Run deterministic topology evaluations
         shell: bash -el {0}
         run: |
           conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py \
             --plan tests/fixtures/minimal-plan.json \
             --golden tests/fixtures/minimal-golden.json
+          conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py \
+            --plan tests/fixtures/modular-expert-pool-topology.json \
+            --golden tests/fixtures/modular-expert-pool-golden.json
+          conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py \
+            --plan tests/fixtures/coordinated-cross-contract-topology.json \
+            --golden tests/fixtures/coordinated-cross-contract-golden.json
 
       - name: Run the no-write fixture dry-run
         shell: bash -el {0}

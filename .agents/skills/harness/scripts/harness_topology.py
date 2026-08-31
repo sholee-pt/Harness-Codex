@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the machine-readable Codex v5 topology contract."""
+"""Validate the machine-readable Harness for Codex v5.1 topology contract."""
 
 from __future__ import annotations
 
@@ -67,14 +67,13 @@ COORDINATION_REASONS = {
 ACCESS_MODES = {"read", "write"}
 RUNTIME_MAPPINGS = {"instruction-driven", "runtime-native"}
 PRESERVED_CONTRACTS = {"input", "output", "verification"}
-ALLOWED_BUDGET_KEYS = {
-    "maxAgents",
-    "maxRounds",
-    "maxCandidates",
-    "maxJudges",
-    "maxAngles",
-    "maxReviewers",
-    "zeroFindingRounds",
+QUALITY_BUDGET_KEYS = {
+    "adversarial-verification": {"maxAgents", "maxRounds"},
+    "judge-panel": {"maxCandidates", "maxJudges"},
+    "loop-until-dry": {"maxRounds", "zeroFindingRounds"},
+    "multi-angle-sweep": {"maxAngles"},
+    "completeness-critic": {"maxRounds"},
+    "independent-safety-review": {"maxReviewers"},
 }
 
 
@@ -144,21 +143,46 @@ def normalize_scope(value: object, label: str) -> tuple[str, bool]:
 def scopes_overlap(first: str, second: str) -> bool:
     first_base, first_prefix = normalize_scope(first, "first scope")
     second_base, second_prefix = normalize_scope(second, "second scope")
-    if first_base == second_base:
+    first_key = first_base.casefold()
+    second_key = second_base.casefold()
+    if first_key == second_key:
         return True
-    if first_prefix and second_base.startswith(first_base + "/"):
+    if first_prefix and second_key.startswith(first_key + "/"):
         return True
-    if second_prefix and first_base.startswith(second_base + "/"):
+    if second_prefix and first_key.startswith(second_key + "/"):
         return True
     return False
 
 
 def scope_contains(container: str, candidate: str) -> bool:
     container_base, container_prefix = normalize_scope(container, "container scope")
-    candidate_base, _ = normalize_scope(candidate, "candidate scope")
-    return container_base == candidate_base or (
-        container_prefix and candidate_base.startswith(container_base + "/")
-    )
+    candidate_base, candidate_prefix = normalize_scope(candidate, "candidate scope")
+    if container_prefix:
+        return candidate_base == container_base or candidate_base.startswith(
+            container_base + "/"
+        )
+    return not candidate_prefix and candidate_base == container_base
+
+
+def _has_interaction_cycle(boundaries: list[dict]) -> bool:
+    graph = {item["id"]: item.get("interactsWith", []) for item in boundaries}
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(identifier: str) -> bool:
+        if identifier in visiting:
+            return True
+        if identifier in visited:
+            return False
+        visiting.add(identifier)
+        for related in graph[identifier]:
+            if visit(related):
+                return True
+        visiting.remove(identifier)
+        visited.add(identifier)
+        return False
+
+    return any(visit(identifier) for identifier in graph)
 
 
 def _validate_string_ids(values: object, label: str, *, nonempty: bool = False) -> list[str]:
@@ -313,6 +337,22 @@ def _validate_classification(classification: object, boundaries: list[dict]) -> 
         )
     if dependency_shape == "dynamic" and topology_class != "coordinated":
         raise TopologyError("dynamic dependency shape requires coordinated topology")
+    if dependency_shape == "independent" and any(
+        boundary.get("dependsOn") for boundary in boundaries
+    ):
+        raise TopologyError("independent dependency shape requires empty dependsOn relationships")
+    if dependency_shape == "cyclic-contract" and not _has_interaction_cycle(boundaries):
+        raise TopologyError(
+            "cyclic-contract dependency shape requires a cycle in interactsWith relationships"
+        )
+    if dependency_shape == "dynamic" and "dynamic-allocation" not in reasons:
+        raise TopologyError(
+            "dynamic dependency shape requires the dynamic-allocation coordination reason"
+        )
+    if "dynamic-allocation" in reasons and dependency_shape != "dynamic":
+        raise TopologyError(
+            "dynamic-allocation coordination reason requires dynamic dependency shape"
+        )
 
     known = {item["id"] for item in boundaries}
     merged = require_list(value.get("mergedCandidates"), "topology.classification.mergedCandidates")
@@ -545,31 +585,21 @@ def _validate_quality_policies(value: object, known_boundaries: set[str]) -> set
         if set(refs) - known_boundaries:
             raise TopologyError(f"{label}.boundaryRefs references unknown boundaries")
         budget = require_object(policy.get("budget"), f"{label}.budget")
-        if not budget or set(budget) - ALLOWED_BUDGET_KEYS:
-            raise TopologyError(f"{label}.budget is empty or contains unknown keys")
+        expected_budget_keys = QUALITY_BUDGET_KEYS[name]
+        if set(budget) != expected_budget_keys:
+            raise TopologyError(
+                f"{label}.budget must contain exactly: "
+                + ", ".join(sorted(expected_budget_keys))
+            )
         if not all(
             isinstance(amount, int) and not isinstance(amount, bool) and amount > 0
             for amount in budget.values()
         ):
             raise TopologyError(f"{label}.budget values must be positive integers")
-        if name == "adversarial-verification" and not {"maxAgents", "maxRounds"} <= set(
-            budget
-        ):
-            raise TopologyError(f"{label}.budget must bound maxAgents and maxRounds")
-        if name == "loop-until-dry" and not {"maxRounds", "zeroFindingRounds"} <= set(
-            budget
-        ):
+        if name == "loop-until-dry" and budget["zeroFindingRounds"] > budget["maxRounds"]:
             raise TopologyError(
-                f"{label}.budget must bound maxRounds and zeroFindingRounds"
+                f"{label}.budget.zeroFindingRounds must not exceed maxRounds"
             )
-        if name == "completeness-critic" and "maxRounds" not in budget:
-            raise TopologyError(f"{label}.budget must bound maxRounds")
-        if name == "judge-panel" and not {"maxCandidates", "maxJudges"} <= set(budget):
-            raise TopologyError(f"{label}.budget must bound maxCandidates and maxJudges")
-        if name == "multi-angle-sweep" and "maxAngles" not in budget:
-            raise TopologyError(f"{label}.budget must bound maxAngles")
-        if name == "independent-safety-review" and "maxReviewers" not in budget:
-            raise TopologyError(f"{label}.budget must bound maxReviewers")
         stopping = require_text(policy.get("stoppingCondition"), f"{label}.stoppingCondition")
         if stopping.strip().lower() in {"until satisfactory", "until complete", "as needed"}:
             raise TopologyError(f"{label}.stoppingCondition must be finite and testable")
@@ -634,6 +664,7 @@ def _validate_routing_policies(
 ) -> None:
     routes = require_list(value, "topology.routingPolicies")
     known: set[str] = set()
+    known_categories: set[str] = set()
     for index, item in enumerate(routes):
         label = f"topology.routingPolicies[{index}]"
         route = require_object(item, label)
@@ -642,19 +673,31 @@ def _validate_routing_policies(
             raise TopologyError(f"duplicate routing policy id: {identifier}")
         known.add(identifier)
         require_evidence_shape(route.get("evidence"), f"{label}.evidence")
-        _validate_string_ids(
+        categories = _validate_string_ids(
             route.get("taskCategories"), f"{label}.taskCategories", nonempty=True
         )
+        duplicate_categories = known_categories.intersection(categories)
+        if duplicate_categories:
+            raise TopologyError(
+                f"{label}.taskCategories repeats globally assigned categories: "
+                + ", ".join(sorted(duplicate_categories))
+            )
+        known_categories.update(categories)
         refs = _validate_string_ids(route.get("activeBoundaryRefs"), f"{label}.activeBoundaryRefs")
         if set(refs) - known_boundaries:
             raise TopologyError(f"{label}.activeBoundaryRefs references unknown boundaries")
-        if route.get("recommendedExecutionClass") not in EXECUTION_CLASSES:
+        execution_class = route.get("recommendedExecutionClass")
+        if execution_class not in EXECUTION_CLASSES:
             raise TopologyError(f"{label}.recommendedExecutionClass is unsupported")
         patterns = set(
             require_string_list(route.get("collaborationPatterns"), f"{label}.collaborationPatterns")
         )
         if patterns - collaboration_patterns:
             raise TopologyError(f"{label}.collaborationPatterns references undeclared patterns")
+        if execution_class == "direct" and patterns:
+            raise TopologyError(
+                f"{label} cannot recommend direct execution with collaboration patterns"
+            )
         quality_refs = set(
             _validate_string_ids(route.get("qualityPolicyRefs"), f"{label}.qualityPolicyRefs")
         )
@@ -663,6 +706,46 @@ def _validate_routing_policies(
         capability_ref = require_id(route.get("capabilityPolicyRef"), f"{label}.capabilityPolicyRef")
         if capability_ref not in capability_policies:
             raise TopologyError(f"{label}.capabilityPolicyRef references an unknown policy")
+
+
+def _validate_coordination_bindings(
+    topology: dict,
+    boundaries: list[dict],
+    patterns: set[str],
+    lane_orders: dict[str, tuple[int, int]],
+) -> None:
+    reasons = set(topology["classification"].get("coordinationReasons", []))
+    if "dynamic-allocation" in reasons and not patterns.intersection(
+        {"supervisor", "hierarchical-delegation"}
+    ):
+        raise TopologyError(
+            "dynamic-allocation requires supervisor or hierarchical-delegation collaboration"
+        )
+    if "fan-out-fan-in" in reasons and "fan-out/fan-in" not in patterns:
+        raise TopologyError(
+            "fan-out-fan-in coordination reason requires the fan-out/fan-in pattern"
+        )
+    if "cross-contract-verification" in reasons:
+        contract_boundaries = sum("contract" in boundary.get("types", []) for boundary in boundaries)
+        cross_boundary_component = any(
+            isinstance(component, dict) and component.get("scope") == "cross-boundary"
+            for collection in (topology.get("agents", []), topology.get("skills", []))
+            for component in collection
+        )
+        if contract_boundaries < 2 and not cross_boundary_component:
+            raise TopologyError(
+                "cross-contract-verification requires two contract boundaries or a cross-boundary component"
+            )
+    if "reviewer-chain" in reasons:
+        phase_count = len({order[0] for order in lane_orders.values()})
+        if "producer-reviewer" not in patterns or phase_count < 2:
+            raise TopologyError(
+                "reviewer-chain requires producer-reviewer collaboration and ordered phases"
+            )
+    if "phase-freeze" in reasons and (len(lane_orders) < 2 or not topology.get("handoffs")):
+        raise TopologyError(
+            "phase-freeze requires at least two execution lanes and a verified handoff"
+        )
 
 
 def iter_evidence(topology: dict) -> Iterator[tuple[str, object]]:
@@ -733,4 +816,5 @@ def validate_contract(topology_value: object, capability_value: object) -> list[
         quality_policies,
         capability_policies,
     )
+    _validate_coordination_bindings(topology, boundaries, set(patterns), lane_orders)
     return warnings

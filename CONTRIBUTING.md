@@ -6,6 +6,7 @@ Harness is maintained as a private personal project. Changes should keep the gen
 
 - Harness for Codex releases use `codex/vN` or `codex/vN.M`; these are Harness versions, not Codex product versions.
 - Harness for Claude Code releases use runtime-specific `claude/vN` or `claude/vN.M` branches.
+- Release and generator versions use two components (`N.M`). A branch named `codex/vN` is the preserved `.0` major release.
 - Breaking changes start the next version branch from the latest branch for the same runtime.
 
 ## Commit messages

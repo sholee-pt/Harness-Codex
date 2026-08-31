@@ -60,6 +60,8 @@ Read [topology-contract.md](topology-contract.md) before filling the topology. T
 
 Allowed dependency shapes are `independent`, `static-dag`, `cyclic-contract`, and `dynamic`. Allowed recurring coordination reasons are `dynamic-allocation`, `fan-out-fan-in`, `cross-contract-verification`, `reviewer-chain`, and `phase-freeze`.
 
+The dependency shape is not free-form audit metadata. `independent` requires empty `dependsOn` relationships, `cyclic-contract` requires an `interactsWith` cycle, and `dynamic` requires coordinated topology with `dynamic-allocation`. Every coordination reason must be backed by the corresponding declared collaboration or execution structure.
+
 `minimal` permits at most one boundary and no recurring coordination. `modular` permits two or more statically coordinated boundaries. `coordinated` requires repository-level recurring coordination and at least one explicit reason. Boundary count alone never forces `coordinated`.
 
 ## Boundary and component linkage
@@ -89,7 +91,7 @@ Agent entry points use `.codex/agents/<snake_case_name>.toml`. Skill entry point
 
 ## File access and handoff
 
-Scopes are literal POSIX-relative paths or directory prefixes ending in `/**`. Each phase and concurrency group has an explicit order.
+Scopes are literal POSIX-relative paths or directory prefixes ending in `/**`. A literal contains only the exact path; only `/**` can contain descendants. Writer collisions are checked with portable case-folded comparison. Each phase and concurrency group has an explicit order.
 
 ```json
 {
@@ -125,7 +127,7 @@ Sequential overlapping writers require a matching directional handoff. Concurren
 
 ## Quality, capability, and routing policies
 
-Persistent quality policies use `justificationSource: repository-evidence`, structured evidence, boundary references, a finite budget, a stopping condition, and a failure policy. Runtime-task-risk policies do not belong in schema 3 plans.
+Persistent quality policies use `justificationSource: repository-evidence`, structured evidence, boundary references, an exact pattern-specific finite budget, a stopping condition, and a failure policy. Runtime-task-risk policies do not belong in schema 3 plans. Unrelated budget keys are invalid, and a loop-until-dry policy cannot require more zero-finding rounds than its total maximum rounds.
 
 A direct capability policy may require no special runtime feature:
 
@@ -141,7 +143,7 @@ A direct capability policy may require no special runtime feature:
 
 When `requiredCapabilities` is non-empty or `preferredRuntimeMapping` is `runtime-native`, add `probe: {"mode": "runtime-check"}` and a fallback containing `semanticMode`, `implementation`, and `preserves: ["input", "output", "verification"]`.
 
-Routing policies require evidence-backed task categories, boundary references, a recommended execution class, declared collaboration patterns, quality-policy references, and one capability-policy reference. They describe repeatable routing policy; they do not store the current task decision.
+Routing policies require evidence-backed task categories, boundary references, a recommended execution class, declared collaboration patterns, quality-policy references, and one capability-policy reference. Task categories are globally unique across routes, and a direct route has no collaboration patterns. If no route matches, runtime task classification selects the lightest safe execution class. Persistent routes do not store the current task decision.
 
 ## Artifact and safety constraints
 

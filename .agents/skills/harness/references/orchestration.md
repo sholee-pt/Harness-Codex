@@ -13,7 +13,7 @@ Read this reference before generating or updating `project-harness`.
 
 Express orchestration in native Codex instructions. Do not emit Claude-specific tool syntax or depend on an unverified capability.
 
-Persistent routing policies may recommend an execution class for evidence-backed task categories. The selected class, active agent list, and one-off task risks remain runtime state and are not written to the project manifest.
+Persistent routing policies may recommend an execution class for evidence-backed task categories. Each category resolves to at most one route. When none matches, classify the current task from its scope and risk rather than assuming direct execution. The selected class, active agent list, and one-off task risks remain runtime state and are not written to the project manifest.
 
 Separate collaboration patterns, which distribute work, from quality patterns, which challenge or check results. Every quality pattern must have a finite pattern-specific budget, a stopping condition, and a failure policy. Repository-default quality policies require structured evidence; one-off task-risk policies remain runtime-only.
 

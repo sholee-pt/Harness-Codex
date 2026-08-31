@@ -1,0 +1,9 @@
+{
+  "expectedClass": "coordinated",
+  "minimumMaterialBoundaries": 2,
+  "maximumMaterialBoundaries": 2,
+  "maximumAgents": 2,
+  "requiredDecisionAreaIds": ["api-contract", "storage-contract"],
+  "forbiddenAgents": ["frontend_agent", "backend_agent"],
+  "acceptableCollaborationPatterns": ["producer-reviewer"]
+}
