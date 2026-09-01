@@ -1,12 +1,12 @@
-name: Harness for Codex v6.3 checks
+name: Harness for Codex v6.4 checks
 
 on:
   push:
     branches:
-      - codex/v6.3
+      - codex/v6.4
   pull_request:
     branches:
-      - codex/v6.3
+      - codex/v6.4
   workflow_dispatch:
 
 permissions:
@@ -58,7 +58,7 @@ jobs:
           conda run -n harness python .agents/skills/harness/scripts/harness_eval.py --help
           conda run -n harness python .agents/skills/harness/scripts/harness_eval.py change-discipline-suite --cases tests/fixtures/evaluation/change-discipline-cases.json --validate-only
           mkdir -p "${RUNNER_TEMP}/harness-codex-home"
-          conda run -n harness python .agents/skills/harness/scripts/harness_eval.py paired-run --root . --task-file tests/fixtures/evaluation/task.txt --comparison-plan tests/fixtures/evaluation/comparison-plan.json --verification tests/fixtures/evaluation/verification-profile.json --codex-home "${RUNNER_TEMP}/harness-codex-home" --repetitions 2 --order counterbalanced --seed 60 --dry-run
+          conda run -n harness python .agents/skills/harness/scripts/harness_eval.py paired-run --root . --task-file tests/fixtures/evaluation/task.txt --comparison-plan tests/fixtures/evaluation/comparison-plan.json --verification tests/fixtures/evaluation/verification-profile.json --codex-home "${RUNNER_TEMP}/harness-codex-home" --repetitions 2 --order counterbalanced --seed 64 --dry-run
 
       - name: Verify the checkout remains clean
         shell: bash -el {0}

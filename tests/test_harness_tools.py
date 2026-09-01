@@ -1491,12 +1491,12 @@ class TopologyContractTests(unittest.TestCase):
             )
 
             self.assertEqual(manifest["schemaVersion"], 5)
-            self.assertEqual(manifest["generator"]["version"], "6.3")
+            self.assertEqual(manifest["generator"]["version"], "6.4")
             self.assertNotIn("taskExecution", manifest)
             self.assertEqual(manifest["topology"]["classification"]["class"], "minimal")
 
     def test_current_workflow_checks_tracked_and_untracked_cleanliness(self) -> None:
-        workflow = (REPO_ROOT / ".github" / "workflows" / "codex-v6.3.yml").read_text(
+        workflow = (REPO_ROOT / ".github" / "workflows" / "codex-v6.4.yml").read_text(
             encoding="utf-8"
         )
         self.assertIn("git diff --exit-code", workflow)

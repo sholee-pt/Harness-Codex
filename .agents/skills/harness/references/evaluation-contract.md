@@ -1,6 +1,6 @@
 # Evaluation Contract
 
-Harness for Codex v6.3 uses attribution-aware Evaluation Schema 2 while keeping evaluation optional and user-local. It does not change generation plan schema 3, manifest schema 5, transaction schema 2, managed-file ownership, or the normal configure workflow.
+Harness for Codex v6.4 uses attribution-aware Evaluation Schema 2 while keeping evaluation optional and user-local. It does not change generation plan schema 3, manifest schema 5, transaction schema 2, managed-file ownership, or the normal configure workflow.
 
 ## Boundary
 
@@ -50,8 +50,8 @@ The change-discipline suite is a live classification probe over synthetic prompt
 
 ## Platform support
 
-The canonical store, parser, locking, observation lifecycle, and fixture tests support Linux and Windows. Live process-tree isolation is Linux-first. Windows live execution uses a new process group and `taskkill` fallback, but remains partial unless a matching user-local platform receipt verifies the exact cleanup implementation.
+The canonical store, parser, locking, observation lifecycle, and fixture tests support Linux and Windows. Codex and verification processes use dedicated process groups and the same cleanup implementation. POSIX cleanup terminates and confirms the process group; Windows uses a new process group and `taskkill` fallback, but remains partial unless a matching user-local platform receipt verifies the exact cleanup implementation.
 
 ## Compatibility
 
-Harness for Codex v6.3 reads existing evaluation Schema 1 records for list, inspect, export, integrity validation, repair, and purge. It does not rewrite them, infer absent configuration snapshots, or mix them into Schema 2 attribution groups. It reads v6.0 through v6.2 Schema 2 runs descriptively, but concrete attribution requires v6.3 runs, complete comparability, independent Run pairs, and a validated Comparison Plan whose digest matches every included comparison. New evaluation records use Schema 2 except Observation and structured report Schema 1. Existing user-owned edits remain protected by the normal ownership and hash checks.
+Harness for Codex v6.4 reads existing evaluation Schema 1 records for list, inspect, export, integrity validation, repair, and purge. It does not rewrite them, infer absent configuration snapshots, or mix them into Schema 2 attribution groups. It reads v6.0 through v6.3 Schema 2 runs descriptively, but concrete attribution requires v6.4 runs, complete comparability, independent Run pairs, and a validated Comparison Plan whose digest matches every included comparison. New evaluation records use Schema 2 except Observation and structured report Schema 1. Existing user-owned edits remain protected by the normal ownership and hash checks.

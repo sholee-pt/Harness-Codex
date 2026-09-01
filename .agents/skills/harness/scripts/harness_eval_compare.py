@@ -414,7 +414,7 @@ def _compare_runs_v2(
             gaps.extend(
                 f"{arm}-{gap}"
                 for gap in record["comparison"]["isolationGaps"]
-                if gap.startswith("verification-worktree-")
+                if gap.startswith("verification-")
             )
         if not record["result"]["processCleanupVerified"]:
             gaps.append(f"{arm}-process-cleanup")

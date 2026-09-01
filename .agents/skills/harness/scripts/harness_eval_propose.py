@@ -298,6 +298,7 @@ def _proposal_from_comparisons_v2(
         attribution_target = comparison_plan["intervention"]["attributionTarget"]
     relevant: list[dict[str, Any]] = []
     seen_comparison_ids: set[str] = set()
+    matching_strata: set[str] = set()
     for comparison in comparisons:
         types.validate_comparison_record(comparison)
         comparison_id = comparison.get("comparisonId")
@@ -306,8 +307,6 @@ def _proposal_from_comparisons_v2(
         seen_comparison_ids.add(comparison_id)
         if comparison.get("schemaVersion") != 2 or comparison.get("repositoryId") != repository_id:
             continue
-        if comparison.get("primaryOutcome", {}).get("direction") == "unknown":
-            continue
         stratum = comparison["taskStratum"]
         if task_category != "unknown" and stratum["category"] != task_category:
             continue
@@ -315,12 +314,19 @@ def _proposal_from_comparisons_v2(
             continue
         if impact_level != "unknown" and stratum["impactLevel"] != impact_level:
             continue
+        matching_strata.add(comparison["evaluationStratumFingerprint"])
+        if comparison.get("primaryOutcome", {}).get("direction") == "unknown":
+            continue
         if (
             evaluation_stratum is not None
             and comparison["evaluationStratumFingerprint"] != evaluation_stratum
         ):
             continue
         relevant.append(comparison)
+    if evaluation_stratum is not None and evaluation_stratum not in matching_strata:
+        raise ProposalError(
+            f"requested evaluation stratum was not found: {evaluation_stratum}"
+        )
     relevant_ids = {item["comparisonId"] for item in relevant}
     basis_ids: set[str] = set()
     if eligibility is not None:

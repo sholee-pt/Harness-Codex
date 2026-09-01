@@ -392,35 +392,58 @@ def codex_preflight(
 
 
 def _terminate_process_tree(process: subprocess.Popen[str], *, grace_seconds: float = 3.0) -> bool:
-    if process.poll() is not None:
-        return True
     if os.name == "nt":
-        try:
-            process.send_signal(signal.CTRL_BREAK_EVENT)
-            process.wait(timeout=grace_seconds)
-        except (OSError, subprocess.TimeoutExpired):
+        if process.poll() is None:
             try:
-                subprocess.run(
-                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=grace_seconds,
-                    check=False,
-                )
+                process.send_signal(signal.CTRL_BREAK_EVENT)
+                process.wait(timeout=grace_seconds)
             except (OSError, subprocess.TimeoutExpired):
+                pass
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=grace_seconds,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            if process.poll() is None:
                 process.kill()
     else:
+        deadline = time.monotonic() + grace_seconds
         try:
             os.killpg(process.pid, signal.SIGTERM)
-            process.wait(timeout=grace_seconds)
-        except (ProcessLookupError, subprocess.TimeoutExpired):
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            return False
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(process.pid, 0)
+            except ProcessLookupError:
+                break
+            except PermissionError:
+                return False
+            time.sleep(0.05)
+        else:
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+            except PermissionError:
+                return False
     try:
         process.wait(timeout=grace_seconds)
     except subprocess.TimeoutExpired:
+        return False
+    if os.name != "nt":
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            return process.poll() is not None
+        except PermissionError:
+            return False
         return False
     return process.poll() is not None
 

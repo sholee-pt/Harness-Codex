@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in local evaluation and observability CLI for Harness for Codex v6.3."""
+"""Opt-in local evaluation and observability CLI for Harness for Codex v6.4."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -226,6 +227,87 @@ def _configuration_snapshot(
 
 RESULT_FINGERPRINT_MAX_FILES = 4096
 RESULT_FINGERPRINT_MAX_BYTES = 64 * 1024 * 1024
+VERIFICATION_QUIESCENCE_SECONDS = 0.2
+
+
+def _length_prefixed(payload: bytearray, value: bytes) -> None:
+    payload.extend(len(value).to_bytes(8, "big"))
+    payload.extend(value)
+
+
+def _collect_result_fingerprint_payload(
+    root: Path,
+    *,
+    base_ref: str = "HEAD",
+) -> bytes:
+    """Collect one bounded snapshot of tracked and non-ignored untracked content."""
+    command = ["git", "-C", str(root.resolve())]
+    base_tree = subprocess.run(
+        [*command, "rev-parse", f"{base_ref}^{{tree}}"],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    ).stdout.strip()
+    diff = subprocess.run(
+        [*command, "diff", base_ref, "--binary", "--no-ext-diff"],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    ).stdout
+    raw_names = subprocess.run(
+        [*command, "ls-files", "--others", "--exclude-standard", "-z"],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    ).stdout
+    names = [name for name in raw_names.split(b"\0") if name]
+    if len(names) > RESULT_FINGERPRINT_MAX_FILES:
+        raise types.EvaluationError("untracked file count exceeds the fingerprint bound")
+    if len(diff) > RESULT_FINGERPRINT_MAX_BYTES:
+        raise types.EvaluationError("tracked diff exceeds the fingerprint byte bound")
+    payload = bytearray(b"harness-result-fingerprint-v3\0")
+    _length_prefixed(payload, base_tree)
+    _length_prefixed(payload, diff)
+    consumed = len(diff)
+    for raw_name in names:
+        path = root / os.fsdecode(raw_name)
+        metadata = path.lstat()
+        if stat.S_ISLNK(metadata.st_mode):
+            kind = b"l"
+            content = os.fsencode(os.readlink(path))
+        elif stat.S_ISREG(metadata.st_mode):
+            kind = b"f"
+            if metadata.st_size > RESULT_FINGERPRINT_MAX_BYTES - consumed:
+                raise types.EvaluationError("untracked content exceeds the fingerprint byte bound")
+            content = path.read_bytes()
+            final_metadata = path.lstat()
+            if (
+                len(content) != metadata.st_size
+                or final_metadata.st_size != metadata.st_size
+                or final_metadata.st_mtime_ns != metadata.st_mtime_ns
+            ):
+                raise types.EvaluationError("untracked file changed during fingerprinting")
+        else:
+            raise types.EvaluationError("unsupported untracked artifact kind")
+        consumed += len(content)
+        if consumed > RESULT_FINGERPRINT_MAX_BYTES:
+            raise types.EvaluationError("result content exceeds the fingerprint byte bound")
+        _length_prefixed(payload, raw_name)
+        payload.extend(kind)
+        _length_prefixed(payload, types.digest_bytes(content).encode("ascii"))
+    return bytes(payload)
+
+
+def _stable_payload(
+    collector: Any,
+    *,
+    changed_message: str,
+) -> bytes:
+    first_sha256 = types.digest_bytes(collector())
+    second = collector()
+    if first_sha256 != types.digest_bytes(second):
+        raise types.EvaluationError(changed_message)
+    return second
 
 
 def _result_fingerprint(
@@ -234,78 +316,70 @@ def _result_fingerprint(
     *,
     base_ref: str = "HEAD",
 ) -> str | None:
-    """HMAC the complete tracked diff and every non-ignored untracked artifact."""
+    """HMAC two identical complete snapshots of the task result content."""
     try:
-        command = ["git", "-C", str(root.resolve())]
-        base_tree = subprocess.run(
-            [*command, "rev-parse", f"{base_ref}^{{tree}}"],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        ).stdout.strip()
-        diff = subprocess.run(
-            [*command, "diff", base_ref, "--binary", "--no-ext-diff"],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        ).stdout
-        raw_names = subprocess.run(
-            [*command, "ls-files", "--others", "--exclude-standard", "-z"],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        ).stdout
-        names = [name for name in raw_names.split(b"\0") if name]
-        if len(names) > RESULT_FINGERPRINT_MAX_FILES:
-            raise types.EvaluationError("untracked file count exceeds the fingerprint bound")
-        if len(diff) > RESULT_FINGERPRINT_MAX_BYTES:
-            raise types.EvaluationError("tracked diff exceeds the fingerprint byte bound")
-        payload = bytearray(b"harness-result-fingerprint-v2\0")
-        payload.extend(len(base_tree).to_bytes(8, "big"))
-        payload.extend(base_tree)
-        payload.extend(len(diff).to_bytes(8, "big"))
-        payload.extend(diff)
-        consumed = len(diff)
-        for raw_name in names:
-            path = root / os.fsdecode(raw_name)
-            metadata = path.lstat()
-            if stat.S_ISLNK(metadata.st_mode):
-                kind = b"l"
-                content = os.fsencode(os.readlink(path))
-            elif stat.S_ISREG(metadata.st_mode):
-                kind = b"f"
-                if metadata.st_size > RESULT_FINGERPRINT_MAX_BYTES - consumed:
-                    raise types.EvaluationError("untracked content exceeds the fingerprint byte bound")
-                content = path.read_bytes()
-                if len(content) != metadata.st_size:
-                    raise types.EvaluationError("untracked file changed during fingerprinting")
-            else:
-                raise types.EvaluationError("unsupported untracked artifact kind")
-            consumed += len(content)
-            if consumed > RESULT_FINGERPRINT_MAX_BYTES:
-                raise types.EvaluationError("result content exceeds the fingerprint byte bound")
-            payload.extend(len(raw_name).to_bytes(8, "big"))
-            payload.extend(raw_name)
-            payload.extend(kind)
-            payload.extend(len(content).to_bytes(8, "big"))
-            payload.extend(types.digest_bytes(content).encode("ascii"))
-        verification_diff = subprocess.run(
-            [*command, "diff", base_ref, "--binary", "--no-ext-diff"],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        ).stdout
-        verification_names = subprocess.run(
-            [*command, "ls-files", "--others", "--exclude-standard", "-z"],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        ).stdout
-        if verification_diff != diff or verification_names != raw_names:
-            raise types.EvaluationError("repository changed during fingerprinting")
-        return store.fingerprint(bytes(payload))
+        payload = _stable_payload(
+            lambda: _collect_result_fingerprint_payload(root, base_ref=base_ref),
+            changed_message="repository changed during fingerprinting",
+        )
+        return store.fingerprint(payload)
     except (OSError, subprocess.CalledProcessError, types.EvaluationError) as exc:
         print(f"warning: result fingerprint unavailable: {exc}", file=sys.stderr)
+        return None
+
+
+def _collect_repository_state_payload(root: Path, *, base_ref: str) -> bytes:
+    """Collect content plus HEAD, symbolic HEAD, index, and porcelain status."""
+    command = ["git", "-C", str(root.resolve())]
+    head = subprocess.run(
+        [*command, "rev-parse", "--verify", "HEAD"],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    ).stdout.strip()
+    symbolic_process = subprocess.run(
+        [*command, "symbolic-ref", "--quiet", "HEAD"],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    if symbolic_process.returncode not in {0, 1}:
+        raise types.EvaluationError("could not inspect symbolic HEAD")
+    symbolic_head = symbolic_process.stdout.strip() if symbolic_process.returncode == 0 else b"DETACHED"
+    index_entries = subprocess.run(
+        [*command, "ls-files", "--stage", "-z"],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    ).stdout
+    status = subprocess.run(
+        [*command, "status", "--porcelain=v2", "-z", "--untracked-files=all"],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    ).stdout
+    content = _collect_result_fingerprint_payload(root, base_ref=base_ref)
+    payload = bytearray(b"harness-repository-state-v1\0")
+    for value in (head, symbolic_head, index_entries, status, content):
+        _length_prefixed(payload, value)
+    return bytes(payload)
+
+
+def _repository_state_signature(
+    store: store_module.EvaluationStore,
+    root: Path,
+    *,
+    base_ref: str,
+) -> str | None:
+    """HMAC two identical complete Git repository-state snapshots."""
+    try:
+        payload = _stable_payload(
+            lambda: _collect_repository_state_payload(root, base_ref=base_ref),
+            changed_message="repository state changed during signature measurement",
+        )
+        return store.fingerprint(payload)
+    except (OSError, subprocess.CalledProcessError, types.EvaluationError) as exc:
+        print(f"warning: repository state signature unavailable: {exc}", file=sys.stderr)
         return None
 
 
@@ -796,6 +870,7 @@ def _proposal_eligibility(
     concrete_plan = attribution_target in {"single-factor", "bundle"}
     relevant: list[dict[str, Any]] = []
     reasons: dict[str, set[str]] = {}
+    matching_strata: set[str] = set()
 
     def exclude(comparison_id: str, reason: str) -> None:
         reasons.setdefault(comparison_id, set()).add(reason)
@@ -805,14 +880,15 @@ def _proposal_eligibility(
             continue
         if comparison_record.get("repositoryId") != repository_id:
             continue
-        if comparison_record.get("primaryOutcome", {}).get("direction") == "unknown":
-            continue
         stratum = comparison_record["taskStratum"]
         if task_category != "unknown" and stratum["category"] != task_category:
             continue
         if complexity_level != "unknown" and stratum["complexityLevel"] != complexity_level:
             continue
         if impact_level != "unknown" and stratum["impactLevel"] != impact_level:
+            continue
+        matching_strata.add(comparison_record["evaluationStratumFingerprint"])
+        if comparison_record.get("primaryOutcome", {}).get("direction") == "unknown":
             continue
         if (
             evaluation_stratum is not None
@@ -868,7 +944,7 @@ def _proposal_eligibility(
             not in schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS
             for run in runs.values()
         ):
-            exclude(comparison_id, "pre-v6.3-attribution-excluded")
+            exclude(comparison_id, "pre-v6.4-attribution-excluded")
         patch_scope_fingerprint = (
             comparison_plan["patchScopeProfileFingerprint"]
             if comparison_plan is not None
@@ -885,6 +961,11 @@ def _proposal_eligibility(
                     and patch_scope["maximumChangedPathsExceeded"] is False
                 ):
                     exclude(comparison_id, f"{arm}-patch-scope-attribution-excluded")
+
+    if evaluation_stratum is not None and evaluation_stratum not in matching_strata:
+        raise types.EvaluationError(
+            f"requested evaluation stratum was not found: {evaluation_stratum}"
+        )
 
     candidates = [
         item for item in relevant if item["comparisonId"] not in reasons
@@ -1022,21 +1103,28 @@ def _run_verification(
     profile: dict[str, Any],
     profile_digest: str,
     check_ref: str,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], bool]:
+    creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
+    process: subprocess.Popen[Any] | None = None
     try:
-        process = subprocess.run(
+        process = subprocess.Popen(
             profile["argv"],
             cwd=root,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            timeout=float(profile["timeoutSeconds"]),
-            check=False,
+            creationflags=creationflags,
+            start_new_session=os.name != "nt",
         )
-        exit_code = process.returncode
+        exit_code = process.wait(timeout=float(profile["timeoutSeconds"]))
         result = "passed" if exit_code == 0 else "failed"
     except subprocess.TimeoutExpired:
         exit_code = None
         result = "failed"
+    except OSError as exc:
+        raise types.EvaluationError("verification process could not be started") from exc
+    cleanup_verified = (
+        capture._terminate_process_tree(process) if process is not None else False
+    )
     exit_measurement = (
         types.measurement(
             exit_code,
@@ -1049,30 +1137,37 @@ def _run_verification(
         if exit_code is not None
         else types.unavailable("exit-code")
     )
-    return {
-        "checkRef": check_ref,
-        "profileFingerprint": profile_digest,
-        "kind": profile["kind"],
-        "result": result,
-        "exitCode": exit_measurement,
-    }
+    return (
+        {
+            "checkRef": check_ref,
+            "profileFingerprint": profile_digest,
+            "kind": profile["kind"],
+            "result": result,
+            "exitCode": exit_measurement,
+        },
+        cleanup_verified,
+    )
 
 
-def _record_verification_worktree_state(
+def _record_verification_repository_state(
     record: dict[str, Any],
     *,
-    task_fingerprint: str | None,
-    post_verification_fingerprint: str | None,
+    pre_verification_signature: str | None,
+    post_verification_signature: str | None,
+    quiescent: bool | None,
 ) -> None:
     gap: str | None = None
-    if task_fingerprint is not None and post_verification_fingerprint is None:
-        gap = "verification-worktree-state-unavailable"
-    elif (
-        task_fingerprint is not None
-        and post_verification_fingerprint is not None
-        and task_fingerprint != post_verification_fingerprint
+    if (
+        pre_verification_signature is None
+        or post_verification_signature is None
+        or quiescent is None
     ):
-        gap = "verification-worktree-mutated"
+        gap = "verification-repository-state-unavailable"
+    elif (
+        not quiescent
+        or pre_verification_signature != post_verification_signature
+    ):
+        gap = "verification-repository-state-mutated"
     if gap is None:
         return
     comparison = record["comparison"]
@@ -1313,7 +1408,10 @@ def _paired_arm(
             base_ref=task_base_ref,
         )
     check_ref = evaluation_store.pseudonym(repository_id, "check", verification["id"])
-    verification_result = _run_verification(
+    pre_verification_signature = _repository_state_signature(
+        evaluation_store, root, base_ref=task_base_ref
+    )
+    verification_result, verification_cleanup_verified = _run_verification(
         root=root,
         profile=verification,
         profile_digest=verification_digest,
@@ -1322,14 +1420,30 @@ def _paired_arm(
     completed["outcome"]["verification"] = [verification_result]
     completed["outcome"]["criticalFailure"] = completed["outcome"]["criticalFailure"] or verification_result["result"] == "failed"
     completed["result"]["verificationProfileFingerprint"] = verification_digest
-    post_verification_fingerprint = _result_fingerprint(
+    first_post_verification_signature = _repository_state_signature(
         evaluation_store, root, base_ref=task_base_ref
     )
-    _record_verification_worktree_state(
-        completed,
-        task_fingerprint=task_fingerprint,
-        post_verification_fingerprint=post_verification_fingerprint,
+    time.sleep(VERIFICATION_QUIESCENCE_SECONDS)
+    post_verification_signature = _repository_state_signature(
+        evaluation_store, root, base_ref=task_base_ref
     )
+    _record_verification_repository_state(
+        completed,
+        pre_verification_signature=pre_verification_signature,
+        post_verification_signature=post_verification_signature,
+        quiescent=(
+            None
+            if first_post_verification_signature is None
+            or post_verification_signature is None
+            else first_post_verification_signature == post_verification_signature
+        ),
+    )
+    if not verification_cleanup_verified:
+        completed["comparison"]["isolationStatus"] = "failed"
+        completed["comparison"]["isolationGaps"] = sorted(set(
+            completed["comparison"]["isolationGaps"]
+            + ["verification-process-cleanup"]
+        ))
     if not cleanup_verified:
         completed["comparison"]["isolationStatus"] = "failed"
         completed["comparison"]["isolationGaps"] = sorted(set(

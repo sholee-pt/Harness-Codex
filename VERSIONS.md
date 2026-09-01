@@ -22,6 +22,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v6.1` | Harness for Codex v6.1 | Schema 3 | Schema 5 | Schema 2 | Plan-bound positive and negative attribution, conservative patch-scope eligibility, exact symmetric support thresholds, v6.0/v6.1 evidence separation |
 | `codex/v6.2` | Harness for Codex v6.2 | Schema 3 | Schema 5 | Schema 2 | Independent complete evidence units, arm-specific task bases, store-verified proposal eligibility, runtime-stratum and untracked-budget corrections |
 | `codex/v6.3` | Harness for Codex v6.3 | Schema 3 | Schema 5 | Schema 2 | Derived-view comparison lifecycle, verification-pure task measurement, explicit stratum selection, auxiliary binding and clean-tree hardening |
+| `codex/v6.4` | Harness for Codex v6.4 | Schema 3 | Schema 5 | Schema 2 | Stable two-pass fingerprints, expanded repository-state verification checks, process-group cleanup and missing-stratum errors |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -271,6 +272,19 @@ Harness for Codex v6.3 completes the Observation and Annotation comparison lifec
 - Extends the final Linux and Windows CI clean-tree check to include non-ignored untracked files.
 
 Harness for Codex v6.0 through v6.2 records remain immutable and readable for descriptive inspection. They are not rewritten or silently promoted into v6.3 concrete attribution evidence.
+
+## Harness for Codex v6.4
+
+Harness for Codex v6.4 hardens verification isolation and fingerprint stability without changing generation plan schema 3, manifest schema 5, transaction schema 2, or any persisted evaluation schema number.
+
+- Accepts a result fingerprint only when two complete bounded content snapshots match, including a second read of every non-ignored untracked artifact.
+- Compares verification repository-state signatures containing task content, `HEAD`, symbolic `HEAD`, index entries, and porcelain status.
+- Marks changed or non-quiescent verification state with `verification-repository-state-mutated` and unavailable measurements with `verification-repository-state-unavailable`.
+- Runs verification in a dedicated process group, invokes the shared tree-cleanup implementation after success, failure, or timeout, and rejects concrete attribution when cleanup cannot be confirmed.
+- Performs a bounded post-cleanup quiescence check before accepting the final repository state.
+- Rejects a syntactically valid `--evaluation-stratum` fingerprint when it does not exist among comparisons matching the requested repository and task stratum.
+
+Harness for Codex v6.0 through v6.3 records remain immutable and readable for descriptive inspection. They are not rewritten or silently promoted into v6.4 concrete attribution evidence. Windows complete isolation continues to require a receipt matching the current process-tree cleanup implementation.
 
 ## Harness for Claude Code releases
 

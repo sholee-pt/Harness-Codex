@@ -6,10 +6,12 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -981,7 +983,13 @@ class ComparisonTests(unittest.TestCase):
             v62["runtime"]["harnessVersion"],
             schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS,
         )
-        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {"6.3"})
+        v63 = manual_record(repository_id, uuid_text(7), harness_version="6.3")
+        types.validate_run_record(v63)
+        self.assertNotIn(
+            v63["runtime"]["harnessVersion"],
+            schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS,
+        )
+        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {"6.4"})
         plan = self.comparison_plan()
         v60_comparison = compare.compare_runs(
             baseline=manual_record(repository_id, uuid_text(2), arm="baseline", verification="failed", harness_version="6.0"),
@@ -1410,6 +1418,35 @@ class ComparisonTests(unittest.TestCase):
                 [comparisons[0]["comparisonId"]],
             )
 
+            missing = "f" * 64
+            with self.assertRaisesRegex(
+                types.EvaluationError,
+                "requested evaluation stratum was not found",
+            ):
+                harness_eval._proposal_eligibility(
+                    evaluation_store=evaluation_store,
+                    repository_id=repository_id,
+                    comparisons=comparisons,
+                    comparison_plan=plan,
+                    task_category="test",
+                    complexity_level="unknown",
+                    impact_level="unknown",
+                    evaluation_stratum=missing,
+                )
+            with self.assertRaisesRegex(
+                propose.ProposalError,
+                "requested evaluation stratum was not found",
+            ):
+                propose.proposal_from_comparisons(
+                    repository_id=repository_id,
+                    proposal_id=uuid_text(901),
+                    created_at="2026-08-31T12:03:00Z",
+                    comparisons=comparisons,
+                    task_category="test",
+                    comparison_plan=plan,
+                    evaluation_stratum=missing,
+                )
+
 
 class PairedIsolationTests(unittest.TestCase):
     @staticmethod
@@ -1621,7 +1658,10 @@ class PairedIsolationTests(unittest.TestCase):
             task_fingerprint = harness_eval._result_fingerprint(
                 evaluation_store, root, base_ref=base_ref
             )
-            result = harness_eval._run_verification(
+            pre_signature = harness_eval._repository_state_signature(
+                evaluation_store, root, base_ref=base_ref
+            )
+            result, cleanup_verified = harness_eval._run_verification(
                 root=root,
                 profile={
                     "id": "no-write",
@@ -1635,17 +1675,23 @@ class PairedIsolationTests(unittest.TestCase):
             post_fingerprint = harness_eval._result_fingerprint(
                 evaluation_store, root, base_ref=base_ref
             )
+            post_signature = harness_eval._repository_state_signature(
+                evaluation_store, root, base_ref=base_ref
+            )
             record = manual_record(repository_id, uuid_text(2), arm="baseline")
-            harness_eval._record_verification_worktree_state(
+            harness_eval._record_verification_repository_state(
                 record,
-                task_fingerprint=task_fingerprint,
-                post_verification_fingerprint=post_fingerprint,
+                pre_verification_signature=pre_signature,
+                post_verification_signature=post_signature,
+                quiescent=True,
             )
             self.assertEqual(result["result"], "passed")
+            self.assertTrue(cleanup_verified)
             self.assertEqual(task_fingerprint, post_fingerprint)
+            self.assertEqual(pre_signature, post_signature)
             self.assertEqual(record["comparison"]["isolationStatus"], "complete")
             self.assertNotIn(
-                "verification-worktree-mutated",
+                "verification-repository-state-mutated",
                 record["comparison"]["isolationGaps"],
             )
 
@@ -1666,7 +1712,10 @@ class PairedIsolationTests(unittest.TestCase):
                 )
                 record = manual_record(repository_id, uuid_text(2), arm="baseline")
                 harness_eval._set_result_fingerprint(record, task_fingerprint)
-                result = harness_eval._run_verification(
+                pre_signature = harness_eval._repository_state_signature(
+                    evaluation_store, root, base_ref=base_ref
+                )
+                result, cleanup_verified = harness_eval._run_verification(
                     root=root,
                     profile={
                         "id": f"mutate-{label}",
@@ -1680,12 +1729,17 @@ class PairedIsolationTests(unittest.TestCase):
                 post_fingerprint = harness_eval._result_fingerprint(
                     evaluation_store, root, base_ref=base_ref
                 )
-                harness_eval._record_verification_worktree_state(
+                post_signature = harness_eval._repository_state_signature(
+                    evaluation_store, root, base_ref=base_ref
+                )
+                harness_eval._record_verification_repository_state(
                     record,
-                    task_fingerprint=task_fingerprint,
-                    post_verification_fingerprint=post_fingerprint,
+                    pre_verification_signature=pre_signature,
+                    post_verification_signature=post_signature,
+                    quiescent=True,
                 )
                 self.assertEqual(result["result"], "passed")
+                self.assertTrue(cleanup_verified)
                 self.assertNotEqual(task_fingerprint, post_fingerprint)
                 self.assertEqual(
                     record["result"]["resultFingerprint"]["value"],
@@ -1693,7 +1747,7 @@ class PairedIsolationTests(unittest.TestCase):
                 )
                 self.assertEqual(record["comparison"]["isolationStatus"], "partial")
                 self.assertIn(
-                    "verification-worktree-mutated",
+                    "verification-repository-state-mutated",
                     record["comparison"]["isolationGaps"],
                 )
                 comparison = compare.compare_runs(
@@ -1709,12 +1763,138 @@ class PairedIsolationTests(unittest.TestCase):
                 )
                 self.assertEqual(comparison["isolationStatus"], "partial")
                 self.assertIn(
-                    "baseline-verification-worktree-mutated",
+                    "baseline-verification-repository-state-mutated",
                     comparison["isolationGaps"],
                 )
 
+    def test_verification_index_and_head_mutations_are_partial(self) -> None:
+        cases = {
+            "index": ["git", "add", "-A"],
+            "head": ["git", "commit", "-am", "verification commit"],
+        }
+        for label, argv in cases.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory)
+                root, base_ref = self._verification_repository(parent)
+                (root / "src.py").write_text("value = 2\n", encoding="utf-8")
+                evaluation_store = store_module.EvaluationStore(parent / "state")
+                repository_id = evaluation_store.register_repository(root)
+                task_fingerprint = harness_eval._result_fingerprint(
+                    evaluation_store, root, base_ref=base_ref
+                )
+                pre_signature = harness_eval._repository_state_signature(
+                    evaluation_store, root, base_ref=base_ref
+                )
+                result, cleanup_verified = harness_eval._run_verification(
+                    root=root,
+                    profile={
+                        "id": f"mutate-{label}",
+                        "kind": "custom",
+                        "argv": argv,
+                        "timeoutSeconds": 10,
+                    },
+                    profile_digest=HASH,
+                    check_ref="check:" + "4" * 32,
+                )
+                post_fingerprint = harness_eval._result_fingerprint(
+                    evaluation_store, root, base_ref=base_ref
+                )
+                post_signature = harness_eval._repository_state_signature(
+                    evaluation_store, root, base_ref=base_ref
+                )
+                record = manual_record(repository_id, uuid_text(2), arm="baseline")
+                harness_eval._set_result_fingerprint(record, task_fingerprint)
+                harness_eval._record_verification_repository_state(
+                    record,
+                    pre_verification_signature=pre_signature,
+                    post_verification_signature=post_signature,
+                    quiescent=True,
+                )
+                self.assertEqual(result["result"], "passed")
+                self.assertTrue(cleanup_verified)
+                self.assertEqual(task_fingerprint, post_fingerprint)
+                self.assertNotEqual(pre_signature, post_signature)
+                self.assertEqual(record["comparison"]["isolationStatus"], "partial")
+                self.assertIn(
+                    "verification-repository-state-mutated",
+                    record["comparison"]["isolationGaps"],
+                )
+
+    def test_non_quiescent_verification_is_partial(self) -> None:
+        record = manual_record(uuid_text(1), uuid_text(2), arm="baseline")
+        harness_eval._record_verification_repository_state(
+            record,
+            pre_verification_signature=HASH,
+            post_verification_signature=HASH,
+            quiescent=False,
+        )
+        self.assertEqual(record["comparison"]["isolationStatus"], "partial")
+        self.assertIn(
+            "verification-repository-state-mutated",
+            record["comparison"]["isolationGaps"],
+        )
+
+    def test_verification_timeout_terminates_the_process(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            result, cleanup_verified = harness_eval._run_verification(
+                root=Path(directory),
+                profile={
+                    "id": "timeout",
+                    "kind": "custom",
+                    "argv": [sys.executable, "-c", "import time; time.sleep(60)"],
+                    "timeoutSeconds": 0.1,
+                },
+                profile_digest=HASH,
+                check_ref="check:" + "4" * 32,
+            )
+            self.assertEqual(result["result"], "failed")
+            self.assertEqual(result["exitCode"]["state"], "unavailable")
+            self.assertTrue(cleanup_verified)
+
+    @unittest.skipIf(os.name == "nt", "Windows process-tree assurance is receipt-gated")
+    def test_verification_timeout_terminates_descendants(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            child = (
+                "import time; from pathlib import Path; "
+                "time.sleep(0.5); Path('escaped.txt').write_text('escaped', encoding='utf-8')"
+            )
+            parent = (
+                "import subprocess, sys, time; "
+                f"subprocess.Popen([sys.executable, '-c', {child!r}]); "
+                "time.sleep(60)"
+            )
+            _, cleanup_verified = harness_eval._run_verification(
+                root=root,
+                profile={
+                    "id": "descendant-timeout",
+                    "kind": "custom",
+                    "argv": [sys.executable, "-c", parent],
+                    "timeoutSeconds": 0.2,
+                },
+                profile_digest=HASH,
+                check_ref="check:" + "4" * 32,
+            )
+            time.sleep(0.7)
+            self.assertTrue(cleanup_verified)
+            self.assertFalse((root / "escaped.txt").exists())
+
 
 class ResultFingerprintTests(unittest.TestCase):
+    def test_fingerprint_rejects_mismatched_complete_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            evaluation_store = store_module.EvaluationStore(Path(directory) / "state")
+            with mock.patch.object(
+                harness_eval,
+                "_collect_result_fingerprint_payload",
+                side_effect=[b"first", b"second"],
+            ):
+                self.assertIsNone(
+                    harness_eval._result_fingerprint(
+                        evaluation_store, Path(directory) / "repo"
+                    )
+                )
+
     def test_fingerprint_includes_tracked_diff_and_nonignored_untracked_content(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "repo"
@@ -1738,6 +1918,50 @@ class ResultFingerprintTests(unittest.TestCase):
             self.assertIsNotNone(first)
             self.assertNotEqual(first, second)
             self.assertEqual(second, third)
+
+    def test_repository_state_signature_detects_index_and_head_only_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "repo"
+            state = Path(directory) / "state"
+            root.mkdir()
+            subprocess.run(["git", "init", str(root)], check=True, stdout=subprocess.DEVNULL)
+            subprocess.run(["git", "-C", str(root), "config", "user.email", "fixture@example.invalid"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.name", "Fixture"], check=True)
+            (root / "tracked.txt").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-m", "fixture"], check=True, stdout=subprocess.DEVNULL)
+            base_ref = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "HEAD"],
+                check=True,
+                stdout=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+            ).stdout.strip()
+            evaluation_store = store_module.EvaluationStore(state)
+            (root / "tracked.txt").write_text("changed\n", encoding="utf-8")
+            content_before = harness_eval._result_fingerprint(
+                evaluation_store, root, base_ref=base_ref
+            )
+            unstaged = harness_eval._repository_state_signature(
+                evaluation_store, root, base_ref=base_ref
+            )
+            subprocess.run(["git", "-C", str(root), "add", "tracked.txt"], check=True)
+            staged = harness_eval._repository_state_signature(
+                evaluation_store, root, base_ref=base_ref
+            )
+            content_staged = harness_eval._result_fingerprint(
+                evaluation_store, root, base_ref=base_ref
+            )
+            subprocess.run(["git", "-C", str(root), "commit", "-m", "changed"], check=True, stdout=subprocess.DEVNULL)
+            committed = harness_eval._repository_state_signature(
+                evaluation_store, root, base_ref=base_ref
+            )
+            content_committed = harness_eval._result_fingerprint(
+                evaluation_store, root, base_ref=base_ref
+            )
+            self.assertEqual(content_before, content_staged)
+            self.assertEqual(content_staged, content_committed)
+            self.assertEqual(len({unstaged, staged, committed}), 3)
 
     def test_fingerprint_covers_staged_binary_deletion_and_rename_states(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
