@@ -75,7 +75,7 @@ Capability policies express semantic intent independently of a changing runtime.
 
 Static validation proves that the declaration is complete. Actual capability availability is checked at task execution time.
 
-Harness for Codex v5 does not add a persistent model-selection policy. Generated agents inherit the active model by default. A model override remains an explicitly reviewed runtime-specific choice and must not be used merely to signal role importance.
+Harness for Codex v5+ does not add a persistent model-selection policy. Generated agents inherit the active model by default. A model override remains an explicitly reviewed runtime-specific choice and must not be used merely to signal role importance.
 
 ## Routing policies
 

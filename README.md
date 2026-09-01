@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Harness_for_Codex-v5.5-brightgreen.svg" alt="Harness for Codex v5.5">
+  <img src="https://img.shields.io/badge/Harness_for_Codex-v6.0-brightgreen.svg" alt="Harness for Codex v6.0">
   <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
   <img src="https://img.shields.io/badge/Type-Harness_Generator-orange.svg" alt="Harness Generator">
   <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
@@ -33,7 +33,7 @@ Harness requires Anaconda or Miniconda. Clone this branch, create the dedicated 
 ### PowerShell
 
 ```powershell
-git clone --branch codex/v5.5 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v6 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file "Harness/environment.yml"
 New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
 New-Item -ItemType Directory -Force "$HOME/.agents/skills/harness" | Out-Null
@@ -43,7 +43,7 @@ Copy-Item -Recurse -Force "Harness/.agents/skills/harness/*" "$HOME/.agents/skil
 ### macOS and Linux
 
 ```shell
-git clone --branch codex/v5.5 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v6 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 mkdir -p ~/.agents/skills
 mkdir -p ~/.agents/skills/harness
@@ -68,7 +68,7 @@ Harness first creates a structured proposal and runs a no-write dry-run. It appl
 
 ## Optional Evaluation
 
-Harness for Codex v5.5 can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, create non-binding experiment suggestions or bundle-level negative signals, and probe change-discipline decisions against synthetic cases. Evaluation is disabled by default and does not change generation, ownership, apply, or recovery behavior.
+Harness for Codex v6.0 can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, attribute results only to the configuration delta that was actually observed, ingest structured observations, and probe change-discipline decisions against synthetic cases. Evaluation is disabled by default and does not change generation, ownership, apply, or recovery behavior.
 
 ```shell
 conda run -n harness python .agents/skills/harness/scripts/harness_eval.py run \
@@ -78,18 +78,29 @@ conda run -n harness python .agents/skills/harness/scripts/harness_eval.py run \
 
 conda run -n harness python .agents/skills/harness/scripts/harness_eval.py list
 
+conda run -n harness python .agents/skills/harness/scripts/harness_eval.py add-observation \
+  --run RUN_ID \
+  --report OBSERVATION.json
+
+conda run -n harness python .agents/skills/harness/scripts/harness_eval.py view \
+  --run RUN_ID
+
 conda run -n harness python .agents/skills/harness/scripts/harness_eval.py change-discipline-suite \
   --root TARGET_REPOSITORY \
   --cases tests/fixtures/evaluation/change-discipline-cases.json
 ```
 
-Run records distinguish measured zero from unavailable values and preserve metric-level provenance. Raw prompts, transcripts, commands, paths, source content, and JSONL events are not written to Harness evaluation state. `--ephemeral` prevents local Codex rollout persistence; service-side processing still follows the configured Codex account and provider policy.
+Run records distinguish measured empty sets, unavailable values, and non-applicable concepts. Schema 2 separately records declared configuration, expected execution, runtime discovery, and observed execution. Raw prompts, reports, component names, transcripts, commands, paths, source content, and JSONL events are not written to Harness evaluation state. `--ephemeral` prevents local Codex rollout persistence; service-side processing still follows the configured Codex account and provider policy.
 
 The change-discipline suite checks a model's declared decision and behavior tags for four synthetic cases: material ambiguity, a one-line direct change, a file-scoped bug fix, and verification-first handling of a reproducible bug. It is a classification probe, not proof that a later code-editing run followed the declared behavior. Use `--validate-only` to validate the fixture without invoking Codex.
 
 See [evaluation-contract.md](.agents/skills/harness/references/evaluation-contract.md) for the boundary, [run-record-schema.md](.agents/skills/harness/references/run-record-schema.md) for schemas, and [evaluation-isolation.md](.agents/skills/harness/references/evaluation-isolation.md) before paired runs.
 
-Paired runs accept `--repetitions` and an `--order` policy of `randomized`, `counterbalanced`, `baseline-first`, or `harness-first`. Each arm uses an isolated temporary user home. Fixed arm order is retained as an explicit confounder. Windows runs require a matching user-local cleanup receipt before isolation can be labelled complete.
+Paired runs require Comparison Plan Schema 2, including a predeclared intervention and task stratum. They accept `--repetitions` and an `--order` policy of `randomized`, `counterbalanced`, `baseline-first`, or `harness-first`. Each arm uses an isolated temporary user home. Known Harness skills in user, compatibility, Codex-home, or readable POSIX admin locations downgrade isolation; a dirty dedicated `CODEX_HOME` is rejected. Fixed arm order is retained as an explicit confounder. Windows runs require a matching user-local cleanup receipt before isolation can be labelled complete.
+
+Structured reports use raw logical component IDs only as user-owned input. Ingest validates those IDs against the immutable configuration snapshot attached to that run, stores only local HMAC pseudonyms, and never copies the report. Observations are create-only supplements, replacements, or terminal withdrawals. Annotation Schema 2 similarly maintains one active user-outcome chain. The `view` command computes current selected values, field-specific provenance, protocol deviations, and conflicts without persisting a second source of truth.
+
+Patch-scope evaluation is optional. A user-owned profile declares allowed path scopes and budgets; rename and copy operations count both affected paths. The run stores only its digest, counts, and pseudonymous path references. It verifies path scope, not semantic minimality.
 
 ## Design Rules
 
@@ -137,7 +148,7 @@ Use `--recover` only when status or a failed apply reports a pending journal. Us
 
 If Windows Conda raises `UnicodeEncodeError` while forwarding a child-process error, inspect transaction status before retrying and rerun the diagnostic with `conda run --no-capture-output -n harness python ...`. This keeps the required environment while exposing the original Harness result.
 
-Harness for Codex v5.5 requires generation plan schema 3, manifest schema 5, and transaction schema 2. Its optional evaluation records and probe fixtures remain on auxiliary schema 1 and require no manifest migration. The apply validator now requires the canonical change-discipline block exactly once in `project-harness` and in every writer agent. Clean schema 4 installations are upgraded through repository re-analysis and a reviewed schema 3 plan; boundaries are not inferred from legacy manifest fields. Clean schema 1-3 manifests can first be prepared as schema 4 only when every legacy evidence path still resolves.
+Harness for Codex v6.0 keeps generation plan schema 3, manifest schema 5, and transaction schema 2. New Run, Annotation, Comparison Plan, Comparison, and Proposal records use Schema 2; Observation records and structured reports use Schema 1. Existing evaluation Schema 1 records remain available to list, inspect, validate, repair, purge, and export, but are never rewritten or used for configuration attribution. The apply validator continues to require the canonical change-discipline block exactly once in `project-harness` and in every writer agent. Clean schema 4 installations are upgraded through repository re-analysis and a reviewed schema 3 plan.
 
 ## Versioning
 

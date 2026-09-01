@@ -1482,7 +1482,7 @@ class TopologyContractTests(unittest.TestCase):
                 for label, evidence in harness_topology.iter_evidence(plan["topology"]):
                     harness_apply.validate_evidence(root, evidence, label)
 
-    def test_applied_manifest_uses_v5_contract_without_runtime_task_state(self) -> None:
+    def test_applied_manifest_uses_schema5_contract_without_runtime_task_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             harness_apply.apply_application(harness_apply.build_application(root, minimal_plan(root)))
@@ -1491,7 +1491,7 @@ class TopologyContractTests(unittest.TestCase):
             )
 
             self.assertEqual(manifest["schemaVersion"], 5)
-            self.assertEqual(manifest["generator"]["version"], "5.5")
+            self.assertEqual(manifest["generator"]["version"], "6.0")
             self.assertNotIn("taskExecution", manifest)
             self.assertEqual(manifest["topology"]["classification"]["class"], "minimal")
 

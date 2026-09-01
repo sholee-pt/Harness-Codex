@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in local evaluation and observability CLI for Harness for Codex v5.5."""
+"""Opt-in local evaluation and observability CLI for Harness for Codex v6.0."""
 
 from __future__ import annotations
 
@@ -21,7 +21,11 @@ import harness_eval_compare as compare
 import harness_eval_propose as propose
 import harness_eval_store as store_module
 import harness_eval_types as types
+import harness_eval_schema2 as schema2
+import harness_eval_view as evaluation_view
+import harness_patch_scope
 import harness_state
+import harness_change_discipline
 
 
 def _print(value: Any) -> None:
@@ -63,6 +67,154 @@ def _manifest_metadata(root: Path) -> tuple[str | None, str | None]:
     except (UnicodeError, json.JSONDecodeError):
         topology_hash = None
     return manifest_hash, topology_hash
+
+
+def _measured_value(value: Any, *, source: str = "run-configuration-snapshot") -> dict[str, Any]:
+    return schema2.value_observation(
+        value,
+        state="measured",
+        source=source,
+        fidelity="exact",
+        completeness="complete",
+    )
+
+
+def _measured_refs(refs: list[str], *, source: str = "run-configuration-snapshot") -> dict[str, Any]:
+    return schema2.reference_set(
+        sorted(refs),
+        state="measured",
+        source=source,
+        fidelity="exact",
+        completeness="complete",
+    )
+
+
+def _configuration_snapshot(
+    evaluation_store: store_module.EvaluationStore,
+    repository_id: str,
+    root: Path,
+    args: argparse.Namespace,
+    arm: str,
+) -> dict[str, Any]:
+    manifest_path = root / ".harness" / "manifest.json"
+    manifest: dict[str, Any] | None = None
+    if manifest_path.is_file():
+        try:
+            loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                manifest = loaded
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            manifest = None
+
+    if manifest is None and manifest_path.exists():
+        declared = {
+            "executionClass": schema2.unavailable_value(),
+            "route": schema2.unavailable_references(),
+            "agents": schema2.unavailable_references(),
+            "skills": schema2.unavailable_references(),
+            "qualityPolicies": schema2.unavailable_references(),
+            "independentReview": schema2.unavailable_value(),
+            "changeDisciplineVersion": schema2.unavailable_value(),
+            "projectHarnessFingerprint": schema2.unavailable_value(),
+            "bundleFingerprint": schema2.unavailable_value(),
+        }
+    else:
+        topology = manifest.get("topology", {}) if manifest else {}
+        if not isinstance(topology, dict):
+            topology = {}
+
+        def names(key: str, field: str = "name") -> list[str]:
+            values = topology.get(key, [])
+            if not isinstance(values, list):
+                return []
+            return [item[field] for item in values if isinstance(item, dict) and isinstance(item.get(field), str)]
+
+        agent_refs = [evaluation_store.pseudonym(repository_id, "agent", name) for name in names("agents")]
+        skill_refs = [evaluation_store.pseudonym(repository_id, "skill", name) for name in names("skills")]
+        route_refs = [evaluation_store.pseudonym(repository_id, "route", name) for name in names("routingPolicies", "id")]
+        policy_refs = [evaluation_store.pseudonym(repository_id, "quality-policy", name) for name in names("qualityPatternPolicies", "id")]
+        policies = topology.get("qualityPatternPolicies", [])
+        independent_review = any(
+            isinstance(item, dict)
+            and item.get("pattern") in {"producer-reviewer", "independent-review"}
+            for item in policies if isinstance(policies, list)
+        )
+        project_harness = root / ".agents" / "skills" / "project-harness" / "SKILL.md"
+        if project_harness.is_file():
+            project_fingerprint = _measured_value(evaluation_store.fingerprint(project_harness.read_bytes()))
+            try:
+                skill_text = project_harness.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                discipline = schema2.unavailable_value()
+            else:
+                discipline = (
+                    _measured_value(harness_change_discipline.CHANGE_DISCIPLINE_VERSION)
+                    if harness_change_discipline.PROJECT_BLOCK in harness_change_discipline.normalize_line_endings(skill_text)
+                    else schema2.unavailable_value()
+                )
+        else:
+            project_fingerprint = schema2.value_observation(
+                None, state="not-applicable", source="none", fidelity="unknown", completeness="not-applicable"
+            )
+            discipline = schema2.value_observation(
+                None, state="not-applicable", source="none", fidelity="unknown", completeness="not-applicable"
+            )
+        bundle_material = {
+            "agents": sorted(agent_refs),
+            "skills": sorted(skill_refs),
+            "routes": sorted(route_refs),
+            "qualityPolicies": sorted(policy_refs),
+            "independentReview": independent_review,
+            "changeDisciplineVersion": discipline.get("value"),
+            "projectHarnessFingerprint": project_fingerprint.get("value"),
+        }
+        declared = {
+            "executionClass": schema2.unavailable_value(),
+            "route": _measured_refs(route_refs),
+            "agents": _measured_refs(agent_refs),
+            "skills": _measured_refs(skill_refs),
+            "qualityPolicies": _measured_refs(policy_refs),
+            "independentReview": _measured_value(independent_review),
+            "changeDisciplineVersion": discipline,
+            "projectHarnessFingerprint": project_fingerprint,
+            "bundleFingerprint": _measured_value(
+                evaluation_store.fingerprint(types.canonical_bytes(bundle_material))
+            ),
+        }
+
+    execution_class = getattr(args, "execution_class", "unknown")
+    if execution_class == "unknown":
+        expected = {
+            "executionClass": schema2.unavailable_value(),
+            "route": schema2.unavailable_references(),
+            "agents": schema2.unavailable_references(),
+            "skills": schema2.unavailable_references(),
+            "independentReview": schema2.unavailable_value(),
+        }
+    else:
+        expected = {
+            "executionClass": _measured_value(execution_class, source="comparison-plan"),
+            "route": _measured_refs([], source="comparison-plan") if execution_class == "direct" else schema2.unavailable_references(),
+            "agents": _measured_refs([], source="comparison-plan") if execution_class == "direct" else schema2.unavailable_references(),
+            "skills": _measured_refs([], source="comparison-plan") if execution_class == "direct" else schema2.unavailable_references(),
+            "independentReview": _measured_value(False, source="comparison-plan") if execution_class == "direct" else schema2.unavailable_value(),
+        }
+    return {
+        "arm": arm,
+        "declaredConfiguration": declared,
+        "expectedExecution": expected,
+        "discoveredConfiguration": {
+            "agents": schema2.unavailable_references(),
+            "skills": schema2.unavailable_references(),
+        },
+        "observedExecution": {
+            "executionClass": schema2.unavailable_value(),
+            "route": schema2.unavailable_references(),
+            "agents": schema2.unavailable_references(),
+            "skills": schema2.unavailable_references(),
+            "independentReview": schema2.unavailable_value(),
+        },
+    }
 
 
 RESULT_FINGERPRINT_MAX_FILES = 4096
@@ -153,6 +305,7 @@ def _new_record(
     manifest_hash, topology_hash = _manifest_metadata(root)
     model = getattr(args, "model", None)
     model_ref = evaluation_store.pseudonym(repository_id, "model", model) if model else None
+    selected_arm = arm
     return capture.base_record(
         run_id=str(evaluation_store.ids.new_uuid()),
         repository_id=repository_id,
@@ -163,7 +316,7 @@ def _new_record(
         source_snapshot_id=_snapshot(root),
         manifest_sha256=manifest_hash,
         topology_sha256=topology_hash,
-        arm=arm,
+        arm=selected_arm,
         category=getattr(args, "category", "unknown"),
         classification_source=getattr(args, "classification_source", "unknown"),
         sandbox=getattr(args, "sandbox", "unknown"),
@@ -173,6 +326,23 @@ def _new_record(
         comparison_id=comparison_id,
         pair_id=pair_id,
         arm_order=arm_order,
+        configuration=_configuration_snapshot(
+            evaluation_store, repository_id, root, args, selected_arm
+        ),
+    )
+
+
+def _set_result_fingerprint(record: dict[str, Any], fingerprint: str | None) -> None:
+    record["result"]["resultFingerprint"] = (
+        schema2.value_observation(
+            fingerprint,
+            state="measured",
+            source="git-evaluator",
+            fidelity="exact",
+            completeness="complete",
+        )
+        if fingerprint is not None
+        else schema2.unavailable_value()
     )
 
 
@@ -219,7 +389,17 @@ def command_run(args: argparse.Namespace) -> int:
         codex_version=version,
         ended_at=types.timestamp_text(evaluation_store.clock.now_utc()),
     )
-    completed["result"]["resultFingerprint"] = _result_fingerprint(evaluation_store, root)
+    _set_result_fingerprint(completed, _result_fingerprint(evaluation_store, root))
+    if args.patch_scope_profile:
+        patch_profile = harness_patch_scope.validate_profile(
+            types.load_json(Path(args.patch_scope_profile))
+        )
+        completed["result"]["patchScope"] = harness_patch_scope.evaluate(
+            root=root,
+            profile=patch_profile,
+            repository_id=repository_id,
+            store=evaluation_store,
+        )
     evaluation_store.complete_run(completed)
     _print({"repositoryId": repository_id, "runId": completed["runId"], "completion": completed["outcome"]["completion"]})
     return 0 if completed["outcome"]["completion"] == "completed" else 1
@@ -252,8 +432,26 @@ def command_record_complete(args: argparse.Namespace) -> int:
     completed["timestamps"]["endedAt"] = types.timestamp_text(evaluation_store.clock.now_utc())
     completed["outcome"]["completion"] = args.completion
     completed["outcome"]["criticalFailure"] = args.completion in {"failed", "interrupted"}
+    pending_observation = None
+    if args.report:
+        pending_observation = _observation_from_report(
+            evaluation_store=evaluation_store,
+            repository_id=repository_id,
+            run=completed,
+            report_path=Path(args.report),
+            kind="supplement",
+            supersedes=None,
+        )
     evaluation_store.complete_run(completed)
-    _print({"repositoryId": repository_id, "runId": args.run, "recordState": "completed"})
+    observation_id = None
+    if pending_observation is not None:
+        observation_id = evaluation_store.add_observation(repository_id, pending_observation).stem
+    _print({
+        "repositoryId": repository_id,
+        "runId": args.run,
+        "recordState": "completed",
+        "observationId": observation_id,
+    })
     return 0
 
 
@@ -275,8 +473,10 @@ def command_annotate(args: argparse.Namespace) -> int:
     annotation = {
         "schemaVersion": types.ANNOTATION_SCHEMA_VERSION,
         "annotationId": str(evaluation_store.ids.new_uuid()),
+        "repositoryId": repository_id,
         "runId": args.run,
         "createdAt": types.timestamp_text(evaluation_store.clock.now_utc()),
+        "supersedesAnnotationId": args.supersedes,
         "source": "user",
         "acceptance": args.acceptance,
         "correctionCount": correction,
@@ -289,6 +489,158 @@ def command_annotate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _observation_from_report(
+    *,
+    evaluation_store: store_module.EvaluationStore,
+    repository_id: str,
+    run: dict[str, Any],
+    report_path: Path | None,
+    kind: str,
+    supersedes: str | None,
+) -> dict[str, Any]:
+    if run["schemaVersion"] != 2:
+        raise types.EvaluationError("structured observations require a Schema 2 run")
+    if kind == "withdrawal":
+        if report_path is not None:
+            raise types.EvaluationError("withdrawal forbids a report payload")
+        if supersedes is None:
+            raise types.EvaluationError("withdrawal requires --supersedes")
+        payload = None
+        provenance = {"source": "user-report", "fidelity": "reported", "completeness": "not-applicable"}
+    else:
+        if report_path is None:
+            raise types.EvaluationError(f"{kind} requires --report")
+        if kind == "supplement" and supersedes is not None:
+            raise types.EvaluationError("supplement cannot use --supersedes")
+        if kind == "replacement" and supersedes is None:
+            raise types.EvaluationError("replacement requires --supersedes")
+        report = types.load_json(report_path)
+        types.validate_manual_report(report)
+        source = "user-report" if report["captureMode"] == "user-reported" else "agent-report"
+        observed = report["observedExecution"]
+        completeness = observed["completeness"]
+
+        def reported_value(value: Any) -> dict[str, Any]:
+            return (
+                schema2.value_observation(
+                    value,
+                    state="measured",
+                    source=source,
+                    fidelity="reported",
+                    completeness="partial" if completeness == "unknown" else completeness,
+                )
+                if value is not None
+                else schema2.unavailable_value()
+            )
+
+        def component_refs(logical_ids: list[str] | None, component_kind: str, declared_key: str) -> dict[str, Any]:
+            if logical_ids is None:
+                return schema2.unavailable_references()
+            if not logical_ids:
+                return schema2.reference_set(
+                    [],
+                    state="measured",
+                    source=source,
+                    fidelity="reported",
+                    completeness="partial" if completeness == "unknown" else completeness,
+                )
+            declared = run["configuration"]["declaredConfiguration"][declared_key]
+            if declared["state"] != "measured":
+                raise types.EvaluationError("run-declared-configuration-unavailable")
+            refs = [evaluation_store.pseudonym(repository_id, component_kind, logical_id) for logical_id in logical_ids]
+            if not set(refs) <= set(declared["refs"]):
+                raise types.EvaluationError("invalid-component-id")
+            return schema2.reference_set(
+                refs,
+                state="measured",
+                source=source,
+                fidelity="reported",
+                completeness="partial" if completeness == "unknown" else completeness,
+            )
+
+        route_ids = [observed["routeRef"]] if observed["routeRef"] is not None else []
+        execution = {
+            "executionClass": reported_value(observed["executionClass"]),
+            "route": component_refs(route_ids, "route", "route"),
+            "agents": component_refs(observed["agentRefs"], "agent", "agents"),
+            "skills": component_refs(observed["skillRefs"], "skill", "skills"),
+            "independentReview": reported_value(observed["independentReview"]),
+        }
+        verification = [
+            {
+                "checkRef": evaluation_store.pseudonym(repository_id, "check", check["id"]),
+                "kind": check["kind"],
+                "result": check["result"],
+                "exitCode": check["exitCode"],
+            }
+            for check in report["verification"]
+        ]
+        payload = {
+            "observedExecution": execution,
+            "measurements": report["measurements"],
+            "verification": verification,
+        }
+        provenance = {"source": source, "fidelity": "reported", "completeness": completeness}
+    observation = {
+        "schemaVersion": types.OBSERVATION_SCHEMA_VERSION,
+        "observationId": str(evaluation_store.ids.new_uuid()),
+        "repositoryId": repository_id,
+        "runId": run["runId"],
+        "createdAt": types.timestamp_text(evaluation_store.clock.now_utc()),
+        "lifecycle": {"kind": kind, "supersedesObservationId": supersedes},
+        "provenance": provenance,
+        "privacy": {
+            "rawReportStored": False,
+            "freeTextStored": False,
+            "rawComponentNamesStored": False,
+        },
+        "integrity": {"recordSha256": None},
+    }
+    if payload is not None:
+        observation["payload"] = payload
+    sealed = types.seal_record(observation)
+    types.validate_observation_record(sealed)
+    return sealed
+
+
+def command_add_observation(args: argparse.Namespace) -> int:
+    evaluation_store = _store(args)
+    repository_id, run = evaluation_store.find_run(args.run)
+    if run["recordState"] != "completed":
+        raise types.EvaluationError("observations require a completed run")
+    observation = _observation_from_report(
+        evaluation_store=evaluation_store,
+        repository_id=repository_id,
+        run=run,
+        report_path=Path(args.report) if args.report else None,
+        kind=args.kind,
+        supersedes=args.supersedes,
+    )
+    path = evaluation_store.add_observation(repository_id, observation)
+    _print({"repositoryId": repository_id, "runId": args.run, "observationId": path.stem})
+    return 0
+
+
+def command_view(args: argparse.Namespace) -> int:
+    evaluation_store = _store(args)
+    repository_id, run = evaluation_store.find_run(args.run)
+    if run["schemaVersion"] != 2:
+        raise types.EvaluationError("derived evaluation view requires a Schema 2 run")
+    view = evaluation_view.derived_evaluation_view(
+        run,
+        evaluation_store.observations_for_run(repository_id, args.run),
+        evaluation_store.annotations_for_run(repository_id, args.run),
+    )
+    _print(view)
+    return 0
+
+
+def command_inspect_observation(args: argparse.Namespace) -> int:
+    repository_id, observation = _store(args).find_observation(args.observation)
+    _print({"repositoryId": repository_id, "observation": observation})
+    return 0
+
+
 def command_list(args: argparse.Namespace) -> int:
     _print({"runs": _store(args).list_runs(args.repository)})
     return 0
@@ -296,7 +648,11 @@ def command_list(args: argparse.Namespace) -> int:
 
 def command_inspect(args: argparse.Namespace) -> int:
     repository_id, record = _store(args).find_run(args.run)
-    _print({"repositoryId": repository_id, "record": record})
+    _print({
+        "repositoryId": repository_id,
+        "record": record,
+        "legacyReadOnly": record.get("schemaVersion") == 1,
+    })
     return 0
 
 
@@ -329,6 +685,32 @@ def command_compare(args: argparse.Namespace) -> int:
     plan = types.load_json(Path(args.plan))
     comparison_id = str(evaluation_store.ids.new_uuid())
     pair_id = baseline["comparison"].get("pairId") or treatment["comparison"].get("pairId") or str(evaluation_store.ids.new_uuid())
+    comparison_arguments: dict[str, Any] = {}
+    if baseline.get("schemaVersion") == 2 and treatment.get("schemaVersion") == 2:
+        baseline_view = evaluation_view.derived_evaluation_view(
+            baseline,
+            evaluation_store.observations_for_run(baseline_repository, baseline["runId"]),
+            evaluation_store.annotations_for_run(baseline_repository, baseline["runId"]),
+        )
+        treatment_view = evaluation_view.derived_evaluation_view(
+            treatment,
+            evaluation_store.observations_for_run(treatment_repository, treatment["runId"]),
+            evaluation_store.annotations_for_run(treatment_repository, treatment["runId"]),
+        )
+
+        def correction_count(view: dict[str, Any]) -> float | None:
+            item = view["selectedValues"].get("userOutcome.correctionCount")
+            if not isinstance(item, dict) or item.get("state") != "measured":
+                return None
+            value = item.get("value")
+            return float(value) if isinstance(value, int) and not isinstance(value, bool) else None
+
+        comparison_arguments = {
+            "baseline_view": baseline_view,
+            "treatment_view": treatment_view,
+            "baseline_corrections": correction_count(baseline_view),
+            "treatment_corrections": correction_count(treatment_view),
+        }
     value = compare.compare_runs(
         baseline=baseline,
         treatment=treatment,
@@ -337,6 +719,7 @@ def command_compare(args: argparse.Namespace) -> int:
         pair_id=pair_id,
         repository_id=baseline_repository,
         created_at=types.timestamp_text(evaluation_store.clock.now_utc()),
+        **comparison_arguments,
     )
     evaluation_store.write_auxiliary(baseline_repository, "comparisons", comparison_id, value)
     _print(value)
@@ -366,6 +749,32 @@ def command_propose(args: argparse.Namespace) -> int:
     evaluation_store = _store(args)
     proposal_id = str(evaluation_store.ids.new_uuid())
     comparisons = _load_auxiliary(evaluation_store, args.repository, "comparisons")
+    ineligible: set[str] = set()
+    warnings: set[str] = set()
+    for comparison_record in comparisons:
+        if comparison_record.get("schemaVersion") != 2:
+            warnings.add("legacy-schema1-evidence-excluded")
+            continue
+        for key, arm in (("baselineRunId", "baseline"), ("treatmentRunId", "treatment")):
+            try:
+                run = evaluation_store.read_run(args.repository, comparison_record[key], allow_pending=False)
+                view = evaluation_view.derived_evaluation_view(
+                    run,
+                    evaluation_store.observations_for_run(args.repository, run["runId"]),
+                    evaluation_store.annotations_for_run(args.repository, run["runId"]),
+                )
+            except (store_module.StoreError, types.EvaluationError):
+                ineligible.add(comparison_record["comparisonId"])
+                warnings.add("derived-view-unavailable")
+                break
+            if not view["proposalEligible"]:
+                ineligible.add(comparison_record["comparisonId"])
+                warnings.update(view["proposalIneligibilityReasons"])
+                break
+            if types.digest_bytes(types.canonical_bytes(view)) != comparison_record["derivedViewFingerprints"][arm]:
+                ineligible.add(comparison_record["comparisonId"])
+                warnings.add("derived-view-changed")
+                break
     value = propose.proposal_from_comparisons(
         repository_id=args.repository,
         proposal_id=proposal_id,
@@ -374,9 +783,24 @@ def command_propose(args: argparse.Namespace) -> int:
         task_category=args.category,
         complexity_level=args.complexity,
         impact_level=args.impact,
+        ineligible_comparison_ids=ineligible,
     )
     evaluation_store.write_auxiliary(args.repository, "proposals", proposal_id, value)
-    _print(value)
+    if ineligible:
+        print(
+            f"warning: {len(ineligible)} comparisons were excluded from configuration attribution: "
+            f"{', '.join(sorted(warnings))}",
+            file=sys.stderr,
+        )
+    _print(
+        {
+            "proposal": value,
+            "warnings": sorted(warnings),
+            "excludedComparisonRefs": sorted(ineligible),
+        }
+        if args.report_envelope
+        else value
+    )
     return 0
 
 
@@ -516,6 +940,27 @@ def _assert_clean_codex_home(path: Path) -> None:
         raise types.EvaluationError(f"dedicated CODEX_HOME contains comparison-changing files: {', '.join(existing)}")
 
 
+def _known_skill_isolation_gaps(
+    *,
+    codex_home: Path,
+    user_home: Path,
+    admin_skills_root: Path | None = None,
+) -> list[str]:
+    gaps: list[str] = []
+    if (user_home / ".agents" / "skills" / "harness").exists():
+        gaps.append("user-harness-skill")
+    if (user_home / ".codex" / "skills" / "harness").exists():
+        gaps.append("legacy-user-harness-skill")
+    if (codex_home / "skills" / "harness").exists():
+        gaps.append("codex-home-harness-skill")
+    selected_admin_root = admin_skills_root
+    if selected_admin_root is None and os.name != "nt":
+        selected_admin_root = Path("/etc/codex/skills")
+    if selected_admin_root is not None and (selected_admin_root / "harness").exists():
+        gaps.append("admin-harness-skill")
+    return sorted(set(gaps))
+
+
 def _windows_cleanup_receipt(path_text: str | None) -> bool:
     if os.name != "nt":
         return True
@@ -548,6 +993,8 @@ def _paired_arm(
     verification_digest: str,
     user_home: Path,
     windows_cleanup_verified: bool,
+    task_stratum: dict[str, Any],
+    patch_scope_profile: dict[str, Any] | None,
 ) -> dict[str, Any]:
     record = _new_record(
         evaluation_store=evaluation_store,
@@ -561,11 +1008,19 @@ def _paired_arm(
         pair_id=pair_id,
         arm_order=order,
     )
-    record["comparison"]["isolationStatus"] = (
-        "complete" if windows_cleanup_verified else "partial"
+    isolation_gaps = _known_skill_isolation_gaps(
+        codex_home=Path(args.codex_home), user_home=user_home
     )
     if not windows_cleanup_verified:
-        record["comparison"]["isolationGaps"].append("windows-process-tree-unverified")
+        isolation_gaps.append("windows-process-tree-unverified")
+    record["comparison"]["isolationGaps"] = sorted(set(isolation_gaps))
+    record["comparison"]["isolationStatus"] = (
+        "complete" if not record["comparison"]["isolationGaps"] else "partial"
+    )
+    record["task"]["category"] = task_stratum["category"]
+    record["task"]["complexity"]["level"] = task_stratum["complexityLevel"]
+    record["task"]["impact"]["level"] = task_stratum["impactLevel"]
+    record["task"]["uncertainty"]["level"] = task_stratum["uncertaintyLevel"]
     evaluation_store.create_pending(record)
     summary, exit_code, elapsed_ms, cleanup_verified, version = capture.run_codex_jsonl(
         repository=root,
@@ -597,7 +1052,14 @@ def _paired_arm(
     completed["outcome"]["verification"] = [verification_result]
     completed["outcome"]["criticalFailure"] = completed["outcome"]["criticalFailure"] or verification_result["result"] == "failed"
     completed["result"]["verificationProfileFingerprint"] = verification_digest
-    completed["result"]["resultFingerprint"] = _result_fingerprint(evaluation_store, root)
+    _set_result_fingerprint(completed, _result_fingerprint(evaluation_store, root))
+    if patch_scope_profile is not None:
+        completed["result"]["patchScope"] = harness_patch_scope.evaluate(
+            root=root,
+            profile=patch_scope_profile,
+            repository_id=repository_id,
+            store=evaluation_store,
+        )
     if not cleanup_verified:
         completed["comparison"]["isolationStatus"] = "failed"
         completed["comparison"]["isolationGaps"].append("process-cleanup")
@@ -616,9 +1078,24 @@ def command_paired_run(args: argparse.Namespace) -> int:
     verification_digest = types.digest_bytes(types.canonical_bytes(verification))
     if plan["verificationProfileFingerprint"] not in {None, verification_digest}:
         raise types.EvaluationError("comparison plan verification fingerprint does not match the profile")
+    patch_scope_profile = None
+    if args.patch_scope_profile:
+        patch_scope_profile = harness_patch_scope.validate_profile(
+            types.load_json(Path(args.patch_scope_profile))
+        )
+    patch_scope_digest = (
+        types.digest_bytes(types.canonical_bytes(patch_scope_profile))
+        if patch_scope_profile is not None else None
+    )
+    if plan["patchScopeProfileFingerprint"] != patch_scope_digest:
+        raise types.EvaluationError("comparison plan patch-scope fingerprint does not match the profile")
     codex_home = Path(args.codex_home).resolve()
     _assert_clean_codex_home(codex_home)
     windows_cleanup_verified = _windows_cleanup_receipt(args.windows_cleanup_receipt)
+    admin_isolation_gaps = _known_skill_isolation_gaps(
+        codex_home=codex_home,
+        user_home=Path(tempfile.gettempdir()) / "harness-nonexistent-isolated-home",
+    )
     commit = _git(root, "rev-parse", "HEAD").stdout.strip()
     seed = args.seed if args.seed is not None else random.SystemRandom().randrange(2**32)
     arm_orders = _paired_arm_orders(args.repetitions, args.order, seed)
@@ -636,6 +1113,10 @@ def command_paired_run(args: argparse.Namespace) -> int:
                 "stateWritten": False,
                 "isolatedUserHome": True,
                 "windowsCleanupReceiptValid": windows_cleanup_verified,
+                "isolationGaps": sorted(set(
+                    admin_isolation_gaps
+                    + ([] if windows_cleanup_verified else ["windows-process-tree-unverified"])
+                )),
             }
         )
         return 0
@@ -688,6 +1169,8 @@ def command_paired_run(args: argparse.Namespace) -> int:
                         verification_digest=verification_digest,
                         user_home=user_home,
                         windows_cleanup_verified=windows_cleanup_verified,
+                        task_stratum=plan["taskStratum"],
+                        patch_scope_profile=patch_scope_profile,
                     )
                 comparison_record = compare.compare_runs(
                     baseline=records["baseline"],
@@ -934,6 +1417,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--category", choices=sorted(types.TASK_CATEGORIES), default="unknown")
     run.add_argument("--classification-source", choices=sorted(types.CLASSIFICATION_SOURCES), default="user")
     run.add_argument("--execution-class", choices=sorted(types.EXECUTION_CLASSES), default="unknown")
+    run.add_argument("--patch-scope-profile")
     _add_runtime(run)
     _add_state_home(run)
     run.set_defaults(handler=command_run)
@@ -950,6 +1434,7 @@ def build_parser() -> argparse.ArgumentParser:
     complete = subparsers.add_parser("record-complete", help="Complete a pending manual record")
     complete.add_argument("--run", required=True)
     complete.add_argument("--completion", choices=sorted(types.COMPLETION_STATES - {"unknown"}), required=True)
+    complete.add_argument("--report", help="Optional structured observation report to add after completion")
     _add_state_home(complete)
     complete.set_defaults(handler=command_record_complete)
 
@@ -958,6 +1443,7 @@ def build_parser() -> argparse.ArgumentParser:
     annotate.add_argument("--acceptance", choices=("accepted", "accepted-with-corrections", "rejected", "unknown"), required=True)
     annotate.add_argument("--corrections", type=int)
     annotate.add_argument("--reopened", action="store_true")
+    annotate.add_argument("--supersedes", help="Active Annotation Schema 1 or 2 record to replace")
     _add_state_home(annotate)
     annotate.set_defaults(handler=command_annotate)
 
@@ -970,6 +1456,26 @@ def build_parser() -> argparse.ArgumentParser:
     inspect.add_argument("--run", required=True)
     _add_state_home(inspect)
     inspect.set_defaults(handler=command_inspect)
+
+    observation = subparsers.add_parser("add-observation", help="Add an immutable structured observation")
+    observation.add_argument("--run", required=True)
+    observation.add_argument("--kind", choices=("supplement", "replacement", "withdrawal"), default="supplement")
+    observation.add_argument("--report")
+    observation.add_argument("--supersedes")
+    _add_state_home(observation)
+    observation.set_defaults(handler=command_add_observation)
+
+    view = subparsers.add_parser("view", help="Compute a non-persistent derived evaluation view")
+    view.add_argument("--run", required=True)
+    _add_state_home(view)
+    view.set_defaults(handler=command_view)
+
+    inspect_observation = subparsers.add_parser(
+        "inspect-observation", help="Inspect an active or inactive observation record"
+    )
+    inspect_observation.add_argument("--observation", required=True)
+    _add_state_home(inspect_observation)
+    inspect_observation.set_defaults(handler=command_inspect_observation)
 
     export = subparsers.add_parser("export", help="Export redacted records")
     export.add_argument("--repository", required=True)
@@ -1000,6 +1506,11 @@ def build_parser() -> argparse.ArgumentParser:
     proposal.add_argument("--category", choices=sorted(types.TASK_CATEGORIES), default="unknown")
     proposal.add_argument("--complexity", choices=sorted(types.LEVELS), default="unknown")
     proposal.add_argument("--impact", choices=sorted(types.LEVELS), default="unknown")
+    proposal.add_argument(
+        "--report-envelope",
+        action="store_true",
+        help="Wrap the sealed proposal with non-persistent warnings and exclusion references",
+    )
     _add_state_home(proposal)
     proposal.set_defaults(handler=command_propose)
 
@@ -1020,6 +1531,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="randomized",
     )
     paired.add_argument("--dry-run", action="store_true")
+    paired.add_argument("--patch-scope-profile")
     paired.add_argument(
         "--windows-cleanup-receipt",
         help="User-local receipt proving this Windows cleanup implementation",

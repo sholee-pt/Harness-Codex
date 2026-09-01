@@ -1,6 +1,6 @@
 # Evaluation Contract
 
-Harness for Codex v5.5 retains the optional evaluation layer and auxiliary schema 1 while hardening result capture, paired isolation, annotation semantics, and proposal scope. It does not change generation plan schema 3, manifest schema 5, transaction schema 2, managed-file ownership, or the normal configure workflow.
+Harness for Codex v6.0 uses attribution-aware Evaluation Schema 2 while keeping evaluation optional and user-local. It does not change generation plan schema 3, manifest schema 5, transaction schema 2, managed-file ownership, or the normal configure workflow.
 
 ## Boundary
 
@@ -26,8 +26,13 @@ Run every command in the `harness` Conda environment.
 ```shell
 conda run -n harness python scripts/harness_eval.py run --root REPOSITORY --task-file TASK.txt --sandbox read-only
 conda run -n harness python scripts/harness_eval.py record-start --root REPOSITORY --capture manual
-conda run -n harness python scripts/harness_eval.py record-complete --run RUN_ID --completion completed
-conda run -n harness python scripts/harness_eval.py annotate --run RUN_ID --acceptance accepted --corrections 0
+conda run -n harness python scripts/harness_eval.py record-complete --run RUN_ID --completion completed --report REPORT.json
+conda run -n harness python scripts/harness_eval.py add-observation --run RUN_ID --kind supplement --report REPORT.json
+conda run -n harness python scripts/harness_eval.py add-observation --run RUN_ID --kind replacement --supersedes OBSERVATION_ID --report REPORT.json
+conda run -n harness python scripts/harness_eval.py add-observation --run RUN_ID --kind withdrawal --supersedes OBSERVATION_ID
+conda run -n harness python scripts/harness_eval.py annotate --run RUN_ID --acceptance accepted
+conda run -n harness python scripts/harness_eval.py annotate --run RUN_ID --acceptance accepted-with-corrections --corrections 1 --supersedes ANNOTATION_ID
+conda run -n harness python scripts/harness_eval.py view --run RUN_ID
 conda run -n harness python scripts/harness_eval.py list
 conda run -n harness python scripts/harness_eval.py inspect --run RUN_ID
 conda run -n harness python scripts/harness_eval.py export --repository REPOSITORY_ID
@@ -43,8 +48,8 @@ The change-discipline suite is a live classification probe over synthetic prompt
 
 ## Platform support
 
-The canonical store, parser, locking, and fixture tests support Linux and Windows. Live process-tree isolation is Linux-first. Windows live execution uses a new process group and `taskkill` fallback, but remains experimental until a platform smoke test verifies that no child process survives a timeout.
+The canonical store, parser, locking, observation lifecycle, and fixture tests support Linux and Windows. Live process-tree isolation is Linux-first. Windows live execution uses a new process group and `taskkill` fallback, but remains partial unless a matching user-local platform receipt verifies the exact cleanup implementation.
 
 ## Compatibility
 
-Harness for Codex v5.5 keeps v5.3-v5.4 Schema 1 evaluation records and all v5 generation, ownership, and transaction schemas readable. Regeneration validates the canonical change-discipline content and updates `manifest.generator.version`. Existing user-owned edits remain protected by the normal ownership and hash checks.
+Harness for Codex v6.0 reads existing evaluation Schema 1 records for list, inspect, export, integrity validation, repair, and purge. It does not rewrite them, infer absent configuration snapshots, or mix them into Schema 2 attribution groups. New evaluation records use Schema 2 except Observation and structured report Schema 1. Existing user-owned edits remain protected by the normal ownership and hash checks.

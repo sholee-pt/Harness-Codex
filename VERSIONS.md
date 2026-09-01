@@ -18,6 +18,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v5.3` | Harness for Codex v5.3 | Schema 3 | Schema 5 | Schema 2 | Default-off local evaluation, JSONL provenance, isolated paired comparison, immutable records, non-binding evidence proposals |
 | `codex/v5.4` | Harness for Codex v5.4 | Schema 3 | Schema 5 | Schema 2 | Minimal-change discipline, self-contained writer safeguards, four-case behavioral classification probe |
 | `codex/v5.5` | Harness for Codex v5.5 | Schema 3 | Schema 5 | Schema 2 | Canonical discipline enforcement, complete bounded result fingerprints, isolated user homes, annotation semantics, experiment-only positive proposals |
+| `codex/v6` | Harness for Codex v6.0 | Schema 3 | Schema 5 | Schema 2 | Evaluation Schema 2, actual configuration delta attribution, observation and annotation lifecycles, derived views, structured ingest, patch-scope evaluation |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -188,12 +189,36 @@ Harness for Codex v5.5 hardens generation and evaluation semantics without chang
 - Fingerprints the complete `git diff HEAD --binary --no-ext-diff` result together with every non-ignored untracked regular file or symlink, including raw Git path bytes and artifact kind.
 - Returns no partial result digest when file or byte bounds are exceeded, an artifact cannot be represented, or the repository changes during capture.
 - Gives every paired arm an isolated temporary user home without copying authentication or modifying the caller's home.
+- Treats known Harness skills in isolated user, compatibility, Codex-home, or readable POSIX admin locations as isolation gaps; a contaminated dedicated `CODEX_HOME` remains a hard preflight error.
 - Downgrades Windows live isolation when no matching user-local process-cleanup receipt is supplied.
 - Distinguishes an omitted correction count from measured zero and requires at least one measured correction for `accepted-with-corrections`.
 - Emits only experiment suggestions for positive Schema 1 evidence and only bundle-level negative signals for harmful evidence; it does not invent a delegated or reviewer configuration.
 - Keeps generation plan schema 3, manifest schema 5, transaction schema 2, and all evaluation auxiliary schemas at version 1.
 
 Harness for Codex v5.4 installations require no stored-state migration. Regeneration is required before applying a new plan whose generated discipline text does not satisfy the canonical validator.
+
+## Harness for Codex v6.0
+
+Harness for Codex v6.0 changes the optional evaluation state contract while leaving generation, ownership, and transaction schemas unchanged.
+
+- Introduces Run, Annotation, Comparison Plan, Comparison, and Proposal Schema 2.
+- Separates declared configuration, expected execution, discovered configuration, and observed execution.
+- Uses state-bearing reference sets so measured empty, unavailable, and not-applicable are not conflated.
+- Computes actual configuration deltas and distinguishes single-factor, bundle, and no-delta attribution.
+- Represents an asymmetric unknown configuration as an unavailable delta rather than inventing a change.
+- Requires a predeclared intervention and task stratum; protocol mismatch prevents configuration proposals.
+- Records result-fingerprint completeness separately from environment isolation.
+- Adds optional patch-scope profiles with pseudonymous changed-path evidence and counts both sides of renames and copies.
+- Adds structured user and agent report ingest validated against the immutable Run snapshot rather than the current manifest.
+- Introduces create-only Observation Schema 1 with supplement, replacement, and terminal withdrawal lifecycles.
+- Introduces Annotation Schema 2 with one active user-outcome chain and explicit legacy ambiguity handling.
+- Computes a non-persistent Derived Evaluation View using field-specific authority rules, active conflicts, protocol deviations, and provenance.
+- Binds every comparison to the exact Derived Views used and excludes stale comparisons after an observation or annotation lifecycle change.
+- Stratifies proposal evidence by task, outcome, actual delta, model, Codex runtime, reasoning effort, and verification profile.
+- Retains Schema 1 readers for list, inspect, export, integrity checks, repair, and purge without automatic rewrite or inferred migration.
+- Keeps every proposal non-causal and non-auto-applicable. A configuration or bundle proposal can contain only the observed delta supported by eligible Schema 2 comparisons.
+
+Harness for Codex v5.5 evaluation files need no destructive migration. They remain legacy read-only evidence and are excluded from v6 attribution groups. Runtime Hooks, phase enforcement, write-lane control, and automatic adaptation remain outside v6 and are reserved for a later major release.
 
 ## Harness for Claude Code releases
 

@@ -1,6 +1,6 @@
 # Generation Plan Format
 
-Create one UTF-8 JSON plan and pass it to `scripts/harness_apply.py`. Schema 3 is the normative input contract for Harness for Codex v5.
+Create one UTF-8 JSON plan and pass it to `scripts/harness_apply.py`. Schema 3 remains the normative generation input contract for Harness for Codex v5 and v6.
 
 Read [topology-contract.md](topology-contract.md) before filling the topology. The complete fixture at `tests/fixtures/minimal-plan.json` is an executable minimal example.
 

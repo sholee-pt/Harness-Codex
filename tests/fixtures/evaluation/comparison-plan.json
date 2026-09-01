@@ -5,10 +5,26 @@
     "metric": "verification-pass-rate",
     "minimumEffect": 0.05
   },
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "secondaryOutcomes": [
     "wall-time-ms",
     "output-tokens"
   ],
-  "verificationProfileFingerprint": null
+  "verificationProfileFingerprint": null,
+  "intervention": {
+    "expectedChangedFactors": [
+      "change-discipline-version",
+      "project-harness-content",
+      "skill-set"
+    ],
+    "attributionTarget": "bundle"
+  },
+  "taskStratum": {
+    "category": "test",
+    "complexityLevel": "low",
+    "impactLevel": "low",
+    "uncertaintyLevel": "low",
+    "scopeClass": "single-file"
+  },
+  "patchScopeProfileFingerprint": null
 }

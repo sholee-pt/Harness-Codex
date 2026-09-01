@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import harness_eval_types as types
+import harness_eval_view as evaluation_view
 import harness_state
 from harness_eval_lock import FileLock
 
@@ -214,6 +215,7 @@ class EvaluationStore:
             "runs/pending",
             "runs/completed",
             "annotations",
+            "observations",
             "comparisons",
             "proposals",
             "quarantine",
@@ -309,14 +311,112 @@ class EvaluationStore:
     def add_annotation(self, repository_id: str, annotation: dict[str, Any]) -> Path:
         sealed = types.seal_record(annotation)
         types.validate_annotation(sealed)
+        if sealed.get("repositoryId") not in {None, repository_id}:
+            raise StoreError("annotation repository id does not match the storage scope")
         self.read_run(repository_id, sealed["runId"], allow_pending=False)
         directory = self._ensure_repository_dirs(repository_id) / "annotations" / sealed["runId"]
         path = directory / f"{sealed['annotationId']}.json"
         with self.repository_lock(repository_id):
             if path.exists():
                 raise StoreError("annotation id already exists")
+            existing = self._read_json_records(directory)
+            if sealed["schemaVersion"] == 2:
+                state = evaluation_view.annotation_state(
+                    existing, repository_id=repository_id, run_id=sealed["runId"]
+                )
+                if state["conflicts"]:
+                    raise StoreError("annotation-conflict prevents a new active annotation")
+                active = state["active"]
+                target = sealed["supersedesAnnotationId"]
+                if target is None and active is not None:
+                    raise StoreError("a new annotation must supersede the active annotation")
+                if target is not None and (active is None or active["annotationId"] != target):
+                    raise StoreError("annotation replacement target is not active")
             _atomic_json(path, sealed)
         return path
+
+    def _read_json_records(self, directory: Path) -> list[dict[str, Any]]:
+        if not directory.is_dir():
+            return []
+        records: list[dict[str, Any]] = []
+        for path in sorted(directory.rglob("*.json")):
+            try:
+                value = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                continue
+            if isinstance(value, dict):
+                records.append(value)
+        return records
+
+    def add_observation(self, repository_id: str, observation: dict[str, Any]) -> Path:
+        sealed = types.seal_record(observation)
+        types.validate_observation_record(sealed)
+        if sealed["repositoryId"] != repository_id:
+            raise StoreError("observation repository id does not match the storage scope")
+        self.read_run(repository_id, sealed["runId"], allow_pending=False)
+        directory = self._ensure_repository_dirs(repository_id) / "observations"
+        path = directory / f"{sealed['observationId']}.json"
+        with self.repository_lock(repository_id):
+            if path.exists():
+                raise StoreError("observation id already exists")
+            existing = [
+                item for item in self._read_json_records(directory)
+                if item.get("runId") == sealed["runId"]
+            ]
+            state = evaluation_view.observation_graph(
+                existing, repository_id=repository_id, run_id=sealed["runId"]
+            )
+            if state["conflicts"]:
+                raise StoreError("observation graph conflict prevents lifecycle mutation")
+            kind = sealed["lifecycle"]["kind"]
+            target = sealed["lifecycle"]["supersedesObservationId"]
+            if kind in {"replacement", "withdrawal"}:
+                active_ids = {item["observationId"] for item in state["active"]}
+                if target not in active_ids:
+                    raise StoreError("observation supersession target is not active")
+            _atomic_json(path, sealed)
+        return path
+
+    def observations_for_run(self, repository_id: str, run_id: str) -> list[dict[str, Any]]:
+        self.read_run(repository_id, run_id, allow_pending=False)
+        directory = self._ensure_repository_dirs(repository_id) / "observations"
+        with self.repository_lock(repository_id):
+            values = [item for item in self._read_json_records(directory) if item.get("runId") == run_id]
+        for value in values:
+            types.validate_observation_record(value)
+        return values
+
+    def find_observation(self, observation_id: str) -> tuple[str, dict[str, Any]]:
+        try:
+            if str(types.uuid.UUID(observation_id)) != observation_id.lower():
+                raise ValueError
+        except (ValueError, AttributeError) as exc:
+            raise StoreError("observation id must be a canonical UUID") from exc
+        repositories_root = self.root / "repositories"
+        matches: list[tuple[str, Path]] = []
+        if repositories_root.is_dir():
+            for repository in repositories_root.iterdir():
+                candidate = repository / "observations" / f"{observation_id}.json"
+                if candidate.is_file() and REPOSITORY_ID_RE.fullmatch(repository.name):
+                    matches.append((repository.name, candidate))
+        if len(matches) != 1:
+            raise StoreError(f"observation id resolved to {len(matches)} records: {observation_id}")
+        repository_id, path = matches[0]
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise StoreError(f"observation record is unreadable: {exc}") from exc
+        types.validate_observation_record(value)
+        return repository_id, value
+
+    def annotations_for_run(self, repository_id: str, run_id: str) -> list[dict[str, Any]]:
+        self.read_run(repository_id, run_id, allow_pending=False)
+        directory = self._ensure_repository_dirs(repository_id) / "annotations" / run_id
+        with self.repository_lock(repository_id):
+            values = self._read_json_records(directory)
+        for value in values:
+            types.validate_annotation(value)
+        return values
 
     def write_auxiliary(self, repository_id: str, kind: str, record_id: str, value: dict[str, Any]) -> Path:
         if kind not in {"comparisons", "proposals"}:
@@ -362,6 +462,8 @@ class EvaluationStore:
                                 "recordState": record["recordState"],
                                 "startedAt": record["timestamps"]["startedAt"],
                                 "completion": record["outcome"]["completion"],
+                                "schemaVersion": record["schemaVersion"],
+                                "legacyReadOnly": record["schemaVersion"] == 1,
                             }
                         )
                     except (OSError, UnicodeError, json.JSONDecodeError, types.EvaluationError):
@@ -375,7 +477,7 @@ class EvaluationStore:
         with self.repository_lock(repository_id):
             snapshot = sorted(
                 path
-                for directory in ("runs/completed", "annotations", "comparisons", "proposals")
+                for directory in ("runs/completed", "annotations", "observations", "comparisons", "proposals")
                 for path in (root / directory).rglob("*.json")
             )
             for path in snapshot:
@@ -419,7 +521,7 @@ class EvaluationStore:
         with self.repository_lock(repository_id):
             pending = list((root / "runs" / "pending").glob("*.json"))
             preserved = len(pending)
-            for relative in ("runs/completed", "annotations", "comparisons", "proposals", "quarantine"):
+            for relative in ("runs/completed", "annotations", "observations", "comparisons", "proposals", "quarantine"):
                 directory = root / relative
                 if not directory.exists():
                     continue
@@ -461,7 +563,7 @@ class EvaluationStore:
         with self.repository_lock(repository_id):
             candidates = sorted(
                 path
-                for relative in ("runs/pending", "runs/completed", "annotations", "comparisons", "proposals")
+                for relative in ("runs/pending", "runs/completed", "annotations", "observations", "comparisons", "proposals")
                 for path in (root / relative).rglob("*.json")
             )
             for path in candidates:
@@ -472,6 +574,8 @@ class EvaluationStore:
                         types.validate_run_record(value)
                     elif "annotationId" in value:
                         types.validate_annotation(value)
+                    elif "observationId" in value:
+                        types.validate_observation_record(value)
                     elif "comparisonId" in value:
                         types.validate_comparison_record(value)
                     elif "proposalId" in value:
@@ -486,6 +590,36 @@ class EvaluationStore:
                         target.parent.mkdir(parents=True, exist_ok=True)
                         os.replace(path, target)
                         moved += 1
+            observation_records = self._read_json_records(root / "observations")
+            observation_runs = {
+                item.get("runId") for item in observation_records if isinstance(item.get("runId"), str)
+            }
+            for run_id in sorted(observation_runs):
+                graph = evaluation_view.observation_graph(
+                    [item for item in observation_records if item.get("runId") == run_id],
+                    repository_id=repository_id,
+                    run_id=run_id,
+                )
+                for conflict in graph["conflicts"]:
+                    invalid.append({
+                        "path": f"observations/{run_id}",
+                        "digest": "graph",
+                        "error": conflict["code"],
+                    })
+            annotation_root = root / "annotations"
+            annotation_runs = [item for item in annotation_root.iterdir() if item.is_dir()] if annotation_root.is_dir() else []
+            for run_directory in annotation_runs:
+                state = evaluation_view.annotation_state(
+                    self._read_json_records(run_directory),
+                    repository_id=repository_id,
+                    run_id=run_directory.name,
+                )
+                for conflict in state["conflicts"]:
+                    invalid.append({
+                        "path": f"annotations/{run_directory.name}",
+                        "digest": "graph",
+                        "error": conflict["code"],
+                    })
             if quarantine and invalid:
                 index = {
                     "schemaVersion": 1,

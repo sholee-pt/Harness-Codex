@@ -21,4 +21,6 @@ causalClaimAllowed = false
 autoApplicable = false
 ```
 
-Schema 1 evidence never produces a concrete delegated or reviewer configuration. Beneficial evidence can only produce an experiment suggestion, while harmful evidence produces a bundle-level negative signal. A correctness regression blocks a positive cost-saving suggestion. Model or runtime versions must be stratified or recorded as confounders.
+Schema 2 configuration attribution requires the same task stratum, primary outcome, model/runtime stratum, reasoning effort, verification profile, and actual configuration-delta fingerprint. The actual delta must be measured and match the predeclared intervention, both result fingerprints must be complete, and no active observation or annotation conflict may exist. Each Comparison stores the Derived View fingerprints used; later lifecycle changes make that Comparison ineligible rather than silently changing its meaning.
+
+A one-factor delta can support only that factor. A multi-factor delta can support only the complete bundle. No delta, protocol mismatch, incomplete fingerprints, mixed strata, or legacy Schema 1 evidence can produce a configuration proposal. Descriptive comparisons and experiment suggestions remain available. A correctness regression blocks a positive cost-saving proposal. Model or runtime versions must be stratified or recorded as confounders.

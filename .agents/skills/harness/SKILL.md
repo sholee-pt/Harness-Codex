@@ -78,7 +78,7 @@ On later runs, repeat the evidence scan and compare the proposed topology with t
 
 ## Optional evaluation mode
 
-Evaluation is separate from configuration and never runs implicitly. When the user explicitly asks to measure, compare, or audit Harness behavior, read [evaluation-contract.md](references/evaluation-contract.md) and use `scripts/harness_eval.py`. Read [capture-provenance.md](references/capture-provenance.md) when interpreting metrics, [evaluation-isolation.md](references/evaluation-isolation.md) before paired runs, and [experience-evidence.md](references/experience-evidence.md) before creating a proposal. Keep raw project content out of evaluation state and never apply a proposal automatically.
+Evaluation is separate from configuration and never runs implicitly. When the user explicitly asks to measure, compare, or audit Harness behavior, read [evaluation-contract.md](references/evaluation-contract.md) and use `scripts/harness_eval.py`. Read [capture-provenance.md](references/capture-provenance.md) when interpreting metrics, [evaluation-isolation.md](references/evaluation-isolation.md) before paired runs, [evaluation-observations.md](references/evaluation-observations.md) before ingesting reports, [patch-scope.md](references/patch-scope.md) before evaluating changed paths, and [experience-evidence.md](references/experience-evidence.md) before creating a proposal. Keep raw project content out of evaluation state and never apply a proposal automatically.
 
 ## Completion report
 

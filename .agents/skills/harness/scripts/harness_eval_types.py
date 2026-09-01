@@ -14,13 +14,15 @@ from datetime import datetime, timezone
 from typing import Any, Iterable, Protocol
 
 
-RUN_SCHEMA_VERSION = 1
-ANNOTATION_SCHEMA_VERSION = 1
-COMPARISON_PLAN_SCHEMA_VERSION = 1
-COMPARISON_SCHEMA_VERSION = 1
-PROPOSAL_SCHEMA_VERSION = 1
+RUN_SCHEMA_VERSION = 2
+ANNOTATION_SCHEMA_VERSION = 2
+COMPARISON_PLAN_SCHEMA_VERSION = 2
+COMPARISON_SCHEMA_VERSION = 2
+PROPOSAL_SCHEMA_VERSION = 2
+OBSERVATION_SCHEMA_VERSION = 1
+MANUAL_REPORT_SCHEMA_VERSION = 1
 PARSER_VERSION = "1"
-HARNESS_VERSION = "5.5"
+HARNESS_VERSION = "6.0"
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 PSEUDONYM_RE = re.compile(r"^[a-z][a-z0-9-]*:[0-9a-f]{32}$")
 
@@ -35,6 +37,7 @@ MEASUREMENT_SOURCES = {
     "process-exit",
     "verification-runner",
     "agent-report",
+    "user-report",
     "user-annotation",
     "derived",
     "none",
@@ -317,14 +320,14 @@ def validate_measurement(value: Any, label: str = "measurement") -> dict[str, An
             raise EvaluationError(f"{label} measured values require a source and known fidelity")
     elif measured_value is not None:
         raise EvaluationError(f"{label}.value must be null when state is {state}")
-    if source in {"agent-report", "user-annotation"} and fidelity == "exact":
+    if source in {"agent-report", "user-report", "user-annotation"} and fidelity == "exact":
         raise EvaluationError(f"{label} reported values cannot use exact fidelity")
     if state != "measured" and source != "none":
         raise EvaluationError(f"{label} unavailable values must use source none")
     return item
 
 
-def validate_comparison_plan(value: Any) -> dict[str, Any]:
+def _validate_comparison_plan_v1(value: Any) -> dict[str, Any]:
     plan = _require_object(value, "comparison plan")
     fields = {
         "schemaVersion",
@@ -334,7 +337,7 @@ def validate_comparison_plan(value: Any) -> dict[str, Any]:
         "verificationProfileFingerprint",
     }
     _require_keys(plan, fields, fields, "comparison plan")
-    if plan["schemaVersion"] != COMPARISON_PLAN_SCHEMA_VERSION:
+    if plan["schemaVersion"] != 1:
         raise EvaluationError("comparison plan schemaVersion must be 1")
     outcome = _require_object(plan["primaryOutcome"], "comparison plan primaryOutcome")
     _require_keys(
@@ -364,7 +367,7 @@ def validate_comparison_plan(value: Any) -> dict[str, Any]:
     return plan
 
 
-def validate_run_record(value: Any, *, verify_hash: bool = True) -> dict[str, Any]:
+def _validate_run_record_v1(value: Any, *, verify_hash: bool = True) -> dict[str, Any]:
     record = _require_object(value, "run record")
     fields = {
         "schemaVersion",
@@ -384,7 +387,7 @@ def validate_run_record(value: Any, *, verify_hash: bool = True) -> dict[str, An
         "integrity",
     }
     _require_keys(record, fields, fields, "run record")
-    if record["schemaVersion"] != RUN_SCHEMA_VERSION:
+    if record["schemaVersion"] != 1:
         raise EvaluationError("run record schemaVersion must be 1")
     _require_uuid(record["runId"], "runId")
     if record["recordState"] not in {"pending", "completed"}:
@@ -465,8 +468,8 @@ def validate_run_record(value: Any, *, verify_hash: bool = True) -> dict[str, An
         "ignoreRules",
     }
     _require_keys(runtime, runtime_fields, runtime_fields, "runtime")
-    if runtime["harnessVersion"] != HARNESS_VERSION:
-        raise EvaluationError(f"runtime.harnessVersion must be {HARNESS_VERSION}")
+    if runtime["harnessVersion"] not in {"5.3", "5.4", "5.5"}:
+        raise EvaluationError("legacy runtime.harnessVersion must be 5.3, 5.4, or 5.5")
     codex_version = runtime["codexVersion"]
     if codex_version is not None and (
         not isinstance(codex_version, str)
@@ -623,11 +626,11 @@ def validate_run_record(value: Any, *, verify_hash: bool = True) -> dict[str, An
     return record
 
 
-def validate_annotation(value: Any, *, verify_hash: bool = True) -> dict[str, Any]:
+def _validate_annotation_v1(value: Any, *, verify_hash: bool = True) -> dict[str, Any]:
     annotation = _require_object(value, "annotation")
     fields = {"schemaVersion", "annotationId", "runId", "createdAt", "source", "acceptance", "correctionCount", "reopened", "freeTextStored", "integrity"}
     _require_keys(annotation, fields, fields, "annotation")
-    if annotation["schemaVersion"] != ANNOTATION_SCHEMA_VERSION:
+    if annotation["schemaVersion"] != 1:
         raise EvaluationError("annotation schemaVersion must be 1")
     _require_uuid(annotation["annotationId"], "annotationId")
     _require_uuid(annotation["runId"], "runId")
@@ -669,7 +672,7 @@ def _require_number_or_null(value: Any, label: str) -> None:
         raise EvaluationError(f"{label} must be a finite number or null")
 
 
-def validate_comparison_record(value: Any, *, verify_hash: bool = True) -> dict[str, Any]:
+def _validate_comparison_record_v1(value: Any, *, verify_hash: bool = True) -> dict[str, Any]:
     record = _require_object(value, "comparison record")
     required = {
         "schemaVersion",
@@ -690,7 +693,7 @@ def validate_comparison_record(value: Any, *, verify_hash: bool = True) -> dict[
         "integrity",
     }
     _require_keys(record, required | {"randomizationSeed"}, required, "comparison record")
-    if record["schemaVersion"] != COMPARISON_SCHEMA_VERSION:
+    if record["schemaVersion"] != 1:
         raise EvaluationError("comparison record schemaVersion must be 1")
     for key in ("comparisonId", "pairId", "repositoryId", "baselineRunId", "treatmentRunId"):
         _require_uuid(record[key], key)
@@ -757,7 +760,7 @@ def validate_comparison_record(value: Any, *, verify_hash: bool = True) -> dict[
     return record
 
 
-def validate_proposal_record(value: Any, *, verify_hash: bool = True) -> dict[str, Any]:
+def _validate_proposal_record_v1(value: Any, *, verify_hash: bool = True) -> dict[str, Any]:
     record = _require_object(value, "proposal record")
     fields = {
         "schemaVersion",
@@ -774,7 +777,7 @@ def validate_proposal_record(value: Any, *, verify_hash: bool = True) -> dict[st
         "integrity",
     }
     _require_keys(record, fields, fields, "proposal record")
-    if record["schemaVersion"] != PROPOSAL_SCHEMA_VERSION:
+    if record["schemaVersion"] != 1:
         raise EvaluationError("proposal record schemaVersion must be 1")
     _require_uuid(record["proposalId"], "proposalId")
     _require_uuid(record["repositoryId"], "repositoryId")
@@ -853,6 +856,58 @@ def validate_proposal_record(value: Any, *, verify_hash: bool = True) -> dict[st
     if verify_hash:
         verify_integrity(record)
     return record
+
+
+def validate_comparison_plan(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict) and value.get("schemaVersion") == 1:
+        return _validate_comparison_plan_v1(value)
+    import harness_eval_schema2
+
+    return harness_eval_schema2.validate_comparison_plan(value)
+
+
+def validate_run_record(value: Any, *, verify_hash: bool = True) -> dict[str, Any]:
+    if isinstance(value, dict) and value.get("schemaVersion") == 1:
+        return _validate_run_record_v1(value, verify_hash=verify_hash)
+    import harness_eval_schema2
+
+    return harness_eval_schema2.validate_run_record(value, verify_hash=verify_hash)
+
+
+def validate_annotation(value: Any, *, verify_hash: bool = True) -> dict[str, Any]:
+    if isinstance(value, dict) and value.get("schemaVersion") == 1:
+        return _validate_annotation_v1(value, verify_hash=verify_hash)
+    import harness_eval_schema2
+
+    return harness_eval_schema2.validate_annotation(value, verify_hash=verify_hash)
+
+
+def validate_comparison_record(value: Any, *, verify_hash: bool = True) -> dict[str, Any]:
+    if isinstance(value, dict) and value.get("schemaVersion") == 1:
+        return _validate_comparison_record_v1(value, verify_hash=verify_hash)
+    import harness_eval_schema2
+
+    return harness_eval_schema2.validate_comparison_record(value, verify_hash=verify_hash)
+
+
+def validate_proposal_record(value: Any, *, verify_hash: bool = True) -> dict[str, Any]:
+    if isinstance(value, dict) and value.get("schemaVersion") == 1:
+        return _validate_proposal_record_v1(value, verify_hash=verify_hash)
+    import harness_eval_schema2
+
+    return harness_eval_schema2.validate_proposal_record(value, verify_hash=verify_hash)
+
+
+def validate_observation_record(value: Any, *, verify_hash: bool = True) -> dict[str, Any]:
+    import harness_eval_schema2
+
+    return harness_eval_schema2.validate_observation_record(value, verify_hash=verify_hash)
+
+
+def validate_manual_report(value: Any) -> dict[str, Any]:
+    import harness_eval_schema2
+
+    return harness_eval_schema2.validate_manual_report(value)
 
 
 def load_json(path: Any) -> Any:

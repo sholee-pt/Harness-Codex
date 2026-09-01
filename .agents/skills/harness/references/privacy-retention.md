@@ -1,6 +1,6 @@
 # Privacy and Retention
 
-Harness evaluation state does not retain raw prompts, transcripts, reasoning, messages, commands, command output, source code, file contents, absolute repository paths, remote URLs, user email, environment values, secrets, free-form notes, or raw JSONL.
+Harness evaluation state does not retain raw prompts, structured report files, raw component names, transcripts, reasoning, messages, commands, command output, source code, file contents, absolute repository paths, remote URLs, user email, environment values, secrets, free-form notes, or raw JSONL.
 
 Repository, prompt, model, agent, skill, route, check, and result references use a local secret where a stable fingerprint is needed. Agent and skill pseudonyms retain 128 bits of HMAC output. The secret is never exported.
 
@@ -14,7 +14,7 @@ Resolution order is:
 
 The resolved state directory may not contain, or be contained by, the target repository or either paired worktree. This prevents evaluation data from changing the project or contaminating a comparison.
 
-Records use per-run files, same-directory temporary writes, `fsync`, atomic replacement, and advisory repository locks. Completed records are immutable. Corrupt files are skipped with an explicit warning and moved only by `repair --quarantine`.
+Records use per-run files, same-directory temporary writes, `fsync`, atomic replacement, and advisory repository locks. Completed runs, observations, annotations, comparisons, and proposals are immutable. Observation and annotation corrections create a linked successor instead of replacing a file. Corrupt files are skipped with an explicit warning and moved only by `repair --quarantine`; graph conflicts are reported rather than guessed away.
 
 `purge` preserves active pending records. When none remain, it removes completed records and auxiliary records before deleting the pseudonymous registry mapping as the final step.
 

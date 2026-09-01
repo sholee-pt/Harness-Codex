@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import harness_eval_types as types
+import harness_eval_schema2 as schema2
 
 
 KNOWN_EVENTS = {
@@ -97,6 +98,7 @@ def base_record(
     comparison_id: str | None = None,
     pair_id: str | None = None,
     arm_order: str = "unpaired",
+    configuration: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if capture_mode == "runtime-instrumented":
         scope = "codex-exec-jsonl"
@@ -160,21 +162,14 @@ def base_record(
             "impact": {"level": "unknown", "signals": ["unknown"]},
             "uncertainty": {"level": "unknown", "signals": ["unknown"]},
         },
-        "configuration": {
-            "arm": arm,
-            "configuredExecutionClass": configured_execution_class,
-            "configuredRouteRef": configured_route_ref,
-            "configuredAgentRefs": configured_agent_refs or [],
-            "configuredSkillRefs": configured_skill_refs or [],
-            "qualityPolicyRefs": quality_policy_refs or [],
-            "observedExecution": {
-                "executionClass": "unknown",
-                "routeRef": None,
-                "agentRefs": [],
-                "skillRefs": [],
-                "source": "unknown",
-            },
-        },
+        "configuration": configuration or _default_configuration(
+            arm=arm,
+            configured_execution_class=configured_execution_class,
+            configured_route_ref=configured_route_ref,
+            configured_agent_refs=configured_agent_refs,
+            configured_skill_refs=configured_skill_refs,
+            quality_policy_refs=quality_policy_refs,
+        ),
         "measurements": unavailable_measurements(),
         "outcome": {"completion": "unknown", "verification": [], "criticalFailure": False},
         "comparison": {
@@ -193,14 +188,81 @@ def base_record(
             "rawEventsStored": False,
         },
         "result": {
-            "resultFingerprint": None,
+            "resultFingerprint": schema2.unavailable_value(),
             "verificationProfileFingerprint": None,
             "processCleanupVerified": True,
+            "patchScope": schema2.unavailable_patch_scope(),
         },
         "integrity": {"recordSha256": None},
     }
     types.validate_run_record(types.seal_record(record))
     return record
+
+
+def _measured_value(value: Any, *, source: str = "comparison-plan") -> dict[str, Any]:
+    return schema2.value_observation(
+        value,
+        state="measured",
+        source=source,
+        fidelity="exact",
+        completeness="complete",
+    )
+
+
+def _measured_refs(refs: list[str], *, source: str = "comparison-plan") -> dict[str, Any]:
+    return schema2.reference_set(
+        refs,
+        state="measured",
+        source=source,
+        fidelity="exact",
+        completeness="complete",
+    )
+
+
+def _default_configuration(
+    *,
+    arm: str,
+    configured_execution_class: str,
+    configured_route_ref: str | None,
+    configured_agent_refs: list[str] | None,
+    configured_skill_refs: list[str] | None,
+    quality_policy_refs: list[str] | None,
+) -> dict[str, Any]:
+    declared = {
+        "executionClass": schema2.unavailable_value(),
+        "route": schema2.unavailable_references(),
+        "agents": schema2.unavailable_references(),
+        "skills": schema2.unavailable_references(),
+        "qualityPolicies": schema2.unavailable_references(),
+        "independentReview": schema2.unavailable_value(),
+        "changeDisciplineVersion": schema2.unavailable_value(),
+        "projectHarnessFingerprint": schema2.unavailable_value(),
+        "bundleFingerprint": schema2.unavailable_value(),
+    }
+    expected_known = configured_execution_class != "unknown"
+    expected = {
+        "executionClass": _measured_value(configured_execution_class) if expected_known else schema2.unavailable_value(),
+        "route": _measured_refs([configured_route_ref] if configured_route_ref else []) if expected_known else schema2.unavailable_references(),
+        "agents": _measured_refs(configured_agent_refs or []) if expected_known else schema2.unavailable_references(),
+        "skills": _measured_refs(configured_skill_refs or []) if expected_known else schema2.unavailable_references(),
+        "independentReview": _measured_value(False) if expected_known else schema2.unavailable_value(),
+    }
+    return {
+        "arm": arm,
+        "declaredConfiguration": declared,
+        "expectedExecution": expected,
+        "discoveredConfiguration": {
+            "agents": schema2.unavailable_references(),
+            "skills": schema2.unavailable_references(),
+        },
+        "observedExecution": {
+            "executionClass": schema2.unavailable_value(),
+            "route": schema2.unavailable_references(),
+            "agents": schema2.unavailable_references(),
+            "skills": schema2.unavailable_references(),
+            "independentReview": schema2.unavailable_value(),
+        },
+    }
 
 
 @dataclass
