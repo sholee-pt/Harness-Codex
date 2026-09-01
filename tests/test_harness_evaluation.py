@@ -45,13 +45,15 @@ def manual_record(
     output_tokens: int = 10,
     critical_failure: bool = False,
     harness_version: str | None = None,
+    pair_id: str | None = None,
+    capture_mode: str = "manual",
 ) -> dict:
     record = capture.base_record(
         run_id=run_id,
         repository_id=repository_id,
         task_instance_id=uuid_text(100 + int(uuid.UUID(run_id))),
         started_at="2026-08-31T12:00:00Z",
-        capture_mode="manual",
+        capture_mode=capture_mode,
         prompt_fingerprint=HASH,
         source_snapshot_id="git:" + "2" * 40,
         manifest_sha256=HASH,
@@ -63,11 +65,12 @@ def manual_record(
         model_ref="model:" + "3" * 32,
         reasoning_effort="minimal",
         configured_execution_class="direct",
-        pair_id=uuid_text(500) if arm != "unpaired" else None,
+        pair_id=(pair_id or uuid_text(500)) if arm != "unpaired" else None,
         comparison_id=uuid_text(501) if arm != "unpaired" else None,
         arm_order="first" if arm == "baseline" else "second" if arm == "harness" else "unpaired",
     )
     record["recordState"] = "completed"
+    record["runtime"]["codexVersion"] = "codex-fixture"
     if harness_version is not None:
         record["runtime"]["harnessVersion"] = harness_version
     record["timestamps"]["endedAt"] = "2026-08-31T12:01:00Z"
@@ -129,6 +132,40 @@ def manual_record(
         completeness="complete",
     )
     return types.seal_record(record)
+
+
+def verified_eligibility(
+    comparisons: list[dict],
+    plan: dict,
+    *,
+    excluded: dict[str, tuple[str, ...]] | None = None,
+) -> propose.ProposalEligibility:
+    excluded = excluded or {}
+    relevant_ids = tuple(sorted(item["comparisonId"] for item in comparisons))
+    basis_ids = tuple(
+        item for item in relevant_ids if item not in excluded
+    )
+    return propose.ProposalEligibility(
+        relevant_comparison_ids=relevant_ids,
+        attribution_basis_ids=basis_ids,
+        excluded_comparison_ids=tuple(sorted(excluded)),
+        exclusion_reasons=excluded,
+        verified_plan_sha256=types.digest_bytes(types.canonical_bytes(plan)),
+        attribution_target=plan["intervention"]["attributionTarget"],
+        concrete_attribution_allowed=bool(basis_ids),
+    )
+
+
+def persist_completed(
+    evaluation_store: store_module.EvaluationStore,
+    record: dict,
+) -> None:
+    pending = copy.deepcopy(record)
+    pending["recordState"] = "pending"
+    pending["timestamps"]["endedAt"] = None
+    pending["outcome"]["completion"] = "unknown"
+    evaluation_store.create_pending(pending)
+    evaluation_store.complete_run(record)
 
 
 def measured_patch_scope(
@@ -308,6 +345,38 @@ class CanonicalizationTests(unittest.TestCase):
 
 
 class StoreTests(unittest.TestCase):
+    def test_duplicate_run_pair_and_plan_comparison_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            repository = parent / "repo"
+            repository.mkdir()
+            evaluation_store = store_module.EvaluationStore(parent / "state")
+            repository_id = evaluation_store.register_repository(repository)
+            plan = ComparisonTests().comparison_plan()
+            comparison = compare.compare_runs(
+                baseline=manual_record(
+                    repository_id, uuid_text(2), arm="baseline", verification="failed"
+                ),
+                treatment=manual_record(
+                    repository_id, uuid_text(3), arm="harness", verification="passed"
+                ),
+                plan=plan,
+                comparison_id=uuid_text(10),
+                pair_id=uuid_text(500),
+                repository_id=repository_id,
+                created_at="2026-08-31T12:02:00Z",
+            )
+            evaluation_store.write_auxiliary(
+                repository_id, "comparisons", comparison["comparisonId"], comparison
+            )
+            duplicate = copy.deepcopy(comparison)
+            duplicate["comparisonId"] = uuid_text(11)
+            duplicate = types.seal_record(duplicate)
+            with self.assertRaisesRegex(store_module.StoreError, "run pair and plan"):
+                evaluation_store.write_auxiliary(
+                    repository_id, "comparisons", duplicate["comparisonId"], duplicate
+                )
+
     def test_state_root_cannot_contain_or_enter_repository(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)
@@ -451,7 +520,7 @@ class ComparisonTests(unittest.TestCase):
             "patchScopeProfileFingerprint": None,
         }
 
-    def test_comparison_uses_predeclared_outcome_and_correctness_gate(self) -> None:
+    def test_comparison_uses_plan_specified_outcome_and_correctness_gate(self) -> None:
         repository_id = uuid_text(1)
         baseline = manual_record(repository_id, uuid_text(2), arm="baseline", verification="passed")
         treatment = manual_record(repository_id, uuid_text(3), arm="harness", verification="failed", output_tokens=1, critical_failure=True)
@@ -471,17 +540,23 @@ class ComparisonTests(unittest.TestCase):
 
     def test_proposal_never_auto_applies(self) -> None:
         repository_id = uuid_text(1)
-        baseline = manual_record(repository_id, uuid_text(2), arm="baseline", verification="failed")
-        treatment = manual_record(repository_id, uuid_text(3), arm="harness", verification="passed")
+        plan = self.comparison_plan()
         comparisons = []
         for number in range(10, 15):
+            pair_id = uuid_text(500 + number)
             comparisons.append(
                 compare.compare_runs(
-                    baseline=baseline,
-                    treatment=treatment,
-                    plan=self.comparison_plan(),
+                    baseline=manual_record(
+                        repository_id, uuid_text(1000 + number), arm="baseline",
+                        verification="failed", pair_id=pair_id,
+                    ),
+                    treatment=manual_record(
+                        repository_id, uuid_text(2000 + number), arm="harness",
+                        verification="passed", pair_id=pair_id,
+                    ),
+                    plan=plan,
                     comparison_id=uuid_text(number),
-                    pair_id=uuid_text(500),
+                    pair_id=pair_id,
                     repository_id=repository_id,
                     created_at="2026-08-31T12:02:00Z",
                 )
@@ -492,7 +567,8 @@ class ComparisonTests(unittest.TestCase):
             created_at="2026-08-31T12:03:00Z",
             comparisons=comparisons,
             task_category="test",
-            comparison_plan=self.comparison_plan(),
+            comparison_plan=plan,
+            eligibility=verified_eligibility(comparisons, plan),
         )
         self.assertEqual(value["proposalType"], "configuration-proposal")
         self.assertEqual(value["candidateDelta"]["factor"], "agent-set")
@@ -577,16 +653,22 @@ class ComparisonTests(unittest.TestCase):
             "minimumEffect": 1,
         }
         plan["secondaryOutcomes"] = []
-        baseline = manual_record(repository_id, uuid_text(2), arm="baseline", output_tokens=10)
         comparisons = []
         for number, tokens in zip(range(10, 13), (5, 5, 15)):
+            pair_id = uuid_text(500 + number)
             comparisons.append(
                 compare.compare_runs(
-                    baseline=baseline,
-                    treatment=manual_record(repository_id, uuid_text(100 + number), arm="harness", output_tokens=tokens),
+                    baseline=manual_record(
+                        repository_id, uuid_text(1000 + number), arm="baseline",
+                        output_tokens=10, pair_id=pair_id,
+                    ),
+                    treatment=manual_record(
+                        repository_id, uuid_text(2000 + number), arm="harness",
+                        output_tokens=tokens, pair_id=pair_id,
+                    ),
                     plan=plan,
                     comparison_id=uuid_text(number),
-                    pair_id=uuid_text(500),
+                    pair_id=pair_id,
                     repository_id=repository_id,
                     created_at="2026-08-31T12:02:00Z",
                 )
@@ -597,6 +679,7 @@ class ComparisonTests(unittest.TestCase):
             created_at="2026-08-31T12:03:00Z",
             comparisons=comparisons,
             comparison_plan=plan,
+            eligibility=verified_eligibility(comparisons, plan),
         )
         self.assertEqual(weak["evidence"]["supportStrength"], "weak")
         self.assertEqual(weak["proposalType"], "configuration-proposal")
@@ -605,13 +688,20 @@ class ComparisonTests(unittest.TestCase):
 
         mostly_ties = []
         for number, tokens in zip(range(20, 30), (5, 10, 10, 10, 10, 10, 10, 10, 10, 10)):
+            pair_id = uuid_text(500 + number)
             mostly_ties.append(
                 compare.compare_runs(
-                    baseline=baseline,
-                    treatment=manual_record(repository_id, uuid_text(200 + number), arm="harness", output_tokens=tokens),
+                    baseline=manual_record(
+                        repository_id, uuid_text(3000 + number), arm="baseline",
+                        output_tokens=10, pair_id=pair_id,
+                    ),
+                    treatment=manual_record(
+                        repository_id, uuid_text(4000 + number), arm="harness",
+                        output_tokens=tokens, pair_id=pair_id,
+                    ),
                     plan=plan,
                     comparison_id=uuid_text(number),
-                    pair_id=uuid_text(500),
+                    pair_id=pair_id,
                     repository_id=repository_id,
                     created_at="2026-08-31T12:02:00Z",
                 )
@@ -622,9 +712,63 @@ class ComparisonTests(unittest.TestCase):
             created_at="2026-08-31T12:03:00Z",
             comparisons=mostly_ties,
             comparison_plan=plan,
+            eligibility=verified_eligibility(mostly_ties, plan),
         )
         self.assertEqual(tied["evidence"]["supportStrength"], "insufficient")
         self.assertEqual(tied["proposalType"], "experiment-suggestion")
+
+    def test_independent_pair_thresholds_reach_moderate_and_strong(self) -> None:
+        repository_id = uuid_text(1)
+        plan = self.comparison_plan()
+        plan["primaryOutcome"] = {
+            "metric": "output-tokens",
+            "direction": "lower-is-better",
+            "minimumEffect": 1,
+        }
+        plan["secondaryOutcomes"] = []
+
+        def comparisons_for(tokens: tuple[int, ...], offset: int) -> list[dict]:
+            result = []
+            for index, treatment_tokens in enumerate(tokens):
+                pair_id = uuid_text(5000 + offset + index)
+                result.append(compare.compare_runs(
+                    baseline=manual_record(
+                        repository_id, uuid_text(10_000 + offset + index), arm="baseline",
+                        output_tokens=10, pair_id=pair_id,
+                    ),
+                    treatment=manual_record(
+                        repository_id, uuid_text(20_000 + offset + index), arm="harness",
+                        output_tokens=treatment_tokens, pair_id=pair_id,
+                    ),
+                    plan=plan,
+                    comparison_id=uuid_text(30_000 + offset + index),
+                    pair_id=pair_id,
+                    repository_id=repository_id,
+                    created_at="2026-08-31T12:02:00Z",
+                ))
+            return result
+
+        moderate_comparisons = comparisons_for((5, 5, 5, 5, 15), 0)
+        moderate = propose.proposal_from_comparisons(
+            repository_id=repository_id,
+            proposal_id=uuid_text(400),
+            created_at="2026-08-31T12:03:00Z",
+            comparisons=moderate_comparisons,
+            comparison_plan=plan,
+            eligibility=verified_eligibility(moderate_comparisons, plan),
+        )
+        self.assertEqual(moderate["evidence"]["supportStrength"], "moderate")
+
+        strong_comparisons = comparisons_for((5, 5, 5, 5, 5, 5, 5, 5, 15, 15), 100)
+        strong = propose.proposal_from_comparisons(
+            repository_id=repository_id,
+            proposal_id=uuid_text(401),
+            created_at="2026-08-31T12:03:00Z",
+            comparisons=strong_comparisons,
+            comparison_plan=plan,
+            eligibility=verified_eligibility(strong_comparisons, plan),
+        )
+        self.assertEqual(strong["evidence"]["supportStrength"], "strong")
 
     def test_patch_scope_profile_mismatch_is_rejected_and_baseline_violation_is_recorded(self) -> None:
         repository_id = uuid_text(1)
@@ -650,8 +794,15 @@ class ComparisonTests(unittest.TestCase):
             repository_id=repository_id,
             proposal_id=uuid_text(30),
             created_at="2026-08-31T12:03:00Z",
-            comparisons=[comparison, comparison, comparison],
+            comparisons=[comparison],
             comparison_plan=plan,
+            eligibility=verified_eligibility(
+                [comparison],
+                plan,
+                excluded={
+                    comparison["comparisonId"]: ("baseline-patch-scope-violation",)
+                },
+            ),
         )
         self.assertEqual(blocked["proposalType"], "experiment-suggestion")
         self.assertEqual(blocked["candidateDelta"]["attributionScope"], "none")
@@ -699,6 +850,57 @@ class ComparisonTests(unittest.TestCase):
         self.assertNotEqual(
             v60_comparison["evaluationStratumFingerprint"],
             v61_comparison["evaluationStratumFingerprint"],
+        )
+
+    def test_runtime_mismatch_is_partial_and_runtime_strata_are_distinct(self) -> None:
+        repository_id = uuid_text(1)
+        plan = self.comparison_plan()
+        baseline = manual_record(repository_id, uuid_text(2), arm="baseline")
+        treatment = manual_record(repository_id, uuid_text(3), arm="harness")
+        treatment["runtime"]["codexVersion"] = "different-codex"
+        treatment = types.seal_record(treatment)
+        mismatch = compare.compare_runs(
+            baseline=baseline,
+            treatment=treatment,
+            plan=plan,
+            comparison_id=uuid_text(10),
+            pair_id=uuid_text(500),
+            repository_id=repository_id,
+            created_at="2026-08-31T12:02:00Z",
+        )
+        self.assertEqual(mismatch["isolationStatus"], "partial")
+        self.assertIn("codex-version", mismatch["isolationGaps"])
+
+        def comparison_for_runtime(number: int, platform_name: str, capture_mode: str) -> dict:
+            pair_id = uuid_text(700 + number)
+            left = manual_record(
+                repository_id, uuid_text(1000 + number), arm="baseline",
+                pair_id=pair_id, capture_mode=capture_mode,
+            )
+            right = manual_record(
+                repository_id, uuid_text(2000 + number), arm="harness",
+                pair_id=pair_id, capture_mode=capture_mode,
+            )
+            for record in (left, right):
+                record["runtime"]["platform"] = platform_name
+                record["runtime"]["sandbox"] = "workspace-write" if number else "read-only"
+            return compare.compare_runs(
+                baseline=types.seal_record(left),
+                treatment=types.seal_record(right),
+                plan=plan,
+                comparison_id=uuid_text(20 + number),
+                pair_id=pair_id,
+                repository_id=repository_id,
+                created_at="2026-08-31T12:02:00Z",
+            )
+
+        first = comparison_for_runtime(0, "linux", "manual")
+        second = comparison_for_runtime(1, "windows", "agent-reported")
+        self.assertEqual(first["isolationStatus"], "complete")
+        self.assertEqual(second["isolationStatus"], "complete")
+        self.assertNotEqual(
+            first["evaluationStratumFingerprint"],
+            second["evaluationStratumFingerprint"],
         )
 
     def test_independent_review_uses_topology_contract_fields(self) -> None:
@@ -759,7 +961,7 @@ class ComparisonTests(unittest.TestCase):
             repository_id=repository_id,
             proposal_id=uuid_text(30),
             created_at="2026-08-31T12:03:00Z",
-            comparisons=[comparison, comparison, comparison],
+            comparisons=[comparison],
         )
         invalid_proposal = copy.deepcopy(proposal)
         invalid_proposal["autoApplicable"] = True
@@ -794,6 +996,180 @@ class ComparisonTests(unittest.TestCase):
         )
         self.assertEqual(value["evidence"]["supportStrength"], "insufficient")
         self.assertNotEqual(value["proposalType"], "configuration-proposal")
+
+    def test_helper_requires_verified_eligibility_and_independent_runs(self) -> None:
+        repository_id = uuid_text(1)
+        plan = self.comparison_plan()
+        comparisons = []
+        for number in range(10, 13):
+            pair_id = uuid_text(500 + number)
+            comparisons.append(compare.compare_runs(
+                baseline=manual_record(
+                    repository_id, uuid_text(1000 + number), arm="baseline",
+                    verification="failed", pair_id=pair_id,
+                ),
+                treatment=manual_record(
+                    repository_id, uuid_text(2000 + number), arm="harness",
+                    verification="passed", pair_id=pair_id,
+                ),
+                plan=plan,
+                comparison_id=uuid_text(number),
+                pair_id=pair_id,
+                repository_id=repository_id,
+                created_at="2026-08-31T12:02:00Z",
+            ))
+        descriptive = propose.proposal_from_comparisons(
+            repository_id=repository_id,
+            proposal_id=uuid_text(30),
+            created_at="2026-08-31T12:03:00Z",
+            comparisons=comparisons,
+            comparison_plan=plan,
+        )
+        self.assertEqual(descriptive["proposalType"], "experiment-suggestion")
+        self.assertEqual(descriptive["evidence"]["pairCount"], 0)
+
+        attributed = propose.proposal_from_comparisons(
+            repository_id=repository_id,
+            proposal_id=uuid_text(31),
+            created_at="2026-08-31T12:03:00Z",
+            comparisons=comparisons,
+            comparison_plan=plan,
+            eligibility=verified_eligibility(comparisons, plan),
+        )
+        self.assertEqual(attributed["evidence"]["supportStrength"], "weak")
+        with self.assertRaisesRegex(propose.ProposalError, "unique comparison IDs"):
+            propose.proposal_from_comparisons(
+                repository_id=repository_id,
+                proposal_id=uuid_text(32),
+                created_at="2026-08-31T12:03:00Z",
+                comparisons=[comparisons[0], comparisons[0]],
+                comparison_plan=plan,
+            )
+
+        shared_baseline = manual_record(
+            repository_id, uuid_text(3000), arm="baseline",
+            verification="failed", pair_id=uuid_text(900),
+        )
+        reused = [
+            compare.compare_runs(
+                baseline=shared_baseline,
+                treatment=manual_record(
+                    repository_id, uuid_text(3100 + number), arm="harness",
+                    verification="passed", pair_id=uuid_text(900),
+                ),
+                plan=plan,
+                comparison_id=uuid_text(40 + number),
+                pair_id=uuid_text(900),
+                repository_id=repository_id,
+                created_at="2026-08-31T12:02:00Z",
+            )
+            for number in range(2)
+        ]
+        with self.assertRaisesRegex(propose.ProposalError, "independent run pairs"):
+            propose.proposal_from_comparisons(
+                repository_id=repository_id,
+                proposal_id=uuid_text(33),
+                created_at="2026-08-31T12:03:00Z",
+                comparisons=reused,
+                comparison_plan=plan,
+                eligibility=verified_eligibility(reused, plan),
+            )
+
+    def test_complete_task_failures_remain_valid_harmful_evidence(self) -> None:
+        repository_id = uuid_text(1)
+        plan = self.comparison_plan()
+        comparisons = []
+        for number in range(3):
+            pair_id = uuid_text(950 + number)
+            comparisons.append(compare.compare_runs(
+                baseline=manual_record(
+                    repository_id, uuid_text(6000 + number), arm="baseline",
+                    verification="passed", pair_id=pair_id,
+                ),
+                treatment=manual_record(
+                    repository_id, uuid_text(7000 + number), arm="harness",
+                    verification="failed", critical_failure=True, pair_id=pair_id,
+                ),
+                plan=plan,
+                comparison_id=uuid_text(150 + number),
+                pair_id=pair_id,
+                repository_id=repository_id,
+                created_at="2026-08-31T12:02:00Z",
+            ))
+        proposal = propose.proposal_from_comparisons(
+            repository_id=repository_id,
+            proposal_id=uuid_text(350),
+            created_at="2026-08-31T12:03:00Z",
+            comparisons=comparisons,
+            comparison_plan=plan,
+            eligibility=verified_eligibility(comparisons, plan),
+        )
+        self.assertEqual(proposal["proposalType"], "negative-signal")
+        self.assertEqual(proposal["evidence"]["direction"], "harmful")
+        self.assertEqual(proposal["evidence"]["supportStrength"], "weak")
+
+    def test_store_eligibility_excludes_partial_but_keeps_independent_complete_pairs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            repository = parent / "repo"
+            repository.mkdir()
+            evaluation_store = store_module.EvaluationStore(parent / "state")
+            repository_id = evaluation_store.register_repository(repository)
+            plan = self.comparison_plan()
+            comparisons = []
+            for number in range(4):
+                pair_id = uuid_text(600 + number)
+                baseline = manual_record(
+                    repository_id, uuid_text(4000 + number), arm="baseline",
+                    verification="failed", pair_id=pair_id,
+                )
+                treatment = manual_record(
+                    repository_id, uuid_text(5000 + number), arm="harness",
+                    verification="passed", pair_id=pair_id,
+                )
+                if number == 3:
+                    treatment["runtime"]["platform"] = (
+                        "linux" if baseline["runtime"]["platform"] != "linux" else "windows"
+                    )
+                    treatment = types.seal_record(treatment)
+                persist_completed(evaluation_store, baseline)
+                persist_completed(evaluation_store, treatment)
+                comparisons.append(compare.compare_runs(
+                    baseline=baseline,
+                    treatment=treatment,
+                    plan=plan,
+                    comparison_id=uuid_text(100 + number),
+                    pair_id=pair_id,
+                    repository_id=repository_id,
+                    created_at="2026-08-31T12:02:00Z",
+                ))
+            self.assertEqual(comparisons[-1]["isolationStatus"], "partial")
+            self.assertIn("platform", comparisons[-1]["isolationGaps"])
+            eligibility = harness_eval._proposal_eligibility(
+                evaluation_store=evaluation_store,
+                repository_id=repository_id,
+                comparisons=comparisons,
+                comparison_plan=plan,
+                task_category="test",
+                complexity_level="unknown",
+                impact_level="unknown",
+            )
+            self.assertEqual(len(eligibility.attribution_basis_ids), 3)
+            self.assertIn(
+                "comparison-isolation-not-complete",
+                eligibility.exclusion_reasons[comparisons[-1]["comparisonId"]],
+            )
+            proposal = propose.proposal_from_comparisons(
+                repository_id=repository_id,
+                proposal_id=uuid_text(300),
+                created_at="2026-08-31T12:03:00Z",
+                comparisons=comparisons,
+                task_category="test",
+                comparison_plan=plan,
+                eligibility=eligibility,
+            )
+            self.assertEqual(proposal["evidence"]["pairCount"], 3)
+            self.assertEqual(proposal["evidence"]["supportStrength"], "weak")
 
 
 class PairedIsolationTests(unittest.TestCase):
@@ -871,6 +1247,111 @@ class PairedIsolationTests(unittest.TestCase):
             harness_eval._assert_baseline_isolated(root, removed)
             self.assertEqual(agents.read_text(encoding="utf-8"), original.replace(block, "", 1))
             self.assertFalse(managed.exists())
+
+    def test_arm_task_bases_exclude_harness_preparation_from_task_patch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source = parent / "source"
+            baseline = parent / "baseline"
+            treatment = parent / "treatment"
+            source.mkdir()
+            subprocess.run(["git", "init", str(source)], check=True, stdout=subprocess.DEVNULL)
+            subprocess.run(["git", "-C", str(source), "config", "user.email", "fixture@example.invalid"], check=True)
+            subprocess.run(["git", "-C", str(source), "config", "user.name", "Fixture"], check=True)
+            (source / "src").mkdir()
+            (source / "src" / "parser.py").write_text("value = 1\n", encoding="utf-8")
+            managed = source / ".codex" / "agents" / "reviewer.toml"
+            managed.parent.mkdir(parents=True)
+            managed.write_text("name = 'reviewer'\n", encoding="utf-8")
+            block = (
+                f"{harness_eval.harness_state.BEGIN_MARKER}\nmanaged\n"
+                f"{harness_eval.harness_state.END_MARKER}"
+            )
+            (source / "AGENTS.md").write_text(f"user\n{block}\n", encoding="utf-8")
+            manifest = source / ".harness" / "manifest.json"
+            manifest.parent.mkdir()
+            manifest.write_text(json.dumps({
+                "managedFiles": [
+                    {"path": "AGENTS.md", "kind": "managed-block"},
+                    {"path": ".codex/agents/reviewer.toml", "kind": "file"},
+                ]
+            }), encoding="utf-8")
+            subprocess.run(["git", "-C", str(source), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(source), "commit", "-m", "fixture"], check=True, stdout=subprocess.DEVNULL)
+            original_commit = subprocess.run(
+                ["git", "-C", str(source), "rev-parse", "HEAD"],
+                check=True, stdout=subprocess.PIPE, text=True, encoding="utf-8",
+            ).stdout.strip()
+            subprocess.run(["git", "clone", "--quiet", str(source), str(baseline)], check=True)
+            subprocess.run(["git", "clone", "--quiet", str(source), str(treatment)], check=True)
+
+            removed = harness_eval._remove_managed_baseline(baseline)
+            harness_eval._assert_baseline_isolated(baseline, removed)
+            baseline_base = harness_eval._prepare_task_base(baseline, original_commit)
+            treatment_base = harness_eval._prepare_task_base(treatment, original_commit)
+            for root, task_base in ((baseline, baseline_base), (treatment, treatment_base)):
+                parent_commit = subprocess.run(
+                    ["git", "-C", str(root), "rev-parse", f"{task_base}^"],
+                    check=True, stdout=subprocess.PIPE, text=True, encoding="utf-8",
+                ).stdout.strip()
+                self.assertEqual(parent_commit, original_commit)
+                self.assertFalse(subprocess.run(
+                    ["git", "-C", str(root), "status", "--porcelain"],
+                    check=True, stdout=subprocess.PIPE, text=True, encoding="utf-8",
+                ).stdout.strip())
+            self.assertNotEqual(
+                subprocess.run(
+                    ["git", "-C", str(baseline), "rev-parse", f"{baseline_base}^{{tree}}"],
+                    check=True, stdout=subprocess.PIPE, text=True, encoding="utf-8",
+                ).stdout,
+                subprocess.run(
+                    ["git", "-C", str(treatment), "rev-parse", f"{treatment_base}^{{tree}}"],
+                    check=True, stdout=subprocess.PIPE, text=True, encoding="utf-8",
+                ).stdout,
+            )
+
+            (baseline / "src" / "parser.py").write_text("value = 2\n", encoding="utf-8")
+            evaluation_store = store_module.EvaluationStore(parent / "state")
+            repository_id = evaluation_store.register_repository(baseline)
+            patch_scope = harness_patch_scope.evaluate(
+                root=baseline,
+                profile={
+                    "schemaVersion": 1,
+                    "id": "parser-only",
+                    "allowedScopes": ["src/**"],
+                    "allowUntracked": False,
+                    "maximumChangedPaths": 1,
+                    "maximumAddedLines": 10,
+                    "maximumDeletedLines": 10,
+                },
+                repository_id=repository_id,
+                store=evaluation_store,
+                base_ref=baseline_base,
+            )
+            self.assertEqual(patch_scope["changedTrackedCount"], 1)
+            self.assertTrue(patch_scope["withinDeclaredScope"])
+            record = harness_eval._new_record(
+                evaluation_store=evaluation_store,
+                root=baseline,
+                repository_id=repository_id,
+                prompt=b"task",
+                capture_mode="runtime-instrumented",
+                args=type("Args", (), {"execution_class": "unknown"})(),
+                arm="baseline",
+                comparison_id=uuid_text(800),
+                pair_id=uuid_text(801),
+                arm_order="first",
+                source_snapshot_id_override=f"git:{original_commit}",
+            )
+            self.assertEqual(
+                record["repository"]["sourceSnapshotId"],
+                f"git:{original_commit}",
+            )
+            self.assertIsNotNone(
+                harness_eval._result_fingerprint(
+                    evaluation_store, baseline, base_ref=baseline_base
+                )
+            )
 
 
 class ResultFingerprintTests(unittest.TestCase):
@@ -1043,22 +1524,29 @@ class Schema2ContractTests(unittest.TestCase):
         tests = ComparisonTests()
         plan = tests.comparison_plan()
         plan["intervention"] = {"expectedChangedFactors": ["agent-set", "skill-set"], "attributionTarget": "bundle"}
-        baseline = manual_record(uuid_text(1), uuid_text(2), arm="baseline", verification="failed")
-        treatment = manual_record(uuid_text(1), uuid_text(3), arm="harness", verification="passed")
-        treatment["configuration"]["declaredConfiguration"]["skills"] = schema2.reference_set(
-            ["skill:" + "6" * 32], state="measured", source="run-configuration-snapshot", fidelity="exact", completeness="complete"
-        )
-        treatment = types.seal_record(treatment)
-        comparisons = [
-            compare.compare_runs(
+        comparisons = []
+        for number in range(10, 15):
+            pair_id = uuid_text(500 + number)
+            baseline = manual_record(
+                uuid_text(1), uuid_text(1000 + number), arm="baseline",
+                verification="failed", pair_id=pair_id,
+            )
+            treatment = manual_record(
+                uuid_text(1), uuid_text(2000 + number), arm="harness",
+                verification="passed", pair_id=pair_id,
+            )
+            treatment["configuration"]["declaredConfiguration"]["skills"] = schema2.reference_set(
+                ["skill:" + "6" * 32], state="measured", source="run-configuration-snapshot", fidelity="exact", completeness="complete"
+            )
+            treatment = types.seal_record(treatment)
+            comparisons.append(compare.compare_runs(
                 baseline=baseline, treatment=treatment, plan=plan,
-                comparison_id=uuid_text(number), pair_id=uuid_text(500), repository_id=uuid_text(1),
+                comparison_id=uuid_text(number), pair_id=pair_id, repository_id=uuid_text(1),
                 created_at="2026-08-31T12:02:00Z",
-            ) for number in range(10, 15)
-        ]
+            ))
         proposal = propose.proposal_from_comparisons(
             repository_id=uuid_text(1), proposal_id=uuid_text(30), created_at="2026-08-31T12:03:00Z", comparisons=comparisons,
-            comparison_plan=plan,
+            comparison_plan=plan, eligibility=verified_eligibility(comparisons, plan),
         )
         self.assertEqual(proposal["proposalType"], "bundle-proposal")
         self.assertEqual(set(proposal["candidateDelta"]["factors"]), {"agent-set", "skill-set"})
@@ -1271,6 +1759,39 @@ class ObservationLifecycleTests(unittest.TestCase):
 
 
 class PatchScopeTests(unittest.TestCase):
+    def test_untracked_file_makes_line_budget_measurement_partial(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root = parent / "repo"
+            root.mkdir()
+            subprocess.run(["git", "init", str(root)], check=True, stdout=subprocess.DEVNULL)
+            subprocess.run(["git", "-C", str(root), "config", "user.email", "fixture@example.invalid"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.name", "Fixture"], check=True)
+            (root / "reports").mkdir()
+            (root / "reports" / "base.txt").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-m", "fixture"], check=True, stdout=subprocess.DEVNULL)
+            (root / "reports" / "large.txt").write_text("line\n" * 10_000, encoding="utf-8")
+            evaluation_store = store_module.EvaluationStore(parent / "state")
+            repository_id = evaluation_store.register_repository(root)
+            result = harness_patch_scope.evaluate(
+                root=root,
+                profile={
+                    "schemaVersion": 1,
+                    "id": "reports",
+                    "allowedScopes": ["reports/**"],
+                    "allowUntracked": True,
+                    "maximumChangedPaths": 2,
+                    "maximumAddedLines": 100,
+                    "maximumDeletedLines": None,
+                },
+                repository_id=repository_id,
+                store=evaluation_store,
+            )
+            self.assertTrue(result["withinDeclaredScope"])
+            self.assertEqual(result["untrackedCount"], 1)
+            self.assertEqual(result["completeness"], "partial")
+
     def test_patch_scope_reports_untracked_and_out_of_scope_paths_without_raw_names(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)

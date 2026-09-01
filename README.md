@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Harness_for_Codex-v6.1-brightgreen.svg" alt="Harness for Codex v6.1">
+  <img src="https://img.shields.io/badge/Harness_for_Codex-v6.2-brightgreen.svg" alt="Harness for Codex v6.2">
   <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
   <img src="https://img.shields.io/badge/Type-Harness_Generator-orange.svg" alt="Harness Generator">
   <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
@@ -33,7 +33,7 @@ Harness requires Anaconda or Miniconda. Clone this branch, create the dedicated 
 ### PowerShell
 
 ```powershell
-git clone --branch codex/v6.1 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v6.2 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file "Harness/environment.yml"
 New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
 New-Item -ItemType Directory -Force "$HOME/.agents/skills/harness" | Out-Null
@@ -43,7 +43,7 @@ Copy-Item -Recurse -Force "Harness/.agents/skills/harness/*" "$HOME/.agents/skil
 ### macOS and Linux
 
 ```shell
-git clone --branch codex/v6.1 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v6.2 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 mkdir -p ~/.agents/skills
 mkdir -p ~/.agents/skills/harness
@@ -68,7 +68,7 @@ Harness first creates a structured proposal and runs a no-write dry-run. It appl
 
 ## Optional Evaluation
 
-Harness for Codex v6.1 can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, attribute results only to a plan-bound configuration delta that was actually observed, ingest structured observations, and probe change-discipline decisions against synthetic cases. Evaluation is disabled by default and does not change generation, ownership, apply, or recovery behavior.
+Harness for Codex v6.2 can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, attribute results only to a plan-bound declared or preassigned configuration delta, ingest structured observations, and probe change-discipline decisions against synthetic cases. The delta comes from immutable arm configuration snapshots; it does not prove that every declared route, agent, skill, or policy was used at runtime. Evaluation is disabled by default and does not change generation, ownership, apply, or recovery behavior.
 
 ```shell
 conda run -n harness python .agents/skills/harness/scripts/harness_eval.py run \
@@ -96,13 +96,13 @@ The change-discipline suite checks a model's declared decision and behavior tags
 
 See [evaluation-contract.md](.agents/skills/harness/references/evaluation-contract.md) for the boundary, [run-record-schema.md](.agents/skills/harness/references/run-record-schema.md) for schemas, and [evaluation-isolation.md](.agents/skills/harness/references/evaluation-isolation.md) before paired runs.
 
-Paired runs require Comparison Plan Schema 2, including a predeclared intervention and task stratum. They accept `--repetitions` and an `--order` policy of `randomized`, `counterbalanced`, `baseline-first`, or `harness-first`. Each arm uses an isolated temporary user home. Known Harness skills in user, compatibility, Codex-home, or readable POSIX admin locations downgrade isolation; a dirty dedicated `CODEX_HOME` is rejected. Fixed arm order is retained as an explicit confounder. Windows runs require a matching user-local cleanup receipt before isolation can be labelled complete.
+Paired runs require Comparison Plan Schema 2 before either arm executes, including a declared intervention and task stratum. The resulting comparisons are bound to that plan digest. Standalone comparisons are also plan-bound, but Harness does not claim that their plans existed before the underlying runs or provide durable preregistration. Paired runs accept `--repetitions` and an `--order` policy of `randomized`, `counterbalanced`, `baseline-first`, or `harness-first`. Each arm uses an isolated temporary user home and a clean synthetic pre-task commit while retaining the original user commit as the shared source snapshot. Known Harness skills in user, compatibility, Codex-home, or readable POSIX admin locations downgrade isolation; a dirty dedicated `CODEX_HOME` is rejected. Fixed arm order is retained as an explicit confounder. Windows runs require a matching user-local cleanup receipt before isolation can be labelled complete.
 
 Structured reports use raw logical component IDs only as user-owned input. Ingest validates those IDs against the immutable configuration snapshot attached to that run, stores only local HMAC pseudonyms, and never copies the report. Observations are create-only supplements, replacements, or terminal withdrawals. Annotation Schema 2 similarly maintains one active user-outcome chain. The `view` command computes current selected values, field-specific provenance, protocol deviations, and conflicts without persisting a second source of truth.
 
-Patch-scope evaluation is optional. A user-owned profile declares allowed path scopes and budgets; rename and copy operations count both affected paths. The run stores only its digest, counts, and pseudonymous path references. It verifies path scope, not semantic minimality.
+Patch-scope evaluation is optional. A user-owned profile declares allowed path scopes and budgets; rename and copy operations count both affected paths. If untracked files exist while a line budget is active, completeness is conservatively partial because their line count is not inferred. The run stores only its digest, counts, and pseudonymous path references. It verifies path scope, not semantic minimality.
 
-Concrete positive or negative configuration attribution requires `propose --comparison-plan PLAN.json`. The plan hash and attribution target must match every included comparison. Without a verified plan, or with a descriptive-only target, Harness emits only an experiment suggestion or no-change record and leaves the candidate empty. When a plan predeclares patch scope, both arms must have a complete matching measurement and stay within the declared limits; incomplete or violated scope remains descriptive evidence but cannot support a concrete proposal.
+Concrete positive or negative configuration attribution requires `propose --comparison-plan PLAN.json`. The plan hash and attribution target must match every included comparison. Proposal support counts only complete comparisons made from independent Run pairs; partial comparisons remain individually inspectable but are excluded from pair counts, direction statistics, and candidates. Reusing either Run in the same attribution group excludes every connected comparison instead of selecting a favorable subset. Without a verified plan, or with a descriptive-only target, Harness emits only an experiment suggestion or no-change record and leaves the candidate empty. When a plan declares patch scope, both arms must have a complete matching measurement and stay within the declared limits; incomplete or violated scope remains descriptive evidence but cannot support a concrete proposal.
 
 ## Design Rules
 
@@ -150,7 +150,7 @@ Use `--recover` only when status or a failed apply reports a pending journal. Us
 
 If Windows Conda raises `UnicodeEncodeError` while forwarding a child-process error, inspect transaction status before retrying and rerun the diagnostic with `conda run --no-capture-output -n harness python ...`. This keeps the required environment while exposing the original Harness result.
 
-Harness for Codex v6.1 keeps generation plan schema 3, manifest schema 5, transaction schema 2, and the v6 evaluation schema numbers. It reads v6.0 Schema 2 records for descriptive inspection, but only v6.1 runs bound to one verified Comparison Plan are eligible for concrete attribution. Support requires at least three pairs and three non-ties; weak support is exactly two of three by integer cross multiplication. Existing evaluation Schema 1 records remain available to list, inspect, validate, repair, purge, and export, but are never rewritten or used for configuration attribution. The apply validator continues to require the canonical change-discipline block exactly once in `project-harness` and in every writer agent. Clean schema 4 installations are upgraded through repository re-analysis and a reviewed schema 3 plan.
+Harness for Codex v6.2 keeps generation plan schema 3, manifest schema 5, transaction schema 2, and the v6 evaluation schema numbers. It reads v6.0 and v6.1 Schema 2 records for descriptive inspection, but only v6.2 runs in complete, independent, plan-verified comparison pairs are eligible for concrete attribution. Support requires at least three eligible pairs and three non-ties; weak support is exactly two of three by integer cross multiplication. Existing evaluation Schema 1 records remain available to list, inspect, validate, repair, purge, and export, but are never rewritten or used for configuration attribution. The apply validator continues to require the canonical change-discipline block exactly once in `project-harness` and in every writer agent. Clean schema 4 installations are upgraded through repository re-analysis and a reviewed schema 3 plan.
 
 ## Versioning
 

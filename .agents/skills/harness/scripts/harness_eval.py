@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in local evaluation and observability CLI for Harness for Codex v6.1."""
+"""Opt-in local evaluation and observability CLI for Harness for Codex v6.2."""
 
 from __future__ import annotations
 
@@ -228,12 +228,23 @@ RESULT_FINGERPRINT_MAX_FILES = 4096
 RESULT_FINGERPRINT_MAX_BYTES = 64 * 1024 * 1024
 
 
-def _result_fingerprint(store: store_module.EvaluationStore, root: Path) -> str | None:
+def _result_fingerprint(
+    store: store_module.EvaluationStore,
+    root: Path,
+    *,
+    base_ref: str = "HEAD",
+) -> str | None:
     """HMAC the complete tracked diff and every non-ignored untracked artifact."""
     try:
         command = ["git", "-C", str(root.resolve())]
+        base_tree = subprocess.run(
+            [*command, "rev-parse", f"{base_ref}^{{tree}}"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        ).stdout.strip()
         diff = subprocess.run(
-            [*command, "diff", "HEAD", "--binary", "--no-ext-diff"],
+            [*command, "diff", base_ref, "--binary", "--no-ext-diff"],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -249,7 +260,9 @@ def _result_fingerprint(store: store_module.EvaluationStore, root: Path) -> str 
             raise types.EvaluationError("untracked file count exceeds the fingerprint bound")
         if len(diff) > RESULT_FINGERPRINT_MAX_BYTES:
             raise types.EvaluationError("tracked diff exceeds the fingerprint byte bound")
-        payload = bytearray(b"harness-result-fingerprint-v1\0")
+        payload = bytearray(b"harness-result-fingerprint-v2\0")
+        payload.extend(len(base_tree).to_bytes(8, "big"))
+        payload.extend(base_tree)
         payload.extend(len(diff).to_bytes(8, "big"))
         payload.extend(diff)
         consumed = len(diff)
@@ -277,7 +290,7 @@ def _result_fingerprint(store: store_module.EvaluationStore, root: Path) -> str 
             payload.extend(len(content).to_bytes(8, "big"))
             payload.extend(types.digest_bytes(content).encode("ascii"))
         verification_diff = subprocess.run(
-            [*command, "diff", "HEAD", "--binary", "--no-ext-diff"],
+            [*command, "diff", base_ref, "--binary", "--no-ext-diff"],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -308,6 +321,7 @@ def _new_record(
     comparison_id: str | None = None,
     pair_id: str | None = None,
     arm_order: str = "unpaired",
+    source_snapshot_id_override: str | None = None,
 ) -> dict[str, Any]:
     manifest_hash, topology_hash = _manifest_metadata(root)
     model = getattr(args, "model", None)
@@ -320,7 +334,11 @@ def _new_record(
         started_at=types.timestamp_text(evaluation_store.clock.now_utc()),
         capture_mode=capture_mode,
         prompt_fingerprint=evaluation_store.fingerprint(prompt) if prompt is not None else None,
-        source_snapshot_id=_snapshot(root),
+        source_snapshot_id=(
+            source_snapshot_id_override
+            if source_snapshot_id_override is not None
+            else _snapshot(root)
+        ),
         manifest_sha256=manifest_hash,
         topology_sha256=topology_hash,
         arm=selected_arm,
@@ -752,79 +770,183 @@ def _load_auxiliary(evaluation_store: store_module.EvaluationStore, repository_i
     return values
 
 
-def command_propose(args: argparse.Namespace) -> int:
-    evaluation_store = _store(args)
-    proposal_id = str(evaluation_store.ids.new_uuid())
-    comparisons = _load_auxiliary(evaluation_store, args.repository, "comparisons")
-    comparison_plan = None
-    plan_sha256 = None
-    attribution_target = None
-    if args.comparison_plan:
-        comparison_plan = types.load_json(Path(args.comparison_plan))
-        types.validate_comparison_plan(comparison_plan)
-        if comparison_plan.get("schemaVersion") != 2:
-            raise types.EvaluationError("Schema 2 proposals require a Schema 2 comparison plan")
-        plan_sha256 = types.digest_bytes(types.canonical_bytes(comparison_plan))
-        attribution_target = comparison_plan["intervention"]["attributionTarget"]
+def _proposal_eligibility(
+    *,
+    evaluation_store: store_module.EvaluationStore,
+    repository_id: str,
+    comparisons: list[dict[str, Any]],
+    comparison_plan: dict[str, Any] | None,
+    task_category: str,
+    complexity_level: str,
+    impact_level: str,
+) -> propose.ProposalEligibility:
+    plan_sha256 = (
+        types.digest_bytes(types.canonical_bytes(comparison_plan))
+        if comparison_plan is not None
+        else None
+    )
+    attribution_target = (
+        comparison_plan["intervention"]["attributionTarget"]
+        if comparison_plan is not None
+        else None
+    )
     concrete_plan = attribution_target in {"single-factor", "bundle"}
-    ineligible: set[str] = set()
-    warnings: set[str] = set()
+    relevant: list[dict[str, Any]] = []
+    reasons: dict[str, set[str]] = {}
+
+    def exclude(comparison_id: str, reason: str) -> None:
+        reasons.setdefault(comparison_id, set()).add(reason)
+
     for comparison_record in comparisons:
         if comparison_record.get("schemaVersion") != 2:
-            warnings.add("legacy-schema1-evidence-excluded")
             continue
-        if plan_sha256 is not None and comparison_record["planSha256"] != plan_sha256:
-            ineligible.add(comparison_record["comparisonId"])
-            warnings.add("comparison-plan-mismatch")
+        if comparison_record.get("repositoryId") != repository_id:
             continue
+        if comparison_record.get("primaryOutcome", {}).get("direction") == "unknown":
+            continue
+        stratum = comparison_record["taskStratum"]
+        if task_category != "unknown" and stratum["category"] != task_category:
+            continue
+        if complexity_level != "unknown" and stratum["complexityLevel"] != complexity_level:
+            continue
+        if impact_level != "unknown" and stratum["impactLevel"] != impact_level:
+            continue
+        relevant.append(comparison_record)
+        comparison_id = comparison_record["comparisonId"]
+        if not concrete_plan or plan_sha256 is None:
+            exclude(comparison_id, "verified-comparison-plan-required")
+        elif comparison_record["planSha256"] != plan_sha256:
+            exclude(comparison_id, "comparison-plan-mismatch")
+        if comparison_record["isolationStatus"] != "complete":
+            exclude(comparison_id, "comparison-isolation-not-complete")
+        delta = comparison_record["configurationDelta"]
+        if (
+            delta["state"] != "measured"
+            or not delta["protocolMatch"]
+            or delta["changedFactorCount"] <= 0
+            or comparison_record["protocolDeviations"]
+        ):
+            exclude(comparison_id, "configuration-attribution-ineligible")
+        if not comparison_record["resultFingerprintComplete"]:
+            exclude(comparison_id, "result-fingerprint-incomplete")
+
         runs: dict[str, dict[str, Any]] = {}
         for key, arm in (("baselineRunId", "baseline"), ("treatmentRunId", "treatment")):
             try:
-                run = evaluation_store.read_run(args.repository, comparison_record[key], allow_pending=False)
+                run = evaluation_store.read_run(
+                    repository_id, comparison_record[key], allow_pending=False
+                )
                 runs[arm] = run
                 view = evaluation_view.derived_evaluation_view(
                     run,
-                    evaluation_store.observations_for_run(args.repository, run["runId"]),
-                    evaluation_store.annotations_for_run(args.repository, run["runId"]),
+                    evaluation_store.observations_for_run(repository_id, run["runId"]),
+                    evaluation_store.annotations_for_run(repository_id, run["runId"]),
                 )
             except (store_module.StoreError, types.EvaluationError):
-                ineligible.add(comparison_record["comparisonId"])
-                warnings.add("derived-view-unavailable")
+                exclude(comparison_id, "derived-view-unavailable")
                 break
             if not view["proposalEligible"]:
-                ineligible.add(comparison_record["comparisonId"])
-                warnings.update(view["proposalIneligibilityReasons"])
-                break
-            if types.digest_bytes(types.canonical_bytes(view)) != comparison_record["derivedViewFingerprints"][arm]:
-                ineligible.add(comparison_record["comparisonId"])
-                warnings.add("derived-view-changed")
-                break
-        if comparison_record["comparisonId"] in ineligible or not concrete_plan:
+                for reason in view["proposalIneligibilityReasons"]:
+                    exclude(comparison_id, reason)
+            if (
+                types.digest_bytes(types.canonical_bytes(view))
+                != comparison_record["derivedViewFingerprints"][arm]
+            ):
+                exclude(comparison_id, "derived-view-changed")
+        if len(runs) != 2:
             continue
         if any(
             run["runtime"]["harnessVersion"]
             not in schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS
             for run in runs.values()
         ):
-            ineligible.add(comparison_record["comparisonId"])
-            warnings.add("pre-v6.1-attribution-excluded")
-            continue
-        patch_scope_fingerprint = comparison_plan["patchScopeProfileFingerprint"]
-        if patch_scope_fingerprint is None:
-            continue
-        for arm in ("baseline", "treatment"):
-            patch_scope = runs[arm]["result"]["patchScope"]
-            valid_patch_scope = (
-                patch_scope["state"] == "measured"
-                and patch_scope["completeness"] == "complete"
-                and patch_scope["profileFingerprint"] == patch_scope_fingerprint
-                and patch_scope["withinDeclaredScope"] is True
-                and patch_scope["maximumChangedPathsExceeded"] is False
-            )
-            if not valid_patch_scope:
-                ineligible.add(comparison_record["comparisonId"])
-                warnings.add(f"{arm}-patch-scope-attribution-excluded")
-                break
+            exclude(comparison_id, "pre-v6.2-attribution-excluded")
+        patch_scope_fingerprint = (
+            comparison_plan["patchScopeProfileFingerprint"]
+            if comparison_plan is not None
+            else None
+        )
+        if patch_scope_fingerprint is not None:
+            for arm in ("baseline", "treatment"):
+                patch_scope = runs[arm]["result"]["patchScope"]
+                if not (
+                    patch_scope["state"] == "measured"
+                    and patch_scope["completeness"] == "complete"
+                    and patch_scope["profileFingerprint"] == patch_scope_fingerprint
+                    and patch_scope["withinDeclaredScope"] is True
+                    and patch_scope["maximumChangedPathsExceeded"] is False
+                ):
+                    exclude(comparison_id, f"{arm}-patch-scope-attribution-excluded")
+
+    candidates = [
+        item for item in relevant if item["comparisonId"] not in reasons
+    ]
+    run_uses: dict[str, list[str]] = {}
+    pair_uses: dict[tuple[str, str], list[str]] = {}
+    for comparison_record in candidates:
+        comparison_id = comparison_record["comparisonId"]
+        pair = (
+            comparison_record["baselineRunId"],
+            comparison_record["treatmentRunId"],
+        )
+        pair_uses.setdefault(pair, []).append(comparison_id)
+        for run_id in pair:
+            run_uses.setdefault(run_id, []).append(comparison_id)
+    non_independent = {
+        comparison_id
+        for comparison_ids in (*pair_uses.values(), *run_uses.values())
+        if len(comparison_ids) > 1
+        for comparison_id in comparison_ids
+    }
+    for comparison_id in non_independent:
+        exclude(comparison_id, "non-independent-evidence-unit")
+
+    relevant_ids = tuple(sorted(item["comparisonId"] for item in relevant))
+    basis_ids = tuple(
+        sorted(
+            item["comparisonId"]
+            for item in relevant
+            if item["comparisonId"] not in reasons
+        )
+    )
+    return propose.ProposalEligibility(
+        relevant_comparison_ids=relevant_ids,
+        attribution_basis_ids=basis_ids,
+        excluded_comparison_ids=tuple(sorted(reasons)),
+        exclusion_reasons={
+            comparison_id: tuple(sorted(items))
+            for comparison_id, items in sorted(reasons.items())
+        },
+        verified_plan_sha256=plan_sha256,
+        attribution_target=attribution_target,
+        concrete_attribution_allowed=concrete_plan and bool(basis_ids),
+    )
+
+
+def command_propose(args: argparse.Namespace) -> int:
+    evaluation_store = _store(args)
+    proposal_id = str(evaluation_store.ids.new_uuid())
+    comparisons = _load_auxiliary(evaluation_store, args.repository, "comparisons")
+    comparison_plan = None
+    if args.comparison_plan:
+        comparison_plan = types.load_json(Path(args.comparison_plan))
+        types.validate_comparison_plan(comparison_plan)
+        if comparison_plan.get("schemaVersion") != 2:
+            raise types.EvaluationError("Schema 2 proposals require a Schema 2 comparison plan")
+    eligibility = _proposal_eligibility(
+        evaluation_store=evaluation_store,
+        repository_id=args.repository,
+        comparisons=comparisons,
+        comparison_plan=comparison_plan,
+        task_category=args.category,
+        complexity_level=args.complexity,
+        impact_level=args.impact,
+    )
+    warnings = {
+        reason
+        for reasons in eligibility.exclusion_reasons.values()
+        for reason in reasons
+    }
     value = propose.proposal_from_comparisons(
         repository_id=args.repository,
         proposal_id=proposal_id,
@@ -833,13 +955,13 @@ def command_propose(args: argparse.Namespace) -> int:
         task_category=args.category,
         complexity_level=args.complexity,
         impact_level=args.impact,
-        ineligible_comparison_ids=ineligible,
         comparison_plan=comparison_plan,
+        eligibility=eligibility,
     )
     evaluation_store.write_auxiliary(args.repository, "proposals", proposal_id, value)
-    if ineligible:
+    if eligibility.excluded_comparison_ids:
         print(
-            f"warning: {len(ineligible)} comparisons were excluded from configuration attribution: "
+            f"warning: {len(eligibility.excluded_comparison_ids)} comparisons were excluded from configuration attribution: "
             f"{', '.join(sorted(warnings))}",
             file=sys.stderr,
         )
@@ -847,7 +969,7 @@ def command_propose(args: argparse.Namespace) -> int:
         {
             "proposal": value,
             "warnings": sorted(warnings),
-            "excludedComparisonRefs": sorted(ineligible),
+            "excludedComparisonRefs": list(eligibility.excluded_comparison_ids),
         }
         if args.report_envelope
         else value
@@ -956,6 +1078,41 @@ def _assert_baseline_isolated(root: Path, removed: list[tuple[str, str]]) -> Non
                 raise types.EvaluationError(f"baseline still contains a managed instruction block: {relative}")
 
 
+def _prepare_task_base(root: Path, original_commit: str) -> str:
+    """Create a clean synthetic commit for one disposable evaluation arm."""
+    _git(root, "add", "-A")
+    tree = _git(root, "write-tree").stdout.strip()
+    environment = os.environ.copy()
+    environment.update({
+        "GIT_AUTHOR_NAME": "Harness Evaluation",
+        "GIT_AUTHOR_EMAIL": "harness-evaluation@invalid",
+        "GIT_COMMITTER_NAME": "Harness Evaluation",
+        "GIT_COMMITTER_EMAIL": "harness-evaluation@invalid",
+        "GIT_AUTHOR_DATE": "946684800 +0000",
+        "GIT_COMMITTER_DATE": "946684800 +0000",
+    })
+    try:
+        process = subprocess.run(
+            ["git", "-C", str(root.resolve()), "commit-tree", tree, "-p", original_commit],
+            check=True,
+            input="Harness evaluation pre-task state\n",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            env=environment,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise types.EvaluationError("could not create the arm pre-task commit") from exc
+    task_base_ref = process.stdout.strip()
+    _git(root, "reset", "--hard", task_base_ref)
+    if _git(root, "rev-parse", "HEAD").stdout.strip() != task_base_ref:
+        raise types.EvaluationError("arm pre-task commit was not installed as HEAD")
+    if _git(root, "status", "--porcelain").stdout.strip():
+        raise types.EvaluationError("paired worktree is not clean at task start")
+    return task_base_ref
+
+
 def _paired_arm_orders(repetitions: int, order: str, seed: int) -> list[list[str]]:
     if repetitions < 1:
         raise types.EvaluationError("paired-run repetitions must be at least 1")
@@ -1046,6 +1203,8 @@ def _paired_arm(
     windows_cleanup_verified: bool,
     task_stratum: dict[str, Any],
     patch_scope_profile: dict[str, Any] | None,
+    source_snapshot_id: str,
+    task_base_ref: str,
 ) -> dict[str, Any]:
     record = _new_record(
         evaluation_store=evaluation_store,
@@ -1058,6 +1217,7 @@ def _paired_arm(
         comparison_id=comparison_id,
         pair_id=pair_id,
         arm_order=order,
+        source_snapshot_id_override=source_snapshot_id,
     )
     isolation_gaps = _known_skill_isolation_gaps(
         codex_home=Path(args.codex_home), user_home=user_home
@@ -1103,13 +1263,17 @@ def _paired_arm(
     completed["outcome"]["verification"] = [verification_result]
     completed["outcome"]["criticalFailure"] = completed["outcome"]["criticalFailure"] or verification_result["result"] == "failed"
     completed["result"]["verificationProfileFingerprint"] = verification_digest
-    _set_result_fingerprint(completed, _result_fingerprint(evaluation_store, root))
+    _set_result_fingerprint(
+        completed,
+        _result_fingerprint(evaluation_store, root, base_ref=task_base_ref),
+    )
     if patch_scope_profile is not None:
         completed["result"]["patchScope"] = harness_patch_scope.evaluate(
             root=root,
             profile=patch_scope_profile,
             repository_id=repository_id,
             store=evaluation_store,
+            base_ref=task_base_ref,
         )
     if not cleanup_verified:
         completed["comparison"]["isolationStatus"] = "failed"
@@ -1203,6 +1367,11 @@ def command_paired_run(args: argparse.Namespace) -> int:
                     item.get("state") != "unchanged" for item in treatment_status.get("files", [])
                 ):
                     raise types.EvaluationError("treatment worktree does not contain a clean Harness installation")
+                task_base_refs = {
+                    "baseline": _prepare_task_base(baseline_root, commit),
+                    "harness": _prepare_task_base(treatment_root, commit),
+                }
+                source_snapshot_id = f"git:{commit}"
                 records: dict[str, dict[str, Any]] = {}
                 for index, arm in enumerate(arm_order):
                     user_home = pair_root / f"{arm}-user-home"
@@ -1222,6 +1391,8 @@ def command_paired_run(args: argparse.Namespace) -> int:
                         windows_cleanup_verified=windows_cleanup_verified,
                         task_stratum=plan["taskStratum"],
                         patch_scope_profile=patch_scope_profile,
+                        source_snapshot_id=source_snapshot_id,
+                        task_base_ref=task_base_refs[arm],
                     )
                 comparison_record = compare.compare_runs(
                     baseline=records["baseline"],

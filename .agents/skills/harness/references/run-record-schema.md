@@ -19,13 +19,13 @@ A record contains:
 
 Pending records have `endedAt: null`. Completed records are immutable and require a timestamp. Later facts use separate Observation Schema 1 records; user outcomes use an Annotation Schema 2 active chain.
 
-`resultFingerprint` covers the tracked diff from `HEAD` plus every non-ignored untracked regular file or symlink. Capture is bounded and all-or-nothing: incomplete capture stores an unavailable value, never a digest of a partial result, without lowering environment isolation. Annotation correction count may be unavailable; measured values are non-negative integers, and `accepted-with-corrections` requires a measured value of at least one.
+`resultFingerprint` covers the tracked diff from the evaluator's task base plus every non-ignored untracked regular file or symlink. For `paired-run`, the task base is a clean synthetic commit created after arm preparation; both arms still record the original user commit as `sourceSnapshotId`. Capture is bounded and all-or-nothing: incomplete capture stores an unavailable value, never a digest of a partial result, without lowering environment isolation. Annotation correction count may be unavailable; measured values are non-negative integers, and `accepted-with-corrections` requires a measured value of at least one.
 
-Comparison Schema 2 records the actual configuration delta, protocol deviations, a plan- and Harness-version-bound task/runtime stratum fingerprint, the exact Derived View fingerprints used, and result-fingerprint completeness. An asymmetric unknown configuration produces an unavailable delta and cannot support attribution. Proposal Schema 2 can repeat only an eligible measured delta bound to the original validated plan. Both records are closed, integrity-checked, non-causal, and never auto-applicable.
+Comparison Schema 2 records the declared configuration delta, protocol deviations, a plan- and Harness-version-bound task/runtime stratum fingerprint, the exact Derived View fingerprints used, and result-fingerprint completeness. An asymmetric unknown configuration produces an unavailable delta and cannot support attribution. Proposal Schema 2 can repeat only an eligible measured delta from complete, independent Run pairs bound to the validated plan. Both records are closed, integrity-checked, non-causal, and never auto-applicable.
 
 ## Comparison Plan Schema 2
 
-The comparison plan is fixed before either arm runs. It declares:
+The `paired-run` command requires and validates the comparison plan before either arm runs. A standalone `compare` result is bound to a plan digest but is not proof that the plan existed before its Runs. Harness does not currently provide durable or tamper-evident preregistration. The plan declares:
 
 ```json
 {
@@ -53,7 +53,7 @@ The comparison plan is fixed before either arm runs. It declares:
 }
 ```
 
-The primary outcome cannot be chosen after observing results. Cost improvements cannot override a correctness regression.
+For `paired-run`, the primary outcome is supplied before arm execution. Standalone plan binding alone cannot prove this timing. Cost improvements cannot override a correctness regression.
 
 `single-factor` requires exactly one expected changed factor, while `bundle` requires at least two. `descriptive-only` can never authorize a concrete candidate. The proposal command keeps `--comparison-plan` optional for compatibility, but omitting it disables concrete positive and negative attribution.
 

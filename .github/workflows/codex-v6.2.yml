@@ -1,12 +1,12 @@
-name: Harness for Codex v6.1 checks
+name: Harness for Codex v6.2 checks
 
 on:
   push:
     branches:
-      - codex/v6.1
+      - codex/v6.2
   pull_request:
     branches:
-      - codex/v6.1
+      - codex/v6.2
   workflow_dispatch:
 
 permissions:

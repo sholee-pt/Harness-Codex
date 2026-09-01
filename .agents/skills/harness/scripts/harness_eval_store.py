@@ -435,6 +435,21 @@ class EvaluationStore:
         with self.repository_lock(repository_id):
             if path.exists():
                 raise StoreError(f"{kind[:-1]} id already exists")
+            if kind == "comparisons":
+                identity = (
+                    sealed["baselineRunId"],
+                    sealed["treatmentRunId"],
+                    sealed["planSha256"],
+                )
+                for existing in self._read_json_records(path.parent):
+                    if (
+                        existing.get("baselineRunId"),
+                        existing.get("treatmentRunId"),
+                        existing.get("planSha256"),
+                    ) == identity:
+                        raise StoreError(
+                            "comparison already exists for this run pair and plan"
+                        )
             _atomic_json(path, sealed)
         return path
 

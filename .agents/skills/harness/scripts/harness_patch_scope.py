@@ -52,11 +52,11 @@ def _git_bytes(root: Path, *arguments: str) -> bytes:
         raise PatchScopeError("patch scope requires a readable Git worktree") from exc
 
 
-def _tracked_paths(root: Path) -> list[bytes]:
+def _tracked_paths(root: Path, base_ref: str) -> list[bytes]:
     """Return every affected path, counting both sides of a rename or copy."""
     tokens = [
         item
-        for item in _git_bytes(root, "diff", "HEAD", "--name-status", "-z").split(b"\0")
+        for item in _git_bytes(root, "diff", base_ref, "--name-status", "-z").split(b"\0")
         if item
     ]
     paths: list[bytes] = []
@@ -78,9 +78,10 @@ def evaluate(
     profile: dict[str, Any],
     repository_id: str,
     store: Any,
+    base_ref: str = "HEAD",
 ) -> dict[str, Any]:
     validate_profile(profile)
-    tracked_raw = _tracked_paths(root)
+    tracked_raw = _tracked_paths(root, base_ref)
     untracked_raw = [item for item in _git_bytes(root, "ls-files", "--others", "--exclude-standard", "-z").split(b"\0") if item]
     all_raw = tracked_raw + untracked_raw
     if len(all_raw) > 4096:
@@ -103,7 +104,7 @@ def evaluate(
     )
     completeness = "complete"
     added = deleted = 0
-    for line in _git_bytes(root, "diff", "HEAD", "--numstat").splitlines():
+    for line in _git_bytes(root, "diff", base_ref, "--numstat").splitlines():
         fields = line.split(b"\t", 2)
         if len(fields) < 2 or fields[0] == b"-" or fields[1] == b"-":
             completeness = "partial"
@@ -113,6 +114,13 @@ def evaluate(
             deleted += int(fields[1])
         except ValueError:
             completeness = "partial"
+    if untracked_raw and (
+        profile["maximumAddedLines"] is not None
+        or profile["maximumDeletedLines"] is not None
+    ):
+        # Untracked contents are intentionally not read by this bounded evaluator.
+        # A line budget therefore cannot be claimed complete while they exist.
+        completeness = "partial"
     line_exceeded = (
         profile["maximumAddedLines"] is not None and added > profile["maximumAddedLines"]
     ) or (

@@ -92,7 +92,7 @@ def _patch_scope_confounders(
         if patch_scope["state"] == "measured":
             if patch_scope["profileFingerprint"] != planned_fingerprint:
                 raise ComparisonError(
-                    "patch-scope profile does not match the predeclared comparison plan"
+                    "patch-scope profile does not match the plan-bound comparison profile"
                 )
             if patch_scope["completeness"] != "complete":
                 confounders.add("missing-measurement")
@@ -313,7 +313,7 @@ def _configuration_delta(
         deviations.append(
             {
                 "field": "configurationDelta.changedFactors",
-                "code": "predeclared-intervention-mismatch",
+                "code": "declared-intervention-mismatch",
                 "expectedFingerprint": types.digest_bytes(types.canonical_bytes(sorted(expected))),
                 "observedFingerprint": types.digest_bytes(types.canonical_bytes(sorted(factors))),
             }
@@ -394,8 +394,11 @@ def _compare_runs_v2(
     gaps.extend(_same_or_gap(baseline, treatment, ("task", "promptFingerprint"), "prompt-fingerprint"))
     gaps.extend(_same_or_gap(baseline, treatment, ("repository", "sourceSnapshotId"), "source-snapshot"))
     gaps.extend(_same_or_gap(baseline, treatment, ("runtime", "modelRef"), "model"))
+    gaps.extend(_same_or_gap(baseline, treatment, ("runtime", "codexVersion"), "codex-version"))
     gaps.extend(_same_or_gap(baseline, treatment, ("runtime", "reasoningEffort"), "reasoning-effort"))
+    gaps.extend(_same_or_gap(baseline, treatment, ("runtime", "platform"), "platform"))
     gaps.extend(_same_or_gap(baseline, treatment, ("runtime", "sandbox"), "sandbox"))
+    gaps.extend(_same_or_gap(baseline, treatment, ("capture", "captureMode"), "capture-mode"))
     gaps.extend(_same_or_gap(baseline, treatment, ("result", "verificationProfileFingerprint"), "verification-profile"))
     planned_verification = plan["verificationProfileFingerprint"]
     if planned_verification is not None and any(
@@ -463,6 +466,9 @@ def _compare_runs_v2(
                 "modelRef": record["runtime"]["modelRef"],
                 "codexVersion": record["runtime"]["codexVersion"],
                 "reasoningEffort": record["runtime"]["reasoningEffort"],
+                "platform": record["runtime"]["platform"],
+                "sandbox": record["runtime"]["sandbox"],
+                "captureMode": record["capture"]["captureMode"],
                 "verificationProfileFingerprint": record["result"]["verificationProfileFingerprint"],
             }
             for record in (baseline, treatment)

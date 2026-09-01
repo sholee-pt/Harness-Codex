@@ -37,8 +37,8 @@ FACTORS = {
 }
 ATTRIBUTION_SCOPES = {"single-factor", "bundle", "none"}
 ATTRIBUTION_TARGETS = {"single-factor", "bundle", "descriptive-only"}
-READABLE_HARNESS_VERSIONS = {"6.0", "6.1"}
-ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS = {"6.1"}
+READABLE_HARNESS_VERSIONS = {"6.0", "6.1", "6.2"}
+ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS = {"6.2"}
 SCOPE_CLASSES = {"single-file", "multi-file", "cross-contract", "unknown"}
 OBSERVATION_SOURCES = {"user-report", "agent-report", "runtime-event", "verification-runner"}
 LOGICAL_ID_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
@@ -364,7 +364,7 @@ def validate_comparison_plan(value: Any) -> dict[str, Any]:
         raise types.EvaluationError("bundle attribution requires at least two expected factors")
     stratum = _validate_task_stratum(plan["taskStratum"])
     if stratum["category"] == "unknown" and target != "descriptive-only":
-        raise types.EvaluationError("attribution plans require a predeclared task category")
+        raise types.EvaluationError("attribution plans require a declared task category")
     fingerprint = plan["patchScopeProfileFingerprint"]
     if fingerprint is not None and (not isinstance(fingerprint, str) or not types.HASH_RE.fullmatch(fingerprint)):
         raise types.EvaluationError("patchScopeProfileFingerprint must be null or a digest")
@@ -725,6 +725,8 @@ def validate_proposal_record(value: Any, *, verify_hash: bool = True) -> dict[st
         raise types.EvaluationError("proposal comparisonRefs must be an array")
     for ref in refs:
         types._require_uuid(ref, "proposal comparisonRef")
+    if len(refs) != len(set(refs)):
+        raise types.EvaluationError("proposal comparisonRefs must be unique")
     for key in ("pairCount", "wins", "losses", "ties", "criticalRegressionCount"):
         if isinstance(evidence[key], bool) or not isinstance(evidence[key], int) or evidence[key] < 0:
             raise types.EvaluationError(f"proposal evidence {key} must be non-negative")

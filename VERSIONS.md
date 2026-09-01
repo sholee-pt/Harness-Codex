@@ -18,8 +18,9 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v5.3` | Harness for Codex v5.3 | Schema 3 | Schema 5 | Schema 2 | Default-off local evaluation, JSONL provenance, isolated paired comparison, immutable records, non-binding evidence proposals |
 | `codex/v5.4` | Harness for Codex v5.4 | Schema 3 | Schema 5 | Schema 2 | Minimal-change discipline, self-contained writer safeguards, four-case behavioral classification probe |
 | `codex/v5.5` | Harness for Codex v5.5 | Schema 3 | Schema 5 | Schema 2 | Canonical discipline enforcement, complete bounded result fingerprints, isolated user homes, annotation semantics, experiment-only positive proposals |
-| `codex/v6` | Harness for Codex v6.0 | Schema 3 | Schema 5 | Schema 2 | Evaluation Schema 2, actual configuration delta attribution, observation and annotation lifecycles, derived views, structured ingest, patch-scope evaluation |
+| `codex/v6` | Harness for Codex v6.0 | Schema 3 | Schema 5 | Schema 2 | Evaluation Schema 2, declared configuration-delta attribution, observation and annotation lifecycles, derived views, structured ingest, patch-scope evaluation |
 | `codex/v6.1` | Harness for Codex v6.1 | Schema 3 | Schema 5 | Schema 2 | Plan-bound positive and negative attribution, conservative patch-scope eligibility, exact symmetric support thresholds, v6.0/v6.1 evidence separation |
+| `codex/v6.2` | Harness for Codex v6.2 | Schema 3 | Schema 5 | Schema 2 | Independent complete evidence units, arm-specific task bases, store-verified proposal eligibility, runtime-stratum and untracked-budget corrections |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -161,7 +162,7 @@ Harness for Codex v5.3 adds an optional evaluation layer without changing the v5
 - Records parser compatibility, Codex version, model pseudonym, reasoning effort, sandbox, process cleanup, and result fingerprints.
 - Stores per-run canonical JSON in a locked, atomic, user-local state tree outside the target repository.
 - Keeps completed records immutable and stores user acceptance or corrections as separate annotations.
-- Requires a predeclared primary outcome, correctness gate, verification profile, and complete isolation before labelling paired evidence controlled.
+- Requires a plan-specified primary outcome, correctness gate, verification profile, and complete isolation before labelling paired evidence controlled.
 - Creates only non-binding proposals with `causalClaimAllowed: false` and `autoApplicable: false`.
 - Keeps evaluation disabled unless `harness_eval.py` is invoked explicitly.
 - Keeps generation plan schema 3, manifest schema 5, and transaction schema 2.
@@ -205,9 +206,9 @@ Harness for Codex v6.0 changes the optional evaluation state contract while leav
 - Introduces Run, Annotation, Comparison Plan, Comparison, and Proposal Schema 2.
 - Separates declared configuration, expected execution, discovered configuration, and observed execution.
 - Uses state-bearing reference sets so measured empty, unavailable, and not-applicable are not conflated.
-- Computes actual configuration deltas and distinguishes single-factor, bundle, and no-delta attribution.
+- Computes configuration deltas from declared arm snapshots and distinguishes single-factor, bundle, and no-delta attribution.
 - Represents an asymmetric unknown configuration as an unavailable delta rather than inventing a change.
-- Requires a predeclared intervention and task stratum; protocol mismatch prevents configuration proposals.
+- Requires a plan-declared intervention and task stratum; protocol mismatch prevents configuration proposals.
 - Records result-fingerprint completeness separately from environment isolation.
 - Adds optional patch-scope profiles with pseudonymous changed-path evidence and counts both sides of renames and copies.
 - Adds structured user and agent report ingest validated against the immutable Run snapshot rather than the current manifest.
@@ -238,6 +239,23 @@ Harness for Codex v6.1 corrects attribution eligibility and support statistics w
 - Derives independent-review configuration only from the topology contract's producer-reviewer collaboration pattern or independent-safety-review quality policy.
 
 Harness for Codex v6.0 records remain immutable and readable. They are not rewritten or silently promoted into v6.1 attribution evidence.
+
+## Harness for Codex v6.2
+
+Harness for Codex v6.2 corrects the independence, comparability, and task-baseline rules used by Evaluation Schema 2 without changing generation plan schema 3, manifest schema 5, transaction schema 2, or any persisted evaluation schema number.
+
+- Counts only complete comparisons made from independent Run pairs in Proposal evidence statistics.
+- Excludes partial comparability from positive and negative concrete attribution while preserving each Comparison for descriptive inspection.
+- Preserves task failures as harmful evidence when comparability is complete and the planned outcome remains measurable.
+- Rejects duplicate Comparison IDs, repeated Run pairs, reused Run IDs within an attribution group, and duplicate stored comparisons for the same Run pair and plan digest.
+- Centralizes store-aware Proposal eligibility; direct statistics helpers cannot emit a concrete candidate without a verified eligibility result.
+- Creates clean synthetic pre-task commits for both paired arms, records the original user commit as their shared `sourceSnapshotId`, and evaluates result fingerprints and patch scope from the arm-specific task base.
+- Treats untracked files as partial patch-scope evidence whenever an added- or deleted-line budget is active.
+- Checks Codex version, platform, and capture-mode comparability inside each pair and adds platform, sandbox, and capture mode to the evaluation stratum.
+- Describes configuration differences as declared or preassigned snapshot deltas rather than proof of runtime component use.
+- Distinguishes standalone plan binding, paired-run plans supplied before arm execution, and unsupported durable preregistration.
+
+Harness for Codex v6.0 and v6.1 records remain immutable and readable for descriptive inspection. They are not rewritten or silently promoted into v6.2 concrete attribution evidence.
 
 ## Harness for Claude Code releases
 

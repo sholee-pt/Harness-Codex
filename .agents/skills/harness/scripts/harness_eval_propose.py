@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import statistics
+from dataclasses import dataclass
 from typing import Any
 
 import harness_eval_types as types
@@ -11,6 +12,19 @@ import harness_eval_types as types
 
 class ProposalError(types.EvaluationError):
     pass
+
+
+@dataclass(frozen=True)
+class ProposalEligibility:
+    """Store-verified boundary between descriptive and attribution evidence."""
+
+    relevant_comparison_ids: tuple[str, ...]
+    attribution_basis_ids: tuple[str, ...]
+    excluded_comparison_ids: tuple[str, ...]
+    exclusion_reasons: dict[str, tuple[str, ...]]
+    verified_plan_sha256: str | None
+    attribution_target: str | None
+    concrete_attribution_allowed: bool
 
 
 def _support_strength(
@@ -129,7 +143,7 @@ def _proposal_from_comparisons_v1(
         valid.append(comparison)
     metrics = {item["primaryOutcome"]["metric"] for item in valid}
     if len(metrics) > 1:
-        raise ProposalError("comparisons with different predeclared primary outcomes must be stratified")
+        raise ProposalError("comparisons with different plan-specified primary outcomes must be stratified")
 
     directions = [item["primaryOutcome"]["direction"] for item in valid]
     beneficial = directions.count("beneficial")
@@ -268,8 +282,8 @@ def _proposal_from_comparisons_v2(
     task_category: str = "unknown",
     complexity_level: str = "unknown",
     impact_level: str = "unknown",
-    ineligible_comparison_ids: set[str] | None = None,
     comparison_plan: dict[str, Any] | None = None,
+    eligibility: ProposalEligibility | None = None,
 ) -> dict[str, Any]:
     plan_sha256: str | None = None
     attribution_target: str | None = None
@@ -280,8 +294,13 @@ def _proposal_from_comparisons_v2(
         plan_sha256 = types.digest_bytes(types.canonical_bytes(comparison_plan))
         attribution_target = comparison_plan["intervention"]["attributionTarget"]
     relevant: list[dict[str, Any]] = []
+    seen_comparison_ids: set[str] = set()
     for comparison in comparisons:
         types.validate_comparison_record(comparison)
+        comparison_id = comparison.get("comparisonId")
+        if comparison_id in seen_comparison_ids:
+            raise ProposalError("proposal comparison records must have unique comparison IDs")
+        seen_comparison_ids.add(comparison_id)
         if comparison.get("schemaVersion") != 2 or comparison.get("repositoryId") != repository_id:
             continue
         if comparison.get("primaryOutcome", {}).get("direction") == "unknown":
@@ -294,17 +313,43 @@ def _proposal_from_comparisons_v2(
         if impact_level != "unknown" and stratum["impactLevel"] != impact_level:
             continue
         relevant.append(comparison)
+    relevant_ids = {item["comparisonId"] for item in relevant}
+    basis_ids: set[str] = set()
+    if eligibility is not None:
+        if eligibility.verified_plan_sha256 != plan_sha256:
+            raise ProposalError("proposal eligibility does not match the verified comparison plan")
+        if eligibility.attribution_target != attribution_target:
+            raise ProposalError("proposal eligibility attribution target does not match the plan")
+        if set(eligibility.relevant_comparison_ids) != relevant_ids:
+            raise ProposalError("proposal eligibility does not match the relevant comparison set")
+        basis_ids = set(eligibility.attribution_basis_ids)
+        if len(basis_ids) != len(eligibility.attribution_basis_ids):
+            raise ProposalError("proposal attribution basis IDs must be unique")
+        if not basis_ids <= relevant_ids:
+            raise ProposalError("proposal attribution basis contains an irrelevant comparison")
+        if not eligibility.concrete_attribution_allowed and basis_ids:
+            raise ProposalError("disabled concrete attribution cannot contain an attribution basis")
     eligible = [
         item for item in relevant
-        if item["comparisonId"] not in (ineligible_comparison_ids or set())
+        if item["comparisonId"] in basis_ids
         and item["configurationDelta"]["state"] == "measured"
         and item["configurationDelta"]["protocolMatch"]
         and item["configurationDelta"]["changedFactorCount"] > 0
         and item["resultFingerprintComplete"]
-        and item["isolationStatus"] != "failed"
+        and item["isolationStatus"] == "complete"
         and not item["protocolDeviations"]
         and (plan_sha256 is None or item["planSha256"] == plan_sha256)
     ]
+    if len(eligible) != len(basis_ids):
+        raise ProposalError("proposal attribution basis contains ineligible evidence")
+    seen_pairs: set[tuple[str, str]] = set()
+    seen_runs: set[str] = set()
+    for item in eligible:
+        pair = (item["baselineRunId"], item["treatmentRunId"])
+        if pair in seen_pairs or any(run_id in seen_runs for run_id in pair):
+            raise ProposalError("proposal attribution basis must use independent run pairs")
+        seen_pairs.add(pair)
+        seen_runs.update(pair)
     strata = {_task_stratum_key(item["taskStratum"]) for item in eligible}
     evaluation_strata = {item["evaluationStratumFingerprint"] for item in eligible}
     delta_fingerprints = {
@@ -383,7 +428,9 @@ def _proposal_from_comparisons_v2(
     delta = eligible[0]["configurationDelta"] if eligible else None
     scope = delta["attributionScope"] if delta is not None else "none"
     concrete_allowed = (
-        plan_sha256 is not None
+        eligibility is not None
+        and eligibility.concrete_attribution_allowed
+        and plan_sha256 is not None
         and attribution_target in {"single-factor", "bundle"}
         and strength != "insufficient"
         and not {"baseline-patch-scope-violation", "missing-measurement"} & confounders

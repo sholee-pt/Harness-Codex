@@ -11,7 +11,7 @@
 - a distinct temporary user home for each arm, with no authentication or configuration copied from the caller's home;
 - no known Harness skill under that user home, its compatibility path, the dedicated `CODEX_HOME`, or a readable POSIX admin skill root;
 - one prompt fingerprint, model, reasoning effort, sandbox, network policy, timeout, verification profile, and evaluator version;
-- predeclared Comparison Plan Schema 2 with intervention and task stratum; and
+- Comparison Plan Schema 2 supplied and validated before either arm executes, with an intervention and task stratum; and
 - randomized or counterbalanced arm order with the seed recorded.
 
 Codex builds global and project instruction chains independently on every run. Merely deleting `.codex/agents` is not a valid baseline.
@@ -22,8 +22,10 @@ The profile is a user-approved JSON file with a non-shell argument array. The re
 
 ## Failure handling
 
-Timeout handling terminates the process group, confirms exit, and rechecks the worktree before claiming complete isolation. A known user/admin Harness skill, missing check, surviving process, mismatched prompt, model, source snapshot, sandbox, or verification profile downgrades isolation. A dedicated `CODEX_HOME` containing instructions, configuration, or a Harness skill is rejected before execution.
+Timeout handling terminates the process group, confirms exit, and rechecks the worktree before claiming complete isolation. A known user/admin Harness skill, missing check, surviving process, mismatched prompt, model, Codex version, platform, capture mode, source snapshot, sandbox, or verification profile downgrades isolation. A dedicated `CODEX_HOME` containing instructions, configuration, or a Harness skill is rejected before execution.
 
 On Windows, complete live isolation additionally requires a user-local JSON receipt whose implementation digest matches the current process-tree cleanup function. Without it, the run is retained with `windows-process-tree-unverified` and partial isolation. The receipt is support evidence, not project state, and is never copied into the target repository.
 
-Partial or failed isolation may be retained as paired replay evidence but cannot be promoted to a controlled live comparison.
+Each arm is committed to a clean synthetic pre-task commit after baseline/treatment preparation. Both Run records retain the original user commit as `sourceSnapshotId`, while result fingerprinting and patch-scope evaluation compare the post-task state with that arm-specific internal base. The internal base is not added to Run Record Schema 2.
+
+Partial or failed isolation may be retained as paired replay evidence but cannot contribute Proposal support statistics or concrete attribution. A task outcome failure under complete comparability remains valid harmful evidence when the planned outcome measurement is available.
