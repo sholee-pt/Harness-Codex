@@ -188,9 +188,10 @@ Harness for Codex v5.5 hardens generation and evaluation semantics without chang
 - Fingerprints the complete `git diff HEAD --binary --no-ext-diff` result together with every non-ignored untracked regular file or symlink, including raw Git path bytes and artifact kind.
 - Returns no partial result digest when file or byte bounds are exceeded, an artifact cannot be represented, or the repository changes during capture.
 - Gives every paired arm an isolated temporary user home without copying authentication or modifying the caller's home.
+- Treats known Harness skills in isolated user, compatibility, Codex-home, or readable POSIX admin locations as isolation gaps; a contaminated dedicated `CODEX_HOME` remains a hard preflight error.
 - Downgrades Windows live isolation when no matching user-local process-cleanup receipt is supplied.
 - Distinguishes an omitted correction count from measured zero and requires at least one measured correction for `accepted-with-corrections`.
-- Emits only experiment suggestions for positive Schema 1 evidence and only bundle-level negative signals for harmful evidence; it does not invent a delegated or reviewer configuration.
+- Emits only experiment suggestions for positive Schema 1 evidence and only bundle-level negative signals for harmful evidence; it does not invent a delegated or reviewer configuration. Comparisons with incomplete result fingerprints remain descriptive but do not increase configuration-benefit support.
 - Keeps generation plan schema 3, manifest schema 5, transaction schema 2, and all evaluation auxiliary schemas at version 1.
 
 Harness for Codex v5.4 installations require no stored-state migration. Regeneration is required before applying a new plan whose generated discipline text does not satisfy the canonical validator.

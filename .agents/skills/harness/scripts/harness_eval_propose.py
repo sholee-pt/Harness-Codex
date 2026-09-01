@@ -59,6 +59,7 @@ def proposal_from_comparisons(
     task_category: str = "unknown",
     complexity_level: str = "unknown",
     impact_level: str = "unknown",
+    excluded_comparison_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     valid: list[dict[str, Any]] = []
     for comparison in comparisons:
@@ -70,6 +71,10 @@ def proposal_from_comparisons(
         if comparison.get("primaryOutcome", {}).get("direction") == "unknown":
             continue
         valid.append(comparison)
+    attribution_eligible = [
+        item for item in valid
+        if item["comparisonId"] not in (excluded_comparison_ids or set())
+    ]
     metrics = {item["primaryOutcome"]["metric"] for item in valid}
     if len(metrics) > 1:
         raise ProposalError("comparisons with different predeclared primary outcomes must be stratified")
@@ -80,7 +85,11 @@ def proposal_from_comparisons(
     ties = directions.count("tie")
     non_ties = beneficial + harmful
     dominant = max(beneficial, harmful)
-    ratio = dominant / non_ties if non_ties else 0.0
+    eligible_directions = [item["primaryOutcome"]["direction"] for item in attribution_eligible]
+    eligible_beneficial = eligible_directions.count("beneficial")
+    eligible_harmful = eligible_directions.count("harmful")
+    eligible_non_ties = eligible_beneficial + eligible_harmful
+    ratio = max(eligible_beneficial, eligible_harmful) / eligible_non_ties if eligible_non_ties else 0.0
     deltas = [
         float(item["primaryOutcome"]["delta"])
         for item in valid
@@ -88,30 +97,30 @@ def proposal_from_comparisons(
         and not isinstance(item["primaryOutcome"].get("delta"), bool)
     ]
     completeness = (
-        sum(float(item["primaryOutcome"].get("completeness", 0.0)) for item in valid) / len(valid)
-        if valid
+        sum(float(item["primaryOutcome"].get("completeness", 0.0)) for item in attribution_eligible) / len(attribution_eligible)
+        if attribution_eligible
         else 0.0
     )
     isolation_ratio = (
-        sum(item.get("isolationStatus") == "complete" for item in valid) / len(valid)
-        if valid
+        sum(item.get("isolationStatus") == "complete" for item in attribution_eligible) / len(attribution_eligible)
+        if attribution_eligible
         else 0.0
     )
     confounders = {
         str(confounder)
-        for item in valid
+        for item in attribution_eligible
         for confounder in item.get("confounders", [])
         if confounder not in {"", "none"}
     }
-    critical_regression = any(item.get("correctnessGate", {}).get("criticalRegression") for item in valid)
-    isolation_failed = any(item.get("isolationStatus") == "failed" for item in valid)
+    critical_regression = any(item.get("correctnessGate", {}).get("criticalRegression") for item in attribution_eligible)
+    isolation_failed = any(item.get("isolationStatus") == "failed" for item in attribution_eligible)
     effect_threshold_met = any(
         abs(float(item["primaryOutcome"]["delta"])) >= float(item["primaryOutcome"]["minimumEffect"])
-        for item in valid
+        for item in attribution_eligible
         if isinstance(item["primaryOutcome"].get("delta"), (int, float))
     )
     strength = _support_strength(
-        pair_count=len(valid),
+        pair_count=len(attribution_eligible),
         same_direction_ratio=ratio,
         completeness=completeness,
         isolation_ratio=isolation_ratio,

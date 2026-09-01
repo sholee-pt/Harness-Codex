@@ -366,6 +366,18 @@ def command_propose(args: argparse.Namespace) -> int:
     evaluation_store = _store(args)
     proposal_id = str(evaluation_store.ids.new_uuid())
     comparisons = _load_auxiliary(evaluation_store, args.repository, "comparisons")
+    excluded: set[str] = set()
+    for comparison in comparisons:
+        try:
+            runs = [
+                evaluation_store.read_run(args.repository, comparison[key], allow_pending=False)
+                for key in ("baselineRunId", "treatmentRunId")
+            ]
+        except store_module.StoreError:
+            excluded.add(comparison["comparisonId"])
+            continue
+        if any(run["result"].get("resultFingerprint") is None for run in runs):
+            excluded.add(comparison["comparisonId"])
     value = propose.proposal_from_comparisons(
         repository_id=args.repository,
         proposal_id=proposal_id,
@@ -374,9 +386,26 @@ def command_propose(args: argparse.Namespace) -> int:
         task_category=args.category,
         complexity_level=args.complexity,
         impact_level=args.impact,
+        excluded_comparison_ids=excluded,
     )
     evaluation_store.write_auxiliary(args.repository, "proposals", proposal_id, value)
-    _print(value)
+    if excluded:
+        print(
+            f"warning: {len(excluded)} comparisons were excluded from configuration-benefit support "
+            "because their result fingerprints were incomplete or unavailable.",
+            file=sys.stderr,
+        )
+    _print(
+        {
+            "proposal": value,
+            "warnings": ["result-fingerprint-incomplete"],
+            "excludedComparisonRefs": sorted(excluded),
+        }
+        if args.report_envelope and excluded
+        else {"proposal": value, "warnings": [], "excludedComparisonRefs": []}
+        if args.report_envelope
+        else value
+    )
     return 0
 
 
@@ -516,6 +545,27 @@ def _assert_clean_codex_home(path: Path) -> None:
         raise types.EvaluationError(f"dedicated CODEX_HOME contains comparison-changing files: {', '.join(existing)}")
 
 
+def _known_skill_isolation_gaps(
+    *,
+    codex_home: Path,
+    user_home: Path,
+    admin_skills_root: Path | None = None,
+) -> list[str]:
+    gaps: list[str] = []
+    if (user_home / ".agents" / "skills" / "harness").exists():
+        gaps.append("user-harness-skill")
+    if (user_home / ".codex" / "skills" / "harness").exists():
+        gaps.append("legacy-user-harness-skill")
+    if (codex_home / "skills" / "harness").exists():
+        gaps.append("codex-home-harness-skill")
+    selected_admin_root = admin_skills_root
+    if selected_admin_root is None and os.name != "nt":
+        selected_admin_root = Path("/etc/codex/skills")
+    if selected_admin_root is not None and (selected_admin_root / "harness").exists():
+        gaps.append("admin-harness-skill")
+    return sorted(set(gaps))
+
+
 def _windows_cleanup_receipt(path_text: str | None) -> bool:
     if os.name != "nt":
         return True
@@ -561,11 +611,15 @@ def _paired_arm(
         pair_id=pair_id,
         arm_order=order,
     )
-    record["comparison"]["isolationStatus"] = (
-        "complete" if windows_cleanup_verified else "partial"
+    isolation_gaps = _known_skill_isolation_gaps(
+        codex_home=Path(args.codex_home), user_home=user_home
     )
     if not windows_cleanup_verified:
-        record["comparison"]["isolationGaps"].append("windows-process-tree-unverified")
+        isolation_gaps.append("windows-process-tree-unverified")
+    record["comparison"]["isolationGaps"] = sorted(set(isolation_gaps))
+    record["comparison"]["isolationStatus"] = (
+        "complete" if not record["comparison"]["isolationGaps"] else "partial"
+    )
     evaluation_store.create_pending(record)
     summary, exit_code, elapsed_ms, cleanup_verified, version = capture.run_codex_jsonl(
         repository=root,
@@ -619,6 +673,10 @@ def command_paired_run(args: argparse.Namespace) -> int:
     codex_home = Path(args.codex_home).resolve()
     _assert_clean_codex_home(codex_home)
     windows_cleanup_verified = _windows_cleanup_receipt(args.windows_cleanup_receipt)
+    admin_isolation_gaps = _known_skill_isolation_gaps(
+        codex_home=codex_home,
+        user_home=Path(tempfile.gettempdir()) / "harness-nonexistent-isolated-home",
+    )
     commit = _git(root, "rev-parse", "HEAD").stdout.strip()
     seed = args.seed if args.seed is not None else random.SystemRandom().randrange(2**32)
     arm_orders = _paired_arm_orders(args.repetitions, args.order, seed)
@@ -636,6 +694,10 @@ def command_paired_run(args: argparse.Namespace) -> int:
                 "stateWritten": False,
                 "isolatedUserHome": True,
                 "windowsCleanupReceiptValid": windows_cleanup_verified,
+                "isolationGaps": sorted(set(
+                    admin_isolation_gaps
+                    + ([] if windows_cleanup_verified else ["windows-process-tree-unverified"])
+                )),
             }
         )
         return 0
@@ -1000,6 +1062,11 @@ def build_parser() -> argparse.ArgumentParser:
     proposal.add_argument("--category", choices=sorted(types.TASK_CATEGORIES), default="unknown")
     proposal.add_argument("--complexity", choices=sorted(types.LEVELS), default="unknown")
     proposal.add_argument("--impact", choices=sorted(types.LEVELS), default="unknown")
+    proposal.add_argument(
+        "--report-envelope",
+        action="store_true",
+        help="Wrap the sealed proposal with non-persistent warnings and exclusion references",
+    )
     _add_state_home(proposal)
     proposal.set_defaults(handler=command_propose)
 

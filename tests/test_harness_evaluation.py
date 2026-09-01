@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -429,6 +430,32 @@ class ComparisonTests(unittest.TestCase):
         self.assertFalse(value["autoApplicable"])
         self.assertFalse(value["language"]["causalClaimAllowed"])
 
+    def test_incomplete_fingerprints_do_not_increase_configuration_support(self) -> None:
+        repository_id = uuid_text(1)
+        baseline = manual_record(repository_id, uuid_text(2), arm="baseline", verification="failed")
+        treatment = manual_record(repository_id, uuid_text(3), arm="harness", verification="passed")
+        comparisons = [
+            compare.compare_runs(
+                baseline=baseline,
+                treatment=treatment,
+                plan=self.comparison_plan(),
+                comparison_id=uuid_text(number),
+                pair_id=uuid_text(500),
+                repository_id=repository_id,
+                created_at="2026-08-31T12:02:00Z",
+            )
+            for number in range(10, 15)
+        ]
+        value = propose.proposal_from_comparisons(
+            repository_id=repository_id,
+            proposal_id=uuid_text(30),
+            created_at="2026-08-31T12:03:00Z",
+            comparisons=comparisons,
+            excluded_comparison_ids={item["comparisonId"] for item in comparisons},
+        )
+        self.assertEqual(value["proposalType"], "experiment-suggestion")
+        self.assertEqual(value["evidence"]["supportStrength"], "insufficient")
+
     def test_primary_outcome_direction_is_not_selectable_afterward(self) -> None:
         plan = self.comparison_plan()
         plan["primaryOutcome"]["direction"] = "lower-is-better"
@@ -508,6 +535,24 @@ class PairedIsolationTests(unittest.TestCase):
             self.assertEqual(environment["HOME"], str(user_home.resolve()))
             self.assertEqual(environment["USERPROFILE"], str(user_home.resolve()))
             self.assertTrue(user_home.is_dir())
+
+    def test_known_user_and_admin_harness_skills_downgrade_isolation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            codex_home = root / "codex"
+            user_home = root / "user"
+            admin_root = root / "admin-skills"
+            codex_home.mkdir()
+            (user_home / ".agents" / "skills" / "harness").mkdir(parents=True)
+            (admin_root / "harness").mkdir(parents=True)
+            self.assertEqual(
+                harness_eval._known_skill_isolation_gaps(
+                    codex_home=codex_home,
+                    user_home=user_home,
+                    admin_skills_root=admin_root,
+                ),
+                ["admin-harness-skill", "user-harness-skill"],
+            )
 
     def test_arm_orders_are_seeded_and_counterbalanced(self) -> None:
         first = harness_eval._paired_arm_orders(4, "randomized", 123)
