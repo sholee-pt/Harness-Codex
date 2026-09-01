@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Harness_for_Codex-v5.4-brightgreen.svg" alt="Harness for Codex v5.4">
+  <img src="https://img.shields.io/badge/Harness_for_Codex-v5.5-brightgreen.svg" alt="Harness for Codex v5.5">
   <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
   <img src="https://img.shields.io/badge/Type-Harness_Generator-orange.svg" alt="Harness Generator">
   <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
@@ -33,7 +33,7 @@ Harness requires Anaconda or Miniconda. Clone this branch, create the dedicated 
 ### PowerShell
 
 ```powershell
-git clone --branch codex/v5.4 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v5.5 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file "Harness/environment.yml"
 New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
 New-Item -ItemType Directory -Force "$HOME/.agents/skills/harness" | Out-Null
@@ -43,7 +43,7 @@ Copy-Item -Recurse -Force "Harness/.agents/skills/harness/*" "$HOME/.agents/skil
 ### macOS and Linux
 
 ```shell
-git clone --branch codex/v5.4 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v5.5 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 mkdir -p ~/.agents/skills
 mkdir -p ~/.agents/skills/harness
@@ -68,7 +68,7 @@ Harness first creates a structured proposal and runs a no-write dry-run. It appl
 
 ## Optional Evaluation
 
-Harness for Codex v5.4 can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, create a non-binding experiment or configuration proposal, and probe change-discipline decisions against synthetic cases. Evaluation is disabled by default and does not change generation, ownership, apply, or recovery behavior.
+Harness for Codex v5.5 can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, create non-binding experiment suggestions or bundle-level negative signals, and probe change-discipline decisions against synthetic cases. Evaluation is disabled by default and does not change generation, ownership, apply, or recovery behavior.
 
 ```shell
 conda run -n harness python .agents/skills/harness/scripts/harness_eval.py run \
@@ -89,7 +89,7 @@ The change-discipline suite checks a model's declared decision and behavior tags
 
 See [evaluation-contract.md](.agents/skills/harness/references/evaluation-contract.md) for the boundary, [run-record-schema.md](.agents/skills/harness/references/run-record-schema.md) for schemas, and [evaluation-isolation.md](.agents/skills/harness/references/evaluation-isolation.md) before paired runs.
 
-Paired runs accept `--repetitions` and an `--order` policy of `randomized`, `counterbalanced`, `baseline-first`, or `harness-first`. Fixed arm order is retained as an explicit confounder.
+Paired runs accept `--repetitions` and an `--order` policy of `randomized`, `counterbalanced`, `baseline-first`, or `harness-first`. Each arm uses an isolated temporary user home. Fixed arm order is retained as an explicit confounder. Windows runs require a matching user-local cleanup receipt before isolation can be labelled complete.
 
 ## Design Rules
 
@@ -137,7 +137,7 @@ Use `--recover` only when status or a failed apply reports a pending journal. Us
 
 If Windows Conda raises `UnicodeEncodeError` while forwarding a child-process error, inspect transaction status before retrying and rerun the diagnostic with `conda run --no-capture-output -n harness python ...`. This keeps the required environment while exposing the original Harness result.
 
-Harness for Codex v5.4 requires generation plan schema 3, manifest schema 5, and transaction schema 2. Its optional evaluation records and probe fixtures use auxiliary schema 1 data and require no manifest migration. Clean schema 4 installations are upgraded through repository re-analysis and a reviewed schema 3 plan; boundaries are not inferred from legacy manifest fields. Clean schema 1-3 manifests can first be prepared as schema 4 only when every legacy evidence path still resolves.
+Harness for Codex v5.5 requires generation plan schema 3, manifest schema 5, and transaction schema 2. Its optional evaluation records and probe fixtures remain on auxiliary schema 1 and require no manifest migration. The apply validator now requires the canonical change-discipline block exactly once in `project-harness` and in every writer agent. Clean schema 4 installations are upgraded through repository re-analysis and a reviewed schema 3 plan; boundaries are not inferred from legacy manifest fields. Clean schema 1-3 manifests can first be prepared as schema 4 only when every legacy evidence path still resolves.
 
 ## Versioning
 

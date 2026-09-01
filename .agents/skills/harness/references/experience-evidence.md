@@ -21,4 +21,4 @@ causalClaimAllowed = false
 autoApplicable = false
 ```
 
-Observational-only evidence cannot produce a configuration proposal. A correctness regression blocks a positive cost-saving proposal. Model or runtime versions must be stratified or recorded as confounders.
+Schema 1 evidence never produces a concrete delegated or reviewer configuration. Beneficial evidence can only produce an experiment suggestion, while harmful evidence produces a bundle-level negative signal. A correctness regression blocks a positive cost-saving suggestion. Model or runtime versions must be stratified or recorded as confounders.

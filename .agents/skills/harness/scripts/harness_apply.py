@@ -12,6 +12,7 @@ from pathlib import Path
 import harness_state
 import harness_topology
 import harness_transaction
+import harness_change_discipline
 
 try:
     import tomllib
@@ -20,7 +21,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ is required
 
 
 PLAN_SCHEMA_VERSION = 3
-GENERATOR_VERSION = "5.4"
+GENERATOR_VERSION = "5.5"
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 AGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -229,6 +230,17 @@ def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> tupl
 
     if "project-harness" not in known_skills:
         raise PlanError("topology must include the project-harness skill")
+    project_harness = artifacts.get(".agents/skills/project-harness/SKILL.md")
+    if project_harness is None:
+        raise PlanError("project-harness skill artifact is missing")
+    try:
+        harness_change_discipline.require_exactly_once(
+            project_harness,
+            harness_change_discipline.PROJECT_BLOCK,
+            "project-harness skill",
+        )
+    except ValueError as exc:
+        raise PlanError(str(exc)) from exc
 
     known_agents: set[str] = set()
     for index, item in enumerate(agents):
@@ -261,6 +273,20 @@ def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> tupl
                 raise PlanError(f"Codex agent {expected} is missing {key}")
         if data["name"] != name:
             raise PlanError(f"Codex agent name mismatch in {expected}")
+        file_access = require_list(agent.get("fileAccess"), f"agent {name} fileAccess")
+        is_writer = any(
+            isinstance(access, dict) and access.get("mode") == "write"
+            for access in file_access
+        )
+        if is_writer:
+            try:
+                harness_change_discipline.require_exactly_once(
+                    data["developer_instructions"],
+                    harness_change_discipline.WRITER_BLOCK,
+                    f"writer agent {name}",
+                )
+            except ValueError as exc:
+                raise PlanError(str(exc)) from exc
         linked_skills = require_list(agent.get("skills", []), f"agent {name} skills")
         for linked_skill in linked_skills:
             if linked_skill not in known_skills:

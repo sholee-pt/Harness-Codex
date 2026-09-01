@@ -1,6 +1,6 @@
 # Evaluation Contract
 
-Harness for Codex v5.4 retains the optional evaluation layer introduced in v5.3 and adds a synthetic change-discipline probe. It does not change generation plan schema 3, manifest schema 5, transaction schema 2, managed-file ownership, or the normal configure workflow.
+Harness for Codex v5.5 retains the optional evaluation layer and auxiliary schema 1 while hardening result capture, paired isolation, annotation semantics, and proposal scope. It does not change generation plan schema 3, manifest schema 5, transaction schema 2, managed-file ownership, or the normal configure workflow.
 
 ## Boundary
 
@@ -47,4 +47,4 @@ The canonical store, parser, locking, and fixture tests support Linux and Window
 
 ## Compatibility
 
-Harness for Codex v5.4 keeps v5.3 evaluation records and all v5 generation, ownership, and transaction schemas compatible. Regeneration may update `project-harness`, writer instructions, and `manifest.generator.version` to add the change-discipline contract. Existing user-owned edits remain protected by the normal ownership and hash checks.
+Harness for Codex v5.5 keeps v5.3-v5.4 Schema 1 evaluation records and all v5 generation, ownership, and transaction schemas readable. Regeneration validates the canonical change-discipline content and updates `manifest.generator.version`. Existing user-owned edits remain protected by the normal ownership and hash checks.

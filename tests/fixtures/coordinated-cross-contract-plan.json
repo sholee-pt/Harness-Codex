@@ -231,17 +231,17 @@
     {
       "path": ".codex/agents/api_producer.toml",
       "mode": "0644",
-      "content": "name = \"api_producer\"\ndescription = \"Prepare and freeze API contract changes for review.\"\ndeveloper_instructions = \"Own the API producer phase. Freeze and report the generated contract hash before handoff.\"\n"
+      "content": "name = \"api_producer\"\ndescription = \"Prepare and freeze API contract changes for review.\"\ndeveloper_instructions = \"\"\"Own the API producer phase. Freeze and report the generated contract hash before handoff.\n\nFor code-changing work, follow the project-harness change discipline: surface material ambiguity and simpler alternatives before editing, make the smallest scoped change without adjacent cleanup, define verification before implementation, and report completion only after the checks pass.\"\"\"\n"
     },
     {
       "path": ".codex/agents/contract_reviewer.toml",
       "mode": "0644",
-      "content": "name = \"contract_reviewer\"\ndescription = \"Verify storage compatibility against a frozen API contract.\"\ndeveloper_instructions = \"Review the complete contracts/generated/** overlap only after verifying the producer handoff hash.\"\n"
+      "content": "name = \"contract_reviewer\"\ndescription = \"Verify storage compatibility against a frozen API contract.\"\ndeveloper_instructions = \"\"\"Review the complete contracts/generated/** overlap only after verifying the producer handoff hash.\n\nFor code-changing work, follow the project-harness change discipline: surface material ambiguity and simpler alternatives before editing, make the smallest scoped change without adjacent cleanup, define verification before implementation, and report completion only after the checks pass.\"\"\"\n"
     },
     {
       "path": ".agents/skills/project-harness/SKILL.md",
       "mode": "0644",
-      "content": "---\nname: project-harness\ndescription: Route and verify recurring API and storage contract synchronization.\n---\n\n# Project Harness\n\nUse the release-sync route for recurring API and storage contract synchronization. If one task maps to multiple categories, use a shared route only when all matches resolve to that route; otherwise report the ambiguity and require an explicit selection. Freeze the API schema hash before the contract reviewer writes contracts/generated/**.\n"
+      "content": "---\nname: project-harness\ndescription: Route and verify recurring API and storage contract synchronization.\n---\n\n# Project Harness\n\nUse the release-sync route for recurring API and storage contract synchronization. If one task maps to multiple categories, use a shared route only when all matches resolve to that route; otherwise report the ambiguity and require an explicit selection. Freeze the API schema hash before the contract reviewer writes contracts/generated/**.\n\n## Change discipline\n\nFor code-changing work:\n\n- Surface material assumptions, conflicting interpretations, and simpler alternatives before editing.\n- Implement the smallest change that satisfies the stated objective. Do not add speculative abstractions, configuration, or unrelated features.\n- Limit edits to the requested responsibility and scope. Do not refactor, reformat, or clean up adjacent code unless the current change requires it. Remove only artifacts made obsolete by the current change.\n- Define verification before implementation. Report completion only after the checks pass, or report the failure and remaining uncertainty explicitly.\n"
     }
   ],
   "instruction": {

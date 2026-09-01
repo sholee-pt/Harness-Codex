@@ -19,6 +19,8 @@ A record contains:
 
 Pending records have `endedAt: null`. Completed records are immutable and require a timestamp. Acceptance and corrections use separate Annotation Schema 1 records.
 
+`resultFingerprint` covers the tracked diff from `HEAD` plus every non-ignored untracked regular file or symlink. Capture is bounded and all-or-nothing: incomplete capture stores `null`, never a digest of a partial result. Annotation correction count may be unavailable; measured values are non-negative integers, and `accepted-with-corrections` requires a measured value of at least one.
+
 Comparison Schema 1 and Proposal Schema 1 are closed, integrity-checked objects. Comparison records cannot claim causality, and proposal records cannot set `autoApplicable` to true.
 
 ## Comparison Plan Schema 1

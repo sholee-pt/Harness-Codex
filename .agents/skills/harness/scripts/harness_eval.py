@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in local evaluation and observability CLI for Harness for Codex v5.4."""
+"""Opt-in local evaluation and observability CLI for Harness for Codex v5.5."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import json
 import os
 import random
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -64,17 +65,76 @@ def _manifest_metadata(root: Path) -> tuple[str | None, str | None]:
     return manifest_hash, topology_hash
 
 
+RESULT_FINGERPRINT_MAX_FILES = 4096
+RESULT_FINGERPRINT_MAX_BYTES = 64 * 1024 * 1024
+
+
 def _result_fingerprint(store: store_module.EvaluationStore, root: Path) -> str | None:
+    """HMAC the complete tracked diff and every non-ignored untracked artifact."""
     try:
+        command = ["git", "-C", str(root.resolve())]
         diff = subprocess.run(
-            ["git", "-C", str(root.resolve()), "diff", "--binary", "--no-ext-diff"],
+            [*command, "diff", "HEAD", "--binary", "--no-ext-diff"],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
         ).stdout
-    except (OSError, subprocess.CalledProcessError):
+        raw_names = subprocess.run(
+            [*command, "ls-files", "--others", "--exclude-standard", "-z"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        ).stdout
+        names = [name for name in raw_names.split(b"\0") if name]
+        if len(names) > RESULT_FINGERPRINT_MAX_FILES:
+            raise types.EvaluationError("untracked file count exceeds the fingerprint bound")
+        if len(diff) > RESULT_FINGERPRINT_MAX_BYTES:
+            raise types.EvaluationError("tracked diff exceeds the fingerprint byte bound")
+        payload = bytearray(b"harness-result-fingerprint-v1\0")
+        payload.extend(len(diff).to_bytes(8, "big"))
+        payload.extend(diff)
+        consumed = len(diff)
+        for raw_name in names:
+            path = root / os.fsdecode(raw_name)
+            metadata = path.lstat()
+            if stat.S_ISLNK(metadata.st_mode):
+                kind = b"l"
+                content = os.fsencode(os.readlink(path))
+            elif stat.S_ISREG(metadata.st_mode):
+                kind = b"f"
+                if metadata.st_size > RESULT_FINGERPRINT_MAX_BYTES - consumed:
+                    raise types.EvaluationError("untracked content exceeds the fingerprint byte bound")
+                content = path.read_bytes()
+                if len(content) != metadata.st_size:
+                    raise types.EvaluationError("untracked file changed during fingerprinting")
+            else:
+                raise types.EvaluationError("unsupported untracked artifact kind")
+            consumed += len(content)
+            if consumed > RESULT_FINGERPRINT_MAX_BYTES:
+                raise types.EvaluationError("result content exceeds the fingerprint byte bound")
+            payload.extend(len(raw_name).to_bytes(8, "big"))
+            payload.extend(raw_name)
+            payload.extend(kind)
+            payload.extend(len(content).to_bytes(8, "big"))
+            payload.extend(types.digest_bytes(content).encode("ascii"))
+        verification_diff = subprocess.run(
+            [*command, "diff", "HEAD", "--binary", "--no-ext-diff"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        ).stdout
+        verification_names = subprocess.run(
+            [*command, "ls-files", "--others", "--exclude-standard", "-z"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        ).stdout
+        if verification_diff != diff or verification_names != raw_names:
+            raise types.EvaluationError("repository changed during fingerprinting")
+        return store.fingerprint(bytes(payload))
+    except (OSError, subprocess.CalledProcessError, types.EvaluationError) as exc:
+        print(f"warning: result fingerprint unavailable: {exc}", file=sys.stderr)
         return None
-    return store.fingerprint(diff)
 
 
 def _new_record(
@@ -200,13 +260,17 @@ def command_record_complete(args: argparse.Namespace) -> int:
 def command_annotate(args: argparse.Namespace) -> int:
     evaluation_store = _store(args)
     repository_id, _ = evaluation_store.find_run(args.run)
-    correction = types.measurement(
-        args.corrections,
-        unit="count",
-        state="measured",
-        source="user-annotation",
-        fidelity="reported",
-        completeness="complete",
+    correction = (
+        types.unavailable("count")
+        if args.corrections is None
+        else types.measurement(
+            args.corrections,
+            unit="count",
+            state="measured",
+            source="user-annotation",
+            fidelity="reported",
+            completeness="complete",
+        )
     )
     annotation = {
         "schemaVersion": types.ANNOTATION_SCHEMA_VERSION,
@@ -452,6 +516,23 @@ def _assert_clean_codex_home(path: Path) -> None:
         raise types.EvaluationError(f"dedicated CODEX_HOME contains comparison-changing files: {', '.join(existing)}")
 
 
+def _windows_cleanup_receipt(path_text: str | None) -> bool:
+    if os.name != "nt":
+        return True
+    if not path_text:
+        return False
+    try:
+        value = types.load_json(Path(path_text))
+    except types.EvaluationError:
+        return False
+    return value == {
+        "schemaVersion": 1,
+        "platform": "windows",
+        "implementationSha256": capture.windows_cleanup_implementation_sha256(),
+        "verified": True,
+    }
+
+
 def _paired_arm(
     *,
     evaluation_store: store_module.EvaluationStore,
@@ -465,6 +546,8 @@ def _paired_arm(
     pair_id: str,
     verification: dict[str, Any],
     verification_digest: str,
+    user_home: Path,
+    windows_cleanup_verified: bool,
 ) -> dict[str, Any]:
     record = _new_record(
         evaluation_store=evaluation_store,
@@ -478,7 +561,11 @@ def _paired_arm(
         pair_id=pair_id,
         arm_order=order,
     )
-    record["comparison"]["isolationStatus"] = "complete"
+    record["comparison"]["isolationStatus"] = (
+        "complete" if windows_cleanup_verified else "partial"
+    )
+    if not windows_cleanup_verified:
+        record["comparison"]["isolationGaps"].append("windows-process-tree-unverified")
     evaluation_store.create_pending(record)
     summary, exit_code, elapsed_ms, cleanup_verified, version = capture.run_codex_jsonl(
         repository=root,
@@ -487,6 +574,7 @@ def _paired_arm(
         timeout_seconds=args.timeout,
         codex_binary=args.codex_binary,
         codex_home=Path(args.codex_home),
+        user_home=user_home,
         model=args.model,
         reasoning_effort=args.reasoning_effort,
     )
@@ -530,6 +618,7 @@ def command_paired_run(args: argparse.Namespace) -> int:
         raise types.EvaluationError("comparison plan verification fingerprint does not match the profile")
     codex_home = Path(args.codex_home).resolve()
     _assert_clean_codex_home(codex_home)
+    windows_cleanup_verified = _windows_cleanup_receipt(args.windows_cleanup_receipt)
     commit = _git(root, "rev-parse", "HEAD").stdout.strip()
     seed = args.seed if args.seed is not None else random.SystemRandom().randrange(2**32)
     arm_orders = _paired_arm_orders(args.repetitions, args.order, seed)
@@ -545,6 +634,8 @@ def command_paired_run(args: argparse.Namespace) -> int:
                 "seed": seed,
                 "liveCodexInvoked": False,
                 "stateWritten": False,
+                "isolatedUserHome": True,
+                "windowsCleanupReceiptValid": windows_cleanup_verified,
             }
         )
         return 0
@@ -582,6 +673,7 @@ def command_paired_run(args: argparse.Namespace) -> int:
                     raise types.EvaluationError("treatment worktree does not contain a clean Harness installation")
                 records: dict[str, dict[str, Any]] = {}
                 for index, arm in enumerate(arm_order):
+                    user_home = pair_root / f"{arm}-user-home"
                     records[arm] = _paired_arm(
                         evaluation_store=evaluation_store,
                         repository_id=repository_id,
@@ -594,6 +686,8 @@ def command_paired_run(args: argparse.Namespace) -> int:
                         pair_id=pair_id,
                         verification=verification,
                         verification_digest=verification_digest,
+                        user_home=user_home,
+                        windows_cleanup_verified=windows_cleanup_verified,
                     )
                 comparison_record = compare.compare_runs(
                     baseline=records["baseline"],
@@ -862,7 +956,7 @@ def build_parser() -> argparse.ArgumentParser:
     annotate = subparsers.add_parser("annotate", help="Add immutable user outcome metadata")
     annotate.add_argument("--run", required=True)
     annotate.add_argument("--acceptance", choices=("accepted", "accepted-with-corrections", "rejected", "unknown"), required=True)
-    annotate.add_argument("--corrections", type=int, default=0)
+    annotate.add_argument("--corrections", type=int)
     annotate.add_argument("--reopened", action="store_true")
     _add_state_home(annotate)
     annotate.set_defaults(handler=command_annotate)
@@ -926,6 +1020,10 @@ def build_parser() -> argparse.ArgumentParser:
         default="randomized",
     )
     paired.add_argument("--dry-run", action="store_true")
+    paired.add_argument(
+        "--windows-cleanup-receipt",
+        help="User-local receipt proving this Windows cleanup implementation",
+    )
     _add_runtime(paired, require_codex_home=True)
     _add_state_home(paired)
     paired.set_defaults(handler=command_paired_run)

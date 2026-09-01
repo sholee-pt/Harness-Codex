@@ -129,17 +129,14 @@ def proposal_from_comparisons(
     else:
         direction = "unknown"
 
-    if strength == "insufficient":
-        proposal_type = "experiment-suggestion" if valid else "no-change"
-        status = "observed"
-    elif direction == "harmful":
+    if direction == "harmful":
         proposal_type = "negative-signal"
         status = "observed"
-    elif direction == "beneficial":
-        proposal_type = "configuration-proposal"
-        status = "proposed"
-    else:
+    elif valid:
         proposal_type = "experiment-suggestion"
+        status = "proposed" if direction == "beneficial" else "observed"
+    else:
+        proposal_type = "no-change"
         status = "observed"
 
     evidence_classes = {item["evidenceClass"] for item in valid}
@@ -161,8 +158,8 @@ def proposal_from_comparisons(
             "impactLevel": impact_level,
         },
         "candidate": {
-            "executionClass": "delegated" if direction == "beneficial" else "unknown",
-            "addIndependentReview": bool(direction == "beneficial"),
+            "executionClass": "unknown",
+            "addIndependentReview": False,
         },
         "evidence": {
             "evidenceClass": evidence_class,

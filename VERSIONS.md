@@ -17,6 +17,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v5.2` | Harness for Codex v5.2 | Schema 3 | Schema 5 | Schema 2 | Portable output namespace validation, complete-overlap handoffs, unique decision ownership, linked coordination witnesses, coordinated full-plan integration |
 | `codex/v5.3` | Harness for Codex v5.3 | Schema 3 | Schema 5 | Schema 2 | Default-off local evaluation, JSONL provenance, isolated paired comparison, immutable records, non-binding evidence proposals |
 | `codex/v5.4` | Harness for Codex v5.4 | Schema 3 | Schema 5 | Schema 2 | Minimal-change discipline, self-contained writer safeguards, four-case behavioral classification probe |
+| `codex/v5.5` | Harness for Codex v5.5 | Schema 3 | Schema 5 | Schema 2 | Canonical discipline enforcement, complete bounded result fingerprints, isolated user homes, annotation semantics, experiment-only positive proposals |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -177,6 +178,22 @@ Harness for Codex v5.4 adds a backward-compatible change-discipline contract wit
 - Keeps generation plan schema 3, manifest schema 5, transaction schema 2, and evaluation auxiliary schema 1.
 
 Harness for Codex v5.3 installations require no state migration. A reviewed regeneration may update generated `project-harness` and writer instructions; ownership conflicts continue to stop the full apply before changes are written.
+
+## Harness for Codex v5.5
+
+Harness for Codex v5.5 hardens generation and evaluation semantics without changing any generation or evaluation schema number.
+
+- Requires the canonical project change-discipline block exactly once after line-ending normalization.
+- Requires the canonical self-contained discipline block exactly once in every agent whose topology grants write access.
+- Fingerprints the complete `git diff HEAD --binary --no-ext-diff` result together with every non-ignored untracked regular file or symlink, including raw Git path bytes and artifact kind.
+- Returns no partial result digest when file or byte bounds are exceeded, an artifact cannot be represented, or the repository changes during capture.
+- Gives every paired arm an isolated temporary user home without copying authentication or modifying the caller's home.
+- Downgrades Windows live isolation when no matching user-local process-cleanup receipt is supplied.
+- Distinguishes an omitted correction count from measured zero and requires at least one measured correction for `accepted-with-corrections`.
+- Emits only experiment suggestions for positive Schema 1 evidence and only bundle-level negative signals for harmful evidence; it does not invent a delegated or reviewer configuration.
+- Keeps generation plan schema 3, manifest schema 5, transaction schema 2, and all evaluation auxiliary schemas at version 1.
+
+Harness for Codex v5.4 installations require no stored-state migration. Regeneration is required before applying a new plan whose generated discipline text does not satisfy the canonical validator.
 
 ## Harness for Claude Code releases
 

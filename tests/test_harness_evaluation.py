@@ -96,6 +96,35 @@ def manual_record(
 
 
 class MeasurementTests(unittest.TestCase):
+    def test_annotation_correction_count_preserves_unavailable_and_zero(self) -> None:
+        base = {
+            "schemaVersion": 1,
+            "annotationId": uuid_text(10),
+            "runId": uuid_text(2),
+            "createdAt": "2026-08-31T12:00:00Z",
+            "source": "user",
+            "acceptance": "accepted",
+            "correctionCount": types.unavailable("count"),
+            "reopened": False,
+            "freeTextStored": False,
+            "integrity": {"recordSha256": None},
+        }
+        types.validate_annotation(types.seal_record(base))
+        measured_zero = copy.deepcopy(base)
+        measured_zero["correctionCount"] = types.measurement(
+            0,
+            unit="count",
+            state="measured",
+            source="user-annotation",
+            fidelity="reported",
+            completeness="complete",
+        )
+        types.validate_annotation(types.seal_record(measured_zero))
+        invalid = copy.deepcopy(base)
+        invalid["acceptance"] = "accepted-with-corrections"
+        with self.assertRaises(types.EvaluationError):
+            types.validate_annotation(types.seal_record(invalid))
+
     def test_measured_zero_and_unavailable_null_are_distinct(self) -> None:
         zero = types.measurement(
             0,
@@ -394,7 +423,9 @@ class ComparisonTests(unittest.TestCase):
             comparisons=comparisons,
             task_category="test",
         )
-        self.assertEqual(value["proposalType"], "configuration-proposal")
+        self.assertEqual(value["proposalType"], "experiment-suggestion")
+        self.assertEqual(value["candidate"]["executionClass"], "unknown")
+        self.assertFalse(value["candidate"]["addIndependentReview"])
         self.assertFalse(value["autoApplicable"])
         self.assertFalse(value["language"]["causalClaimAllowed"])
 
@@ -464,6 +495,20 @@ class ComparisonTests(unittest.TestCase):
 
 
 class PairedIsolationTests(unittest.TestCase):
+    def test_runtime_environment_uses_an_isolated_user_home(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            codex_home = root / "codex"
+            user_home = root / "user"
+            codex_home.mkdir()
+            environment = capture._isolated_environment(
+                codex_home=codex_home, user_home=user_home
+            )
+            self.assertEqual(environment["CODEX_HOME"], str(codex_home.resolve()))
+            self.assertEqual(environment["HOME"], str(user_home.resolve()))
+            self.assertEqual(environment["USERPROFILE"], str(user_home.resolve()))
+            self.assertTrue(user_home.is_dir())
+
     def test_arm_orders_are_seeded_and_counterbalanced(self) -> None:
         first = harness_eval._paired_arm_orders(4, "randomized", 123)
         self.assertEqual(first, harness_eval._paired_arm_orders(4, "randomized", 123))
@@ -506,6 +551,32 @@ class PairedIsolationTests(unittest.TestCase):
             harness_eval._assert_baseline_isolated(root, removed)
             self.assertEqual(agents.read_text(encoding="utf-8"), original.replace(block, "", 1))
             self.assertFalse(managed.exists())
+
+
+class ResultFingerprintTests(unittest.TestCase):
+    def test_fingerprint_includes_tracked_diff_and_nonignored_untracked_content(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "repo"
+            state = Path(directory) / "state"
+            root.mkdir()
+            subprocess.run(["git", "init", str(root)], check=True, stdout=subprocess.DEVNULL)
+            subprocess.run(["git", "-C", str(root), "config", "user.email", "fixture@example.invalid"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.name", "Fixture"], check=True)
+            (root / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+            (root / "tracked.txt").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-m", "fixture"], check=True, stdout=subprocess.DEVNULL)
+            evaluation_store = store_module.EvaluationStore(state)
+            (root / "tracked.txt").write_text("changed\n", encoding="utf-8")
+            (root / "new.txt").write_text("first\n", encoding="utf-8")
+            first = harness_eval._result_fingerprint(evaluation_store, root)
+            (root / "new.txt").write_text("second\n", encoding="utf-8")
+            second = harness_eval._result_fingerprint(evaluation_store, root)
+            (root / "ignored.txt").write_text("ignored change\n", encoding="utf-8")
+            third = harness_eval._result_fingerprint(evaluation_store, root)
+            self.assertIsNotNone(first)
+            self.assertNotEqual(first, second)
+            self.assertEqual(second, third)
 
 
 class DisabledEvaluationTests(unittest.TestCase):

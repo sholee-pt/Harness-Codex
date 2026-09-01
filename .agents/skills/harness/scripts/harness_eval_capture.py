@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import inspect
 import os
 import platform
 import queue
@@ -295,7 +296,9 @@ def parse_jsonl(lines: Iterable[str], *, capture_final_message: bool = False) ->
     return accumulator.summary()
 
 
-def codex_preflight(codex_binary: str = "codex") -> str:
+def codex_preflight(
+    codex_binary: str = "codex", *, environment: dict[str, str] | None = None
+) -> str:
     try:
         version = subprocess.run(
             [codex_binary, "--version"],
@@ -305,6 +308,7 @@ def codex_preflight(codex_binary: str = "codex") -> str:
             text=True,
             encoding="utf-8",
             timeout=10,
+            env=environment,
         ).stdout.strip()
         help_text = subprocess.run(
             [codex_binary, "exec", "--help"],
@@ -314,6 +318,7 @@ def codex_preflight(codex_binary: str = "codex") -> str:
             text=True,
             encoding="utf-8",
             timeout=10,
+            env=environment,
         ).stdout
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         raise CaptureError(f"Codex CLI preflight failed: {type(exc).__name__}") from exc
@@ -358,6 +363,36 @@ def _terminate_process_tree(process: subprocess.Popen[str], *, grace_seconds: fl
     return process.poll() is not None
 
 
+def windows_cleanup_implementation_sha256() -> str:
+    """Identify the exact cleanup implementation covered by a local receipt."""
+    return types.digest_bytes(inspect.getsource(_terminate_process_tree).encode("utf-8"))
+
+
+def _isolated_environment(
+    *, codex_home: Path | None, user_home: Path | None
+) -> dict[str, str]:
+    environment = os.environ.copy()
+    if codex_home is not None:
+        environment["CODEX_HOME"] = str(codex_home.resolve())
+    if user_home is not None:
+        home = user_home.resolve()
+        home.mkdir(parents=True, exist_ok=True)
+        environment["HOME"] = str(home)
+        environment["USERPROFILE"] = str(home)
+        environment["XDG_CONFIG_HOME"] = str(home / ".config")
+        environment["XDG_DATA_HOME"] = str(home / ".local" / "share")
+        environment["XDG_STATE_HOME"] = str(home / ".local" / "state")
+        environment["XDG_CACHE_HOME"] = str(home / ".cache")
+        if os.name == "nt":
+            environment["APPDATA"] = str(home / "AppData" / "Roaming")
+            environment["LOCALAPPDATA"] = str(home / "AppData" / "Local")
+            drive, tail = os.path.splitdrive(str(home))
+            if drive:
+                environment["HOMEDRIVE"] = drive
+                environment["HOMEPATH"] = tail
+    return environment
+
+
 def run_codex_jsonl(
     *,
     repository: Path,
@@ -366,6 +401,7 @@ def run_codex_jsonl(
     timeout_seconds: float,
     codex_binary: str = "codex",
     codex_home: Path | None = None,
+    user_home: Path | None = None,
     model: str | None = None,
     reasoning_effort: str = "unknown",
     capture_final_message: bool = False,
@@ -377,7 +413,8 @@ def run_codex_jsonl(
         raise CaptureError("unsupported reasoning effort")
     if timeout_seconds <= 0:
         raise CaptureError("timeout must be positive")
-    version = codex_preflight(codex_binary)
+    environment = _isolated_environment(codex_home=codex_home, user_home=user_home)
+    version = codex_preflight(codex_binary, environment=environment)
     command = [
         codex_binary,
         "exec",
@@ -397,9 +434,6 @@ def run_codex_jsonl(
     if extra_args:
         command.extend(extra_args)
     command.append("-")
-    environment = os.environ.copy()
-    if codex_home is not None:
-        environment["CODEX_HOME"] = str(codex_home.resolve())
     creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
     started = time.monotonic()
     process = subprocess.Popen(

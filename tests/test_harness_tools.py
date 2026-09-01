@@ -17,6 +17,7 @@ SCRIPTS = REPO_ROOT / ".agents" / "skills" / "harness" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import harness_apply  # noqa: E402
+import harness_change_discipline  # noqa: E402
 import harness_state  # noqa: E402
 import harness_topology  # noqa: E402
 import harness_transaction  # noqa: E402
@@ -42,6 +43,7 @@ def minimal_plan(root: Path, *, skill_suffix: str = "", skill_mode: str = "0644"
         "---\n\n"
         "# Project Harness\n\n"
         "Run the smallest evidence-backed workflow.\n"
+        f"\n{harness_change_discipline.PROJECT_BLOCK}\n"
         f"{skill_suffix}"
     )
     return {
@@ -441,6 +443,22 @@ class StateTests(unittest.TestCase):
 
 
 class ApplyTests(unittest.TestCase):
+    def test_project_harness_requires_one_canonical_change_discipline_block(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = minimal_plan(root)
+            content = plan["artifacts"][0]["content"]
+            plan["artifacts"][0]["content"] = content.replace(
+                harness_change_discipline.PROJECT_BLOCK, "## Change discipline\n\nMarker only."
+            )
+            with self.assertRaisesRegex(harness_apply.PlanError, "canonical change-discipline"):
+                harness_apply.build_application(root, plan)
+
+            plan = minimal_plan(root)
+            plan["artifacts"][0]["content"] += "\n" + harness_change_discipline.PROJECT_BLOCK
+            with self.assertRaisesRegex(harness_apply.PlanError, "exactly once"):
+                harness_apply.build_application(root, plan)
+
     def test_plan_rejects_case_only_artifact_collisions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1473,7 +1491,7 @@ class TopologyContractTests(unittest.TestCase):
             )
 
             self.assertEqual(manifest["schemaVersion"], 5)
-            self.assertEqual(manifest["generator"]["version"], "5.4")
+            self.assertEqual(manifest["generator"]["version"], "5.5")
             self.assertNotIn("taskExecution", manifest)
             self.assertEqual(manifest["topology"]["classification"]["class"], "minimal")
 
