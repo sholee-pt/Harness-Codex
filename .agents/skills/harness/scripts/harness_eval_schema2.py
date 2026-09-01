@@ -37,8 +37,8 @@ FACTORS = {
 }
 ATTRIBUTION_SCOPES = {"single-factor", "bundle", "none"}
 ATTRIBUTION_TARGETS = {"single-factor", "bundle", "descriptive-only"}
-READABLE_HARNESS_VERSIONS = {"6.0", "6.1", "6.2"}
-ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS = {"6.2"}
+READABLE_HARNESS_VERSIONS = {"6.0", "6.1", "6.2", "6.3"}
+ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS = {"6.3"}
 SCOPE_CLASSES = {"single-file", "multi-file", "cross-contract", "unknown"}
 OBSERVATION_SOURCES = {"user-report", "agent-report", "runtime-event", "verification-runner"}
 LOGICAL_ID_RE = re.compile(r"^[a-z][a-z0-9_-]*$")

@@ -18,7 +18,7 @@ Codex builds global and project instruction chains independently on every run. M
 
 ## Verification profile
 
-The profile is a user-approved JSON file with a non-shell argument array. The record stores only its digest, pseudonymous check reference, kind, result, and exit code.
+The profile is a user-approved JSON file with a non-shell argument array. The record stores only its digest, pseudonymous check reference, kind, result, and exit code. Verification must not change Git-visible repository state. Harness measures the task fingerprint and patch scope immediately after Codex exits, runs verification, then fingerprints the worktree again. A changed worktree is retained with `partial` comparability and `verification-worktree-mutated`; an unavailable post-verification measurement uses `verification-worktree-state-unavailable`. Neither case can support concrete attribution.
 
 ## Failure handling
 

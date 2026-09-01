@@ -411,6 +411,11 @@ def _compare_runs_v2(
             gaps.append(f"{arm}-pair-id")
         if record["comparison"]["isolationStatus"] != "complete":
             gaps.append(f"{arm}-isolation")
+            gaps.extend(
+                f"{arm}-{gap}"
+                for gap in record["comparison"]["isolationGaps"]
+                if gap.startswith("verification-worktree-")
+            )
         if not record["result"]["processCleanupVerified"]:
             gaps.append(f"{arm}-process-cleanup")
     isolation_failed = any(record["comparison"]["isolationStatus"] == "failed" for record in (baseline, treatment))

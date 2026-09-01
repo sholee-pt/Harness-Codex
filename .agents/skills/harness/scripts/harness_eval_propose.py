@@ -284,7 +284,10 @@ def _proposal_from_comparisons_v2(
     impact_level: str = "unknown",
     comparison_plan: dict[str, Any] | None = None,
     eligibility: ProposalEligibility | None = None,
+    evaluation_stratum: str | None = None,
 ) -> dict[str, Any]:
+    if evaluation_stratum is not None and not types.HASH_RE.fullmatch(evaluation_stratum):
+        raise ProposalError("evaluation stratum must be a SHA-256 fingerprint")
     plan_sha256: str | None = None
     attribution_target: str | None = None
     if comparison_plan is not None:
@@ -311,6 +314,11 @@ def _proposal_from_comparisons_v2(
         if complexity_level != "unknown" and stratum["complexityLevel"] != complexity_level:
             continue
         if impact_level != "unknown" and stratum["impactLevel"] != impact_level:
+            continue
+        if (
+            evaluation_stratum is not None
+            and comparison["evaluationStratumFingerprint"] != evaluation_stratum
+        ):
             continue
         relevant.append(comparison)
     relevant_ids = {item["comparisonId"] for item in relevant}

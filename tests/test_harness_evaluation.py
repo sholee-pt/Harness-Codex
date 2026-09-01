@@ -377,6 +377,153 @@ class StoreTests(unittest.TestCase):
                     repository_id, "comparisons", duplicate["comparisonId"], duplicate
                 )
 
+    def test_changed_derived_view_allows_fresh_comparison_for_the_same_run_pair(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            repository = parent / "repo"
+            repository.mkdir()
+            evaluation_store = store_module.EvaluationStore(parent / "state")
+            repository_id = evaluation_store.register_repository(repository)
+            plan = ComparisonTests().comparison_plan()
+            baseline = manual_record(
+                repository_id, uuid_text(2), arm="baseline", verification="failed"
+            )
+            treatment = manual_record(
+                repository_id, uuid_text(3), arm="harness", verification="passed"
+            )
+            persist_completed(evaluation_store, baseline)
+            persist_completed(evaluation_store, treatment)
+            original = compare.compare_runs(
+                baseline=baseline,
+                treatment=treatment,
+                plan=plan,
+                comparison_id=uuid_text(10),
+                pair_id=uuid_text(500),
+                repository_id=repository_id,
+                created_at="2026-08-31T12:02:00Z",
+            )
+            evaluation_store.write_auxiliary(
+                repository_id, "comparisons", original["comparisonId"], original
+            )
+            annotation = types.seal_record({
+                "schemaVersion": 2,
+                "annotationId": uuid_text(20),
+                "repositoryId": repository_id,
+                "runId": baseline["runId"],
+                "createdAt": "2026-08-31T12:05:00Z",
+                "supersedesAnnotationId": None,
+                "source": "user",
+                "acceptance": "accepted",
+                "correctionCount": types.unavailable("count"),
+                "reopened": False,
+                "freeTextStored": False,
+                "integrity": {"recordSha256": None},
+            })
+            evaluation_store.add_annotation(repository_id, annotation)
+            baseline_view = evaluation_view.derived_evaluation_view(
+                baseline,
+                evaluation_store.observations_for_run(repository_id, baseline["runId"]),
+                evaluation_store.annotations_for_run(repository_id, baseline["runId"]),
+            )
+            treatment_view = evaluation_view.derived_evaluation_view(
+                treatment, [], []
+            )
+            refreshed = compare.compare_runs(
+                baseline=baseline,
+                treatment=treatment,
+                plan=plan,
+                comparison_id=uuid_text(11),
+                pair_id=uuid_text(500),
+                repository_id=repository_id,
+                created_at="2026-08-31T12:06:00Z",
+                baseline_view=baseline_view,
+                treatment_view=treatment_view,
+            )
+            evaluation_store.write_auxiliary(
+                repository_id, "comparisons", refreshed["comparisonId"], refreshed
+            )
+            eligibility = harness_eval._proposal_eligibility(
+                evaluation_store=evaluation_store,
+                repository_id=repository_id,
+                comparisons=[original, refreshed],
+                comparison_plan=plan,
+                task_category="test",
+                complexity_level="unknown",
+                impact_level="unknown",
+            )
+            self.assertIn(
+                "derived-view-changed",
+                eligibility.exclusion_reasons[original["comparisonId"]],
+            )
+            self.assertEqual(
+                eligibility.attribution_basis_ids,
+                (refreshed["comparisonId"],),
+                eligibility.exclusion_reasons,
+            )
+
+    def test_auxiliary_write_and_repair_enforce_storage_bindings(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            repository = parent / "repo"
+            other_repository = parent / "other"
+            repository.mkdir()
+            other_repository.mkdir()
+            evaluation_store = store_module.EvaluationStore(parent / "state")
+            repository_id = evaluation_store.register_repository(repository)
+            other_repository_id = evaluation_store.register_repository(other_repository)
+            plan = ComparisonTests().comparison_plan()
+            comparison = compare.compare_runs(
+                baseline=manual_record(repository_id, uuid_text(2), arm="baseline"),
+                treatment=manual_record(repository_id, uuid_text(3), arm="harness"),
+                plan=plan,
+                comparison_id=uuid_text(10),
+                pair_id=uuid_text(500),
+                repository_id=repository_id,
+                created_at="2026-08-31T12:02:00Z",
+            )
+            with self.assertRaisesRegex(store_module.StoreError, "filename id"):
+                evaluation_store.write_auxiliary(
+                    repository_id, "comparisons", uuid_text(11), comparison
+                )
+            with self.assertRaisesRegex(store_module.StoreError, "storage scope"):
+                evaluation_store.write_auxiliary(
+                    other_repository_id,
+                    "comparisons",
+                    comparison["comparisonId"],
+                    comparison,
+                )
+            misplaced = (
+                evaluation_store.repository_root(repository_id)
+                / "comparisons"
+                / f"{uuid_text(12)}.json"
+            )
+            misplaced.write_text(types.canonical_text(comparison), encoding="utf-8")
+            wrong_scope = compare.compare_runs(
+                baseline=manual_record(other_repository_id, uuid_text(4), arm="baseline"),
+                treatment=manual_record(other_repository_id, uuid_text(5), arm="harness"),
+                plan=plan,
+                comparison_id=uuid_text(13),
+                pair_id=uuid_text(502),
+                repository_id=other_repository_id,
+                created_at="2026-08-31T12:03:00Z",
+            )
+            wrong_scope_path = (
+                evaluation_store.repository_root(repository_id)
+                / "comparisons"
+                / f"{wrong_scope['comparisonId']}.json"
+            )
+            wrong_scope_path.write_text(
+                types.canonical_text(wrong_scope), encoding="utf-8"
+            )
+            report = evaluation_store.repair_repository(repository_id)
+            self.assertEqual(
+                {item["path"] for item in report["invalid"]},
+                {
+                    f"comparisons/{uuid_text(12)}.json",
+                    f"comparisons/{uuid_text(13)}.json",
+                },
+            )
+
     def test_state_root_cannot_contain_or_enter_repository(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)
@@ -828,6 +975,13 @@ class ComparisonTests(unittest.TestCase):
             legacy["runtime"]["harnessVersion"],
             schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS,
         )
+        v62 = manual_record(repository_id, uuid_text(6), harness_version="6.2")
+        types.validate_run_record(v62)
+        self.assertNotIn(
+            v62["runtime"]["harnessVersion"],
+            schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS,
+        )
+        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {"6.3"})
         plan = self.comparison_plan()
         v60_comparison = compare.compare_runs(
             baseline=manual_record(repository_id, uuid_text(2), arm="baseline", verification="failed", harness_version="6.0"),
@@ -1171,8 +1325,112 @@ class ComparisonTests(unittest.TestCase):
             self.assertEqual(proposal["evidence"]["pairCount"], 3)
             self.assertEqual(proposal["evidence"]["supportStrength"], "weak")
 
+    def test_proposal_requires_explicit_selection_for_multiple_eligible_strata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            repository = parent / "repo"
+            repository.mkdir()
+            evaluation_store = store_module.EvaluationStore(parent / "state")
+            repository_id = evaluation_store.register_repository(repository)
+            plan = self.comparison_plan()
+            comparisons: list[dict] = []
+            for number in range(2):
+                pair_id = uuid_text(700 + number)
+                baseline = manual_record(
+                    repository_id,
+                    uuid_text(6000 + number),
+                    arm="baseline",
+                    verification="failed",
+                    pair_id=pair_id,
+                )
+                treatment = manual_record(
+                    repository_id,
+                    uuid_text(7000 + number),
+                    arm="harness",
+                    verification="passed",
+                    pair_id=pair_id,
+                )
+                if number == 1:
+                    for record in (baseline, treatment):
+                        record["runtime"]["modelRef"] = "model:" + "9" * 32
+                    baseline = types.seal_record(baseline)
+                    treatment = types.seal_record(treatment)
+                persist_completed(evaluation_store, baseline)
+                persist_completed(evaluation_store, treatment)
+                comparisons.append(compare.compare_runs(
+                    baseline=baseline,
+                    treatment=treatment,
+                    plan=plan,
+                    comparison_id=uuid_text(200 + number),
+                    pair_id=pair_id,
+                    repository_id=repository_id,
+                    created_at="2026-08-31T12:02:00Z",
+                ))
+            strata = sorted({
+                item["evaluationStratumFingerprint"] for item in comparisons
+            })
+            self.assertEqual(len(strata), 2)
+            with self.assertRaisesRegex(
+                types.EvaluationError,
+                "multiple concrete-eligible evaluation strata",
+            ):
+                harness_eval._proposal_eligibility(
+                    evaluation_store=evaluation_store,
+                    repository_id=repository_id,
+                    comparisons=comparisons,
+                    comparison_plan=plan,
+                    task_category="test",
+                    complexity_level="unknown",
+                    impact_level="unknown",
+                )
+            selected = comparisons[0]["evaluationStratumFingerprint"]
+            eligibility = harness_eval._proposal_eligibility(
+                evaluation_store=evaluation_store,
+                repository_id=repository_id,
+                comparisons=comparisons,
+                comparison_plan=plan,
+                task_category="test",
+                complexity_level="unknown",
+                impact_level="unknown",
+                evaluation_stratum=selected,
+            )
+            proposal = propose.proposal_from_comparisons(
+                repository_id=repository_id,
+                proposal_id=uuid_text(900),
+                created_at="2026-08-31T12:03:00Z",
+                comparisons=comparisons,
+                task_category="test",
+                comparison_plan=plan,
+                eligibility=eligibility,
+                evaluation_stratum=selected,
+            )
+            self.assertEqual(proposal["evidence"]["pairCount"], 1)
+            self.assertEqual(
+                proposal["evidence"]["comparisonRefs"],
+                [comparisons[0]["comparisonId"]],
+            )
+
 
 class PairedIsolationTests(unittest.TestCase):
+    @staticmethod
+    def _verification_repository(parent: Path) -> tuple[Path, str]:
+        root = parent / "repo"
+        root.mkdir()
+        subprocess.run(["git", "init", str(root)], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(["git", "-C", str(root), "config", "user.email", "fixture@example.invalid"], check=True)
+        subprocess.run(["git", "-C", str(root), "config", "user.name", "Fixture"], check=True)
+        (root / "src.py").write_text("value = 1\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+        subprocess.run(["git", "-C", str(root), "commit", "-m", "fixture"], check=True, stdout=subprocess.DEVNULL)
+        base_ref = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            check=True,
+            stdout=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+        ).stdout.strip()
+        return root, base_ref
+
     def test_runtime_environment_uses_an_isolated_user_home(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1352,6 +1610,108 @@ class PairedIsolationTests(unittest.TestCase):
                     evaluation_store, baseline, base_ref=baseline_base
                 )
             )
+
+    def test_non_mutating_verification_preserves_complete_comparability(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root, base_ref = self._verification_repository(parent)
+            (root / "src.py").write_text("value = 2\n", encoding="utf-8")
+            evaluation_store = store_module.EvaluationStore(parent / "state")
+            repository_id = evaluation_store.register_repository(root)
+            task_fingerprint = harness_eval._result_fingerprint(
+                evaluation_store, root, base_ref=base_ref
+            )
+            result = harness_eval._run_verification(
+                root=root,
+                profile={
+                    "id": "no-write",
+                    "kind": "custom",
+                    "argv": [sys.executable, "-c", "pass"],
+                    "timeoutSeconds": 10,
+                },
+                profile_digest=HASH,
+                check_ref="check:" + "4" * 32,
+            )
+            post_fingerprint = harness_eval._result_fingerprint(
+                evaluation_store, root, base_ref=base_ref
+            )
+            record = manual_record(repository_id, uuid_text(2), arm="baseline")
+            harness_eval._record_verification_worktree_state(
+                record,
+                task_fingerprint=task_fingerprint,
+                post_verification_fingerprint=post_fingerprint,
+            )
+            self.assertEqual(result["result"], "passed")
+            self.assertEqual(task_fingerprint, post_fingerprint)
+            self.assertEqual(record["comparison"]["isolationStatus"], "complete")
+            self.assertNotIn(
+                "verification-worktree-mutated",
+                record["comparison"]["isolationGaps"],
+            )
+
+    def test_verification_tracked_and_untracked_mutations_are_partial(self) -> None:
+        cases = {
+            "tracked": "from pathlib import Path; Path('src.py').write_text('verification = 1\\n', encoding='utf-8')",
+            "untracked": "from pathlib import Path; Path('generated.txt').write_text('verification\\n', encoding='utf-8')",
+        }
+        for label, command in cases.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory)
+                root, base_ref = self._verification_repository(parent)
+                (root / "src.py").write_text("value = 2\n", encoding="utf-8")
+                evaluation_store = store_module.EvaluationStore(parent / "state")
+                repository_id = evaluation_store.register_repository(root)
+                task_fingerprint = harness_eval._result_fingerprint(
+                    evaluation_store, root, base_ref=base_ref
+                )
+                record = manual_record(repository_id, uuid_text(2), arm="baseline")
+                harness_eval._set_result_fingerprint(record, task_fingerprint)
+                result = harness_eval._run_verification(
+                    root=root,
+                    profile={
+                        "id": f"mutate-{label}",
+                        "kind": "custom",
+                        "argv": [sys.executable, "-c", command],
+                        "timeoutSeconds": 10,
+                    },
+                    profile_digest=HASH,
+                    check_ref="check:" + "4" * 32,
+                )
+                post_fingerprint = harness_eval._result_fingerprint(
+                    evaluation_store, root, base_ref=base_ref
+                )
+                harness_eval._record_verification_worktree_state(
+                    record,
+                    task_fingerprint=task_fingerprint,
+                    post_verification_fingerprint=post_fingerprint,
+                )
+                self.assertEqual(result["result"], "passed")
+                self.assertNotEqual(task_fingerprint, post_fingerprint)
+                self.assertEqual(
+                    record["result"]["resultFingerprint"]["value"],
+                    task_fingerprint,
+                )
+                self.assertEqual(record["comparison"]["isolationStatus"], "partial")
+                self.assertIn(
+                    "verification-worktree-mutated",
+                    record["comparison"]["isolationGaps"],
+                )
+                comparison = compare.compare_runs(
+                    baseline=types.seal_record(record),
+                    treatment=manual_record(
+                        repository_id, uuid_text(3), arm="harness"
+                    ),
+                    plan=ComparisonTests().comparison_plan(),
+                    comparison_id=uuid_text(10),
+                    pair_id=uuid_text(500),
+                    repository_id=repository_id,
+                    created_at="2026-08-31T12:02:00Z",
+                )
+                self.assertEqual(comparison["isolationStatus"], "partial")
+                self.assertIn(
+                    "baseline-verification-worktree-mutated",
+                    comparison["isolationGaps"],
+                )
 
 
 class ResultFingerprintTests(unittest.TestCase):

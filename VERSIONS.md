@@ -21,6 +21,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v6` | Harness for Codex v6.0 | Schema 3 | Schema 5 | Schema 2 | Evaluation Schema 2, declared configuration-delta attribution, observation and annotation lifecycles, derived views, structured ingest, patch-scope evaluation |
 | `codex/v6.1` | Harness for Codex v6.1 | Schema 3 | Schema 5 | Schema 2 | Plan-bound positive and negative attribution, conservative patch-scope eligibility, exact symmetric support thresholds, v6.0/v6.1 evidence separation |
 | `codex/v6.2` | Harness for Codex v6.2 | Schema 3 | Schema 5 | Schema 2 | Independent complete evidence units, arm-specific task bases, store-verified proposal eligibility, runtime-stratum and untracked-budget corrections |
+| `codex/v6.3` | Harness for Codex v6.3 | Schema 3 | Schema 5 | Schema 2 | Derived-view comparison lifecycle, verification-pure task measurement, explicit stratum selection, auxiliary binding and clean-tree hardening |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -256,6 +257,20 @@ Harness for Codex v6.2 corrects the independence, comparability, and task-baseli
 - Distinguishes standalone plan binding, paired-run plans supplied before arm execution, and unsupported durable preregistration.
 
 Harness for Codex v6.0 and v6.1 records remain immutable and readable for descriptive inspection. They are not rewritten or silently promoted into v6.2 concrete attribution evidence.
+
+## Harness for Codex v6.3
+
+Harness for Codex v6.3 completes the Observation and Annotation comparison lifecycle and separates Codex task measurement from verification side effects without changing generation plan schema 3, manifest schema 5, transaction schema 2, or any persisted evaluation schema number.
+
+- Includes both Derived View fingerprints in the Schema 2 Comparison duplicate identity, allowing the same Run pair and Plan to be compared again after a lifecycle change while still rejecting exact duplicates.
+- Keeps stale immutable Comparisons for inspection and excludes them before Run-independence accounting, so only the fresh Comparison can contribute evidence.
+- Measures the task result fingerprint and patch scope immediately after Codex exits.
+- Runs verification afterward and marks Git-visible verification mutations as partial comparability with `verification-worktree-mutated`; an unavailable post-verification measurement is also ineligible.
+- Requires `--evaluation-stratum` when more than one concrete-eligible stratum remains instead of selecting a group automatically.
+- Binds auxiliary filenames and storage scope to their internal record and repository IDs, and makes repair detect misplaced Comparison and Proposal records.
+- Extends the final Linux and Windows CI clean-tree check to include non-ignored untracked files.
+
+Harness for Codex v6.0 through v6.2 records remain immutable and readable for descriptive inspection. They are not rewritten or silently promoted into v6.3 concrete attribution evidence.
 
 ## Harness for Claude Code releases
 

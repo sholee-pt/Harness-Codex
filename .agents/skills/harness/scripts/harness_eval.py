@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in local evaluation and observability CLI for Harness for Codex v6.2."""
+"""Opt-in local evaluation and observability CLI for Harness for Codex v6.3."""
 
 from __future__ import annotations
 
@@ -779,7 +779,10 @@ def _proposal_eligibility(
     task_category: str,
     complexity_level: str,
     impact_level: str,
+    evaluation_stratum: str | None = None,
 ) -> propose.ProposalEligibility:
+    if evaluation_stratum is not None and not types.HASH_RE.fullmatch(evaluation_stratum):
+        raise types.EvaluationError("evaluation stratum must be a SHA-256 fingerprint")
     plan_sha256 = (
         types.digest_bytes(types.canonical_bytes(comparison_plan))
         if comparison_plan is not None
@@ -810,6 +813,11 @@ def _proposal_eligibility(
         if complexity_level != "unknown" and stratum["complexityLevel"] != complexity_level:
             continue
         if impact_level != "unknown" and stratum["impactLevel"] != impact_level:
+            continue
+        if (
+            evaluation_stratum is not None
+            and comparison_record["evaluationStratumFingerprint"] != evaluation_stratum
+        ):
             continue
         relevant.append(comparison_record)
         comparison_id = comparison_record["comparisonId"]
@@ -860,7 +868,7 @@ def _proposal_eligibility(
             not in schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS
             for run in runs.values()
         ):
-            exclude(comparison_id, "pre-v6.2-attribution-excluded")
+            exclude(comparison_id, "pre-v6.3-attribution-excluded")
         patch_scope_fingerprint = (
             comparison_plan["patchScopeProfileFingerprint"]
             if comparison_plan is not None
@@ -900,6 +908,17 @@ def _proposal_eligibility(
     }
     for comparison_id in non_independent:
         exclude(comparison_id, "non-independent-evidence-unit")
+
+    eligible_strata = sorted({
+        item["evaluationStratumFingerprint"]
+        for item in relevant
+        if item["comparisonId"] not in reasons
+    })
+    if evaluation_stratum is None and concrete_plan and len(eligible_strata) > 1:
+        raise types.EvaluationError(
+            "multiple concrete-eligible evaluation strata require --evaluation-stratum: "
+            + ", ".join(eligible_strata)
+        )
 
     relevant_ids = tuple(sorted(item["comparisonId"] for item in relevant))
     basis_ids = tuple(
@@ -941,6 +960,7 @@ def command_propose(args: argparse.Namespace) -> int:
         task_category=args.category,
         complexity_level=args.complexity,
         impact_level=args.impact,
+        evaluation_stratum=args.evaluation_stratum,
     )
     warnings = {
         reason
@@ -955,6 +975,7 @@ def command_propose(args: argparse.Namespace) -> int:
         task_category=args.category,
         complexity_level=args.complexity,
         impact_level=args.impact,
+        evaluation_stratum=args.evaluation_stratum,
         comparison_plan=comparison_plan,
         eligibility=eligibility,
     )
@@ -1035,6 +1056,29 @@ def _run_verification(
         "result": result,
         "exitCode": exit_measurement,
     }
+
+
+def _record_verification_worktree_state(
+    record: dict[str, Any],
+    *,
+    task_fingerprint: str | None,
+    post_verification_fingerprint: str | None,
+) -> None:
+    gap: str | None = None
+    if task_fingerprint is not None and post_verification_fingerprint is None:
+        gap = "verification-worktree-state-unavailable"
+    elif (
+        task_fingerprint is not None
+        and post_verification_fingerprint is not None
+        and task_fingerprint != post_verification_fingerprint
+    ):
+        gap = "verification-worktree-mutated"
+    if gap is None:
+        return
+    comparison = record["comparison"]
+    comparison["isolationGaps"] = sorted(set(comparison["isolationGaps"] + [gap]))
+    if comparison["isolationStatus"] == "complete":
+        comparison["isolationStatus"] = "partial"
 
 
 def _remove_managed_baseline(root: Path) -> list[tuple[str, str]]:
@@ -1253,6 +1297,21 @@ def _paired_arm(
         codex_version=version,
         ended_at=types.timestamp_text(evaluation_store.clock.now_utc()),
     )
+    task_fingerprint = _result_fingerprint(
+        evaluation_store, root, base_ref=task_base_ref
+    )
+    _set_result_fingerprint(
+        completed,
+        task_fingerprint,
+    )
+    if patch_scope_profile is not None:
+        completed["result"]["patchScope"] = harness_patch_scope.evaluate(
+            root=root,
+            profile=patch_scope_profile,
+            repository_id=repository_id,
+            store=evaluation_store,
+            base_ref=task_base_ref,
+        )
     check_ref = evaluation_store.pseudonym(repository_id, "check", verification["id"])
     verification_result = _run_verification(
         root=root,
@@ -1263,21 +1322,19 @@ def _paired_arm(
     completed["outcome"]["verification"] = [verification_result]
     completed["outcome"]["criticalFailure"] = completed["outcome"]["criticalFailure"] or verification_result["result"] == "failed"
     completed["result"]["verificationProfileFingerprint"] = verification_digest
-    _set_result_fingerprint(
-        completed,
-        _result_fingerprint(evaluation_store, root, base_ref=task_base_ref),
+    post_verification_fingerprint = _result_fingerprint(
+        evaluation_store, root, base_ref=task_base_ref
     )
-    if patch_scope_profile is not None:
-        completed["result"]["patchScope"] = harness_patch_scope.evaluate(
-            root=root,
-            profile=patch_scope_profile,
-            repository_id=repository_id,
-            store=evaluation_store,
-            base_ref=task_base_ref,
-        )
+    _record_verification_worktree_state(
+        completed,
+        task_fingerprint=task_fingerprint,
+        post_verification_fingerprint=post_verification_fingerprint,
+    )
     if not cleanup_verified:
         completed["comparison"]["isolationStatus"] = "failed"
-        completed["comparison"]["isolationGaps"].append("process-cleanup")
+        completed["comparison"]["isolationGaps"] = sorted(set(
+            completed["comparison"]["isolationGaps"] + ["process-cleanup"]
+        ))
     evaluation_store.complete_run(completed)
     return types.seal_record(completed)
 
@@ -1732,6 +1789,10 @@ def build_parser() -> argparse.ArgumentParser:
     proposal.add_argument("--category", choices=sorted(types.TASK_CATEGORIES), default="unknown")
     proposal.add_argument("--complexity", choices=sorted(types.LEVELS), default="unknown")
     proposal.add_argument("--impact", choices=sorted(types.LEVELS), default="unknown")
+    proposal.add_argument(
+        "--evaluation-stratum",
+        help="Restrict proposal evidence to one evaluation-stratum SHA-256 fingerprint",
+    )
     proposal.add_argument(
         "--report-envelope",
         action="store_true",

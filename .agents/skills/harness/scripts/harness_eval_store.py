@@ -90,6 +90,22 @@ def _atomic_json(path: Path, value: Any, *, mode: int = 0o600) -> None:
     harness_state.atomic_write_text(path, types.canonical_text(value), mode=mode)
 
 
+def _auxiliary_record_id(kind: str, value: dict[str, Any]) -> str:
+    return value["comparisonId"] if kind == "comparisons" else value["proposalId"]
+
+
+def _comparison_identity(value: dict[str, Any]) -> tuple[str, ...]:
+    identity = (
+        value["baselineRunId"],
+        value["treatmentRunId"],
+        value["planSha256"],
+    )
+    if value.get("schemaVersion") == 2:
+        fingerprints = value["derivedViewFingerprints"]
+        return (*identity, fingerprints["baseline"], fingerprints["treatment"])
+    return identity
+
+
 class EvaluationStore:
     def __init__(
         self,
@@ -431,24 +447,24 @@ class EvaluationStore:
             types.validate_comparison_record(sealed)
         else:
             types.validate_proposal_record(sealed)
+        if record_id != _auxiliary_record_id(kind, sealed):
+            raise StoreError("auxiliary filename id does not match the record id")
+        if repository_id != sealed["repositoryId"]:
+            raise StoreError("auxiliary repository id does not match the storage scope")
         path = self._ensure_repository_dirs(repository_id) / kind / f"{record_id}.json"
         with self.repository_lock(repository_id):
             if path.exists():
                 raise StoreError(f"{kind[:-1]} id already exists")
             if kind == "comparisons":
-                identity = (
-                    sealed["baselineRunId"],
-                    sealed["treatmentRunId"],
-                    sealed["planSha256"],
-                )
+                identity = _comparison_identity(sealed)
                 for existing in self._read_json_records(path.parent):
-                    if (
-                        existing.get("baselineRunId"),
-                        existing.get("treatmentRunId"),
-                        existing.get("planSha256"),
-                    ) == identity:
+                    try:
+                        existing_identity = _comparison_identity(existing)
+                    except (KeyError, TypeError):
+                        continue
+                    if existing_identity == identity:
                         raise StoreError(
-                            "comparison already exists for this run pair and plan"
+                            "comparison already exists for this run pair and plan with the same derived views"
                         )
             _atomic_json(path, sealed)
         return path
@@ -585,6 +601,8 @@ class EvaluationStore:
                 try:
                     value = json.loads(path.read_text(encoding="utf-8"))
                     types.verify_integrity(value)
+                    relative = path.relative_to(root)
+                    record_kind = relative.parts[0] if relative.parts else ""
                     if "recordState" in value:
                         types.validate_run_record(value)
                     elif "annotationId" in value:
@@ -593,8 +611,20 @@ class EvaluationStore:
                         types.validate_observation_record(value)
                     elif "comparisonId" in value:
                         types.validate_comparison_record(value)
+                        if record_kind != "comparisons":
+                            raise types.EvaluationError("comparison record is stored under the wrong kind")
+                        if path.stem != value["comparisonId"]:
+                            raise types.EvaluationError("comparison filename id does not match the record id")
+                        if value["repositoryId"] != repository_id:
+                            raise types.EvaluationError("comparison repository id does not match the storage scope")
                     elif "proposalId" in value:
                         types.validate_proposal_record(value)
+                        if record_kind != "proposals":
+                            raise types.EvaluationError("proposal record is stored under the wrong kind")
+                        if path.stem != value["proposalId"]:
+                            raise types.EvaluationError("proposal filename id does not match the record id")
+                        if value["repositoryId"] != repository_id:
+                            raise types.EvaluationError("proposal repository id does not match the storage scope")
                     else:
                         raise types.EvaluationError("unknown evaluation record type")
                 except (OSError, UnicodeError, json.JSONDecodeError, types.EvaluationError) as exc:
