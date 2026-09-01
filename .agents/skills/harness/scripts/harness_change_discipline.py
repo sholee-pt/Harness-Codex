@@ -4,14 +4,18 @@
 from __future__ import annotations
 
 
-PROJECT_BLOCK = """## Change discipline
+CHANGE_DISCIPLINE_VERSION = "1"
+
+PROJECT_BLOCK = """<!-- harness:change-discipline:v1:begin -->
+## Change discipline
 
 For code-changing work:
 
 - Surface material assumptions, conflicting interpretations, and simpler alternatives before editing.
 - Implement the smallest change that satisfies the stated objective. Do not add speculative abstractions, configuration, or unrelated features.
 - Limit edits to the requested responsibility and scope. Do not refactor, reformat, or clean up adjacent code unless the current change requires it. Remove only artifacts made obsolete by the current change.
-- Define verification before implementation. Report completion only after the checks pass, or report the failure and remaining uncertainty explicitly."""
+- Define verification before implementation. Report completion only after the checks pass, or report the failure and remaining uncertainty explicitly.
+<!-- harness:change-discipline:v1:end -->"""
 
 WRITER_BLOCK = """For code-changing work, follow the project-harness change discipline: surface material ambiguity and simpler alternatives before editing, make the smallest scoped change without adjacent cleanup, define verification before implementation, and report completion only after the checks pass."""
 

@@ -28,6 +28,7 @@ Classify each current task as direct, delegated, or coordinated without changing
 6. If a recorded frozen artifact changes, invalidate dependent validation and repeat it.
 7. Stop every quality loop at its declared budget or stopping condition, preserve unresolved disagreement under its failure policy, then integrate results and run project-native checks.
 
+<!-- harness:change-discipline:v1:begin -->
 ## Change discipline
 
 For code-changing work:
@@ -36,6 +37,7 @@ For code-changing work:
 - Implement the smallest change that satisfies the stated objective. Do not add speculative abstractions, configuration, or unrelated features.
 - Limit edits to the requested responsibility and scope. Do not refactor, reformat, or clean up adjacent code unless the current change requires it. Remove only artifacts made obsolete by the current change.
 - Define verification before implementation. Report completion only after the checks pass, or report the failure and remaining uncertainty explicitly.
+<!-- harness:change-discipline:v1:end -->
 
 ## Failure policy
 
