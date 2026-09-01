@@ -22,7 +22,7 @@ PROPOSAL_SCHEMA_VERSION = 2
 OBSERVATION_SCHEMA_VERSION = 1
 MANUAL_REPORT_SCHEMA_VERSION = 1
 PARSER_VERSION = "1"
-HARNESS_VERSION = "6.0"
+HARNESS_VERSION = "6.1"
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 PSEUDONYM_RE = re.compile(r"^[a-z][a-z0-9-]*:[0-9a-f]{32}$")
 
@@ -106,6 +106,7 @@ CONFOUNDERS = {
     "arm-order",
     "manual-intervention",
     "missing-measurement",
+    "baseline-patch-scope-violation",
     "isolation-gap",
     "unknown",
 }

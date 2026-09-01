@@ -19,6 +19,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v5.4` | Harness for Codex v5.4 | Schema 3 | Schema 5 | Schema 2 | Minimal-change discipline, self-contained writer safeguards, four-case behavioral classification probe |
 | `codex/v5.5` | Harness for Codex v5.5 | Schema 3 | Schema 5 | Schema 2 | Canonical discipline enforcement, complete bounded result fingerprints, isolated user homes, annotation semantics, experiment-only positive proposals |
 | `codex/v6` | Harness for Codex v6.0 | Schema 3 | Schema 5 | Schema 2 | Evaluation Schema 2, actual configuration delta attribution, observation and annotation lifecycles, derived views, structured ingest, patch-scope evaluation |
+| `codex/v6.1` | Harness for Codex v6.1 | Schema 3 | Schema 5 | Schema 2 | Plan-bound positive and negative attribution, conservative patch-scope eligibility, exact symmetric support thresholds, v6.0/v6.1 evidence separation |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -219,6 +220,24 @@ Harness for Codex v6.0 changes the optional evaluation state contract while leav
 - Keeps every proposal non-causal and non-auto-applicable. A configuration or bundle proposal can contain only the observed delta supported by eligible Schema 2 comparisons.
 
 Harness for Codex v5.5 evaluation files need no destructive migration. They remain legacy read-only evidence and are excluded from v6 attribution groups. Runtime Hooks, phase enforcement, write-lane control, and automatic adaptation remain outside v6 and are reserved for a later major release.
+
+## Harness for Codex v6.1
+
+Harness for Codex v6.1 corrects attribution eligibility and support statistics without changing any generation, ownership, transaction, or evaluation schema number.
+
+- Requires the original validated Comparison Plan for concrete positive or negative configuration attribution; missing or descriptive-only plans produce only experiment suggestions or no-change records with an empty candidate.
+- Binds proposal evidence to one canonical plan digest and includes the plan digest and Harness runtime version in evaluation-stratum calculation.
+- Requires a bundle target to predeclare at least two changed factors.
+- Rejects mismatched patch-scope profile fingerprints before comparison.
+- Preserves partial or violated patch-scope comparisons as descriptive evidence while blocking all concrete factor, bundle, and negative attribution.
+- Records baseline scope violations as an explicit confounder and defensively rechecks both arms before proposal creation.
+- Treats exact zero as a tie even when the minimum effect is zero.
+- Uses the raw treatment-minus-baseline median in records while using an internal direction-adjusted median for support decisions.
+- Applies weak, moderate, and strong ratios symmetrically by integer cross multiplication; weak means exactly at least two of three, and at least three non-ties are required.
+- Reads v6.0 Schema 2 records descriptively while limiting new concrete attribution to v6.1 run evidence.
+- Derives independent-review configuration only from the topology contract's producer-reviewer collaboration pattern or independent-safety-review quality policy.
+
+Harness for Codex v6.0 records remain immutable and readable. They are not rewritten or silently promoted into v6.1 attribution evidence.
 
 ## Harness for Claude Code releases
 

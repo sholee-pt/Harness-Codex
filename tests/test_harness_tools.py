@@ -1491,7 +1491,7 @@ class TopologyContractTests(unittest.TestCase):
             )
 
             self.assertEqual(manifest["schemaVersion"], 5)
-            self.assertEqual(manifest["generator"]["version"], "6.0")
+            self.assertEqual(manifest["generator"]["version"], "6.1")
             self.assertNotIn("taskExecution", manifest)
             self.assertEqual(manifest["topology"]["classification"]["class"], "minimal")
 

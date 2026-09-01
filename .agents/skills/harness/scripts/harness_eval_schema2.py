@@ -37,6 +37,8 @@ FACTORS = {
 }
 ATTRIBUTION_SCOPES = {"single-factor", "bundle", "none"}
 ATTRIBUTION_TARGETS = {"single-factor", "bundle", "descriptive-only"}
+READABLE_HARNESS_VERSIONS = {"6.0", "6.1"}
+ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS = {"6.1"}
 SCOPE_CLASSES = {"single-file", "multi-file", "cross-contract", "unknown"}
 OBSERVATION_SOURCES = {"user-report", "agent-report", "runtime-event", "verification-runner"}
 LOGICAL_ID_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
@@ -316,8 +318,8 @@ def validate_run_record(value: Any, *, verify_hash: bool = True) -> dict[str, An
         "processCleanupVerified": record.get("result", {}).get("processCleanupVerified"),
     }
     types._validate_run_record_v1(legacy, verify_hash=False)
-    if record["runtime"]["harnessVersion"] != "6.0":
-        raise types.EvaluationError("runtime.harnessVersion must be 6.0")
+    if record["runtime"]["harnessVersion"] not in READABLE_HARNESS_VERSIONS:
+        raise types.EvaluationError("runtime.harnessVersion must be a readable Schema 2 Harness version")
     _validate_configuration(record["configuration"])
     _validate_result(record["result"])
     if verify_hash:
@@ -358,6 +360,8 @@ def validate_comparison_plan(value: Any) -> dict[str, Any]:
     target = types._require_enum(intervention["attributionTarget"], ATTRIBUTION_TARGETS, "intervention.attributionTarget")
     if target == "single-factor" and len(factors) != 1:
         raise types.EvaluationError("single-factor attribution requires exactly one expected factor")
+    if target == "bundle" and len(factors) < 2:
+        raise types.EvaluationError("bundle attribution requires at least two expected factors")
     stratum = _validate_task_stratum(plan["taskStratum"])
     if stratum["category"] == "unknown" and target != "descriptive-only":
         raise types.EvaluationError("attribution plans require a predeclared task category")

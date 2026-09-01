@@ -44,6 +44,7 @@ def manual_record(
     verification: str = "passed",
     output_tokens: int = 10,
     critical_failure: bool = False,
+    harness_version: str | None = None,
 ) -> dict:
     record = capture.base_record(
         run_id=run_id,
@@ -67,6 +68,8 @@ def manual_record(
         arm_order="first" if arm == "baseline" else "second" if arm == "harness" else "unpaired",
     )
     record["recordState"] = "completed"
+    if harness_version is not None:
+        record["runtime"]["harnessVersion"] = harness_version
     record["timestamps"]["endedAt"] = "2026-08-31T12:01:00Z"
     record["outcome"]["completion"] = "completed"
     record["outcome"]["criticalFailure"] = critical_failure
@@ -126,6 +129,28 @@ def manual_record(
         completeness="complete",
     )
     return types.seal_record(record)
+
+
+def measured_patch_scope(
+    profile_fingerprint: str,
+    *,
+    within_scope: bool = True,
+    completeness: str = "complete",
+) -> dict:
+    return {
+        "state": "measured",
+        "profileFingerprint": profile_fingerprint,
+        "changedTrackedCount": 1,
+        "untrackedCount": 0,
+        "outOfScopeCount": 0 if within_scope else 1,
+        "changedPathRefs": ["path:" + "7" * 32],
+        "outOfScopePathRefs": [] if within_scope else ["path:" + "8" * 32],
+        "withinDeclaredScope": within_scope,
+        "maximumChangedPathsExceeded": False,
+        "source": "git-evaluator",
+        "fidelity": "exact",
+        "completeness": completeness,
+    }
 
 
 class MeasurementTests(unittest.TestCase):
@@ -467,6 +492,7 @@ class ComparisonTests(unittest.TestCase):
             created_at="2026-08-31T12:03:00Z",
             comparisons=comparisons,
             task_category="test",
+            comparison_plan=self.comparison_plan(),
         )
         self.assertEqual(value["proposalType"], "configuration-proposal")
         self.assertEqual(value["candidateDelta"]["factor"], "agent-set")
@@ -479,6 +505,237 @@ class ComparisonTests(unittest.TestCase):
         plan["primaryOutcome"]["direction"] = "lower-is-better"
         with self.assertRaises(types.EvaluationError):
             types.validate_comparison_plan(plan)
+
+    def test_zero_delta_is_tie_even_when_minimum_effect_is_zero(self) -> None:
+        self.assertEqual(compare._direction(0.0, "higher-is-better", 0.0), "tie")
+        self.assertEqual(compare._direction(0.0, "lower-is-better", 1.0), "tie")
+        self.assertEqual(compare._direction(0.5, "higher-is-better", 1.0), "tie")
+        self.assertEqual(compare._direction(1.0, "higher-is-better", 1.0), "beneficial")
+        self.assertEqual(compare._direction(-1.0, "higher-is-better", 1.0), "harmful")
+
+    def test_bundle_target_requires_at_least_two_factors(self) -> None:
+        plan = self.comparison_plan()
+        plan["intervention"] = {
+            "expectedChangedFactors": ["agent-set"],
+            "attributionTarget": "bundle",
+        }
+        with self.assertRaisesRegex(types.EvaluationError, "at least two"):
+            types.validate_comparison_plan(plan)
+
+    def test_plan_is_required_for_positive_and_negative_attribution(self) -> None:
+        repository_id = uuid_text(1)
+        plan = self.comparison_plan()
+        positive = [
+            compare.compare_runs(
+                baseline=manual_record(repository_id, uuid_text(2), arm="baseline", verification="failed"),
+                treatment=manual_record(repository_id, uuid_text(3), arm="harness", verification="passed"),
+                plan=plan,
+                comparison_id=uuid_text(number),
+                pair_id=uuid_text(500),
+                repository_id=repository_id,
+                created_at="2026-08-31T12:02:00Z",
+            )
+            for number in range(10, 13)
+        ]
+        without_plan = propose.proposal_from_comparisons(
+            repository_id=repository_id,
+            proposal_id=uuid_text(30),
+            created_at="2026-08-31T12:03:00Z",
+            comparisons=positive,
+        )
+        self.assertEqual(without_plan["proposalType"], "experiment-suggestion")
+        self.assertEqual(without_plan["candidateDelta"]["attributionScope"], "none")
+
+        harmful = []
+        for number in range(20, 23):
+            harmful.append(
+                compare.compare_runs(
+                    baseline=manual_record(repository_id, uuid_text(4), arm="baseline", verification="passed"),
+                    treatment=manual_record(repository_id, uuid_text(5), arm="harness", verification="failed"),
+                    plan=plan,
+                    comparison_id=uuid_text(number),
+                    pair_id=uuid_text(500),
+                    repository_id=repository_id,
+                    created_at="2026-08-31T12:02:00Z",
+                )
+            )
+        negative_without_plan = propose.proposal_from_comparisons(
+            repository_id=repository_id,
+            proposal_id=uuid_text(31),
+            created_at="2026-08-31T12:03:00Z",
+            comparisons=harmful,
+        )
+        self.assertEqual(negative_without_plan["proposalType"], "experiment-suggestion")
+        self.assertEqual(negative_without_plan["candidateDelta"]["attributionScope"], "none")
+
+    def test_two_of_three_is_weak_support_and_ties_cannot_create_strong_support(self) -> None:
+        repository_id = uuid_text(1)
+        plan = self.comparison_plan()
+        plan["primaryOutcome"] = {
+            "metric": "output-tokens",
+            "direction": "lower-is-better",
+            "minimumEffect": 1,
+        }
+        plan["secondaryOutcomes"] = []
+        baseline = manual_record(repository_id, uuid_text(2), arm="baseline", output_tokens=10)
+        comparisons = []
+        for number, tokens in zip(range(10, 13), (5, 5, 15)):
+            comparisons.append(
+                compare.compare_runs(
+                    baseline=baseline,
+                    treatment=manual_record(repository_id, uuid_text(100 + number), arm="harness", output_tokens=tokens),
+                    plan=plan,
+                    comparison_id=uuid_text(number),
+                    pair_id=uuid_text(500),
+                    repository_id=repository_id,
+                    created_at="2026-08-31T12:02:00Z",
+                )
+            )
+        weak = propose.proposal_from_comparisons(
+            repository_id=repository_id,
+            proposal_id=uuid_text(30),
+            created_at="2026-08-31T12:03:00Z",
+            comparisons=comparisons,
+            comparison_plan=plan,
+        )
+        self.assertEqual(weak["evidence"]["supportStrength"], "weak")
+        self.assertEqual(weak["proposalType"], "configuration-proposal")
+        self.assertEqual(weak["evidence"]["medianPairedDelta"], -5)
+        self.assertEqual(weak["evidence"]["thresholds"]["weakDirectionRatio"], 2 / 3)
+
+        mostly_ties = []
+        for number, tokens in zip(range(20, 30), (5, 10, 10, 10, 10, 10, 10, 10, 10, 10)):
+            mostly_ties.append(
+                compare.compare_runs(
+                    baseline=baseline,
+                    treatment=manual_record(repository_id, uuid_text(200 + number), arm="harness", output_tokens=tokens),
+                    plan=plan,
+                    comparison_id=uuid_text(number),
+                    pair_id=uuid_text(500),
+                    repository_id=repository_id,
+                    created_at="2026-08-31T12:02:00Z",
+                )
+            )
+        tied = propose.proposal_from_comparisons(
+            repository_id=repository_id,
+            proposal_id=uuid_text(31),
+            created_at="2026-08-31T12:03:00Z",
+            comparisons=mostly_ties,
+            comparison_plan=plan,
+        )
+        self.assertEqual(tied["evidence"]["supportStrength"], "insufficient")
+        self.assertEqual(tied["proposalType"], "experiment-suggestion")
+
+    def test_patch_scope_profile_mismatch_is_rejected_and_baseline_violation_is_recorded(self) -> None:
+        repository_id = uuid_text(1)
+        plan = self.comparison_plan()
+        plan["patchScopeProfileFingerprint"] = HASH
+        baseline = manual_record(repository_id, uuid_text(2), arm="baseline", verification="failed")
+        treatment = manual_record(repository_id, uuid_text(3), arm="harness", verification="passed")
+        baseline["result"]["patchScope"] = measured_patch_scope(HASH, within_scope=False)
+        treatment["result"]["patchScope"] = measured_patch_scope(HASH)
+        baseline = types.seal_record(baseline)
+        treatment = types.seal_record(treatment)
+        comparison = compare.compare_runs(
+            baseline=baseline,
+            treatment=treatment,
+            plan=plan,
+            comparison_id=uuid_text(10),
+            pair_id=uuid_text(500),
+            repository_id=repository_id,
+            created_at="2026-08-31T12:02:00Z",
+        )
+        self.assertIn("baseline-patch-scope-violation", comparison["confounders"])
+        blocked = propose.proposal_from_comparisons(
+            repository_id=repository_id,
+            proposal_id=uuid_text(30),
+            created_at="2026-08-31T12:03:00Z",
+            comparisons=[comparison, comparison, comparison],
+            comparison_plan=plan,
+        )
+        self.assertEqual(blocked["proposalType"], "experiment-suggestion")
+        self.assertEqual(blocked["candidateDelta"]["attributionScope"], "none")
+
+        treatment["result"]["patchScope"] = measured_patch_scope("2" * 64)
+        treatment = types.seal_record(treatment)
+        with self.assertRaisesRegex(compare.ComparisonError, "patch-scope profile"):
+            compare.compare_runs(
+                baseline=baseline,
+                treatment=treatment,
+                plan=plan,
+                comparison_id=uuid_text(11),
+                pair_id=uuid_text(500),
+                repository_id=repository_id,
+                created_at="2026-08-31T12:02:00Z",
+            )
+
+    def test_v60_schema2_run_remains_readable(self) -> None:
+        repository_id = uuid_text(1)
+        legacy = manual_record(repository_id, uuid_text(2), harness_version="6.0")
+        types.validate_run_record(legacy)
+        self.assertNotIn(
+            legacy["runtime"]["harnessVersion"],
+            schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS,
+        )
+        plan = self.comparison_plan()
+        v60_comparison = compare.compare_runs(
+            baseline=manual_record(repository_id, uuid_text(2), arm="baseline", verification="failed", harness_version="6.0"),
+            treatment=manual_record(repository_id, uuid_text(3), arm="harness", verification="passed", harness_version="6.0"),
+            plan=plan,
+            comparison_id=uuid_text(10),
+            pair_id=uuid_text(500),
+            repository_id=repository_id,
+            created_at="2026-08-31T12:02:00Z",
+        )
+        v61_comparison = compare.compare_runs(
+            baseline=manual_record(repository_id, uuid_text(4), arm="baseline", verification="failed"),
+            treatment=manual_record(repository_id, uuid_text(5), arm="harness", verification="passed"),
+            plan=plan,
+            comparison_id=uuid_text(11),
+            pair_id=uuid_text(500),
+            repository_id=repository_id,
+            created_at="2026-08-31T12:02:00Z",
+        )
+        self.assertNotEqual(
+            v60_comparison["evaluationStratumFingerprint"],
+            v61_comparison["evaluationStratumFingerprint"],
+        )
+
+    def test_independent_review_uses_topology_contract_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            repository = parent / "repo"
+            (repository / ".harness").mkdir(parents=True)
+            evaluation_store = store_module.EvaluationStore(
+                parent / "state", ids=types.SequenceUuidProvider([uuid.UUID(int=1)])
+            )
+            repository_id = evaluation_store.register_repository(repository)
+            args = type("Args", (), {"execution_class": "unknown"})()
+            cases = (
+                (["producer-reviewer"], [], True),
+                ([], [{"id": "safety", "name": "independent-safety-review"}], True),
+                ([], [{"id": "critic", "name": "completeness-critic"}], False),
+            )
+            for patterns, policies, expected in cases:
+                (repository / ".harness" / "manifest.json").write_text(
+                    json.dumps({
+                        "topology": {
+                            "collaborationPatterns": patterns,
+                            "qualityPatternPolicies": policies,
+                            "boundaries": [{
+                                "separationBenefits": {"independentReview": True}
+                            }],
+                        }
+                    }),
+                    encoding="utf-8",
+                )
+                snapshot = harness_eval._configuration_snapshot(
+                    evaluation_store, repository_id, repository, args, "harness"
+                )
+                self.assertEqual(
+                    snapshot["declaredConfiguration"]["independentReview"]["value"],
+                    expected,
+                )
 
     def test_auxiliary_records_reject_causal_or_automatic_mutation(self) -> None:
         repository_id = uuid_text(1)
@@ -776,7 +1033,8 @@ class Schema2ContractTests(unittest.TestCase):
         self.assertFalse(comparisons[0]["configurationDelta"]["protocolMatch"])
         self.assertTrue(comparisons[0]["protocolDeviations"])
         proposal = propose.proposal_from_comparisons(
-            repository_id=uuid_text(1), proposal_id=uuid_text(30), created_at="2026-08-31T12:03:00Z", comparisons=comparisons
+            repository_id=uuid_text(1), proposal_id=uuid_text(30), created_at="2026-08-31T12:03:00Z", comparisons=comparisons,
+            comparison_plan=plan,
         )
         self.assertEqual(proposal["proposalType"], "experiment-suggestion")
         self.assertEqual(proposal["candidateDelta"]["attributionScope"], "none")
@@ -799,7 +1057,8 @@ class Schema2ContractTests(unittest.TestCase):
             ) for number in range(10, 15)
         ]
         proposal = propose.proposal_from_comparisons(
-            repository_id=uuid_text(1), proposal_id=uuid_text(30), created_at="2026-08-31T12:03:00Z", comparisons=comparisons
+            repository_id=uuid_text(1), proposal_id=uuid_text(30), created_at="2026-08-31T12:03:00Z", comparisons=comparisons,
+            comparison_plan=plan,
         )
         self.assertEqual(proposal["proposalType"], "bundle-proposal")
         self.assertEqual(set(proposal["candidateDelta"]["factors"]), {"agent-set", "skill-set"})

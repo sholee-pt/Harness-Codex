@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in local evaluation and observability CLI for Harness for Codex v6.0."""
+"""Opt-in local evaluation and observability CLI for Harness for Codex v6.1."""
 
 from __future__ import annotations
 
@@ -133,11 +133,18 @@ def _configuration_snapshot(
         skill_refs = [evaluation_store.pseudonym(repository_id, "skill", name) for name in names("skills")]
         route_refs = [evaluation_store.pseudonym(repository_id, "route", name) for name in names("routingPolicies", "id")]
         policy_refs = [evaluation_store.pseudonym(repository_id, "quality-policy", name) for name in names("qualityPatternPolicies", "id")]
-        policies = topology.get("qualityPatternPolicies", [])
-        independent_review = any(
-            isinstance(item, dict)
-            and item.get("pattern") in {"producer-reviewer", "independent-review"}
-            for item in policies if isinstance(policies, list)
+        collaboration_patterns = topology.get("collaborationPatterns", [])
+        quality_policies = topology.get("qualityPatternPolicies", [])
+        independent_review = (
+            isinstance(collaboration_patterns, list)
+            and "producer-reviewer" in collaboration_patterns
+        ) or (
+            isinstance(quality_policies, list)
+            and any(
+                isinstance(policy, dict)
+                and policy.get("name") == "independent-safety-review"
+                for policy in quality_policies
+            )
         )
         project_harness = root / ".agents" / "skills" / "project-harness" / "SKILL.md"
         if project_harness.is_file():
@@ -749,15 +756,32 @@ def command_propose(args: argparse.Namespace) -> int:
     evaluation_store = _store(args)
     proposal_id = str(evaluation_store.ids.new_uuid())
     comparisons = _load_auxiliary(evaluation_store, args.repository, "comparisons")
+    comparison_plan = None
+    plan_sha256 = None
+    attribution_target = None
+    if args.comparison_plan:
+        comparison_plan = types.load_json(Path(args.comparison_plan))
+        types.validate_comparison_plan(comparison_plan)
+        if comparison_plan.get("schemaVersion") != 2:
+            raise types.EvaluationError("Schema 2 proposals require a Schema 2 comparison plan")
+        plan_sha256 = types.digest_bytes(types.canonical_bytes(comparison_plan))
+        attribution_target = comparison_plan["intervention"]["attributionTarget"]
+    concrete_plan = attribution_target in {"single-factor", "bundle"}
     ineligible: set[str] = set()
     warnings: set[str] = set()
     for comparison_record in comparisons:
         if comparison_record.get("schemaVersion") != 2:
             warnings.add("legacy-schema1-evidence-excluded")
             continue
+        if plan_sha256 is not None and comparison_record["planSha256"] != plan_sha256:
+            ineligible.add(comparison_record["comparisonId"])
+            warnings.add("comparison-plan-mismatch")
+            continue
+        runs: dict[str, dict[str, Any]] = {}
         for key, arm in (("baselineRunId", "baseline"), ("treatmentRunId", "treatment")):
             try:
                 run = evaluation_store.read_run(args.repository, comparison_record[key], allow_pending=False)
+                runs[arm] = run
                 view = evaluation_view.derived_evaluation_view(
                     run,
                     evaluation_store.observations_for_run(args.repository, run["runId"]),
@@ -775,6 +799,32 @@ def command_propose(args: argparse.Namespace) -> int:
                 ineligible.add(comparison_record["comparisonId"])
                 warnings.add("derived-view-changed")
                 break
+        if comparison_record["comparisonId"] in ineligible or not concrete_plan:
+            continue
+        if any(
+            run["runtime"]["harnessVersion"]
+            not in schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS
+            for run in runs.values()
+        ):
+            ineligible.add(comparison_record["comparisonId"])
+            warnings.add("pre-v6.1-attribution-excluded")
+            continue
+        patch_scope_fingerprint = comparison_plan["patchScopeProfileFingerprint"]
+        if patch_scope_fingerprint is None:
+            continue
+        for arm in ("baseline", "treatment"):
+            patch_scope = runs[arm]["result"]["patchScope"]
+            valid_patch_scope = (
+                patch_scope["state"] == "measured"
+                and patch_scope["completeness"] == "complete"
+                and patch_scope["profileFingerprint"] == patch_scope_fingerprint
+                and patch_scope["withinDeclaredScope"] is True
+                and patch_scope["maximumChangedPathsExceeded"] is False
+            )
+            if not valid_patch_scope:
+                ineligible.add(comparison_record["comparisonId"])
+                warnings.add(f"{arm}-patch-scope-attribution-excluded")
+                break
     value = propose.proposal_from_comparisons(
         repository_id=args.repository,
         proposal_id=proposal_id,
@@ -784,6 +834,7 @@ def command_propose(args: argparse.Namespace) -> int:
         complexity_level=args.complexity,
         impact_level=args.impact,
         ineligible_comparison_ids=ineligible,
+        comparison_plan=comparison_plan,
     )
     evaluation_store.write_auxiliary(args.repository, "proposals", proposal_id, value)
     if ineligible:
@@ -1503,6 +1554,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     proposal = subparsers.add_parser("propose", help="Create a non-binding evidence proposal")
     proposal.add_argument("--repository", required=True)
+    proposal.add_argument(
+        "--comparison-plan",
+        help="Optional Schema 2 plan required for concrete configuration attribution",
+    )
     proposal.add_argument("--category", choices=sorted(types.TASK_CATEGORIES), default="unknown")
     proposal.add_argument("--complexity", choices=sorted(types.LEVELS), default="unknown")
     proposal.add_argument("--impact", choices=sorted(types.LEVELS), default="unknown")

@@ -21,7 +21,7 @@ Pending records have `endedAt: null`. Completed records are immutable and requir
 
 `resultFingerprint` covers the tracked diff from `HEAD` plus every non-ignored untracked regular file or symlink. Capture is bounded and all-or-nothing: incomplete capture stores an unavailable value, never a digest of a partial result, without lowering environment isolation. Annotation correction count may be unavailable; measured values are non-negative integers, and `accepted-with-corrections` requires a measured value of at least one.
 
-Comparison Schema 2 records the actual configuration delta, protocol deviations, task and runtime stratum fingerprint, the exact Derived View fingerprints used, and result-fingerprint completeness. An asymmetric unknown configuration produces an unavailable delta and cannot support attribution. Proposal Schema 2 can repeat only an eligible measured delta. Both records are closed, integrity-checked, non-causal, and never auto-applicable.
+Comparison Schema 2 records the actual configuration delta, protocol deviations, a plan- and Harness-version-bound task/runtime stratum fingerprint, the exact Derived View fingerprints used, and result-fingerprint completeness. An asymmetric unknown configuration produces an unavailable delta and cannot support attribution. Proposal Schema 2 can repeat only an eligible measured delta bound to the original validated plan. Both records are closed, integrity-checked, non-causal, and never auto-applicable.
 
 ## Comparison Plan Schema 2
 
@@ -54,6 +54,8 @@ The comparison plan is fixed before either arm runs. It declares:
 ```
 
 The primary outcome cannot be chosen after observing results. Cost improvements cannot override a correctness regression.
+
+`single-factor` requires exactly one expected changed factor, while `bundle` requires at least two. `descriptive-only` can never authorize a concrete candidate. The proposal command keeps `--comparison-plan` optional for compatibility, but omitting it disables concrete positive and negative attribution.
 
 ## Observation and annotation lifecycle
 

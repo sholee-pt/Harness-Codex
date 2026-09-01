@@ -1,6 +1,6 @@
 # Evaluation Contract
 
-Harness for Codex v6.0 uses attribution-aware Evaluation Schema 2 while keeping evaluation optional and user-local. It does not change generation plan schema 3, manifest schema 5, transaction schema 2, managed-file ownership, or the normal configure workflow.
+Harness for Codex v6.1 uses attribution-aware Evaluation Schema 2 while keeping evaluation optional and user-local. It does not change generation plan schema 3, manifest schema 5, transaction schema 2, managed-file ownership, or the normal configure workflow.
 
 ## Boundary
 
@@ -38,6 +38,7 @@ conda run -n harness python scripts/harness_eval.py inspect --run RUN_ID
 conda run -n harness python scripts/harness_eval.py export --repository REPOSITORY_ID
 conda run -n harness python scripts/harness_eval.py repair --repository REPOSITORY_ID
 conda run -n harness python scripts/harness_eval.py paired-run --root REPOSITORY --task-file TASK.txt --comparison-plan PLAN.json --verification VERIFY.json --codex-home CLEAN_CODEX_HOME --repetitions 3 --order randomized
+conda run -n harness python scripts/harness_eval.py propose --repository REPOSITORY_ID --comparison-plan PLAN.json
 conda run -n harness python scripts/harness_eval.py change-discipline-suite --root REPOSITORY --cases CASES.json
 conda run -n harness python scripts/harness_eval.py change-discipline-suite --cases CASES.json --validate-only
 ```
@@ -52,4 +53,4 @@ The canonical store, parser, locking, observation lifecycle, and fixture tests s
 
 ## Compatibility
 
-Harness for Codex v6.0 reads existing evaluation Schema 1 records for list, inspect, export, integrity validation, repair, and purge. It does not rewrite them, infer absent configuration snapshots, or mix them into Schema 2 attribution groups. New evaluation records use Schema 2 except Observation and structured report Schema 1. Existing user-owned edits remain protected by the normal ownership and hash checks.
+Harness for Codex v6.1 reads existing evaluation Schema 1 records for list, inspect, export, integrity validation, repair, and purge. It does not rewrite them, infer absent configuration snapshots, or mix them into Schema 2 attribution groups. It also reads v6.0 Schema 2 runs descriptively, but concrete attribution requires v6.1 runs and a validated Comparison Plan whose digest matches every included comparison. New evaluation records use Schema 2 except Observation and structured report Schema 1. Existing user-owned edits remain protected by the normal ownership and hash checks.

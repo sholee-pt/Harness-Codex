@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v6.0, a user-level harness generator with enforced change-discipline contracts and attribution-aware Evaluation Schema 2.
+- This branch contains Harness for Codex v6.1, a user-level harness generator with enforced change-discipline contracts and plan-bound Evaluation Schema 2 attribution.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add deployment, marketplace publishing, telemetry, or external service dependencies.
 - Keep evaluation default-off, user-local, and isolated from generation/apply failure handling.

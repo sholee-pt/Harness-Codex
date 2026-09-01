@@ -54,6 +54,8 @@ def outcome_value(
 
 
 def _direction(delta: float, expected: str, minimum_effect: float) -> str:
+    if delta == 0:
+        return "tie"
     if abs(delta) < minimum_effect:
         return "tie"
     if expected == "higher-is-better":
@@ -77,6 +79,31 @@ def _confounders(gaps: list[str]) -> list[str]:
         "verification-profile": "test-coverage",
     }
     return sorted({mapped.get(gap, "isolation-gap") for gap in gaps})
+
+
+def _patch_scope_confounders(
+    baseline: dict[str, Any], treatment: dict[str, Any], planned_fingerprint: str | None
+) -> set[str]:
+    if planned_fingerprint is None:
+        return set()
+    confounders: set[str] = set()
+    for arm, record in (("baseline", baseline), ("treatment", treatment)):
+        patch_scope = record["result"]["patchScope"]
+        if patch_scope["state"] == "measured":
+            if patch_scope["profileFingerprint"] != planned_fingerprint:
+                raise ComparisonError(
+                    "patch-scope profile does not match the predeclared comparison plan"
+                )
+            if patch_scope["completeness"] != "complete":
+                confounders.add("missing-measurement")
+            if arm == "baseline" and (
+                not patch_scope["withinDeclaredScope"]
+                or patch_scope["maximumChangedPathsExceeded"]
+            ):
+                confounders.add("baseline-patch-scope-violation")
+        else:
+            confounders.add("missing-measurement")
+    return confounders
 
 
 def _compare_runs_v1(
@@ -386,6 +413,12 @@ def _compare_runs_v2(
     isolation_failed = any(record["comparison"]["isolationStatus"] == "failed" for record in (baseline, treatment))
     isolation_status = "failed" if isolation_failed else "complete" if not gaps else "partial"
 
+    plan_sha256 = types.digest_bytes(types.canonical_bytes(plan))
+    patch_scope_confounders = _patch_scope_confounders(
+        effective_baseline,
+        effective_treatment,
+        plan["patchScopeProfileFingerprint"],
+    )
     outcome = plan["primaryOutcome"]
     baseline_value = outcome_value(effective_baseline, outcome["metric"], correction_count=baseline_corrections)
     treatment_value = outcome_value(effective_treatment, outcome["metric"], correction_count=treatment_corrections)
@@ -420,11 +453,13 @@ def _compare_runs_v2(
     )
     evaluation_stratum_fingerprint = types.digest_bytes(types.canonical_bytes({
         "repositoryId": repository_id,
+        "planSha256": plan_sha256,
         "taskStratum": plan["taskStratum"],
         "primaryOutcome": plan["primaryOutcome"],
         "configurationDeltaFingerprint": configuration_delta["deltaFingerprint"],
         "runtime": [
             {
+                "harnessVersion": record["runtime"]["harnessVersion"],
                 "modelRef": record["runtime"]["modelRef"],
                 "codexVersion": record["runtime"]["codexVersion"],
                 "reasoningEffort": record["runtime"]["reasoningEffort"],
@@ -439,7 +474,7 @@ def _compare_runs_v2(
         "pairId": pair_id,
         "repositoryId": repository_id,
         "createdAt": created_at,
-        "planSha256": types.digest_bytes(types.canonical_bytes(plan)),
+        "planSha256": plan_sha256,
         "baselineRunId": baseline["runId"],
         "treatmentRunId": treatment["runId"],
         "evidenceClass": evidence_class,
@@ -460,7 +495,7 @@ def _compare_runs_v2(
             "passed": gate_passed,
             "criticalRegression": regression,
         },
-        "confounders": _confounders(gaps),
+        "confounders": sorted(set(_confounders(gaps)) | patch_scope_confounders),
         "causalClaimAllowed": False,
         "taskStratum": plan["taskStratum"],
         "configurationDelta": configuration_delta,
