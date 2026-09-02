@@ -26,6 +26,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v6.5` | Harness for Codex v6.5 | Schema 3 | Schema 5 | Schema 2 | Single-source release metadata, manifest-bound ephemeral runtime plans, bounded teamplay contracts, capability fallback and privacy-safe retention |
 | `codex/v6.6` | Harness for Codex v6.6 | Schema 3 | Schema 5 | Schema 2 | Native Codex subagent parent relay, scoped coordination-packet validation, conservative writer isolation and live-smoke accounting |
 | `codex/v6.7` | Harness for Codex v6.7 | Schema 3 | Schema 5 | Schema 2 | Deterministic contract materialization, spawn/wait liveness gates, version-bound privacy-safe runtime receipts, stale-review and affected-agent relay accounting |
+| `codex/v6.8` | Harness for Codex v6.8 | Schema 3 | Schema 5 | Schema 2 | Canonical-handle runtime control, versioned public/local observation profiles, Runtime Receipt Schema 2, required-task accounting, installed draft-plan example |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -335,6 +336,22 @@ Harness for Codex v6.7 narrows the live-smoke findings from v6.6 into determinis
 - Preserves Evaluation Schema 2 and the existing CLI. v6.0 through v6.6 records remain readable for descriptive inspection, while new concrete attribution is limited to eligible v6.7 evidence.
 
 This release remains an instruction and validation layer rather than a scheduler. Its JSONL parser is deliberately bound to the observed CLI version; adding another version requires an explicit parser review and deterministic fixtures. Runtime receipt capture does not create `CODEX_HOME`, manage authentication, launch Codex, or make an automatic retention-mode transition.
+
+## Harness for Codex v6.8
+
+Harness for Codex v6.8 is a narrow runtime-compatibility correction to v6.7. Generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, ownership, and transaction behavior remain unchanged.
+
+- Uses the non-empty canonical receiver handle returned by Codex and confirmed by the current agent list for wait, follow-up, and interrupt. A raw child thread ID is no longer a model-visible acknowledgement prerequisite.
+- Separates handle acknowledgement, optional child-session binding, observed lifecycle, terminal completion sources, failure sources, fallback, and required-task accounting.
+- Adds Runtime Receipt Schema 2 with distinct `streamCompleteness`, `collaborationCompleteness`, `taskAccountingStatus`, event profiles, and agent-level evidence sources.
+- Keeps Runtime Receipt Schema 1 validation-only and verifies an unchanged v6.7 golden receipt without conversion, rewriting, or evidence promotion.
+- Treats exact registered `not-exposed`, `unobserved`, `partial`, and unsupported profiles as evidence limitations. Only verified binding or incompatible same-spawn terminal outcomes fail closed; source timing differences do not.
+- Distinguishes execution outcome from thread lifecycle. A bounded control-plane wait may establish completion, while compatible local terminal evidence raises the result to cross-validated strength. Agent-reported text alone cannot establish completion.
+- Computes task accounting from required Runtime Plan tasks as `complete-direct`, `complete-delegated`, `complete-mixed`, `complete-fallback`, `partial`, or `failed`. A valid fallback cannot erase a collaboration conflict.
+- Uses allowlisted structural event fingerprints that exclude prompts, messages, paths, raw thread IDs, handles, task names, agent nicknames, arbitrary field names, and unknown values.
+- Packages `references/minimal-draft-plan.json` inside the installed skill, removing the repository-only `tests/fixtures/minimal-plan.json` dependency from plan-format guidance.
+
+The public core JSONL profile is based only on the documented `item.*` event envelope. `collab_tool_call` and local `SubAgentActivity` remain explicitly version-specific observed profiles rather than stable public OpenAI schemas. Harness remains an instruction, validation, and evidence layer; it does not replace Codex orchestration or schedule agents independently.
 
 ## Harness for Claude Code releases
 

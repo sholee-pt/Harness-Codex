@@ -1,0 +1,92 @@
+{
+  "receiptSchemaVersion": 1,
+  "harness": {
+    "version": "6.7",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "repositoryId": "repo-bbbbbbbbbbbbbbbb",
+  "runtimePlanSha256": "bcb61800159db698caee2e54338cf7b6fe8cf00d918af5ef7b2131b5fcd01d56",
+  "codexCliVersion": "0.152.1",
+  "executionMode": "persistent",
+  "parentThreadPseudonym": "parent-c0396ca9a7d1afa8",
+  "observationSource": "runtime-event+session-metadata",
+  "captureCompleteness": "complete",
+  "evidenceStrength": "cross-validated-runtime",
+  "provesLiveSubagentExecution": true,
+  "parser": {
+    "schemaVersion": 1,
+    "observationSchemaVersion": 1,
+    "compatibility": "supported",
+    "malformedLineCount": 0,
+    "unknownEventCount": 0,
+    "unknownCriticalEventCount": 0
+  },
+  "runtime": {
+    "terminalEventObserved": true,
+    "terminalStatus": "completed",
+    "childEventCount": 4,
+    "errorCount": 0,
+    "emptyWaitCount": 0,
+    "unboundChildEventCount": 0,
+    "observationBindingFingerprint": "99427c1ec007e784c91057e95f09fd153eb5c05b68724b92373918a8f30b812e",
+    "waitPolicy": {
+      "maxAttemptsPerAgent": 3,
+      "maxTotalMsPerAgent": 300000
+    }
+  },
+  "agents": [
+    {
+      "participant": "api_producer",
+      "selected": true,
+      "spawnRequested": true,
+      "spawned": true,
+      "observed": true,
+      "completed": true,
+      "failed": false,
+      "fallback": false,
+      "bindingValidated": true,
+      "observationSource": "runtime-event+session-metadata",
+      "childThreadPseudonym": "child-ace9ba23533e38b1",
+      "spawnFingerprint": "aed94235cbf2b11217ac20533e927be51fc55f799b5962a2e690168aac6592bf",
+      "completionFingerprint": "825e1555bcd19fc03e4b2abd1851d423e248b80b9b4cf580473ef87f6a99a699",
+      "waitAttempts": 1,
+      "waitTimeMs": 10,
+      "failureCodes": [],
+      "fallbackAdapter": null
+    },
+    {
+      "participant": "contract_reviewer",
+      "selected": true,
+      "spawnRequested": true,
+      "spawned": true,
+      "observed": true,
+      "completed": true,
+      "failed": false,
+      "fallback": false,
+      "bindingValidated": true,
+      "observationSource": "runtime-event+session-metadata",
+      "childThreadPseudonym": "child-66ddbe600794ae39",
+      "spawnFingerprint": "e4c550c5db17e9b6c47a0110d379c64471f7a33d3e4eb596b19624c2c0cc6109",
+      "completionFingerprint": "06d4cb907e382886596958c99422475b7fae4e35c82962c334b28a644cbb680a",
+      "waitAttempts": 1,
+      "waitTimeMs": 10,
+      "failureCodes": [],
+      "fallbackAdapter": null
+    }
+  ],
+  "measurements": {
+    "inputTokens": 100,
+    "cachedInputTokens": 50,
+    "outputTokens": 20,
+    "reasoningOutputTokens": null,
+    "completedAgents": 2,
+    "fallbackAgents": 0,
+    "totalWaitAttempts": 2,
+    "totalWaitTimeMs": 20
+  },
+  "warnings": [],
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalSha256": "e2ec94866b3c30d3153433fb3cef13c5470db6ba2300f76591f7398f69f0b118"
+  }
+}

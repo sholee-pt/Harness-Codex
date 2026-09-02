@@ -19,6 +19,7 @@ import harness_change_discipline  # noqa: E402
 import harness_plan_builder  # noqa: E402
 import harness_relay_receipt  # noqa: E402
 import harness_runtime_receipt  # noqa: E402
+import harness_runtime_receipt_schema1  # noqa: E402
 import harness_teamplay  # noqa: E402
 import harness_apply  # noqa: E402
 import validate_runtime_plan as runtime_plan  # noqa: E402
@@ -640,8 +641,8 @@ class CompatibilityTests(RuntimeFixtureTestCase):
     def test_evaluation_schema_remains_2(self) -> None:
         self.assertEqual(harness_metadata.EVALUATION_SCHEMA_VERSION, 2)
 
-    def test_v60_to_v66_records_remain_readable(self) -> None:
-        self.assertTrue({"6.0", "6.1", "6.2", "6.3", "6.4", "6.5", "6.6"}.issubset(
+    def test_v60_to_v67_records_remain_readable(self) -> None:
+        self.assertTrue({"6.0", "6.1", "6.2", "6.3", "6.4", "6.5", "6.6", "6.7"}.issubset(
             harness_metadata.READABLE_EVALUATION_VERSIONS
         ))
 
@@ -676,6 +677,18 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
         materialized = harness_plan_builder.materialize_plan(draft)
         self.assertEqual(materialized["schemaVersion"], 3)
         self.assertNotIn(harness_plan_builder.PROJECT_PLACEHOLDER, json.dumps(materialized))
+        application = harness_apply.build_application(
+            REPO_ROOT / "tests" / "fixtures" / "minimal-project", materialized
+        )
+        self.assertTrue(application["report"]["valid"])
+
+    def test_installed_minimal_draft_example_is_self_contained(self) -> None:
+        example = json.loads(
+            (REPO_ROOT / ".agents" / "skills" / "harness" / "references" / "minimal-draft-plan.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        materialized = harness_plan_builder.materialize_plan(example)
         application = harness_apply.build_application(
             REPO_ROOT / "tests" / "fixtures" / "minimal-project", materialized
         )
@@ -818,7 +831,7 @@ def runtime_observation(
     }
 
 
-class RuntimeReceiptTests(RuntimeFixtureTestCase):
+class LegacyRuntimeReceiptTests(RuntimeFixtureTestCase):
     def _build(self, lines: list[str], **overrides: object) -> dict:
         participants = [item["agent"] for item in self.plan["participants"]]
         values = {
@@ -833,7 +846,7 @@ class RuntimeReceiptTests(RuntimeFixtureTestCase):
             "fallbacks": None,
         }
         values.update(overrides)
-        return harness_runtime_receipt.build_runtime_receipt(**values)
+        return harness_runtime_receipt_schema1.build_runtime_receipt(**values)
 
     def test_complete_runtime_chain_proves_observation_not_truth_beyond_events(self) -> None:
         participants = [item["agent"] for item in self.plan["participants"]]
@@ -1063,54 +1076,22 @@ class RuntimeReceiptTests(RuntimeFixtureTestCase):
         with self.assertRaisesRegex(harness_runtime_receipt.RuntimeReceiptError, "privacy-forbidden"):
             harness_runtime_receipt.validate_runtime_receipt(receipt)
 
-    def test_runtime_receipt_cli_preserves_repository_state(self) -> None:
-        plan_path = self.root / "runtime-plan.json"
-        jsonl_path = self.root / "events.jsonl"
-        bindings_path = self.root / "observation-bindings.json"
-        salt_path = self.root / "salt.bin"
-        output_path = self.root / "runtime-receipt.json"
-        plan_path.write_text(json.dumps(self.plan), encoding="utf-8")
-        participants = [item["agent"] for item in self.plan["participants"]]
-        jsonl_path.write_text(
-            "\n".join(successful_runtime_jsonl(participants)) + "\n", encoding="utf-8"
-        )
-        bindings_path.write_text(
-            json.dumps(runtime_observation(participants)), encoding="utf-8"
-        )
-        salt_path.write_bytes(b"runtime-receipt-salt")
+    def test_schema1_cli_is_validation_only_and_preserves_repository_state(self) -> None:
         manifest_path = self.root / ".harness" / "manifest.json"
         before = manifest_path.read_bytes()
         completed = subprocess.run(
             [
                 sys.executable,
-                str(SCRIPTS / "harness_runtime_receipt.py"),
-                "--root",
-                str(self.root),
-                "--plan",
-                str(plan_path),
-                "--jsonl",
-                str(jsonl_path),
-                "--observation-bindings",
-                str(bindings_path),
-                "--codex-cli-version",
-                "0.152.1",
-                "--execution-mode",
-                "persistent",
-                "--repository-id",
-                "repo-" + "b" * 16,
-                "--harness-commit",
-                "a" * 40,
-                "--salt-file",
-                str(salt_path),
-                "--output",
-                str(output_path),
+                str(SCRIPTS / "harness_runtime_receipt_schema1.py"),
+                "--receipt",
+                str(REPO_ROOT / "tests" / "fixtures" / "runtime-receipt-schema1-golden.json"),
             ],
             check=False,
             capture_output=True,
             text=True,
         )
         self.assertEqual(completed.returncode, 0, completed.stdout)
-        self.assertTrue(json.loads(output_path.read_text(encoding="utf-8"))["provesLiveSubagentExecution"])
+        self.assertTrue(json.loads(completed.stdout)["valid"])
         self.assertEqual(before, manifest_path.read_bytes())
 
 

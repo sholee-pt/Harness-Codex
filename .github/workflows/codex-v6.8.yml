@@ -1,12 +1,12 @@
-name: Harness for Codex v6.7 checks
+name: Harness for Codex v6.8 checks
 
 on:
   push:
     branches:
-      - codex/v6.7
+      - codex/v6.8
   pull_request:
     branches:
-      - codex/v6.7
+      - codex/v6.8
   workflow_dispatch:
 
 permissions:
@@ -40,7 +40,9 @@ jobs:
 
       - name: Run runtime-plan, receipt, and relay fixtures
         shell: bash -el {0}
-        run: conda run -n harness python -m unittest discover -s tests -p test_runtime_teamplay.py -v
+        run: |
+          conda run -n harness python -m unittest discover -s tests -p test_runtime_teamplay.py -v
+          conda run -n harness python -m unittest discover -s tests -p test_runtime_receipt_v2.py -v
 
       - name: Run deterministic topology evaluations
         shell: bash -el {0}

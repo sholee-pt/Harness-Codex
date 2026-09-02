@@ -71,8 +71,8 @@ Test the applicable cases, using an isolated temporary repository when possible:
 32. Structural and packet validation remain distinct from an optional live smoke test; neither validator claims that a subagent actually ran.
 33. Ephemeral retention is the default; full audit requires explicit user opt-in and redacted retention stores no raw messages.
 34. Missing or duplicate deterministic placeholders fail before apply; a correct builder output remains an ordinary valid Schema 3 plan.
-35. A missing child ID, role mismatch, empty receiver, repeated spawn, unknown receiver, or exhausted wait budget cannot be reported as observed completion.
-36. A CLI-version mismatch, missing observation binding, public-stream spawn omission, empty wait receiver, or unknown critical collaboration event fails closed as unobserved, while raw prompts, messages, paths, source, and credentials never enter a runtime receipt.
+35. A missing or unlisted canonical receiver handle, wait on an unknown handle, exhausted wait budget, agent-reported-only result, or verified terminal/binding contradiction cannot be reported as observed completion. Missing optional public or local evidence lowers evidence strength without stopping a valid bounded handle wait.
+36. Runtime Receipt Schema 2 marks an unregistered profile/CLI pair as unsupported and malformed or unknown structures as degraded; absence alone is not a conflict. An exact profile contradiction, verified binding mismatch, or incompatible terminal outcome fails closed, while raw prompts, messages, paths, IDs, handles, task names, and credentials never enter a receipt.
 37. A review bound to an older packet hash is stale after revision, and rerun accounting rejects both missing affected agents and unrelated reruns.
 
 ## Completion gate

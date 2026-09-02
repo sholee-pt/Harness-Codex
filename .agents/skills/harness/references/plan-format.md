@@ -2,7 +2,7 @@
 
 Create one UTF-8 JSON draft, materialize its deterministic contracts, and pass the resulting plan to `scripts/harness_apply.py`. Schema 3 remains the normative generation input contract for Harness for Codex v5 and v6; the builder does not add a schema field or let apply mutate its input.
 
-Read [topology-contract.md](topology-contract.md) before filling the topology. The complete fixture at `tests/fixtures/minimal-plan.json` is an executable minimal example.
+Read [topology-contract.md](topology-contract.md) before filling the topology. Use the installed [minimal draft-plan example](minimal-draft-plan.json) as the packaging-safe starting point, then materialize its placeholders with `scripts/harness_plan_builder.py`.
 
 ## Top-level structure
 

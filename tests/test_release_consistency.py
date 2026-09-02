@@ -17,6 +17,8 @@ import harness_eval  # noqa: E402
 import harness_eval_schema2  # noqa: E402
 import harness_eval_types  # noqa: E402
 import harness_metadata  # noqa: E402
+import harness_runtime_receipt  # noqa: E402
+import harness_runtime_receipt_schema1  # noqa: E402
 import harness_state  # noqa: E402
 import harness_teamplay  # noqa: E402
 import harness_transaction  # noqa: E402
@@ -24,7 +26,7 @@ import harness_transaction  # noqa: E402
 
 class ReleaseConsistencyTests(unittest.TestCase):
     def test_release_metadata_is_consistent(self) -> None:
-        self.assertEqual(harness_metadata.HARNESS_VERSION, "6.7")
+        self.assertEqual(harness_metadata.HARNESS_VERSION, "6.8")
         self.assertEqual(harness_apply.GENERATOR_VERSION, harness_metadata.HARNESS_VERSION)
         self.assertEqual(harness_state.GENERATOR_VERSION, harness_metadata.HARNESS_VERSION)
         self.assertEqual(harness_eval_types.HARNESS_VERSION, harness_metadata.HARNESS_VERSION)
@@ -42,20 +44,22 @@ class ReleaseConsistencyTests(unittest.TestCase):
             harness_eval_schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS,
             {harness_metadata.HARNESS_VERSION},
         )
+        self.assertEqual(harness_runtime_receipt.RECEIPT_SCHEMA_VERSION, 2)
+        self.assertEqual(harness_runtime_receipt_schema1.RECEIPT_SCHEMA_VERSION, 1)
 
     def test_release_documents_and_workflow_match_current_version(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         versions = (REPO_ROOT / "VERSIONS.md").read_text(encoding="utf-8")
         agents = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        workflow_path = REPO_ROOT / ".github" / "workflows" / "codex-v6.7.yml"
+        workflow_path = REPO_ROOT / ".github" / "workflows" / "codex-v6.8.yml"
         workflow = workflow_path.read_text(encoding="utf-8")
-        self.assertIn("Harness_for_Codex-v6.7", readme)
-        self.assertIn("--branch codex/v6.7", readme)
-        self.assertIn("| `codex/v6.7` | Harness for Codex v6.7 |", versions)
-        self.assertIn("This branch contains Harness for Codex v6.7", agents)
-        self.assertIn("name: Harness for Codex v6.7 checks", workflow)
-        self.assertIn("- codex/v6.7", workflow)
-        self.assertFalse((workflow_path.parent / "codex-v6.6.yml").exists())
+        self.assertIn("Harness_for_Codex-v6.8", readme)
+        self.assertIn("--branch codex/v6.8", readme)
+        self.assertIn("| `codex/v6.8` | Harness for Codex v6.8 |", versions)
+        self.assertIn("This branch contains Harness for Codex v6.8", agents)
+        self.assertIn("name: Harness for Codex v6.8 checks", workflow)
+        self.assertIn("- codex/v6.8", workflow)
+        self.assertFalse((workflow_path.parent / "codex-v6.7.yml").exists())
 
     def test_manifest_asset_uses_current_generator_and_stable_schemas(self) -> None:
         asset = json.loads(
