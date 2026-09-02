@@ -26,6 +26,18 @@ FORBIDDEN_TOKENS = (
     "team_name",
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
 )
+FORBIDDEN_PERSISTENT_KEYS = {
+    "currentTask",
+    "runtimeExecutionPlan",
+    "runtimeMessages",
+    "runtimeParticipants",
+    "runtimePlan",
+    "runtimeRole",
+    "runtimeTasks",
+    "runtimeTeam",
+    "taskExecution",
+    "taskExecutionClass",
+}
 
 
 def read_frontmatter(path: Path) -> dict[str, str]:
@@ -86,6 +98,18 @@ class Validator:
             self.error(f"schemaVersion must be {harness_state.CURRENT_SCHEMA_VERSION}")
         if "taskExecution" in self.manifest or "taskExecutionClass" in self.manifest:
             self.error("runtime task execution state must not be stored in the project manifest")
+        pending: list[tuple[str, object]] = [("manifest", self.manifest)]
+        while pending:
+            label, value = pending.pop()
+            if isinstance(value, dict):
+                forbidden = FORBIDDEN_PERSISTENT_KEYS.intersection(value)
+                if forbidden:
+                    self.error(
+                        f"{label} contains runtime-only fields: {', '.join(sorted(forbidden))}"
+                    )
+                pending.extend((f"{label}.{key}", item) for key, item in value.items())
+            elif isinstance(value, list):
+                pending.extend((f"{label}[{index}]", item) for index, item in enumerate(value))
         generator = self.manifest.get("generator")
         if not isinstance(generator, dict) or not all(generator.get(key) for key in ("name", "version", "runtime")):
             self.error("generator must contain name, version, and runtime")

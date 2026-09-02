@@ -15,6 +15,7 @@ Read this reference after artifacts have been generated or updated.
 - Material boundaries have topology-wide unique decision-area identifiers, persistence evidence, verifiable contracts, and material separation benefits.
 - Persistent topology classification agrees with post-merge boundary structure and recurring coordination evidence.
 - Task-execution state and runtime-only task risks are absent from the project manifest.
+- Runtime plans, participants, roles, tasks, messages, adapter selection, and retention are absent from the project manifest.
 - Specialist and cross-boundary agents reference existing boundaries; `project-harness` alone uses project scope.
 - Concurrent writers do not overlap, and sequential overlapping writers have an ordered verified handoff for their complete shared scope.
 - Literal scopes do not authorize recursive descendants, and case-only writer scopes collide portably.
@@ -26,6 +27,8 @@ Read this reference after artifacts have been generated or updated.
 - No transaction journal or staging directory remains after a successful apply.
 - Generated files contain no Claude-only or obsolete Agent Teams primitives.
 - A clean plan dry-run reports the same create, update, or unchanged actions that the actual apply performs.
+- A runtime plan is bound to the exact current manifest and canonical topology, references only allowed persistent agents or explicitly provisional participants, and does not modify either file.
+- Coordinated runtime plans have finite communication and reassignment budgets, evidence-backed challenges, stopping conditions, capability fallback, isolated writers, and ephemeral retention by default.
 
 ## Behavioral scenarios
 
@@ -57,6 +60,11 @@ Test the applicable cases, using an isolated temporary repository when possible:
 24. A one-line function change uses direct execution without unnecessary agents, skills, or abstractions.
 25. A file-scoped bug fix avoids unrelated files and formatting changes.
 26. A reproducible bug defines the reproducer or explicit verification criteria before implementation.
+27. Two available agents alone do not select coordinated execution.
+28. Independent tasks select delegated fan-out/fan-in; one review pass selects delegated producer-reviewer; repeated cross-boundary negotiation may select coordinated execution.
+29. A stale runtime plan, unknown agent, dependency cycle, unowned required output, reviewer write scope, or missing required verification is rejected without changing the manifest.
+30. Missing peer messaging or shared task state selects a leader-controlled contract-preserving fallback.
+31. Ephemeral retention is the default; full audit requires explicit user opt-in and redacted retention stores no raw messages.
 
 ## Completion gate
 

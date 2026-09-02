@@ -12,6 +12,8 @@ The manifest records persistent repository structure:
 
 Boundary count is not a coordinated-topology trigger. Four or more modular boundaries produce a review warning, not an automatic promotion. Current-task risk changes only runtime execution (`direct`, `delegated`, or `coordinated`) and must not appear in the generation plan or project manifest.
 
+Persistent collaboration patterns describe recurring repository structure, not a currently active team. Even a persistent `coordinated` topology requires current-task interaction value and a live capability probe before coordinated execution. Runtime roles, participants, task graphs, messages, adapter selection, retention, and provisional greenfield roles belong only to an ephemeral runtime plan and are not agent components or manifest fields.
+
 ## Material boundary
 
 Every retained boundary must include:

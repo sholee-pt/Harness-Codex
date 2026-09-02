@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v6.4, a user-level harness generator with enforced change-discipline contracts and repository-state-safe Evaluation Schema 2 attribution.
+- This branch contains Harness for Codex v6.5, a user-level harness generator with manifest-bound ephemeral teamplay plans, enforced change-discipline contracts, and repository-state-safe Evaluation Schema 2 attribution.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add deployment, marketplace publishing, telemetry, or external service dependencies.
 - Keep evaluation default-off, user-local, and isolated from generation/apply failure handling.
@@ -14,6 +14,7 @@
 - Put conditional design guidance in `references/`, deterministic helpers in `scripts/`, and output templates in `assets/`.
 - Generate agents and project skills only when repository evidence justifies them.
 - Preserve user-owned content and test idempotent updates.
+- Keep current-task roles, plans, messages, adapter selection, and retention out of the persistent manifest.
 
 ## Validation
 
@@ -21,6 +22,7 @@
 - Never use the base Anaconda environment or an unrelated bundled Python for Harness maintenance.
 - After any repository modification, run a lightweight fixture dry-run before broader tests and include the dry-run result in the completion report.
 - Run `conda run -n harness python -m unittest discover -s tests -v`.
+- Run runtime-plan fixture validation when teamplay code or contracts change.
 - Run the system skill validator against `.agents/skills/harness` when available.
 - Report any validation that could not be executed.
 

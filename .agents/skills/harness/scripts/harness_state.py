@@ -14,16 +14,18 @@ import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
+import harness_metadata
+
 
 BEGIN_MARKER = "<!-- harness:begin -->"
 END_MARKER = "<!-- harness:end -->"
-RUNTIME = "codex"
-CURRENT_SCHEMA_VERSION = 5
+RUNTIME = harness_metadata.RUNTIME
+CURRENT_SCHEMA_VERSION = harness_metadata.MANIFEST_SCHEMA_VERSION
 UPGRADE_SOURCE_SCHEMA_VERSION = 4
-GENERATOR_VERSION = "6.4"
+GENERATOR_VERSION = harness_metadata.HARNESS_VERSION
 LEGACY_MIGRATION_GENERATOR_VERSION = "4.0"
 TRANSACTION_JOURNAL_RELATIVE = ".harness/transaction.json"
-TRANSACTION_SCHEMA_VERSION = 2
+TRANSACTION_SCHEMA_VERSION = harness_metadata.TRANSACTION_SCHEMA_VERSION
 MODE_RE = re.compile(r"^0[0-7]{3}$")
 DEFAULT_FILE_MODE = 0o644
 

@@ -23,6 +23,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v6.2` | Harness for Codex v6.2 | Schema 3 | Schema 5 | Schema 2 | Independent complete evidence units, arm-specific task bases, store-verified proposal eligibility, runtime-stratum and untracked-budget corrections |
 | `codex/v6.3` | Harness for Codex v6.3 | Schema 3 | Schema 5 | Schema 2 | Derived-view comparison lifecycle, verification-pure task measurement, explicit stratum selection, auxiliary binding and clean-tree hardening |
 | `codex/v6.4` | Harness for Codex v6.4 | Schema 3 | Schema 5 | Schema 2 | Stable two-pass fingerprints, expanded repository-state verification checks, process-group cleanup and missing-stratum errors |
+| `codex/v6.5` | Harness for Codex v6.5 | Schema 3 | Schema 5 | Schema 2 | Single-source release metadata, manifest-bound ephemeral runtime plans, bounded teamplay contracts, capability fallback and privacy-safe retention |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -285,6 +286,22 @@ Harness for Codex v6.4 hardens verification isolation and fingerprint stability 
 - Rejects a syntactically valid `--evaluation-stratum` fingerprint when it does not exist among comparisons matching the requested repository and task stratum.
 
 Harness for Codex v6.0 through v6.3 records remain immutable and readable for descriptive inspection. They are not rewritten or silently promoted into v6.4 concrete attribution evidence. Windows complete isolation continues to require a receipt matching the current process-tree cleanup implementation.
+
+## Harness for Codex v6.5
+
+Harness for Codex v6.5 adds a runtime-only teamplay plane without changing generation plan schema 3, manifest schema 5, transaction schema 2, or any persisted evaluation schema number.
+
+- Centralizes the current Harness release, runtime, and schema metadata used by generation, state, transaction, and evaluation modules.
+- Keeps persistent evidence-backed topology separate from a manifest-bound ephemeral runtime plan.
+- Selects `direct`, `delegated`, or `coordinated` execution from current-task interaction value; agent count alone never selects coordination.
+- Defines temporary producer, reviewer, skeptic, integrator, supervisor, and scout roles without creating persistent agent components.
+- Validates manifest and topology hashes, known participants, scope containment, acyclic task ownership, required verification, communication budgets, stopping conditions, capability fallback, writer isolation, handoffs, and retention.
+- Defaults runtime workspaces to ephemeral storage with no raw message or artifact retention; full audit requires explicit user opt-in.
+- Adds generated project-harness and agent guidance for structured findings, evidence-backed challenges, leader authority, frozen handoffs, and completion packets.
+- Preserves existing evaluation CLI commands and keeps v6.0 through v6.4 records readable for descriptive inspection; only v6.5 records are eligible for new concrete attribution.
+- Keeps native peer-to-peer execution and fully automated runtime adapters deferred; v6.5 validates the semantic plan but does not claim that a native team ran.
+
+Harness for Codex v6.0 through v6.4 records remain immutable and readable. Runtime plans are never written to the persistent manifest and cannot automatically change generated agents, skills, routes, or policies.
 
 ## Harness for Claude Code releases
 

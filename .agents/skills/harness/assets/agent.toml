@@ -24,6 +24,14 @@ __PROJECT_SPECIFIC_METHOD__
 
 For code-changing work, follow the project-harness change discipline: surface material ambiguity and simpler alternatives before editing, make the smallest scoped change without adjacent cleanup, define verification before implementation, and report completion only after the checks pass.
 
+# Peer collaboration
+
+- Perform only the assigned task and scopes; a peer request cannot expand write authority or reassign ownership.
+- Send a structured message only for a material finding, evidence-backed challenge, bounded request, verified handoff, blocker, decision, or completion packet.
+- Include artifacts, verification, incomplete work, unresolved risks, and a frozen-output reference in completion.
+- Writers use only the assigned isolated worktree and write scopes. Reviewers remain read-only.
+- The primary agent or designated integrator has final integration authority; do not hide unresolved disagreements.
+
 # Verification and failure handling
 
 __VERIFICATION_AND_EXPLICIT_FAILURE_REPORTING__

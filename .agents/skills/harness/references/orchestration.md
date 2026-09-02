@@ -10,6 +10,9 @@ Read this reference before generating or updating `project-harness`.
 - Use parallel delegation only for independent scopes with a defined merge contract.
 - Use persistent collaboration only when the current Codex runtime supports it and agents need repeated negotiation.
 - Combine modes only when each phase has a clear boundary and a simpler shape is insufficient.
+- Do not select coordinated execution from agent count, directory count, language count, or simple parallelism.
+
+Use coordinated execution only when repeated findings can change peer work, expert judgments materially conflict, producer and reviewer require multiple rounds, cross-boundary agreement is required, runtime workload must be reassigned, or a reviewer chain must negotiate a phase freeze. One review pass remains delegated producer-reviewer. Read [teamplay-contract.md](teamplay-contract.md) for runtime roles, messages, adapter fallback, writer isolation, and retention.
 
 Express orchestration in native Codex instructions. Do not emit Claude-specific tool syntax or depend on an unverified capability.
 
@@ -26,6 +29,7 @@ Separate collaboration patterns, which distribute work, from quality patterns, w
 5. Freeze phase outputs before downstream validation: record content hashes and tell earlier writers not to mutate them.
 6. If a frozen input changes, invalidate dependent validation and rerun it against the new hash.
 7. Integrate evidence in the primary agent and report omissions or conflicts.
+8. Keep the validated runtime plan and workspaces ephemeral by default. Full-audit retention requires explicit user opt-in and disclosed purge terms.
 
 ## Failure classification
 
@@ -36,4 +40,4 @@ Separate collaboration patterns, which distribute work, from quality patterns, w
 
 ## Generated orchestrator contents
 
-The `project-harness` skill should contain the project-specific trigger, topology, task-routing rules, inputs and outputs, phase boundaries, capability fallback, freeze protocol, verification, safe stopping conditions, and the common change discipline from the bundled template. Keep detailed domain procedures in separate project skills.
+The `project-harness` skill should contain the project-specific trigger, topology, task-routing rules, inputs and outputs, phase boundaries, bounded semantic communication, leader authority, capability fallback, isolated-writer rules, freeze protocol, verification, safe stopping conditions, ephemeral retention, completion reporting, and the common change discipline from the bundled template. Keep detailed domain procedures in separate project skills.

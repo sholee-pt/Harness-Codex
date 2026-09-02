@@ -18,6 +18,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import harness_apply  # noqa: E402
 import harness_change_discipline  # noqa: E402
+import harness_metadata  # noqa: E402
 import harness_state  # noqa: E402
 import harness_topology  # noqa: E402
 import harness_transaction  # noqa: E402
@@ -1071,6 +1072,15 @@ class TopologyContractTests(unittest.TestCase):
             with self.assertRaisesRegex(harness_apply.PlanError, "runtime-only"):
                 harness_apply.load_plan(path)
 
+    def test_generation_plan_rejects_nested_runtime_role_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = minimal_plan(root)
+            plan["topology"]["skills"][0]["runtimeRole"] = "integrator"
+
+            with self.assertRaisesRegex(harness_apply.PlanError, "runtime-only"):
+                harness_apply.build_application(root, plan)
+
     def test_dependency_order_and_structural_interaction_are_distinct(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             plan = minimal_plan(Path(directory))
@@ -1491,12 +1501,12 @@ class TopologyContractTests(unittest.TestCase):
             )
 
             self.assertEqual(manifest["schemaVersion"], 5)
-            self.assertEqual(manifest["generator"]["version"], "6.4")
+            self.assertEqual(manifest["generator"]["version"], harness_metadata.HARNESS_VERSION)
             self.assertNotIn("taskExecution", manifest)
             self.assertEqual(manifest["topology"]["classification"]["class"], "minimal")
 
     def test_current_workflow_checks_tracked_and_untracked_cleanliness(self) -> None:
-        workflow = (REPO_ROOT / ".github" / "workflows" / "codex-v6.4.yml").read_text(
+        workflow = (REPO_ROOT / ".github" / "workflows" / "codex-v6.5.yml").read_text(
             encoding="utf-8"
         )
         self.assertIn("git diff --exit-code", workflow)

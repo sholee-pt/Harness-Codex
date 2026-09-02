@@ -7,6 +7,7 @@ import copy
 import re
 from typing import Any
 
+import harness_metadata
 import harness_eval_types as types
 
 
@@ -37,8 +38,10 @@ FACTORS = {
 }
 ATTRIBUTION_SCOPES = {"single-factor", "bundle", "none"}
 ATTRIBUTION_TARGETS = {"single-factor", "bundle", "descriptive-only"}
-READABLE_HARNESS_VERSIONS = {"6.0", "6.1", "6.2", "6.3", "6.4"}
-ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS = {"6.4"}
+READABLE_HARNESS_VERSIONS = harness_metadata.READABLE_EVALUATION_VERSIONS
+ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS = (
+    harness_metadata.ATTRIBUTION_ELIGIBLE_EVALUATION_VERSIONS
+)
 SCOPE_CLASSES = {"single-file", "multi-file", "cross-contract", "unknown"}
 OBSERVATION_SOURCES = {"user-report", "agent-report", "runtime-event", "verification-runner"}
 LOGICAL_ID_RE = re.compile(r"^[a-z][a-z0-9_-]*$")

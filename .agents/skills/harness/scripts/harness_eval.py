@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in local evaluation and observability CLI for Harness for Codex v6.4."""
+"""Opt-in local evaluation and observability CLI for Harness for Codex v6.5."""
 
 from __future__ import annotations
 
@@ -944,7 +944,7 @@ def _proposal_eligibility(
             not in schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS
             for run in runs.values()
         ):
-            exclude(comparison_id, "pre-v6.4-attribution-excluded")
+            exclude(comparison_id, "pre-v6.5-attribution-excluded")
         patch_scope_fingerprint = (
             comparison_plan["patchScopeProfileFingerprint"]
             if comparison_plan is not None

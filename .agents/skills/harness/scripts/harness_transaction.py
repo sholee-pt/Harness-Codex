@@ -9,10 +9,11 @@ import shutil
 import uuid
 from pathlib import Path, PurePosixPath
 
+import harness_metadata
 import harness_state
 
 
-TRANSACTION_SCHEMA_VERSION = 2
+TRANSACTION_SCHEMA_VERSION = harness_metadata.TRANSACTION_SCHEMA_VERSION
 JOURNAL_RELATIVE = ".harness/transaction.json"
 TRANSACTIONS_RELATIVE = ".harness/transactions"
 TRANSACTION_ID_RE = re.compile(r"^[0-9a-f]{32}$")

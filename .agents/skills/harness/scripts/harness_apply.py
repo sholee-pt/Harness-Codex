@@ -9,6 +9,7 @@ import re
 import sys
 from pathlib import Path
 
+import harness_metadata
 import harness_state
 import harness_topology
 import harness_transaction
@@ -20,8 +21,8 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ is required
     tomllib = None
 
 
-PLAN_SCHEMA_VERSION = 3
-GENERATOR_VERSION = "6.4"
+PLAN_SCHEMA_VERSION = harness_metadata.PLAN_SCHEMA_VERSION
+GENERATOR_VERSION = harness_metadata.HARNESS_VERSION
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 AGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -32,10 +33,43 @@ FORBIDDEN_TOKENS = (
     "team_name",
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
 )
+FORBIDDEN_PERSISTENT_KEYS = {
+    "currentTask",
+    "runtimeExecutionPlan",
+    "runtimeMessages",
+    "runtimeParticipants",
+    "runtimePlan",
+    "runtimeRole",
+    "runtimeTasks",
+    "runtimeTeam",
+    "taskExecution",
+    "taskExecutionClass",
+}
 
 
 class PlanError(ValueError):
     pass
+
+
+def reject_runtime_state(value: object, label: str = "plan") -> None:
+    pending: list[tuple[str, object]] = [(label, value)]
+    while pending:
+        current_label, current = pending.pop()
+        if isinstance(current, dict):
+            forbidden = FORBIDDEN_PERSISTENT_KEYS.intersection(current)
+            if forbidden:
+                raise PlanError(
+                    f"{current_label} contains runtime-only fields: "
+                    + ", ".join(sorted(forbidden))
+                )
+            pending.extend(
+                (f"{current_label}.{key}", item) for key, item in current.items()
+            )
+        elif isinstance(current, list):
+            pending.extend(
+                (f"{current_label}[{index}]", item)
+                for index, item in enumerate(current)
+            )
 
 
 def require_object(value: object, label: str) -> dict:
@@ -77,13 +111,7 @@ def load_plan(path: Path) -> dict:
     plan = require_object(data, "plan")
     if plan.get("schemaVersion") != PLAN_SCHEMA_VERSION:
         raise PlanError(f"plan schemaVersion must be {PLAN_SCHEMA_VERSION}")
-    if "taskExecution" in plan or "taskExecutionClass" in plan:
-        raise PlanError("task execution state is runtime-only and cannot be stored in a generation plan")
-    topology = plan.get("topology")
-    if isinstance(topology, dict) and (
-        "taskExecution" in topology or "taskExecutionClass" in topology
-    ):
-        raise PlanError("task execution state is runtime-only and cannot be stored in topology")
+    reject_runtime_state(plan)
     return plan
 
 
@@ -418,6 +446,7 @@ def classify_file(
 
 def build_application(root: Path, plan: dict) -> dict:
     harness_transaction.ensure_no_pending_transaction(root)
+    reject_runtime_state(plan)
     project = validate_project(root, plan)
     artifacts, artifact_modes = validate_artifacts(root, plan)
     topology, topology_warnings = validate_topology(root, plan, artifacts)
