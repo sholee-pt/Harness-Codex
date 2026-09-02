@@ -63,8 +63,10 @@ Test the applicable cases, using an isolated temporary repository when possible:
 27. Two available agents alone do not select coordinated execution.
 28. Independent tasks select delegated fan-out/fan-in; one review pass selects delegated producer-reviewer; repeated cross-boundary negotiation may select coordinated execution.
 29. A stale runtime plan, unknown agent, dependency cycle, unowned required output, reviewer write scope, or missing required verification is rejected without changing the manifest.
-30. Missing peer messaging or shared task state selects a leader-controlled contract-preserving fallback.
-31. Ephemeral retention is the default; full audit requires explicit user opt-in and redacted retention stores no raw messages.
+30. Parallel Codex delegation selects parent-relayed subagents; lack of delegation selects a sequential or direct contract-preserving fallback.
+31. A returned coordination packet is rejected for wrong task ownership, missing evidence, missing required outputs, unverified completion, or changed paths outside the participant's write scope.
+32. Structural and packet validation remain distinct from an optional live smoke test; neither validator claims that a subagent actually ran.
+33. Ephemeral retention is the default; full audit requires explicit user opt-in and redacted retention stores no raw messages.
 
 ## Completion gate
 

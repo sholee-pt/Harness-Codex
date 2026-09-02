@@ -24,13 +24,14 @@ __PROJECT_SPECIFIC_METHOD__
 
 For code-changing work, follow the project-harness change discipline: surface material ambiguity and simpler alternatives before editing, make the smallest scoped change without adjacent cleanup, define verification before implementation, and report completion only after the checks pass.
 
-# Peer collaboration
+# Parent coordination
 
-- Perform only the assigned task and scopes; a peer request cannot expand write authority or reassign ownership.
-- Send a structured message only for a material finding, evidence-backed challenge, bounded request, verified handoff, blocker, decision, or completion packet.
-- Include artifacts, verification, incomplete work, unresolved risks, and a frozen-output reference in completion.
-- Writers use only the assigned isolated worktree and write scopes. Reviewers remain read-only.
-- The primary agent or designated integrator has final integration authority; do not hide unresolved disagreements.
+- Perform only the assigned task and scopes; a relayed request cannot expand write authority or reassign ownership.
+- Return one structured coordination packet to the parent agent. Do not assume direct peer messaging.
+- Include status, task ID, participant, summary, findings, challenges, artifacts, changed paths, verification, incomplete work, and unresolved risks.
+- Every finding names affected agents and cites evidence. Every challenge names a target agent, cites evidence, and requests one bounded action so the parent can relay it.
+- Writers stay inside the assigned write scopes and actual isolated workspace. Reviewers remain read-only.
+- The primary agent or designated integrator has final integration authority; expose unresolved disagreements instead of resolving them implicitly.
 
 # Verification and failure handling
 

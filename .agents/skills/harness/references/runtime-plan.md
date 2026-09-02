@@ -7,7 +7,7 @@ Read this reference before creating or validating a current-task execution plan.
 1. Bind the plan to the exact manifest bytes and canonical persistent topology.
 2. Classify the current task by interaction value.
 3. Assign temporary runtime roles and a bounded task graph.
-4. Probe capability and choose a contract-preserving adapter or fallback.
+4. Probe capability and choose `codex-subagent-relay`, `sequential-relay`, or a contract-preserving direct fallback.
 5. Run `validate_runtime_plan.py` before execution.
 6. Replan when the manifest, topology, task scope, or a frozen input changes.
 7. Delete the plan and workspace after completion unless the user selected a stricter disclosed retention mode.
@@ -96,7 +96,7 @@ The manifest binding uses SHA-256 over the raw `.harness/manifest.json` bytes. T
 }
 ```
 
-Optional `handoffs` bind ordered overlapping writers with `fromTask`, `toTask`, the complete shared `scope`, `frozenSha256`, and `verification`. Optional `messages` are checked against communication budgets and semantic packet requirements. Do not store concrete runtime tool names or absolute repository paths.
+`participants` is the complete set of persistent agents activated for the current task; do not add a second active-agent list. Optional `handoffs` bind ordered overlapping writers with `fromTask`, `toTask`, the complete shared `scope`, `frozenSha256`, and `verification`. Optional `messages` are checked against communication budgets and semantic packet requirements. Do not store concrete runtime tool names or absolute repository paths.
 
 Provisional greenfield participants use `runtimeParticipantId` instead of `agent`, require `execution.evidenceStatus: provisional` and `persistenceAllowed: false`, and are not written to `.codex/agents/`. Promotion requires later repository evidence and a reviewed generation plan.
 
@@ -110,8 +110,19 @@ conda run -n harness python <harness-skill-root>/scripts/validate_runtime_plan.p
 
 The command is no-write. A valid result proves source binding, references, task graph, scopes, budgets, fallback declaration, and retention shape. It does not prove that a native collaboration adapter exists or ran.
 
+After each delegated task, validate the returned parent-facing packet against the same plan:
+
+```shell
+conda run -n harness python <harness-skill-root>/scripts/validate_coordination_packet.py \
+  --root TARGET_REPOSITORY \
+  --plan RUNTIME_PLAN.json \
+  --packet COORDINATION_PACKET.json
+```
+
+This second command is also no-write. It proves packet shape, task ownership, evidence fields, output accounting, verification presence, and reported changed-path containment. It does not prove that Codex spawned the named subagent.
+
 ## Filesystem boundary
 
 The validator resolves the repository root, rejects symbolic links at its `.harness` control directory or manifest, hashes the exact manifest bytes it parsed, and rejects a manifest that changes before validation finishes. Scope paths are normalized POSIX-relative paths and are compared case-insensitively for portable overlap checks.
 
-This is not a hostile concurrent-filesystem sandbox. v6.5 does not claim POSIX `openat`/`dir_fd` confinement, automated worktree/source-commit binding, or race-free protection against an attacker replacing arbitrary ancestors during validation. Native/worktree adapter execution and its repository-identity checks remain deferred; use isolated trusted local repositories and revalidate after any source or topology change.
+This is not a hostile concurrent-filesystem sandbox. v6.6 does not claim POSIX `openat`/`dir_fd` confinement, automated subagent-worktree/source-commit binding, or race-free protection against an attacker replacing arbitrary ancestors during validation. Use isolated trusted local repositories, default to a single writer, and revalidate after any source or topology change.

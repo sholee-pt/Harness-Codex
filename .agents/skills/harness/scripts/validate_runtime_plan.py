@@ -40,6 +40,9 @@ FORBIDDEN_PERSISTENT_KEYS = {
 ABSOLUTE_PATH_KEYS = {"absolutePath", "cwd", "repositoryPath", "repositoryRoot", "root"}
 ADAPTERS = {
     "runtime-probed",
+    "codex-subagent-relay",
+    "sequential-relay",
+    # v6.5 aliases remain accepted for ephemeral-plan compatibility.
     "native-multi-agent",
     "worktree-team",
     "delegated-fan-out",
@@ -429,9 +432,9 @@ class RuntimePlanValidator:
         if policy_ref not in policies:
             raise RuntimePlanError("execution.capabilityPolicyRef references an unknown policy")
         policy = policies[policy_ref]
-        if execution.get("adapter") == "native-multi-agent":
+        if execution.get("adapter") in {"native-multi-agent", "codex-subagent-relay"}:
             if policy.get("probe", {}).get("mode") != "runtime-check":
-                raise RuntimePlanError("native adapter requires a runtime capability probe")
+                raise RuntimePlanError("subagent adapter requires a runtime capability probe")
         fallback = policy.get("fallback")
         required_capabilities = policy.get("requiredCapabilities", [])
         if required_capabilities or policy.get("preferredRuntimeMapping") == "runtime-native":

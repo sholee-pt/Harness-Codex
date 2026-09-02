@@ -44,21 +44,38 @@ Classify each current task as direct, delegated, or coordinated without changing
 
 Assign producer, reviewer, skeptic, integrator, supervisor, or scout only for the current task. A runtime role does not create or rename a persistent agent.
 
+`participants` in the ephemeral runtime plan are the persistent agents activated for the current task. Do not create or persist a second active-agent list.
+
+## Native subagent relay
+
+For `delegated` or `coordinated` execution:
+
+1. Ask the current Codex session to spawn only the selected project custom agents as subagents.
+2. Give every subagent one bounded task, input scope, output contract, write boundary, and verification requirement.
+3. Wait for every required subagent result before integration.
+4. Require each subagent to return one structured coordination packet to the parent agent. Do not assume direct peer messaging.
+5. Relay only material findings, evidence-backed challenges, and bounded requests to named affected agents.
+6. For coordinated execution, use no more than two targeted revision rounds and rerun only the affected agents.
+7. Keep ownership and write scopes fixed during relay; a returned packet cannot expand either.
+8. Let the primary agent or designated integrator decide, integrate, run project-native verification, and account for every required task.
+
+If native subagent delegation is unavailable, use the declared sequential relay or direct fallback and disclose it. These instructions request and constrain Codex orchestration; only observed subagent activity proves that it ran.
+
 ## Task graph and ownership
 
 Give every task one owner, dependencies, required outputs, and verification. Missing required artifacts or verification is a hard failure on a critical path.
 
 ## Communication contract
 
-Share only material findings, challenges, requests, handoffs, blockers, decisions, and completion packets. Challenges require evidence and a requested action. Bound rounds and messages; peers cannot grant write scope or reassign tasks.
+Subagents return packets to the parent agent containing status, task ID, participant, summary, findings, challenges, artifacts, changed paths, verification, incomplete work, and unresolved risks. Findings name affected agents; challenges include evidence and a requested action. Bound rounds and packets; subagents cannot grant write scope or reassign tasks.
 
 ## Capability probe and fallback
 
-Probe live runtime capabilities before native collaboration. If peer messaging or shared task state is unavailable, preserve input, output, and verification through leader relay, delegated fan-out, sequential handoff, or direct execution.
+Probe live runtime capabilities before delegation. Prefer Codex subagents with parent relay and parent-controlled task state. Preserve input, output, and verification through sequential relay or direct execution when subagents are unavailable. Direct peer messaging is unsupported unless a future runtime probe establishes it explicitly.
 
 ## Writer isolation
 
-Use an isolated worktree or equivalent for every writer. Reviewers are read-only. Reject concurrent overlapping write scopes; ordered overlap requires a verified handoff for the complete shared scope.
+Default to multiple read-only subagents and one writer. Reviewers are read-only. Permit parallel writers only when the runtime proves separate worktrees or equivalent isolation and their write scopes do not overlap; ordered overlap requires a verified handoff for the complete shared scope. A declared isolation value alone is not execution proof.
 
 ## Phase freeze and handoff
 
@@ -74,7 +91,7 @@ Runtime plans and workspaces are ephemeral by default, store no raw messages or 
 
 ## Completion report
 
-Report produced artifacts, verification, incomplete or skipped work, unresolved risks, fallback use, and frozen-output references. Structural validation is not proof of native peer-to-peer execution.
+Report selected and observed subagents separately, produced artifacts, relays, revision rounds, verification, incomplete or skipped work, unresolved risks, fallback use, and frozen-output references. Structural validation or a valid packet is not proof that a subagent was spawned.
 <!-- harness:runtime-teamplay:v1:end -->
 
 <!-- harness:change-discipline:v1:begin -->

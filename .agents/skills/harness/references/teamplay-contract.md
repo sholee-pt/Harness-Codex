@@ -38,22 +38,21 @@ Use only these semantic message types:
 - `DECISION`: the designated authority's resolution.
 - `COMPLETE`: artifacts, verification, incomplete work, residual risks, and a frozen-output reference.
 
-Do not send routine status. Peers cannot expand write scope, transfer write authority, or reassign ownership. Broadcast is leader-only except for a critical contract-breaking finding. Bound rounds, messages per participant, and reassignments; do not repeat the same claim.
+Do not send routine status. Subagents return findings and challenges to the parent, which relays only material packets to named affected agents. A relay cannot expand write scope, transfer write authority, or reassign ownership. Bound rounds, packets per participant, and reassignments; do not repeat the same claim.
 
 ## Capability and fallback
 
-Probe live capability before choosing a native adapter. Keep concrete runtime tool syntax inside a future adapter implementation, never in persistent topology or the semantic runtime plan.
+Probe live capability before choosing an adapter. Keep concrete runtime tool syntax out of persistent topology and the semantic runtime plan. Read [native-subagent-relay.md](native-subagent-relay.md) for the Codex execution sequence and parent-facing packet.
 
-1. Peer messaging, shared task state, and parallel delegation: native multi-agent adapter.
-2. Parallel delegation without peer messaging or shared state: isolated worktrees with leader relay and leader-controlled task state.
-3. Parallel delegation only: delegated fan-out/fan-in.
-4. No delegation: sequential frozen handoffs or direct execution.
+1. Parallel Codex subagent delegation: `codex-subagent-relay` with parent relay and parent-controlled task state.
+2. No parallel delegation: `sequential-relay` with the same input, output, and verification contracts.
+3. No useful delegation path: direct execution.
 
-Every fallback preserves input, output, and verification contracts. Static validation proves the declaration, not live capability availability.
+Direct peer messaging remains unsupported until an observed future runtime capability establishes it. Every fallback preserves input, output, and verification contracts. Static validation proves the declaration, not live capability availability.
 
 ## Writer isolation and handoff
 
-Every writer uses an isolated worktree or equivalent and stays inside persistent read/write boundaries. Reviewers are read-only. Concurrent overlapping writers are invalid. Ordered overlap requires a handoff covering the complete shared scope, with a frozen content hash and verification. If the frozen input changes, dependent validation is stale and must be repeated.
+Default to multiple read-only subagents and one writer. A writer stays inside persistent read/write boundaries, and reviewers are read-only. Parallel writers require observed separate worktrees or equivalent isolation and non-overlapping scopes; a declared `isolation` value is not execution proof. Concurrent overlapping writers are invalid. Ordered overlap requires a handoff covering the complete shared scope, with a frozen content hash and verification. If the frozen input changes, dependent validation is stale and must be repeated.
 
 ## Failure and retention
 
@@ -61,4 +60,4 @@ Retry a transient interruption at most once. Do not retry authentication, author
 
 Runtime state defaults to `ephemeral`: use memory or an OS temporary directory, retain no raw messages or artifacts, and remove it after completion. `redacted` stores pseudonymous state, hashes, and verification only. `full-audit` requires explicit user opt-in, a disclosed location and duration, a purge method, and a sensitivity warning.
 
-The v6.5 contract and validator do not implement native peer-to-peer execution. Report structural validation separately from a live runtime check.
+The v6.6 contract instructs Codex to use native custom-agent subagents through parent relay and validates their returned packets. It is not an independent executor and does not implement native peer-to-peer communication. Report structural validation, packet validation, and observed live runtime behavior separately.

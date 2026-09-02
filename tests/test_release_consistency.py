@@ -24,7 +24,7 @@ import harness_transaction  # noqa: E402
 
 class ReleaseConsistencyTests(unittest.TestCase):
     def test_release_metadata_is_consistent(self) -> None:
-        self.assertEqual(harness_metadata.HARNESS_VERSION, "6.5")
+        self.assertEqual(harness_metadata.HARNESS_VERSION, "6.6")
         self.assertEqual(harness_apply.GENERATOR_VERSION, harness_metadata.HARNESS_VERSION)
         self.assertEqual(harness_state.GENERATOR_VERSION, harness_metadata.HARNESS_VERSION)
         self.assertEqual(harness_eval_types.HARNESS_VERSION, harness_metadata.HARNESS_VERSION)
@@ -47,15 +47,15 @@ class ReleaseConsistencyTests(unittest.TestCase):
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         versions = (REPO_ROOT / "VERSIONS.md").read_text(encoding="utf-8")
         agents = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        workflow_path = REPO_ROOT / ".github" / "workflows" / "codex-v6.5.yml"
+        workflow_path = REPO_ROOT / ".github" / "workflows" / "codex-v6.6.yml"
         workflow = workflow_path.read_text(encoding="utf-8")
-        self.assertIn("Harness_for_Codex-v6.5", readme)
-        self.assertIn("--branch codex/v6.5", readme)
-        self.assertIn("| `codex/v6.5` | Harness for Codex v6.5 |", versions)
-        self.assertIn("This branch contains Harness for Codex v6.5", agents)
-        self.assertIn("name: Harness for Codex v6.5 checks", workflow)
-        self.assertIn("- codex/v6.5", workflow)
-        self.assertFalse((workflow_path.parent / "codex-v6.4.yml").exists())
+        self.assertIn("Harness_for_Codex-v6.6", readme)
+        self.assertIn("--branch codex/v6.6", readme)
+        self.assertIn("| `codex/v6.6` | Harness for Codex v6.6 |", versions)
+        self.assertIn("This branch contains Harness for Codex v6.6", agents)
+        self.assertIn("name: Harness for Codex v6.6 checks", workflow)
+        self.assertIn("- codex/v6.6", workflow)
+        self.assertFalse((workflow_path.parent / "codex-v6.5.yml").exists())
 
     def test_manifest_asset_uses_current_generator_and_stable_schemas(self) -> None:
         asset = json.loads(
@@ -93,6 +93,9 @@ class ReleaseConsistencyTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn(harness_teamplay.PROJECT_BLOCK, project)
         self.assertIn(harness_teamplay.AGENT_BLOCK, agent)
+        self.assertIn("Native subagent relay", project)
+        self.assertIn("Return one structured coordination packet", agent)
+        self.assertNotIn("Peer collaboration", agent)
 
     def test_existing_eval_cli_commands_are_unchanged(self) -> None:
         expected = {

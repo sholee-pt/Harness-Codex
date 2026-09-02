@@ -14,6 +14,7 @@ SCRIPTS = REPO_ROOT / ".agents" / "skills" / "harness" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import harness_metadata  # noqa: E402
+import harness_coordination  # noqa: E402
 import harness_teamplay  # noqa: E402
 import validate_runtime_plan as runtime_plan  # noqa: E402
 
@@ -126,6 +127,37 @@ def valid_plan(root: Path, manifest: dict) -> dict:
             "failOnUnresolvedCriticalChallenge": True,
         },
         "retention": runtime_plan.default_retention(),
+    }
+
+
+def valid_packet() -> dict:
+    return {
+        "schemaVersion": harness_coordination.PACKET_SCHEMA_VERSION,
+        "status": "complete",
+        "taskId": "prepare-change",
+        "participant": "api_producer",
+        "summary": "Prepared the contract change.",
+        "findings": [
+            {
+                "claim": "The generated contract must be reviewed.",
+                "evidenceRefs": ["contracts/api.schema:1"],
+                "severity": "medium",
+                "affectedAgents": ["contract_reviewer"],
+            }
+        ],
+        "challenges": [
+            {
+                "targetAgent": "contract_reviewer",
+                "claim": "Review must include the generated contract.",
+                "evidenceRefs": ["contracts/api.schema:1"],
+                "requestedAction": "Check the generated contract boundary.",
+            }
+        ],
+        "artifacts": ["change-proposal"],
+        "changedPaths": ["contracts/api.schema"],
+        "verification": ["schema-check"],
+        "incompleteWork": [],
+        "unresolvedRisks": [],
     }
 
 
@@ -377,19 +409,155 @@ class CommunicationTests(RuntimeFixtureTestCase):
             )
 
 
+class CoordinationPacketTests(RuntimeFixtureTestCase):
+    def _validate_packet(self, packet: dict | None = None) -> dict:
+        self.validate()
+        return harness_coordination.validate_coordination_packet(
+            packet or valid_packet(),
+            participants=harness_coordination.participant_map(self.plan),
+            tasks=harness_coordination.task_map(self.plan),
+        )
+
+    def test_complete_packet_is_valid_but_not_live_execution_proof(self) -> None:
+        report = self._validate_packet()
+        self.assertTrue(report["valid"])
+        self.assertFalse(report["provesLiveSubagentExecution"])
+        self.assertEqual(report["findingCount"], 1)
+        self.assertEqual(report["challengeCount"], 1)
+
+    def test_packet_participant_must_own_task(self) -> None:
+        packet = valid_packet()
+        packet["participant"] = "contract_reviewer"
+        with self.assertRaisesRegex(
+            harness_coordination.CoordinationPacketError, "does not own"
+        ):
+            self._validate_packet(packet)
+
+    def test_finding_requires_evidence(self) -> None:
+        packet = valid_packet()
+        packet["findings"][0]["evidenceRefs"] = []
+        with self.assertRaisesRegex(
+            harness_coordination.CoordinationPacketError, "must not be empty"
+        ):
+            self._validate_packet(packet)
+
+    def test_finding_names_known_affected_agents(self) -> None:
+        packet = valid_packet()
+        packet["findings"][0]["affectedAgents"] = ["unknown_agent"]
+        with self.assertRaisesRegex(
+            harness_coordination.CoordinationPacketError, "unknown participants"
+        ):
+            self._validate_packet(packet)
+
+    def test_challenge_targets_another_known_agent(self) -> None:
+        packet = valid_packet()
+        packet["challenges"][0]["targetAgent"] = "api_producer"
+        with self.assertRaisesRegex(
+            harness_coordination.CoordinationPacketError, "another participant"
+        ):
+            self._validate_packet(packet)
+
+    def test_changed_path_must_stay_inside_write_scope(self) -> None:
+        packet = valid_packet()
+        packet["changedPaths"] = ["contracts/storage.schema"]
+        with self.assertRaisesRegex(
+            harness_coordination.CoordinationPacketError, "exceeds"
+        ):
+            self._validate_packet(packet)
+
+    def test_read_only_participant_cannot_report_changed_path(self) -> None:
+        packet = valid_packet()
+        packet.update(
+            {
+                "taskId": "review-change",
+                "participant": "contract_reviewer",
+                "artifacts": ["review-findings"],
+                "changedPaths": ["contracts/generated/review.md"],
+            }
+        )
+        packet["challenges"][0]["targetAgent"] = "api_producer"
+        with self.assertRaisesRegex(
+            harness_coordination.CoordinationPacketError, "exceeds"
+        ):
+            self._validate_packet(packet)
+
+    def test_complete_packet_requires_outputs_and_verification(self) -> None:
+        packet = valid_packet()
+        packet["artifacts"] = []
+        packet["verification"] = []
+        with self.assertRaisesRegex(
+            harness_coordination.CoordinationPacketError, "requires verification"
+        ):
+            self._validate_packet(packet)
+
+    def test_complete_packet_accounts_for_declared_verification(self) -> None:
+        packet = valid_packet()
+        packet["verification"] = ["unrelated-check"]
+        with self.assertRaisesRegex(
+            harness_coordination.CoordinationPacketError,
+            "missing required task verification",
+        ):
+            self._validate_packet(packet)
+
+    def test_noncomplete_packet_describes_incomplete_work(self) -> None:
+        packet = valid_packet()
+        packet["status"] = "partial"
+        with self.assertRaisesRegex(
+            harness_coordination.CoordinationPacketError, "must describe incomplete work"
+        ):
+            self._validate_packet(packet)
+
+    def test_packet_cli_is_machine_readable_and_no_write(self) -> None:
+        plan_path = self.root / "runtime-plan.json"
+        packet_path = self.root / "coordination-packet.json"
+        plan_path.write_text(json.dumps(self.plan), encoding="utf-8")
+        packet_path.write_text(json.dumps(valid_packet()), encoding="utf-8")
+        manifest_path = self.root / ".harness" / "manifest.json"
+        before = manifest_path.read_bytes()
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPTS / "validate_coordination_packet.py"),
+                "--root",
+                str(self.root),
+                "--plan",
+                str(plan_path),
+                "--packet",
+                str(packet_path),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        report = json.loads(completed.stdout)
+        self.assertTrue(report["valid"])
+        self.assertFalse(report["provesLiveSubagentExecution"])
+        self.assertEqual(before, manifest_path.read_bytes())
+
+
 class CapabilityFallbackTests(unittest.TestCase):
-    def test_missing_peer_messaging_falls_back_to_relay(self) -> None:
+    def test_parallel_delegation_uses_codex_parent_relay(self) -> None:
         result = harness_teamplay.select_adapter(
             "coordinated", {"parallel-delegation", "shared-task-state"}
         )
-        self.assertEqual(result["communication"], "leader-relay")
-        self.assertTrue(result["fallbackUsed"])
+        self.assertEqual(result["adapter"], "codex-subagent-relay")
+        self.assertEqual(result["communication"], "parent-relay")
+        self.assertEqual(result["taskControl"], "parent")
+        self.assertFalse(result["fallbackUsed"])
 
-    def test_missing_shared_task_state_falls_back_to_leader_control(self) -> None:
+    def test_peer_capabilities_do_not_enable_unverified_direct_p2p(self) -> None:
         result = harness_teamplay.select_adapter(
-            "coordinated", {"parallel-delegation", "peer-messaging"}
+            "coordinated",
+            {"parallel-delegation", "peer-messaging", "shared-task-state"},
         )
-        self.assertEqual(result["taskControl"], "leader")
+        self.assertEqual(result["adapter"], "codex-subagent-relay")
+        self.assertEqual(result["communication"], "parent-relay")
+
+    def test_missing_subagent_delegation_uses_sequential_relay(self) -> None:
+        result = harness_teamplay.select_adapter("coordinated", set())
+        self.assertEqual(result["adapter"], "sequential-relay")
+        self.assertTrue(result["fallbackUsed"])
 
     def test_fallback_preserves_input_output_verification(self) -> None:
         result = harness_teamplay.select_adapter("coordinated", set())
@@ -467,8 +635,8 @@ class CompatibilityTests(RuntimeFixtureTestCase):
     def test_evaluation_schema_remains_2(self) -> None:
         self.assertEqual(harness_metadata.EVALUATION_SCHEMA_VERSION, 2)
 
-    def test_v60_to_v64_records_remain_readable(self) -> None:
-        self.assertTrue({"6.0", "6.1", "6.2", "6.3", "6.4"}.issubset(
+    def test_v60_to_v65_records_remain_readable(self) -> None:
+        self.assertTrue({"6.0", "6.1", "6.2", "6.3", "6.4", "6.5"}.issubset(
             harness_metadata.READABLE_EVALUATION_VERSIONS
         ))
 

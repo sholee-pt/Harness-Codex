@@ -24,6 +24,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v6.3` | Harness for Codex v6.3 | Schema 3 | Schema 5 | Schema 2 | Derived-view comparison lifecycle, verification-pure task measurement, explicit stratum selection, auxiliary binding and clean-tree hardening |
 | `codex/v6.4` | Harness for Codex v6.4 | Schema 3 | Schema 5 | Schema 2 | Stable two-pass fingerprints, expanded repository-state verification checks, process-group cleanup and missing-stratum errors |
 | `codex/v6.5` | Harness for Codex v6.5 | Schema 3 | Schema 5 | Schema 2 | Single-source release metadata, manifest-bound ephemeral runtime plans, bounded teamplay contracts, capability fallback and privacy-safe retention |
+| `codex/v6.6` | Harness for Codex v6.6 | Schema 3 | Schema 5 | Schema 2 | Native Codex subagent parent relay, scoped coordination-packet validation, conservative writer isolation and live-smoke accounting |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -302,6 +303,22 @@ Harness for Codex v6.5 adds a runtime-only teamplay plane without changing gener
 - Keeps native peer-to-peer execution and fully automated runtime adapters deferred; v6.5 validates the semantic plan but does not claim that a native team ran.
 
 Harness for Codex v6.0 through v6.4 records remain immutable and readable. Runtime plans are never written to the persistent manifest and cannot automatically change generated agents, skills, routes, or policies.
+
+## Harness for Codex v6.6
+
+Harness for Codex v6.6 turns the v6.5 semantic teamplay plan into an explicit Codex-native parent-relay instruction contract without changing generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, or any persisted evaluation schema number.
+
+- Treats runtime-plan `participants` as the complete set of persistent custom agents activated for the current task instead of introducing another active-agent field.
+- Instructs the parent Codex session to spawn only selected project agents, assign bounded task and scope contracts, wait for required results, relay material evidence, and retain final integration authority.
+- Uses `codex-subagent-relay` when parallel delegation is observed and `sequential-relay` or direct execution as a contract-preserving fallback.
+- Replaces unverified peer-to-peer assumptions with parent-facing coordination packets and at most two targeted revision rounds.
+- Validates packet task ownership, evidence, affected-agent and challenge references, required outputs, verification, incomplete work, and reported changed paths without writing repository state.
+- Defaults to multiple read-only subagents and one writer; parallel writers require observed isolated workspaces and non-overlapping scopes rather than a declaration alone.
+- Keeps packet schema 1 ephemeral and separate from the persistent manifest. A valid packet deliberately reports that it is not proof of live subagent execution.
+- Expands the optional Codex smoke test to record selected versus observed subagents, packet validation, relay behavior, revision count, and fallback use.
+- Preserves existing evaluation CLI commands, reads v6.0 through v6.5 records descriptively, and limits new concrete attribution to v6.6 evidence.
+
+Harness for Codex v6.5 records and runtime-plan adapter aliases remain readable. This release is instruction-driven rather than a standalone scheduler, does not claim direct peer messaging, and does not guarantee automatic per-subagent worktree creation.
 
 ## Harness for Claude Code releases
 

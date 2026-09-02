@@ -61,9 +61,9 @@ Retain the bundled `project-harness` change discipline in the generated orchestr
 
 Read [orchestration.md](references/orchestration.md) before planning `project-harness`. Do not write planned artifacts directly.
 
-Keep teamplay semantic and runtime-only. Read [teamplay-contract.md](references/teamplay-contract.md) when a current task may need repeated agent interaction, and [runtime-plan.md](references/runtime-plan.md) before creating a temporary execution plan. Select coordination from interaction value, never agent count. Probe live capability, preserve input/output/verification through fallback, bound messages and challenges, isolate writers, and default retention to ephemeral. Use [team-recipes.md](references/team-recipes.md) only for the matching task shape.
+Keep teamplay semantic and runtime-only. Read [teamplay-contract.md](references/teamplay-contract.md) when a current task may need repeated agent interaction, and [runtime-plan.md](references/runtime-plan.md) before creating a temporary execution plan. If that plan selects `delegated` or `coordinated`, read [native-subagent-relay.md](references/native-subagent-relay.md) and use its parent-relay sequence. Select coordination from interaction value, never agent count. Probe live capability, preserve input/output/verification through fallback, bound messages and challenges, isolate writers, and default retention to ephemeral. Use [team-recipes.md](references/team-recipes.md) only for the matching task shape.
 
-The generated `project-harness` must include the bundled runtime classification, task-ownership, communication, capability fallback, writer isolation, phase-freeze, stopping, retention, and completion rules. Generated agent instructions must include the bundled peer-collaboration rules. These rules describe semantic behavior; they do not claim a native team executor exists.
+The generated `project-harness` must include the bundled runtime classification, task-ownership, parent-relay, capability fallback, writer isolation, phase-freeze, stopping, retention, and completion rules. Generated agent instructions must include the bundled parent-coordination rules. These rules direct Codex to use native subagents when available; they do not themselves prove that delegation occurred.
 
 ## Phase 4 — Dry-run, apply, and validate
 
@@ -73,9 +73,10 @@ The generated `project-harness` must include the bundled runtime classification,
 4. If apply reports a pending transaction, stop planning, read [transaction-recovery.md](references/transaction-recovery.md), and run `conda run -n harness python <harness-skill-root>/scripts/harness_apply.py --root <repo-root> --recover` before retrying.
 5. Run `conda run -n harness python <harness-skill-root>/scripts/validate_harness.py <repo-root>`.
 6. When a current-task runtime plan is needed, keep it in memory or an OS temporary directory and run `conda run -n harness python <harness-skill-root>/scripts/validate_runtime_plan.py --root <repo-root> --plan <runtime-plan>`. Never insert it into the manifest.
-7. When a golden expectation exists, run `conda run -n harness python <harness-skill-root>/scripts/evaluate_topology.py --plan <plan-file> --golden <golden-file>`.
-8. Read [validation.md](references/validation.md) and perform the applicable behavioral checks. Use [codex-smoke-test.md](references/codex-smoke-test.md) when live discovery or delegation verification is required.
-9. Account for every planned artifact as created, unchanged, conflicted, skipped, or failed. Do not silently drop outputs.
+7. After each delegated or coordinated task returns, run `conda run -n harness python <harness-skill-root>/scripts/validate_coordination_packet.py --root <repo-root> --plan <runtime-plan> --packet <coordination-packet>` before relaying or integrating its claims. Keep packets ephemeral by default.
+8. When a golden expectation exists, run `conda run -n harness python <harness-skill-root>/scripts/evaluate_topology.py --plan <plan-file> --golden <golden-file>`.
+9. Read [validation.md](references/validation.md) and perform the applicable behavioral checks. Use [codex-smoke-test.md](references/codex-smoke-test.md) when live discovery, subagent selection, or parent-relay verification is required.
+10. Account for every planned artifact as created, unchanged, conflicted, skipped, or failed. Do not silently drop outputs.
 
 ## Audit and update mode
 
@@ -87,4 +88,4 @@ Evaluation is separate from configuration and never runs implicitly. When the us
 
 ## Completion report
 
-Report the selected topology, dry-run result, generated and unchanged files, preserved conflicts, runtime execution class when applicable, fallback use, validation results, and remaining risks. Explain that newly written `AGENTS.md` or custom agent definitions require a fresh Codex run for discovery. Distinguish runtime verification from structural validation; a valid runtime plan does not prove native peer execution.
+Report the selected topology, dry-run result, generated and unchanged files, preserved conflicts, runtime execution class when applicable, selected and observed subagents, relay and revision counts, fallback use, validation results, and remaining risks. Explain that newly written `AGENTS.md` or custom agent definitions require a fresh Codex run for discovery. Distinguish runtime verification from structural validation; a valid runtime plan or coordination packet does not prove live subagent execution.
