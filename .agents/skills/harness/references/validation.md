@@ -29,6 +29,9 @@ Read this reference after artifacts have been generated or updated.
 - A clean plan dry-run reports the same create, update, or unchanged actions that the actual apply performs.
 - A runtime plan is bound to the exact current manifest and canonical topology, references only allowed persistent agents or explicitly provisional participants, and does not modify either file.
 - Coordinated runtime plans have finite communication and reassignment budgets, evidence-backed challenges, stopping conditions, capability fallback, isolated writers, and ephemeral retention by default.
+- Draft plans materialize every deterministic change-discipline placeholder exactly once before the unchanged Schema 3 apply validator runs.
+- Runtime receipts reject empty receivers, duplicate spawns, role/parent/session-source mismatch, unknown receivers, missing agent states, unsupported CLI parser versions, malformed or unknown critical events, and exhausted or inconsistent fixed wait budgets.
+- Relay receipts bind reviews to input packet hashes, invalidate stale reviews, and account for exactly the affected agents without changing Coordination Packet Schema 1.
 
 ## Behavioral scenarios
 
@@ -67,6 +70,10 @@ Test the applicable cases, using an isolated temporary repository when possible:
 31. A returned coordination packet is rejected for wrong task ownership, missing evidence, missing required outputs, unverified completion, or changed paths outside the participant's write scope.
 32. Structural and packet validation remain distinct from an optional live smoke test; neither validator claims that a subagent actually ran.
 33. Ephemeral retention is the default; full audit requires explicit user opt-in and redacted retention stores no raw messages.
+34. Missing or duplicate deterministic placeholders fail before apply; a correct builder output remains an ordinary valid Schema 3 plan.
+35. A missing child ID, role mismatch, empty receiver, repeated spawn, unknown receiver, or exhausted wait budget cannot be reported as observed completion.
+36. A CLI-version mismatch, missing observation binding, public-stream spawn omission, empty wait receiver, or unknown critical collaboration event fails closed as unobserved, while raw prompts, messages, paths, source, and credentials never enter a runtime receipt.
+37. A review bound to an older packet hash is stale after revision, and rerun accounting rejects both missing affected agents and unrelated reruns.
 
 ## Completion gate
 

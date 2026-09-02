@@ -7,7 +7,7 @@ Read this reference before creating or validating a current-task execution plan.
 1. Bind the plan to the exact manifest bytes and canonical persistent topology.
 2. Classify the current task by interaction value.
 3. Assign temporary runtime roles and a bounded task graph.
-4. Probe capability and choose `codex-subagent-relay`, `sequential-relay`, or a contract-preserving direct fallback.
+4. Probe capability with the first real selected task agent and choose `codex-subagent-relay`, `sequential-relay`, or a contract-preserving direct fallback.
 5. Run `validate_runtime_plan.py` before execution.
 6. Replan when the manifest, topology, task scope, or a frozen input changes.
 7. Delete the plan and workspace after completion unless the user selected a stricter disclosed retention mode.
@@ -108,7 +108,7 @@ conda run -n harness python <harness-skill-root>/scripts/validate_runtime_plan.p
   --plan RUNTIME_PLAN.json
 ```
 
-The command is no-write. A valid result proves source binding, references, task graph, scopes, budgets, fallback declaration, and retention shape. It does not prove that a native collaboration adapter exists or ran.
+The command is no-write. A valid result proves source binding, references, task graph, scopes, communication budgets, fallback declaration, and retention shape. It does not prove that a native collaboration adapter exists or ran. Harness for Codex v6.7 keeps this schema unchanged and places its fixed liveness budget—three waits and 300000 total milliseconds per agent—in the runtime observation policy rather than adding optional Schema 1 fields.
 
 After each delegated task, validate the returned parent-facing packet against the same plan:
 
@@ -125,4 +125,4 @@ This second command is also no-write. It proves packet shape, task ownership, ev
 
 The validator resolves the repository root, rejects symbolic links at its `.harness` control directory or manifest, hashes the exact manifest bytes it parsed, and rejects a manifest that changes before validation finishes. Scope paths are normalized POSIX-relative paths and are compared case-insensitively for portable overlap checks.
 
-This is not a hostile concurrent-filesystem sandbox. v6.6 does not claim POSIX `openat`/`dir_fd` confinement, automated subagent-worktree/source-commit binding, or race-free protection against an attacker replacing arbitrary ancestors during validation. Use isolated trusted local repositories, default to a single writer, and revalidate after any source or topology change.
+This is not a hostile concurrent-filesystem sandbox. v6.7 does not claim POSIX `openat`/`dir_fd` confinement, automated subagent-worktree/source-commit binding, or race-free protection against an attacker replacing arbitrary ancestors during validation. Use isolated trusted local repositories, default to a single writer, and revalidate after any source or topology change.

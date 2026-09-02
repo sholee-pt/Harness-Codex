@@ -34,7 +34,7 @@ COMMAND_ITEM_TYPES = {"command_execution"}
 MCP_ITEM_TYPES = {"mcp_tool_call"}
 WEB_ITEM_TYPES = {"web_search"}
 FILE_ITEM_TYPES = {"file_change"}
-SUBAGENT_ITEM_TYPES = {"subagent_call", "collab_agent_tool_call"}
+SUBAGENT_ITEM_TYPES = {"subagent_call", "collab_agent_tool_call", "collab_tool_call"}
 KNOWN_ITEM_TYPES = {
     "agent_message",
     "reasoning",

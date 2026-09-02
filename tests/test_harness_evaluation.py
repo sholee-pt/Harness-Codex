@@ -296,6 +296,26 @@ class JsonlCaptureTests(unittest.TestCase):
         self.assertEqual(unknown.parser_compatibility, "degraded")
         self.assertNotIn("must not be retained", json.dumps(unknown.__dict__))
 
+    def test_current_collaboration_item_is_counted_without_retaining_content(self) -> None:
+        summary = capture.parse_jsonl(
+            [
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {
+                            "type": "collab_tool_call",
+                            "tool": "spawn_agent",
+                            "prompt": "sensitive delegated task",
+                            "status": "completed",
+                        },
+                    }
+                )
+            ]
+        )
+        self.assertEqual(summary.counts["subagent"], 1)
+        self.assertEqual(summary.unknown_count, 0)
+        self.assertNotIn("sensitive delegated task", json.dumps(summary.__dict__))
+
     def test_missing_usage_remains_unavailable_and_nonzero_exit_fails(self) -> None:
         summary = capture.parse_jsonl(['{"type":"turn.completed"}'])
         record = capture.base_record(
@@ -995,7 +1015,7 @@ class ComparisonTests(unittest.TestCase):
             v64["runtime"]["harnessVersion"],
             schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS,
         )
-        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {"6.6"})
+        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {"6.7"})
         plan = self.comparison_plan()
         v60_comparison = compare.compare_runs(
             baseline=manual_record(repository_id, uuid_text(2), arm="baseline", verification="failed", harness_version="6.0"),

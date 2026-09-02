@@ -21,6 +21,7 @@ Use this optional check after structural validation when the generated harness m
 3. Verify that the selected agent responsibility, inputs, outputs, and linked skills match the manifest rather than only sharing a technology label.
 4. Verify through observable task activity that the specialist ran; a plan or claimed packet alone is insufficient.
 5. Verify that the final result identifies evidence, validation performed, and unresolved risk.
+6. When JSONL capture is explicitly enabled and its CLI version is supported, cross-check it against temporary child-session observation bindings, validate a privacy-safe receipt, and distinguish spawn acknowledgement, runtime observation, completion, failure, and fallback. Do not persist raw events or raw thread bindings in Harness state.
 
 ## Parent relay
 
@@ -30,9 +31,10 @@ Use this optional check after structural validation when the generated harness m
 4. Validate each packet with `validate_coordination_packet.py` before its claims are relayed or integrated.
 5. Confirm that the parent relays only evidence-backed findings or challenges to named affected agents, never expands scope, and performs no more than two targeted revision rounds.
 6. Confirm that the parent or named integrator accounts for all required tasks and runs project-native final verification.
+7. If a packet is revised, validate a separate relay receipt: every review echoes its input packet hash, stale reviews are excluded from integration, and exactly the affected agents are rerun.
 
 Use read-only subagents and at most one writer unless the runtime visibly establishes separate writer worktrees and non-overlapping scopes. A declared worktree field is not sufficient.
 
 ## Result
 
-Record discovery, delegation, packet validation, parent relay, selected subagents, observed subagents, revision count, and fallback separately as `passed`, `failed`, or `not applicable`. A structural or packet-validation pass does not override a live failure. This smoke test is opt-in and is not part of normal CI because it requires an actual Codex runtime. Do not modify generated files merely to make the smoke test pass; revise and dry-run a new plan.
+Record discovery, delegation, packet validation, parent relay, selected/spawned/observed/completed subagents, revision count, and fallback separately as `passed`, `failed`, or `not applicable`. A structural, packet, receipt-integrity, or relay-lineage pass does not override a live failure. This smoke test is opt-in and is not part of normal CI because it requires an actual Codex runtime. Do not modify generated files merely to make the smoke test pass; revise and dry-run a new plan.

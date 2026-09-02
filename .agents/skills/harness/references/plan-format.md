@@ -1,6 +1,6 @@
 # Generation Plan Format
 
-Create one UTF-8 JSON plan and pass it to `scripts/harness_apply.py`. Schema 3 remains the normative generation input contract for Harness for Codex v5 and v6.
+Create one UTF-8 JSON draft, materialize its deterministic contracts, and pass the resulting plan to `scripts/harness_apply.py`. Schema 3 remains the normative generation input contract for Harness for Codex v5 and v6; the builder does not add a schema field or let apply mutate its input.
 
 Read [topology-contract.md](topology-contract.md) before filling the topology. The complete fixture at `tests/fixtures/minimal-plan.json` is an executable minimal example.
 
@@ -146,6 +146,23 @@ When `requiredCapabilities` is non-empty or `preferredRuntimeMapping` is `runtim
 Routing policies require evidence-backed task categories, boundary references, a recommended execution class, declared collaboration patterns, quality-policy references, and one capability-policy reference. Task categories are globally unique across routes, and a direct route has no collaboration patterns. If multiple categories match, use the persistent route only when all matches resolve to that same route; otherwise report ambiguity and require an explicit runtime selection. If no route matches, runtime task classification selects the lightest safe execution class. Persistent routes do not store the current task decision.
 
 ## Artifact and safety constraints
+
+The draft uses deterministic placeholders instead of reproducing fixed contracts probabilistically:
+
+- Put `{{HARNESS_PROJECT_CHANGE_DISCIPLINE_V1}}` exactly once in `.agents/skills/project-harness/SKILL.md`.
+- Put `{{HARNESS_WRITER_CHANGE_DISCIPLINE_V1}}` exactly once in every writer agent's `developer_instructions`.
+- Do not put either placeholder in a read-only agent, support artifact, or any other path.
+- Do not include a canonical block beside its placeholder.
+
+Materialize the draft before dry-run:
+
+```shell
+conda run -n harness python <harness-skill-root>/scripts/harness_plan_builder.py \
+  --input DRAFT_PLAN.json \
+  --output PLAN.json
+```
+
+The builder requires every target exactly once, emits another Schema 3 object, and leaves the existing apply validator responsible for the complete plan, evidence, ownership, and canonical exact-once checks.
 
 - Generated skill frontmatter supports only single-line scalar `name` and `description` fields.
 - Include every generated dedicated file in `artifacts`, including supporting references, scripts, and assets.

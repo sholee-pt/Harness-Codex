@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v6.6, a user-level harness generator with manifest-bound ephemeral teamplay plans, parent-relayed native subagent instructions, enforced change-discipline contracts, and repository-state-safe Evaluation Schema 2 attribution.
+- This branch contains Harness for Codex v6.7, a user-level harness generator with deterministic contract materialization, bounded runtime liveness receipts, hash-bound relay review validation, and repository-state-safe Evaluation Schema 2 attribution.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add deployment, marketplace publishing, telemetry, or external service dependencies.
 - Keep evaluation default-off, user-local, and isolated from generation/apply failure handling.

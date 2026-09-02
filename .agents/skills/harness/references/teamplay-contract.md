@@ -42,13 +42,13 @@ Do not send routine status. Subagents return findings and challenges to the pare
 
 ## Capability and fallback
 
-Probe live capability before choosing an adapter. Keep concrete runtime tool syntax out of persistent topology and the semantic runtime plan. Read [native-subagent-relay.md](native-subagent-relay.md) for the Codex execution sequence and parent-facing packet.
+Probe live capability with the first real selected task agent before choosing an adapter. A spawn request is not an acknowledgement, and an acknowledgement is not completion. Keep concrete runtime tool syntax out of persistent topology and the semantic runtime plan. Read [native-subagent-relay.md](native-subagent-relay.md) for the Codex execution sequence and parent-facing packet.
 
 1. Parallel Codex subagent delegation: `codex-subagent-relay` with parent relay and parent-controlled task state.
 2. No parallel delegation: `sequential-relay` with the same input, output, and verification contracts.
 3. No useful delegation path: direct execution.
 
-Direct peer messaging remains unsupported until an observed future runtime capability establishes it. Every fallback preserves input, output, and verification contracts. Static validation proves the declaration, not live capability availability.
+Direct peer messaging remains unsupported until an observed future runtime capability establishes it. Every fallback preserves input, output, and verification contracts. Static validation proves the declaration, not live capability availability. Never wait on an empty receiver, exceed the fixed liveness budget, or change execution retention mode without explicit user consent.
 
 ## Writer isolation and handoff
 
@@ -60,4 +60,4 @@ Retry a transient interruption at most once. Do not retry authentication, author
 
 Runtime state defaults to `ephemeral`: use memory or an OS temporary directory, retain no raw messages or artifacts, and remove it after completion. `redacted` stores pseudonymous state, hashes, and verification only. `full-audit` requires explicit user opt-in, a disclosed location and duration, a purge method, and a sensitivity warning.
 
-The v6.6 contract instructs Codex to use native custom-agent subagents through parent relay and validates their returned packets. It is not an independent executor and does not implement native peer-to-peer communication. Report structural validation, packet validation, and observed live runtime behavior separately.
+The v6.7 contract instructs Codex to use native custom-agent subagents through parent relay, validates their returned packets, and can cross-validate optional public-event/child-session receipts plus offline review lineage. It is not an independent executor and does not implement native peer-to-peer communication. Report structural validation, packet validation, receipt integrity, and compatible observed live runtime behavior separately.

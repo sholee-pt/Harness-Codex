@@ -25,6 +25,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v6.4` | Harness for Codex v6.4 | Schema 3 | Schema 5 | Schema 2 | Stable two-pass fingerprints, expanded repository-state verification checks, process-group cleanup and missing-stratum errors |
 | `codex/v6.5` | Harness for Codex v6.5 | Schema 3 | Schema 5 | Schema 2 | Single-source release metadata, manifest-bound ephemeral runtime plans, bounded teamplay contracts, capability fallback and privacy-safe retention |
 | `codex/v6.6` | Harness for Codex v6.6 | Schema 3 | Schema 5 | Schema 2 | Native Codex subagent parent relay, scoped coordination-packet validation, conservative writer isolation and live-smoke accounting |
+| `codex/v6.7` | Harness for Codex v6.7 | Schema 3 | Schema 5 | Schema 2 | Deterministic contract materialization, spawn/wait liveness gates, version-bound privacy-safe runtime receipts, stale-review and affected-agent relay accounting |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -319,6 +320,21 @@ Harness for Codex v6.6 turns the v6.5 semantic teamplay plan into an explicit Co
 - Preserves existing evaluation CLI commands, reads v6.0 through v6.5 records descriptively, and limits new concrete attribution to v6.6 evidence.
 
 Harness for Codex v6.5 records and runtime-plan adapter aliases remain readable. This release is instruction-driven rather than a standalone scheduler, does not claim direct peer messaging, and does not guarantee automatic per-subagent worktree creation.
+
+## Harness for Codex v6.7
+
+Harness for Codex v6.7 narrows the live-smoke findings from v6.6 into deterministic generation and offline runtime-evidence validation. It does not replace Codex orchestration and does not change generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, or persisted evaluation schemas.
+
+- Adds a deterministic plan builder that replaces exact project and writer placeholders with the canonical change-discipline contracts before the unchanged Schema 3 apply validator runs.
+- Uses the first real selected task agent as the capability probe, requires a non-empty child ID plus child-session metadata that matches the expected role and parent before wait, rejects empty or unknown receivers, and fixes the liveness budget at three waits and 300000 total milliseconds per agent.
+- Keeps ephemeral and persistent execution distinct; a failed ephemeral run cannot restart as persistent without explicit user consent.
+- Adds an optional privacy-safe Runtime Receipt Schema 1 for Codex CLI 0.152.1. It parses the actual public `collab_tool_call` fields, reads completion from `agents_states`, and cross-checks a temporary child-session observation binding. Unsupported versions, missing spawn events, empty waits, malformed input, and unknown critical collaboration events fail closed instead of being inferred as observed execution.
+- Pseudonymizes parent and child identifiers with a separate salt, rejects raw prompts, messages, paths, source content, commands, credentials, and authentication fields, and records only derived fingerprints, counts, measurements, and state.
+- Separates receipt integrity from execution evidence. A canonical receipt hash protects the derived record; only a supported complete public-event chain cross-validated against child-session metadata can set `provesLiveSubagentExecution: true`.
+- Adds a separate Relay Receipt Schema 1 so reviews echo their input packet hash, packet revisions invalidate stale reviews, and rerun accounting includes exactly affected agents without altering Coordination Packet Schema 1.
+- Preserves Evaluation Schema 2 and the existing CLI. v6.0 through v6.6 records remain readable for descriptive inspection, while new concrete attribution is limited to eligible v6.7 evidence.
+
+This release remains an instruction and validation layer rather than a scheduler. Its JSONL parser is deliberately bound to the observed CLI version; adding another version requires an explicit parser review and deterministic fixtures. Runtime receipt capture does not create `CODEX_HOME`, manage authentication, launch Codex, or make an automatic retention-mode transition.
 
 ## Harness for Claude Code releases
 

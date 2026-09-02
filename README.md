@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Harness_for_Codex-v6.6-brightgreen.svg" alt="Harness for Codex v6.6">
+  <img src="https://img.shields.io/badge/Harness_for_Codex-v6.7-brightgreen.svg" alt="Harness for Codex v6.7">
   <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
   <img src="https://img.shields.io/badge/Type-Harness_Generator-orange.svg" alt="Harness Generator">
   <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
@@ -33,7 +33,7 @@ Harness requires Anaconda or Miniconda. Clone this branch, create the dedicated 
 ### PowerShell
 
 ```powershell
-git clone --branch codex/v6.6 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v6.7 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file "Harness/environment.yml"
 New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
 New-Item -ItemType Directory -Force "$HOME/.agents/skills/harness" | Out-Null
@@ -43,7 +43,7 @@ Copy-Item -Recurse -Force "Harness/.agents/skills/harness/*" "$HOME/.agents/skil
 ### macOS and Linux
 
 ```shell
-git clone --branch codex/v6.6 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v6.7 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 mkdir -p ~/.agents/skills
 mkdir -p ~/.agents/skills/harness
@@ -66,9 +66,11 @@ The skill also recognizes direct requests such as “configure the harness” an
 
 Harness first creates a structured proposal and runs a no-write dry-run. It applies files only when all ownership and instruction-precedence checks pass. Changed outputs are staged with backups before a journaled apply, and the manifest is committed last. Start a new Codex task after generation to verify discovery of newly written project instructions and custom agents.
 
+Harness for Codex v6.7 no longer asks the model to reproduce the fixed change-discipline contracts. The draft uses exact placeholders, and `harness_plan_builder.py` deterministically materializes a normal Schema 3 plan before the existing apply validator runs. Missing, duplicate, or misplaced placeholders fail before any repository write.
+
 ## Optional Evaluation
 
-Harness for Codex v6.6 can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, attribute results only to a plan-bound declared or preassigned configuration delta, ingest structured observations, and probe change-discipline decisions against synthetic cases. The delta comes from immutable arm configuration snapshots; it does not prove that every declared route, agent, skill, or policy was used at runtime. Evaluation is disabled by default and does not change generation, ownership, apply, recovery, or runtime-teamplay validation behavior.
+Harness for Codex v6.7 can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, attribute results only to a plan-bound declared or preassigned configuration delta, ingest structured observations, and probe change-discipline decisions against synthetic cases. The delta comes from immutable arm configuration snapshots; it does not prove that every declared route, agent, skill, or policy was used at runtime. Evaluation is disabled by default and does not change generation, ownership, apply, recovery, or runtime-teamplay validation behavior.
 
 ```shell
 conda run -n harness python .agents/skills/harness/scripts/harness_eval.py run \
@@ -106,7 +108,7 @@ Concrete positive or negative configuration attribution requires `propose --comp
 
 ## Runtime Teamplay
 
-Harness for Codex v6.6 keeps persistent repository topology separate from current-task execution. It creates no permanent team merely because multiple agents exist. A temporary runtime plan selects `direct`, `delegated`, or `coordinated` execution from interaction value: independent work delegates, one review pass uses delegated producer-reviewer, and only repeated feedback, conflicting expert judgment, cross-boundary agreement, or dynamic reassignment justifies coordination.
+Harness for Codex v6.7 keeps persistent repository topology separate from current-task execution. It creates no permanent team merely because multiple agents exist. A temporary runtime plan selects `direct`, `delegated`, or `coordinated` execution from interaction value: independent work delegates, one review pass uses delegated producer-reviewer, and only repeated feedback, conflicting expert judgment, cross-boundary agreement, or dynamic reassignment justifies coordination.
 
 Runtime plans are bound to the exact manifest and canonical topology, validated before execution, and ephemeral by default. Their `participants` are the persistent agents activated for the current task. For delegated or coordinated work, Codex is instructed to spawn only those custom agents, collect parent-facing coordination packets, relay material evidence to affected agents, and keep final integration and task state under parent control. Parallel delegation uses `codex-subagent-relay`; unavailable delegation falls back to sequential relay or direct execution while preserving input, output, and verification contracts. Runtime roles and task state are never inserted into the persistent manifest.
 
@@ -119,9 +121,14 @@ conda run -n harness python .agents/skills/harness/scripts/validate_coordination
   --root TARGET_REPOSITORY \
   --plan RUNTIME_PLAN.json \
   --packet COORDINATION_PACKET.json
+
+conda run -n harness python .agents/skills/harness/scripts/harness_relay_receipt.py \
+  --root TARGET_REPOSITORY \
+  --plan RUNTIME_PLAN.json \
+  --receipt RELAY_RECEIPT.json
 ```
 
-See [teamplay-contract.md](.agents/skills/harness/references/teamplay-contract.md), [runtime-plan.md](.agents/skills/harness/references/runtime-plan.md), [native-subagent-relay.md](.agents/skills/harness/references/native-subagent-relay.md), and [team-recipes.md](.agents/skills/harness/references/team-recipes.md). v6.6 adds an instruction-driven native Codex subagent relay and validates returned packets, but it is not a separate execution engine. A valid plan or packet does not prove that a subagent ran; use the optional live smoke test for that observation.
+See [teamplay-contract.md](.agents/skills/harness/references/teamplay-contract.md), [runtime-plan.md](.agents/skills/harness/references/runtime-plan.md), [native-subagent-relay.md](.agents/skills/harness/references/native-subagent-relay.md), [runtime-observation.md](.agents/skills/harness/references/runtime-observation.md), [relay-receipt.md](.agents/skills/harness/references/relay-receipt.md), and [team-recipes.md](.agents/skills/harness/references/team-recipes.md). v6.7 keeps Codex as the execution engine while adding spawn acknowledgement, empty-wait rejection, fixed wait limits, a CLI-version-gated receipt that cross-checks public events against temporary child-session metadata, and hash-bound offline review lineage. A valid plan, packet, or receipt hash alone does not prove that a subagent ran.
 
 ## Design Rules
 
@@ -156,6 +163,7 @@ The generator includes standard-library-only Python tools. Run them through the 
 conda run -n harness python .agents/skills/harness/scripts/inventory.py .
 conda run -n harness python .agents/skills/harness/scripts/harness_state.py evidence --root . --path PATH_TO_EVIDENCE
 conda run -n harness python .agents/skills/harness/scripts/harness_state.py status --root .
+conda run -n harness python .agents/skills/harness/scripts/harness_plan_builder.py --input DRAFT_PLAN.json --output PLAN.json
 conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --plan PATH_TO_PLAN.json --dry-run
 conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --inspect-transaction
 conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --recover
@@ -163,6 +171,8 @@ conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --ro
 conda run -n harness python .agents/skills/harness/scripts/validate_harness.py .
 conda run -n harness python .agents/skills/harness/scripts/validate_runtime_plan.py --root . --plan PATH_TO_RUNTIME_PLAN.json
 conda run -n harness python .agents/skills/harness/scripts/validate_coordination_packet.py --root . --plan PATH_TO_RUNTIME_PLAN.json --packet PATH_TO_PACKET.json
+conda run -n harness python .agents/skills/harness/scripts/harness_runtime_receipt.py --root . --plan PATH_TO_RUNTIME_PLAN.json --jsonl PATH_TO_CODEX_EVENTS.jsonl --observation-bindings PATH_TO_TEMPORARY_BINDINGS.json --codex-cli-version 0.152.1 --execution-mode persistent --repository-id repo-0123456789abcdef --harness-commit 0123456789abcdef0123456789abcdef01234567 --salt-file PATH_TO_TEMPORARY_SALT
+conda run -n harness python .agents/skills/harness/scripts/harness_relay_receipt.py --root . --plan PATH_TO_RUNTIME_PLAN.json --receipt PATH_TO_RELAY_RECEIPT.json
 conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py --plan PATH_TO_PLAN.json --golden PATH_TO_GOLDEN.json
 conda run -n harness python .agents/skills/harness/scripts/harness_eval.py --help
 conda run -n harness python -m unittest discover -s tests -v
@@ -174,7 +184,7 @@ Use `--recover` only when status or a failed apply reports a pending journal. Us
 
 If Windows Conda raises `UnicodeEncodeError` while forwarding a child-process error, inspect transaction status before retrying and rerun the diagnostic with `conda run --no-capture-output -n harness python ...`. This keeps the required environment while exposing the original Harness result.
 
-Harness for Codex v6.6 keeps generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, and the v6 evaluation schema numbers. It reads v6.0 through v6.5 Schema 2 records for descriptive inspection, but only v6.6 runs in complete, independent, plan-verified comparison pairs are eligible for concrete attribution. Support requires at least three eligible pairs and three non-ties; weak support is exactly two of three by integer cross multiplication. Existing evaluation Schema 1 records remain available to list, inspect, validate, repair, purge, and export, but are never rewritten or used for configuration attribution. The apply validator continues to require the canonical change-discipline block exactly once in `project-harness` and in every writer agent. Runtime-plan and coordination-packet validation are no-write and cannot alter persistent topology. Clean schema 4 installations are upgraded through repository re-analysis and a reviewed schema 3 plan.
+Harness for Codex v6.7 keeps generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, and the v6 evaluation schema numbers. Runtime and relay receipts each use a separate ephemeral Schema 1. It reads v6.0 through v6.6 Schema 2 records for descriptive inspection, but only v6.7 runs in complete, independent, plan-verified comparison pairs are eligible for concrete attribution. Support requires at least three eligible pairs and three non-ties; weak support is exactly two of three by integer cross multiplication. Existing evaluation Schema 1 records remain available to list, inspect, validate, repair, purge, and export, but are never rewritten or used for configuration attribution. The deterministic builder injects canonical change-discipline blocks before the unchanged apply validator enforces exact-once presence. Runtime-plan, packet, relay, and receipt validation cannot alter persistent topology. Clean schema 4 installations are upgraded through repository re-analysis and a reviewed schema 3 plan.
 
 ## Versioning
 

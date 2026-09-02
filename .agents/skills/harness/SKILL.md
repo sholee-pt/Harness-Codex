@@ -46,7 +46,7 @@ Read [skill-design.md](references/skill-design.md). Create a project skill only 
 
 ## Phase 3 — Plan native artifacts
 
-Use the templates in `assets/` as structural starting points, then tailor them to the project. Read [plan-format.md](references/plan-format.md) and write a schema 3 generation plan to a temporary file. The plan contains the complete desired content and permission mode for:
+Use the templates in `assets/` as structural starting points, then tailor them to the project. Read [plan-format.md](references/plan-format.md) and write a draft schema 3 generation plan to a temporary file. Put `{{HARNESS_PROJECT_CHANGE_DISCIPLINE_V1}}` exactly once in the `project-harness` artifact and `{{HARNESS_WRITER_CHANGE_DISCIPLINE_V1}}` exactly once in every writer agent's `developer_instructions`; do not ask the model to reproduce either canonical block. The draft contains the complete desired content and permission mode for:
 
 - `.codex/agents/<role>.toml` for justified agents
 - `.agents/skills/<skill>/SKILL.md` for justified project skills
@@ -57,7 +57,7 @@ The apply script derives `.harness/manifest.json` from the validated plan.
 
 Codex agent definitions require `name`, `description`, and `developer_instructions`. Inherit the current model and permissions by default. Add an override only when supported and justified. Keep review-only agents read-only through instructions and supported configuration, without inventing tool names.
 
-Retain the bundled `project-harness` change discipline in the generated orchestration skill. Because a delegated writer is not guaranteed to load that skill, also include the concise self-contained change-discipline rule required by [agent-design.md](references/agent-design.md) in every writer's `developer_instructions`.
+Materialize the placeholders through `scripts/harness_plan_builder.py` before validation. The builder returns a normal schema 3 plan and does not change the apply contract. Because a delegated writer is not guaranteed to load `project-harness`, every writer still receives the concise self-contained canonical rule.
 
 Read [orchestration.md](references/orchestration.md) before planning `project-harness`. Do not write planned artifacts directly.
 
@@ -67,16 +67,18 @@ The generated `project-harness` must include the bundled runtime classification,
 
 ## Phase 4 — Dry-run, apply, and validate
 
-1. Complete the plan topology, project evidence, rationale, artifacts, and managed instruction block.
-2. Run `conda run -n harness python <harness-skill-root>/scripts/harness_apply.py --root <repo-root> --plan <plan-file> --dry-run` and inspect every proposed action. Stop on any conflict.
-3. Run the same command without `--dry-run` only after the dry-run is clean.
-4. If apply reports a pending transaction, stop planning, read [transaction-recovery.md](references/transaction-recovery.md), and run `conda run -n harness python <harness-skill-root>/scripts/harness_apply.py --root <repo-root> --recover` before retrying.
-5. Run `conda run -n harness python <harness-skill-root>/scripts/validate_harness.py <repo-root>`.
-6. When a current-task runtime plan is needed, keep it in memory or an OS temporary directory and run `conda run -n harness python <harness-skill-root>/scripts/validate_runtime_plan.py --root <repo-root> --plan <runtime-plan>`. Never insert it into the manifest.
-7. After each delegated or coordinated task returns, run `conda run -n harness python <harness-skill-root>/scripts/validate_coordination_packet.py --root <repo-root> --plan <runtime-plan> --packet <coordination-packet>` before relaying or integrating its claims. Keep packets ephemeral by default.
-8. When a golden expectation exists, run `conda run -n harness python <harness-skill-root>/scripts/evaluate_topology.py --plan <plan-file> --golden <golden-file>`.
-9. Read [validation.md](references/validation.md) and perform the applicable behavioral checks. Use [codex-smoke-test.md](references/codex-smoke-test.md) when live discovery, subagent selection, or parent-relay verification is required.
-10. Account for every planned artifact as created, unchanged, conflicted, skipped, or failed. Do not silently drop outputs.
+1. Complete the draft topology, project evidence, rationale, artifacts, placeholders, and managed instruction block.
+2. Run `conda run -n harness python <harness-skill-root>/scripts/harness_plan_builder.py --input <draft-plan> --output <plan-file>`. Stop if any required placeholder is absent, duplicated, or appears in an unsupported artifact.
+3. Run `conda run -n harness python <harness-skill-root>/scripts/harness_apply.py --root <repo-root> --plan <plan-file> --dry-run` and inspect every proposed action. Stop on any conflict.
+4. Run the same command without `--dry-run` only after the dry-run is clean.
+5. If apply reports a pending transaction, stop planning, read [transaction-recovery.md](references/transaction-recovery.md), and run `conda run -n harness python <harness-skill-root>/scripts/harness_apply.py --root <repo-root> --recover` before retrying.
+6. Run `conda run -n harness python <harness-skill-root>/scripts/validate_harness.py <repo-root>`.
+7. When a current-task runtime plan is needed, keep it in memory or an OS temporary directory and run `conda run -n harness python <harness-skill-root>/scripts/validate_runtime_plan.py --root <repo-root> --plan <runtime-plan>`. Never insert it into the manifest.
+8. After each delegated or coordinated task returns, run `conda run -n harness python <harness-skill-root>/scripts/validate_coordination_packet.py --root <repo-root> --plan <runtime-plan> --packet <coordination-packet>` before relaying or integrating its claims. Keep packets ephemeral by default. When revisions occur, also read [relay-receipt.md](references/relay-receipt.md) and validate the separate review lineage receipt.
+9. For an explicitly requested live observation, read [runtime-observation.md](references/runtime-observation.md). A supported, complete runtime receipt may establish a cross-validated public-event and child-session-metadata chain; its hash alone does not establish that the source observations were truthful.
+10. When a golden expectation exists, run `conda run -n harness python <harness-skill-root>/scripts/evaluate_topology.py --plan <plan-file> --golden <golden-file>`.
+11. Read [validation.md](references/validation.md) and perform the applicable behavioral checks. Use [codex-smoke-test.md](references/codex-smoke-test.md) when live discovery, subagent selection, or parent-relay verification is required.
+12. Account for every planned artifact as created, unchanged, conflicted, skipped, or failed. Do not silently drop outputs.
 
 ## Audit and update mode
 
@@ -88,4 +90,4 @@ Evaluation is separate from configuration and never runs implicitly. When the us
 
 ## Completion report
 
-Report the selected topology, dry-run result, generated and unchanged files, preserved conflicts, runtime execution class when applicable, selected and observed subagents, relay and revision counts, fallback use, validation results, and remaining risks. Explain that newly written `AGENTS.md` or custom agent definitions require a fresh Codex run for discovery. Distinguish runtime verification from structural validation; a valid runtime plan or coordination packet does not prove live subagent execution.
+Report the selected topology, materialization and dry-run results, generated and unchanged files, preserved conflicts, runtime execution class when applicable, selected/spawned/observed/completed subagents, relay and revision counts, fallback use, validation results, and remaining risks. Explain that newly written `AGENTS.md` or custom agent definitions require a fresh Codex run for discovery. Distinguish structural validation, packet lineage, receipt integrity, and compatible live runtime observation.
