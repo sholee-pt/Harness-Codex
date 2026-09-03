@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Harness_for_Codex-v6.10-brightgreen.svg" alt="Harness for Codex v6.10">
+  <img src="https://img.shields.io/badge/Harness_for_Codex-v7.0-brightgreen.svg" alt="Harness for Codex v7.0">
   <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
   <img src="https://img.shields.io/badge/Type-Harness_Generator-orange.svg" alt="Harness Generator">
   <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
@@ -9,7 +9,7 @@
 
 > Generate the smallest evidence-backed Codex agent system that matches a project's persistent decision boundaries.
 
-Harness is a user-level Codex skill. Run it inside a project and it analyzes the repository, selects only justified agent and skill boundaries, and writes a native project harness that can be reused in later sessions.
+Harness is a user-level Codex skill. Run it inside a local project workspace and it analyzes the available evidence, selects only justified agent and skill boundaries, and writes a native project harness for later work. A workspace may be a plain directory or a local Git work tree; GitHub is not required.
 
 ## What It Generates
 
@@ -21,7 +21,7 @@ target-project/
 │   └── <project-skill>/           # Reusable project procedures, when justified
 ├── .harness/manifest.json         # Ownership, topology, and content hashes
 ├── .harness/transaction.json      # Present only while recovery or cleanup is required
-└── AGENTS.md or AGENTS.override.md # Managed pointer in the active root instruction file
+└── AGENTS.md or AGENTS.override.md # Optional local pointer when the path is safe to manage
 ```
 
 Simple projects may receive only `project-harness`. Harness does not create a fixed team or assume a frontend/backend architecture. It classifies persistent project topology independently from the execution complexity of any one task.
@@ -33,7 +33,7 @@ Harness requires Anaconda or Miniconda. Clone this branch, create the dedicated 
 ### PowerShell
 
 ```powershell
-git clone --branch codex/v6.10 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v7 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file "Harness/environment.yml"
 New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
 New-Item -ItemType Directory -Force "$HOME/.agents/skills/harness" | Out-Null
@@ -43,7 +43,7 @@ Copy-Item -Recurse -Force "Harness/.agents/skills/harness/*" "$HOME/.agents/skil
 ### macOS and Linux
 
 ```shell
-git clone --branch codex/v6.10 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v7 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 mkdir -p ~/.agents/skills
 mkdir -p ~/.agents/skills/harness
@@ -56,23 +56,31 @@ If the `harness` environment already exists, replace `conda env create` with `co
 
 ## Usage
 
-Open the target repository in Codex and run:
+Open the target project directory in Codex and run:
 
 ```text
-$harness configure a project harness for this repository.
+$harness configure a local-only project harness for this workspace.
 ```
 
 The skill also recognizes direct requests such as “configure the harness” and “하네스를 구성해줘”. Run the same command later to audit or update an existing generated harness.
 
-Harness first creates a structured proposal and runs a no-write dry-run. It applies files only when all ownership and instruction-precedence checks pass. Changed outputs are staged with backups before a journaled apply, and the manifest is committed last. Start a new Codex task after generation to verify discovery of newly written project instructions and custom agents.
+Harness first creates a structured proposal and runs a no-write dry-run. It applies files only when all ownership, workspace-boundary, local-only, and instruction-precedence checks pass. Changed outputs are staged with backups before a journaled apply, and the manifest is written last. Codex detects skill changes automatically. A newly created `AGENTS.md` pointer applies on a fresh run; if a new custom agent or skill is not visible, start one new task in the same directory. No task deletion or per-request restart is required.
 
-Harness for Codex v6.10 does not ask the model to reproduce fixed change-discipline or runtime-teamplay contracts. Authoring Contract 2 drafts use path-specific placeholders, and `harness_plan_builder.py` deterministically materializes a normal Schema 3 plan before the existing apply validator runs. Every project router and generated agent receives its required canonical block exactly once; an old draft revision, ambiguous outer root, or missing, duplicate, or misplaced placeholder fails before any repository write.
+Harness for Codex v7.0 does not ask the model to reproduce fixed change-discipline or runtime-teamplay contracts. Authoring Contract 2 drafts use path-specific placeholders, and `harness_plan_builder.py` deterministically materializes a normal Schema 3 plan before the existing apply validator runs. Every project router and generated agent receives its required canonical block exactly once; an old draft revision, incomplete or unsupported workspace root, or missing, duplicate, or misplaced placeholder fails before any workspace write.
 
 The installed skill includes `references/minimal-draft-plan.json`, so plan authoring does not depend on repository-only test fixtures.
 
+## Local-only Workspaces
+
+Harness for Codex v7.0 never queries GitHub or Git remotes and never stages, commits, pushes, opens pull requests, or changes branches. In a local Git root, it refuses targets already tracked by Git and writes exact generated paths to a marker-owned block in the local `info/exclude` file before applying files. This prevents ordinary `git add` and status workflows from picking up generated files, but it cannot prevent a deliberate force-add.
+
+Inventory Schema 4 classifies `plain-directory`, `directory-workspace`, `git-repository`, and `git-worktree` roots. A non-Git directory may contain multiple nested repositories, which remain analysis boundaries. A Git root may contain registered submodules, but an unacknowledged independent nested repository remains ambiguous. Root-boundary scanning includes dependency, vendor, output, data, and checkpoint trees even when the content inventory excludes them, and reports truncated or unreadable coverage instead of claiming that no boundary exists.
+
+If `AGENTS.md` or `AGENTS.override.md` is already user-owned or tracked, Harness preserves it byte-for-byte and records `explicit-skill` activation. Use `$project-harness` directly in that case. Harness never creates an override merely to bypass existing project guidance.
+
 ## Optional Evaluation
 
-Harness for Codex v6.10 can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, attribute results only to a plan-bound declared or preassigned configuration delta, ingest structured observations, and probe change-discipline decisions against synthetic cases. The delta comes from immutable arm configuration snapshots; it does not prove that every declared route, agent, skill, or policy was used at runtime. Evaluation is disabled by default and does not change generation, ownership, apply, recovery, or runtime-teamplay validation behavior.
+Harness for Codex v7.0 can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, attribute results only to a plan-bound declared or preassigned configuration delta, ingest structured observations, and probe change-discipline decisions against synthetic cases. The delta comes from immutable arm configuration snapshots; it does not prove that every declared route, agent, skill, or policy was used at runtime. Evaluation is disabled by default and does not change generation, ownership, apply, recovery, or runtime-teamplay validation behavior.
 
 ```shell
 conda run -n harness python .agents/skills/harness/scripts/harness_eval.py run \
@@ -110,7 +118,7 @@ Concrete positive or negative configuration attribution requires `propose --comp
 
 ## Runtime Teamplay
 
-Harness for Codex v6.10 keeps persistent repository topology separate from current-task execution. It creates no permanent team merely because multiple agents exist. A temporary runtime plan selects `direct`, `delegated`, or `coordinated` execution from interaction value: independent work delegates, one review pass uses delegated producer-reviewer, and only repeated feedback, conflicting expert judgment, cross-boundary agreement, or dynamic reassignment justifies coordination.
+Harness for Codex v7.0 keeps persistent workspace topology separate from current-task execution. It creates no permanent team merely because multiple agents exist. A temporary runtime plan selects `direct`, `delegated`, or `coordinated` execution from interaction value: independent work delegates, one review pass uses delegated producer-reviewer, and only repeated feedback, conflicting expert judgment, cross-boundary agreement, or dynamic reassignment justifies coordination.
 
 Runtime plans are bound to the exact manifest and canonical topology, validated before execution, and ephemeral by default. Their `participants` are the persistent agents activated for the current task. For delegated or coordinated work, Codex is instructed to spawn only those custom agents, collect parent-facing coordination packets, relay material evidence to affected agents, and keep final integration and task state under parent control. Parallel delegation uses `codex-subagent-relay`; unavailable delegation falls back to sequential relay or direct execution while preserving input, output, and verification contracts. Runtime roles and task state are never inserted into the persistent manifest.
 
@@ -130,18 +138,18 @@ conda run -n harness python .agents/skills/harness/scripts/harness_relay_receipt
   --receipt RELAY_RECEIPT.json
 ```
 
-See [teamplay-contract.md](.agents/skills/harness/references/teamplay-contract.md), [runtime-plan.md](.agents/skills/harness/references/runtime-plan.md), [native-subagent-relay.md](.agents/skills/harness/references/native-subagent-relay.md), [runtime-observation.md](.agents/skills/harness/references/runtime-observation.md), [relay-receipt.md](.agents/skills/harness/references/relay-receipt.md), and [team-recipes.md](.agents/skills/harness/references/team-recipes.md). v6.10 keeps Codex as the execution engine while using canonical receiver handles for bounded control, optional versioned public/local observation profiles for evidence, required-task accounting, and hash-bound offline review lineage. Capability policies use a small canonical registry so validated names cannot silently select a different fallback path. Missing observation evidence lowers confidence without cancelling a valid handle execution; verified binding or terminal-outcome contradictions fail closed.
+See [teamplay-contract.md](.agents/skills/harness/references/teamplay-contract.md), [runtime-plan.md](.agents/skills/harness/references/runtime-plan.md), [native-subagent-relay.md](.agents/skills/harness/references/native-subagent-relay.md), [runtime-observation.md](.agents/skills/harness/references/runtime-observation.md), [relay-receipt.md](.agents/skills/harness/references/relay-receipt.md), and [team-recipes.md](.agents/skills/harness/references/team-recipes.md). v7.0 keeps Codex as the execution engine while using canonical receiver handles for bounded control, optional versioned public/local observation profiles for evidence, required-task accounting, and hash-bound offline review lineage. Capability policies use a small canonical registry so validated names cannot silently select a different fallback path. Missing observation evidence lowers confidence without cancelling a valid handle execution; verified binding or terminal-outcome contradictions fail closed.
 
 ## Design Rules
 
-- Repository evidence determines roles, skills, and orchestration. Every evidence claim is bound to an existing file hash and may identify an exact line range.
+- Workspace evidence determines roles, skills, and orchestration. Every evidence claim is bound to an existing file hash and may identify an exact line range.
 - Persistent material boundaries record topology-wide unique decision-area IDs, project persistence, contracts, verification, failure impact, and separation benefits.
-- Project topology is `minimal`, `modular`, or `coordinated`. Boundary count alone does not force coordination; recurring repository-level coordination does.
+- Project topology is `minimal`, `modular`, or `coordinated`. Boundary count alone does not force coordination; recurring workspace-level coordination does.
 - Current tasks are routed independently as `direct`, `delegated`, or `coordinated`. One-off task risk is never persisted as project topology.
 - Runtime coordination is selected from repeated interaction value, not agent count, repository size, or simple parallelism.
 - Runtime roles, tasks, messages, adapter choice, and retention live only in a manifest-bound ephemeral plan.
 - Six collaboration patterns are available as design vocabulary, not mandatory templates.
-- Quality patterns are separate policies with repository evidence, finite budgets, stopping conditions, and failure handling.
+- Quality patterns are separate policies with workspace evidence, finite budgets, stopping conditions, and failure handling.
 - Concurrent writers may not overlap. Ordered overlapping writers require a verified handoff covering their complete shared scope between explicit execution lanes.
 - Literal file scopes cannot authorize recursive directory scopes. Writer overlap is compared case-insensitively for portable Windows safety.
 - A persistent task category belongs to at most one route. Multiple matches may share one route; conflicting routes are reported as ambiguous instead of being merged or selected by order. If no route matches, the current task is classified at runtime instead of defaulting blindly to direct execution.
@@ -154,7 +162,7 @@ See [teamplay-contract.md](.agents/skills/harness/references/teamplay-contract.m
 - A failed multi-file apply is rolled back from verified backups before another plan may run. POSIX file permission modes are restored with content.
 - Phase outputs are treated as frozen only when hashes were actually recorded.
 - Authentication, permission, and quota failures are reported without pointless retries.
-- Runtime and model settings are inherited unless repository evidence requires an override.
+- Runtime and model settings are inherited unless workspace evidence requires an override.
 - Code-changing work surfaces material ambiguity and simpler alternatives, uses the smallest scoped edit, avoids adjacent cleanup, defines verification before implementation, and reports unverified outcomes explicitly.
 
 ## Validation
@@ -180,7 +188,7 @@ conda run -n harness python .agents/skills/harness/scripts/harness_eval.py --hel
 conda run -n harness python -m unittest discover -s tests -v
 ```
 
-Inventory Schema 3 reports Conda manifests, conservative code/config/docs/test/artifact/unknown role counts, nested Git roots, and research-output directories separately. Independent or linked nested repositories set `rootSelectionRequired`; registered submodules do not. Select one unambiguous repository root before generating a plan. Known output directories are excluded by default and can be inspected deliberately with `--include-artifacts`. Existing instruction precedence and the instruction file Harness would create are reported separately.
+Inventory Schema 4 reports workspace kind, root-scan completeness, Conda manifests, conservative code/config/docs/test/artifact/unknown role counts, nested local Git roots, and research-output directories separately. Independent nested repositories are allowed as boundaries in a non-Git directory workspace but require a narrower selection inside a Git root; registered submodules do not. Known output directories are excluded from content classification by default but remain visible to the boundary scan, and can be inspected deliberately with `--include-artifacts`. Existing instruction precedence and the instruction path Harness could safely manage are reported separately.
 
 `evaluate_topology.py` validates only the persistent topology contract and reports `evidenceValidated: false`. It does not replace the evidence, ownership, and no-write checks performed by `harness_apply.py --dry-run`.
 
@@ -188,7 +196,7 @@ Use `--recover` only when status or a failed apply reports a pending journal. Us
 
 If Windows Conda raises `UnicodeEncodeError` while forwarding a child-process error, inspect transaction status before retrying and rerun the diagnostic with `conda run --no-capture-output -n harness python ...`. This keeps the required environment while exposing the original Harness result.
 
-Harness for Codex v6.10 keeps generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, and Evaluation Schema 2. Draft authoring uses revision 2 and inventory uses Schema 3; neither changes the materialized generation plan or persistent manifest schema. New runtime receipts use Schema 2; legacy Runtime Receipt Schema 1 remains validation-only and is never rewritten or promoted. It reads v6.0 through v6.9 evaluation records for descriptive inspection, but only v6.10 runs in complete, independent, plan-verified comparison pairs are eligible for concrete attribution. Support requires at least three eligible pairs and three non-ties; weak support is exactly two of three by integer cross multiplication. Existing evaluation Schema 1 records remain available to list, inspect, validate, repair, purge, and export, but are never rewritten or used for configuration attribution. Runtime-plan, packet, relay, and receipt validation cannot alter persistent topology. Clean schema 4 installations are upgraded through repository re-analysis and a reviewed schema 3 plan.
+Harness for Codex v7.0 keeps generation plan schema 3, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, and Evaluation Schema 2. Manifest Schema 6 adds the local-only workspace classification, instruction activation mode, and exact local Git exclusion contract; Inventory Schema 4 exposes boundary-scan completeness. Runtime Receipt Schema 2 and legacy validation-only Schema 1 remain unchanged. Evaluation records from v6.0 through v6.10 remain readable for descriptive inspection, while only v7.0 runs in complete, independent, plan-verified comparison pairs are eligible for concrete attribution. Runtime-plan, packet, relay, and receipt validation cannot alter persistent topology. Clean Manifest Schema 4 or 5 installations require repository re-analysis and a reviewed Schema 3 plan; any tracked legacy Harness target must be untracked manually before local-only conversion.
 
 ## Versioning
 

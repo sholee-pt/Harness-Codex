@@ -13,6 +13,7 @@ from typing import Callable
 import harness_state
 import harness_teamplay
 import harness_topology
+import harness_workspace
 import inventory
 
 try:
@@ -141,6 +142,14 @@ class Validator:
                 f"application.transactionSchemaVersion must be "
                 f"{harness_state.TRANSACTION_SCHEMA_VERSION}"
             )
+        workspace = self.manifest.get("workspace")
+        if not isinstance(workspace, dict):
+            self.error("workspace must be an object")
+        else:
+            if workspace.get("scope") != harness_workspace.LOCAL_SCOPE:
+                self.error("workspace.scope must be local-only")
+            if workspace.get("instructionMode") not in {"managed-pointer", "explicit-skill"}:
+                self.error("workspace.instructionMode is invalid")
         project = self.manifest.get("project")
         if not isinstance(project, dict) or not isinstance(project.get("summary"), str) or not project.get("summary", "").strip():
             self.error("project.summary must be a non-empty string")
@@ -155,8 +164,12 @@ class Validator:
             if not isinstance(rationale.get("uncertainties"), list):
                 self.error("project.rationale.uncertainties must be an array")
         instruction_file = self.manifest.get("instructionFile")
-        if instruction_file not in {"AGENTS.md", "AGENTS.override.md"}:
-            self.error("instructionFile must be AGENTS.md or AGENTS.override.md")
+        instruction_mode = workspace.get("instructionMode") if isinstance(workspace, dict) else None
+        if instruction_mode == "managed-pointer":
+            if instruction_file not in {"AGENTS.md", "AGENTS.override.md"}:
+                self.error("managed-pointer mode requires AGENTS.md or AGENTS.override.md")
+        elif instruction_mode == "explicit-skill" and instruction_file is not None:
+            self.error("explicit-skill mode requires a null instructionFile")
         topology = self.manifest.get("topology")
         if not isinstance(topology, dict):
             self.error("topology must be an object")
@@ -351,6 +364,12 @@ class Validator:
                 self.warning(warning)
         except harness_topology.TopologyError as exc:
             self.error(str(exc))
+        try:
+            harness_workspace.validate_directory_workspace_writers(
+                inventory.inspect_root_context(self.root), topology
+            )
+        except harness_workspace.WorkspaceError as exc:
+            self.error(str(exc))
         skill_value = topology.get("skills", [])
         agent_value = topology.get("agents", [])
         skill_items = skill_value if isinstance(skill_value, list) else []
@@ -437,7 +456,25 @@ class Validator:
             self.error(f"topology path is not recorded as managed: {relative}")
 
     def validate_root_pointer(self) -> None:
+        workspace = self.manifest.get("workspace")
+        instruction_mode = workspace.get("instructionMode") if isinstance(workspace, dict) else None
         filename = self.manifest.get("instructionFile")
+        if instruction_mode == "explicit-skill":
+            if filename is not None:
+                self.error("explicit-skill mode cannot declare an instructionFile")
+            entries = self.manifest.get("managedFiles", [])
+            pointers = (
+                [
+                    entry
+                    for entry in entries
+                    if isinstance(entry, dict) and entry.get("kind") == "managed-block"
+                ]
+                if isinstance(entries, list)
+                else []
+            )
+            if pointers:
+                self.error("explicit-skill mode cannot retain a managed instruction block")
+            return
         if not isinstance(filename, str):
             return
         active = harness_state.active_instruction_relative(self.root)
@@ -481,6 +518,29 @@ class Validator:
                 if token in text:
                     self.error(f"obsolete runtime token {token!r} found in {relative}")
 
+    def validate_local_only_workspace(self) -> None:
+        context = inventory.require_unambiguous_root(self.root)
+        workspace = self.manifest.get("workspace")
+        if not isinstance(workspace, dict):
+            return
+        if workspace.get("kind") != context.get("workspaceKind"):
+            self.error(
+                f"workspace kind changed from {workspace.get('kind')!r} "
+                f"to {context.get('workspaceKind')!r}; re-analyze before updating"
+            )
+            return
+        entries = self.manifest.get("managedFiles", [])
+        paths = (
+            [
+                entry.get("path")
+                for entry in entries
+                if isinstance(entry, dict) and isinstance(entry.get("path"), str)
+            ]
+            if isinstance(entries, list)
+            else []
+        )
+        harness_workspace.validate_manifest_protection(self.root, workspace, paths)
+
     def run(self) -> dict:
         def validate_transaction_state() -> None:
             transaction = harness_state.transaction_status(self.root)
@@ -504,7 +564,7 @@ class Validator:
 
         self.run_layer(
             "rootContext",
-            "The selected root contains no unacknowledged independent or linked Git repository.",
+            "The selected workspace root is complete and respects local Git boundaries.",
             validate_root_context,
         )
         self.run_layer(
@@ -513,6 +573,17 @@ class Validator:
             lambda: (self.load_manifest(), self.validate_manifest_shape()),
         )
         if self.manifest:
+            def validate_local_only() -> None:
+                try:
+                    self.validate_local_only_workspace()
+                except (ValueError, harness_workspace.WorkspaceError) as exc:
+                    self.error(str(exc))
+
+            self.run_layer(
+                "localOnlyProtection",
+                "Generated files remain local and local Git workspaces exclude every managed path.",
+                validate_local_only,
+            )
             self.run_layer(
                 "evidenceFreshness",
                 "All declared evidence paths, hashes, and optional line ranges still match.",
@@ -534,6 +605,10 @@ class Validator:
                 self.validate_forbidden_tokens,
             )
         else:
+            self.mark_blocked(
+                "localOnlyProtection",
+                "Generated files remain local and local Git workspaces exclude every managed path.",
+            )
             self.mark_blocked(
                 "evidenceFreshness",
                 "All declared evidence paths, hashes, and optional line ranges still match.",
@@ -585,7 +660,7 @@ def main() -> int:
 
     root = Path(args.root).resolve()
     if not root.is_dir():
-        parser.error(f"repository root is not a directory: {root}")
+        parser.error(f"workspace root is not a directory: {root}")
     report = Validator(root).run()
     print(json.dumps(report, indent=2, ensure_ascii=False))
     return 0 if report["valid"] else 1

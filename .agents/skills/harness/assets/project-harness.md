@@ -1,6 +1,6 @@
 ---
 name: project-harness
-description: Coordinate __PROJECT_DOMAIN__ work across the repository's generated agents and skills. Use for __PROJECT_TRIGGERS__. Do not use for unrelated tasks or simple questions that need no project workflow.
+description: Coordinate __PROJECT_DOMAIN__ work across the workspace's generated agents and skills. Use for __PROJECT_TRIGGERS__. Do not use for unrelated tasks or simple questions that need no project workflow.
 ---
 
 # Project Harness
@@ -17,6 +17,13 @@ description: Coordinate __PROJECT_DOMAIN__ work across the repository's generate
 __TASK_TO_AGENT_AND_SKILL_ROUTING__
 
 Classify each current task as direct, delegated, or coordinated without changing the persistent project topology. If multiple task categories match, use a persistent route only when every match resolves to the same route; otherwise report the ambiguity and require an explicit runtime selection. Never merge conflicting routes or select the first route by ordering. Use direct execution when delegation has no material benefit. Use only agents and skills justified by the active boundaries and task risks.
+
+## Persistent evolution
+
+- Treat a change in the current topic, task phase, or requested emphasis as runtime routing input first. It does not by itself deprecate an existing agent or justify a persistent topology change.
+- When a task repeatedly falls outside the current routes, report a Harness reassessment candidate instead of silently creating or rewriting persistent agents.
+- Recommend rerunning `$harness` only when stable workspace evidence shows a new or changed responsibility, contract boundary, recurring workflow, or verification risk.
+- Preserve clean managed artifacts during reassessment. Report obsolete artifacts as removal candidates and never remove them without explicit user authorization.
 
 ## Run protocol
 

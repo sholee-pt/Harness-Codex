@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -24,6 +25,7 @@ import harness_state  # noqa: E402
 import harness_teamplay  # noqa: E402
 import harness_topology  # noqa: E402
 import harness_transaction  # noqa: E402
+import harness_workspace  # noqa: E402
 import evaluate_topology  # noqa: E402
 import inventory  # noqa: E402
 import validate_harness  # noqa: E402
@@ -198,9 +200,11 @@ class InventoryTests(unittest.TestCase):
 
             result = inventory.build_inventory(root, max_files=20)
 
-            self.assertEqual(result["schemaVersion"], 3)
+            self.assertEqual(result["schemaVersion"], 4)
             self.assertEqual(result["rootGitState"], "directory")
             self.assertTrue(result["rootSelectionRequired"])
+            self.assertEqual(result["workspaceKind"], "git-repository")
+            self.assertEqual(result["rootContext"]["scanCompleteness"]["status"], "scanned")
             self.assertEqual(
                 result["nestedRepositories"],
                 [
@@ -235,6 +239,71 @@ class InventoryTests(unittest.TestCase):
 
             self.assertFalse(context["rootSelectionRequired"])
             self.assertEqual(context["nestedRepositories"][0]["kind"], "submodule")
+
+    def test_inventory_recognizes_an_actual_registered_submodule(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            child = parent / "child-source"
+            root = parent / "project"
+            subprocess.run(["git", "init", str(child)], check=True, capture_output=True)
+            (child / "README.md").write_text("child\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(child), "add", "README.md"], check=True, capture_output=True)
+            subprocess.run(
+                [
+                    "git", "-C", str(child), "-c", "user.name=Harness Tests",
+                    "-c", "user.email=harness@example.invalid", "commit", "-m", "child",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
+            subprocess.run(
+                [
+                    "git", "-C", str(root), "-c", "protocol.file.allow=always",
+                    "submodule", "add", str(child), "dependency",
+                ],
+                check=True,
+                capture_output=True,
+            )
+
+            context = inventory.require_unambiguous_root(root)
+
+            self.assertEqual(context["workspaceKind"], "git-repository")
+            self.assertFalse(context["rootSelectionRequired"])
+            self.assertEqual(context["nestedRepositories"][0]["kind"], "submodule")
+
+    def test_plain_directory_workspace_keeps_nested_git_roots_as_boundaries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "vendor" / "nested" / ".git").mkdir(parents=True)
+            (root / "node_modules" / "package" / ".git").mkdir(parents=True)
+
+            context = inventory.require_unambiguous_root(root)
+
+            self.assertEqual(context["workspaceKind"], "directory-workspace")
+            self.assertFalse(context["rootSelectionRequired"])
+            self.assertEqual(
+                [item["path"] for item in context["nestedRepositories"]],
+                ["node_modules/package", "vendor/nested"],
+            )
+            result = inventory.build_inventory(root, max_files=10)
+            repository_boundaries = [
+                item["path"]
+                for item in result["candidateBoundaries"]
+                if item["analysisPriority"] == "repository-boundary"
+            ]
+            self.assertEqual(repository_boundaries, ["node_modules/package", "vendor/nested"])
+
+    def test_root_scan_reports_truncation_instead_of_claiming_completeness(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "one" / "two").mkdir(parents=True)
+
+            context = inventory.inspect_root_context(root, max_directories=1)
+
+            self.assertEqual(context["workspaceKind"], "scan-incomplete")
+            self.assertEqual(context["scanCompleteness"]["status"], "truncated")
+            self.assertTrue(context["rootSelectionRequired"])
 
     def test_inventory_excludes_nested_output_directories_from_boundaries(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -409,7 +478,7 @@ class StateTests(unittest.TestCase):
             upgraded = json.loads(
                 (root / ".harness" / "manifest.json").read_text(encoding="utf-8")
             )
-            self.assertEqual(upgraded["schemaVersion"], 5)
+            self.assertEqual(upgraded["schemaVersion"], 6)
             self.assertEqual(upgraded["topology"]["classification"]["class"], "minimal")
 
     def test_schema_v4_upgrade_rejects_stale_legacy_evidence(self) -> None:
@@ -541,13 +610,14 @@ class StateTests(unittest.TestCase):
 
 
 class ApplyTests(unittest.TestCase):
-    def test_apply_rejects_ambiguous_root_before_planning_writes(self) -> None:
+    def test_apply_rejects_nested_repository_inside_git_root_before_writes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             plan = minimal_plan(root)
+            (root / ".git").mkdir()
             (root / "nested-project" / ".git").mkdir(parents=True)
 
-            with self.assertRaisesRegex(harness_apply.PlanError, "repository root is ambiguous"):
+            with self.assertRaisesRegex(harness_apply.PlanError, "Git workspace root is ambiguous"):
                 harness_apply.build_application(root, plan)
 
             self.assertFalse((root / ".harness" / "manifest.json").exists())
@@ -1029,11 +1099,226 @@ class ApplyTests(unittest.TestCase):
             harness_apply.apply_application(application)
 
             self.assertEqual((root / "AGENTS.md").read_text(encoding="utf-8"), "base instructions\n")
-            self.assertIn("$project-harness", (root / "AGENTS.override.md").read_text(encoding="utf-8"))
+            self.assertEqual(
+                (root / "AGENTS.override.md").read_text(encoding="utf-8"),
+                "override instructions\n",
+            )
             manifest = json.loads((root / ".harness" / "manifest.json").read_text(encoding="utf-8"))
-            self.assertEqual(manifest["instructionFile"], "AGENTS.override.md")
+            self.assertIsNone(manifest["instructionFile"])
+            self.assertEqual(manifest["workspace"]["instructionMode"], "explicit-skill")
+
+    def test_git_workspace_excludes_generated_files_and_preserves_tracked_agents(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
+            (root / "pyproject.toml").write_text("[project]\nname = 'fixture'\n", encoding="utf-8")
+            (root / "AGENTS.md").write_text("tracked project instructions\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(root), "add", "pyproject.toml", "AGENTS.md"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(root), "-c", "user.name=Harness Tests",
+                    "-c", "user.email=harness@example.invalid", "commit", "-m", "fixture",
+                ],
+                check=True,
+                capture_output=True,
+            )
+
+            application = harness_apply.build_application(root, minimal_plan(root))
+            self.assertEqual(application["report"]["localProtection"]["action"], "update")
+            harness_apply.apply_application(application)
+
+            self.assertEqual(
+                (root / "AGENTS.md").read_text(encoding="utf-8"),
+                "tracked project instructions\n",
+            )
+            manifest = json.loads((root / ".harness" / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["workspace"]["scope"], "local-only")
+            self.assertEqual(manifest["workspace"]["kind"], "git-repository")
+            self.assertEqual(manifest["workspace"]["instructionMode"], "explicit-skill")
+            self.assertIsNone(manifest["instructionFile"])
+            status = subprocess.run(
+                ["git", "-C", str(root), "status", "--porcelain=v1", "--untracked-files=all"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(status.stdout, "")
             self.assertTrue(validate_harness.Validator(root).run()["valid"])
 
+    def test_git_workspace_creates_and_excludes_a_new_root_pointer(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
+            plan = minimal_plan(root)
+            subprocess.run(
+                ["git", "-C", str(root), "add", "pyproject.toml"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(root), "-c", "user.name=Harness Tests",
+                    "-c", "user.email=harness@example.invalid", "commit", "-m", "fixture",
+                ],
+                check=True,
+                capture_output=True,
+            )
+
+            harness_apply.apply_application(harness_apply.build_application(root, plan))
+
+            manifest = json.loads((root / ".harness" / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["workspace"]["instructionMode"], "managed-pointer")
+            self.assertEqual(manifest["instructionFile"], "AGENTS.md")
+            status = subprocess.run(
+                ["git", "-C", str(root), "status", "--porcelain=v1", "--untracked-files=all"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(status.stdout, "")
+
+    def test_git_workspace_refuses_a_tracked_deleted_harness_target(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
+            plan = minimal_plan(root)
+            target = root / ".agents" / "skills" / "project-harness" / "SKILL.md"
+            target.parent.mkdir(parents=True)
+            target.write_text("legacy tracked target\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(root), "add", "pyproject.toml", target.relative_to(root).as_posix()],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(root), "-c", "user.name=Harness Tests",
+                    "-c", "user.email=harness@example.invalid", "commit", "-m", "fixture",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            target.unlink()
+
+            with self.assertRaisesRegex(harness_apply.PlanError, "already tracked Harness targets"):
+                harness_apply.build_application(root, plan)
+
+            self.assertFalse((root / ".harness" / "manifest.json").exists())
+
+    def test_schema5_installation_upgrades_only_through_reviewed_local_only_apply(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = minimal_plan(root)
+            harness_apply.apply_application(harness_apply.build_application(root, plan))
+            manifest_path = root / ".harness" / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["schemaVersion"] = 5
+            manifest["generator"]["version"] = "6.10"
+            manifest.pop("workspace")
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            application = harness_apply.build_application(root, plan)
+            harness_apply.apply_application(application)
+            upgraded = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(upgraded["schemaVersion"], 6)
+            self.assertEqual(upgraded["workspace"]["scope"], "local-only")
+
+
+class WorkspaceTests(unittest.TestCase):
+    def test_remote_git_commands_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(harness_workspace.WorkspaceError, "prohibited"):
+                harness_workspace._run_git(Path(directory), ["remote"])
+
+    def test_directory_workspace_writer_cannot_cross_nested_repository(self) -> None:
+        context = {
+            "workspaceKind": "directory-workspace",
+            "nestedRepositories": [
+                {"path": "models/external", "kind": "independent-repository"}
+            ],
+        }
+        topology = {
+            "agents": [
+                {
+                    "name": "model_writer",
+                    "fileAccess": [{"scope": "models/**", "mode": "write"}],
+                }
+            ]
+        }
+
+        with self.assertRaisesRegex(harness_apply.PlanError, "crosses independent"):
+            harness_apply.validate_directory_workspace_writers(context, topology)
+
+        with self.assertRaisesRegex(harness_workspace.WorkspaceError, "crosses independent"):
+            harness_workspace.validate_directory_workspace_writers(context, topology)
+
+    def test_linked_worktree_uses_local_exclusion_without_tracking_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            repository = parent / "repository"
+            worktree = parent / "worktree"
+            subprocess.run(["git", "init", str(repository)], check=True, capture_output=True)
+            (repository / "pyproject.toml").write_text(
+                "[project]\nname = 'fixture'\n", encoding="utf-8"
+            )
+            subprocess.run(
+                ["git", "-C", str(repository), "add", "pyproject.toml"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(repository), "-c", "user.name=Harness Tests",
+                    "-c", "user.email=harness@example.invalid", "commit", "-m", "fixture",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(repository), "worktree", "add", "-b", "fixture-worktree", str(worktree)],
+                check=True,
+                capture_output=True,
+            )
+
+            harness_apply.apply_application(
+                harness_apply.build_application(worktree, minimal_plan(worktree))
+            )
+
+            manifest = json.loads(
+                (worktree / ".harness" / "manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["workspace"]["kind"], "git-worktree")
+            status = subprocess.run(
+                ["git", "-C", str(worktree), "status", "--porcelain=v1", "--untracked-files=all"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(status.stdout, "")
+            self.assertTrue(validate_harness.Validator(worktree).run()["valid"])
+
+    def test_tracked_harness_control_file_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
+            (root / ".harness").mkdir()
+            (root / ".harness" / "legacy.json").write_text("{}\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(root), "add", ".harness/legacy.json"],
+                check=True,
+                capture_output=True,
+            )
+
+            with self.assertRaisesRegex(harness_apply.PlanError, "already tracked Harness targets"):
+                harness_apply.build_application(root, minimal_plan(root))
+
+
+class ApplyContinuationTests(unittest.TestCase):
     def test_modified_managed_file_refuses_update_before_any_write(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1617,7 +1902,7 @@ class TopologyContractTests(unittest.TestCase):
                 for label, evidence in harness_topology.iter_evidence(plan["topology"]):
                     harness_apply.validate_evidence(root, evidence, label)
 
-    def test_applied_manifest_uses_schema5_contract_without_runtime_task_state(self) -> None:
+    def test_applied_manifest_uses_schema6_local_only_contract_without_runtime_task_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             harness_apply.apply_application(harness_apply.build_application(root, minimal_plan(root)))
@@ -1625,13 +1910,13 @@ class TopologyContractTests(unittest.TestCase):
                 (root / ".harness" / "manifest.json").read_text(encoding="utf-8")
             )
 
-            self.assertEqual(manifest["schemaVersion"], 5)
+            self.assertEqual(manifest["schemaVersion"], 6)
             self.assertEqual(manifest["generator"]["version"], harness_metadata.HARNESS_VERSION)
             self.assertNotIn("taskExecution", manifest)
             self.assertEqual(manifest["topology"]["classification"]["class"], "minimal")
 
     def test_current_workflow_checks_tracked_and_untracked_cleanliness(self) -> None:
-        workflow = (REPO_ROOT / ".github" / "workflows" / "codex-v6.10.yml").read_text(
+        workflow = (REPO_ROOT / ".github" / "workflows" / "codex-v7.yml").read_text(
             encoding="utf-8"
         )
         self.assertIn("git diff --exit-code", workflow)
@@ -1642,7 +1927,7 @@ class TopologyContractTests(unittest.TestCase):
 
 
 class ValidatorTests(unittest.TestCase):
-    def test_validation_fails_when_root_becomes_ambiguous(self) -> None:
+    def test_validation_requires_reanalysis_when_workspace_kind_changes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             harness_apply.apply_application(
@@ -1653,8 +1938,9 @@ class ValidatorTests(unittest.TestCase):
             report = validate_harness.Validator(root).run()
 
             self.assertFalse(report["valid"])
+            self.assertEqual(report["validationLayers"]["rootContext"]["status"], "passed")
             self.assertEqual(
-                report["validationLayers"]["rootContext"]["status"], "failed"
+                report["validationLayers"]["localOnlyProtection"]["status"], "failed"
             )
             self.assertEqual(
                 report["validationLayers"]["managedOwnership"]["status"], "passed"

@@ -237,7 +237,7 @@ def _write_json_atomic(path: Path, value: dict[str, Any]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", required=True, help="Selected unambiguous repository root")
+    parser.add_argument("--root", required=True, help="Selected complete project workspace root")
     parser.add_argument("--input", required=True, help="Draft Schema 3 plan")
     parser.add_argument("--output", required=True, help="Materialized Schema 3 plan")
     args = parser.parse_args()

@@ -14,6 +14,7 @@ import harness_state
 import harness_teamplay
 import harness_topology
 import harness_transaction
+import harness_workspace
 import harness_change_discipline
 import inventory
 
@@ -225,6 +226,13 @@ def validate_artifacts(root: Path, plan: dict) -> tuple[dict[str, str], dict[str
     return artifacts, modes
 
 
+def validate_directory_workspace_writers(root_context: dict, topology: dict) -> None:
+    try:
+        harness_workspace.validate_directory_workspace_writers(root_context, topology)
+    except harness_workspace.WorkspaceError as exc:
+        raise PlanError(str(exc)) from exc
+
+
 def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> tuple[dict, list[str]]:
     topology = require_object(plan.get("topology"), "topology")
     capability_policies = plan.get("capabilityPolicies")
@@ -232,6 +240,8 @@ def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> tupl
         warnings = harness_topology.validate_contract(topology, capability_policies)
     except harness_topology.TopologyError as exc:
         raise PlanError(str(exc)) from exc
+
+    validate_directory_workspace_writers(inventory.inspect_root_context(root), topology)
 
     for label, evidence in harness_topology.iter_evidence(topology):
         validate_evidence(root, evidence, label)
@@ -409,11 +419,13 @@ def existing_manifest_state(root: Path) -> tuple[dict | None, dict[str, dict]]:
     harness_state.validate_runtime(manifest)
     if manifest.get("schemaVersion") not in {
         harness_state.UPGRADE_SOURCE_SCHEMA_VERSION,
+        harness_state.LOCAL_ONLY_UPGRADE_SOURCE_SCHEMA_VERSION,
         harness_state.CURRENT_SCHEMA_VERSION,
     }:
         raise PlanError(
             f"existing manifest must be schemaVersion {harness_state.UPGRADE_SOURCE_SCHEMA_VERSION} "
-            f"or {harness_state.CURRENT_SCHEMA_VERSION} before a schema 5 upgrade"
+            f", {harness_state.LOCAL_ONLY_UPGRADE_SOURCE_SCHEMA_VERSION}, or "
+            f"{harness_state.CURRENT_SCHEMA_VERSION} before a schema 6 upgrade"
         )
     if manifest.get("schemaVersion") == harness_state.UPGRADE_SOURCE_SCHEMA_VERSION:
         validate_project(root, manifest)
@@ -468,7 +480,7 @@ def classify_file(
 
 def build_application(root: Path, plan: dict) -> dict:
     try:
-        inventory.require_unambiguous_root(root)
+        root_context = inventory.require_unambiguous_root(root)
     except ValueError as exc:
         raise PlanError(str(exc)) from exc
     harness_transaction.ensure_no_pending_transaction(root)
@@ -481,7 +493,7 @@ def build_application(root: Path, plan: dict) -> dict:
     manifest, old_managed = existing_manifest_state(root)
 
     instruction_relative = harness_state.active_instruction_relative(root)
-    planned_paths = set(artifacts) | {instruction_relative, ".harness/manifest.json"}
+    planned_paths = set(artifacts) | {".harness/manifest.json"}
     overlap = sorted(evidence_paths(project, topology) & planned_paths)
     if overlap:
         raise PlanError(
@@ -522,23 +534,43 @@ def build_application(root: Path, plan: dict) -> dict:
         managed_instruction is None or managed_instruction.get("kind") != "managed-block"
     ):
         raise PlanError(f"instruction block in {instruction_relative} is not owned by Harness")
-    merged_instruction = merge_managed_block(existing_instruction, managed_block)
-    if not instruction_path.exists():
-        instruction_action = "create"
+    if managed_instruction is not None:
+        instruction_mode = "managed-pointer"
+    elif instruction_path.exists():
+        instruction_mode = "explicit-skill"
     else:
-        instruction_action = "unchanged" if merged_instruction == existing_instruction else "update"
-    actions.append({"path": instruction_relative, "action": instruction_action, "kind": "managed-block"})
-    if instruction_action != "create":
-        original_hashes[instruction_relative] = harness_state.digest_bytes(
-            instruction_path.read_bytes()
+        instruction_mode = "managed-pointer"
+
+    merged_instruction: str | None = None
+    if instruction_mode == "managed-pointer":
+        merged_instruction = merge_managed_block(existing_instruction, managed_block)
+        if not instruction_path.exists():
+            instruction_action = "create"
+        else:
+            instruction_action = "unchanged" if merged_instruction == existing_instruction else "update"
+        actions.append(
+            {"path": instruction_relative, "action": instruction_action, "kind": "managed-block"}
         )
-        original_modes[instruction_relative] = harness_state.current_mode(instruction_path)
-        desired_modes[instruction_relative] = original_modes[instruction_relative]
-    else:
-        desired_modes[instruction_relative] = harness_state.DEFAULT_FILE_MODE
-    desired_entries[instruction_relative] = managed_entry(
-        instruction_relative, managed_block, kind="managed-block"
-    )
+        if instruction_action != "create":
+            original_hashes[instruction_relative] = harness_state.digest_bytes(
+                instruction_path.read_bytes()
+            )
+            original_modes[instruction_relative] = harness_state.current_mode(instruction_path)
+            desired_modes[instruction_relative] = original_modes[instruction_relative]
+        else:
+            desired_modes[instruction_relative] = harness_state.DEFAULT_FILE_MODE
+        desired_entries[instruction_relative] = managed_entry(
+            instruction_relative, managed_block, kind="managed-block"
+        )
+        planned_paths.add(instruction_relative)
+    elif managed_instruction is not None:
+        raise PlanError("a previously managed instruction pointer cannot be abandoned implicitly")
+
+    late_overlap = sorted(evidence_paths(project, topology) & planned_paths)
+    if late_overlap:
+        raise PlanError(
+            "evidence files cannot also be planned outputs: " + ", ".join(late_overlap)
+        )
 
     removal_candidates = sorted(
         relative
@@ -547,6 +579,24 @@ def build_application(root: Path, plan: dict) -> dict:
     )
     for relative in removal_candidates:
         desired_entries[relative] = old_managed[relative]
+
+    protected_paths = sorted(desired_entries)
+    try:
+        local_protection = harness_workspace.plan_local_protection(
+            root, root_context["workspaceKind"], protected_paths
+        )
+    except harness_workspace.WorkspaceError as exc:
+        raise PlanError(str(exc)) from exc
+
+    workspace_manifest = {
+        "scope": harness_workspace.LOCAL_SCOPE,
+        "kind": root_context["workspaceKind"],
+        "instructionMode": instruction_mode,
+        "gitProtection": {
+            "mode": local_protection["mode"],
+            "patterns": local_protection["patterns"],
+        },
+    }
 
     desired_manifest = {
         "schemaVersion": harness_state.CURRENT_SCHEMA_VERSION,
@@ -559,7 +609,8 @@ def build_application(root: Path, plan: dict) -> dict:
             "mode": "journaled",
             "transactionSchemaVersion": harness_transaction.TRANSACTION_SCHEMA_VERSION,
         },
-        "instructionFile": instruction_relative,
+        "workspace": workspace_manifest,
+        "instructionFile": instruction_relative if instruction_mode == "managed-pointer" else None,
         "project": project,
         "topology": topology,
         "capabilityPolicies": capability_policies,
@@ -586,9 +637,13 @@ def build_application(root: Path, plan: dict) -> dict:
     return {
         "artifacts": artifacts,
         "artifactModes": artifact_modes,
-        "instructionRelative": instruction_relative,
+        "instructionRelative": (
+            instruction_relative if instruction_mode == "managed-pointer" else None
+        ),
         "instructionPath": instruction_path,
         "instructionText": merged_instruction,
+        "localProtection": local_protection,
+        "protectedPaths": protected_paths,
         "manifestPath": manifest_path,
         "manifestText": manifest_text,
         "originalHashes": original_hashes,
@@ -601,13 +656,26 @@ def build_application(root: Path, plan: dict) -> dict:
             "actions": actions,
             "removalCandidates": removal_candidates,
             "warnings": topology_warnings,
+            "workspace": workspace_manifest,
+            "localProtection": {
+                "mode": local_protection["mode"],
+                "action": local_protection["action"],
+                "patterns": local_protection["patterns"],
+            },
+            "activation": (
+                "managed-pointer"
+                if instruction_mode == "managed-pointer"
+                else "explicitly invoke $project-harness; the existing user instruction file was preserved"
+            ),
         },
     }
 
 
 def application_outputs(application: dict) -> dict[str, str]:
     outputs = dict(application["artifacts"])
-    outputs[application["instructionRelative"]] = application["instructionText"]
+    instruction_relative = application.get("instructionRelative")
+    if instruction_relative is not None:
+        outputs[instruction_relative] = application["instructionText"]
     outputs[".harness/manifest.json"] = application["manifestText"]
     try:
         harness_state.validate_file_namespace(outputs, label="application outputs")
@@ -637,12 +705,11 @@ def application_actions(application: dict) -> dict[str, str]:
         action_by_path[relative] = action
 
     instruction_relative = application.get("instructionRelative")
-    if not isinstance(instruction_relative, str):
-        raise PlanError("application is missing instructionRelative")
-    expected_paths = set(application["artifacts"]) | {
-        instruction_relative,
-        ".harness/manifest.json",
-    }
+    if instruction_relative is not None and not isinstance(instruction_relative, str):
+        raise PlanError("application instructionRelative must be text or null")
+    expected_paths = set(application["artifacts"]) | {".harness/manifest.json"}
+    if instruction_relative is not None:
+        expected_paths.add(instruction_relative)
     if set(action_by_path) != expected_paths:
         raise PlanError("application action paths do not match the planned outputs")
     return action_by_path
@@ -665,6 +732,12 @@ def apply_application(application: dict) -> dict:
     action_by_path = application_actions(application)
     desired_modes = application_modes(application)
     root = application["manifestPath"].parents[1]
+    try:
+        harness_workspace.apply_local_protection(
+            root, application["localProtection"], application["protectedPaths"]
+        )
+    except harness_workspace.WorkspaceError as exc:
+        raise PlanError(str(exc)) from exc
     journal = harness_transaction.prepare_transaction(
         root,
         application_outputs(application),
@@ -692,7 +765,7 @@ def main() -> int:
 
     root = Path(args.root).resolve()
     if not root.is_dir():
-        parser.error(f"repository root is not a directory: {root}")
+        parser.error(f"workspace root is not a directory: {root}")
     maintenance_requested = (
         args.recover or args.inspect_transaction or args.clean_orphaned_transaction
     )

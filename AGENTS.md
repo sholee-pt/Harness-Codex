@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v6.10, a user-level harness generator with enforced single-root selection, Inventory Schema 3 role summaries, Authoring Contract 2 draft migration, deterministic runtime contracts, and repository-state-safe Evaluation Schema 2 attribution.
+- This branch contains Harness for Codex v7.0, a local-only workspace harness generator with Inventory Schema 4 boundary coverage, Manifest Schema 6 workspace state, Authoring Contract 2 materialization, deterministic runtime contracts, and repository-state-safe Evaluation Schema 2 attribution.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add deployment, marketplace publishing, telemetry, or external service dependencies.
 - Keep evaluation default-off, user-local, and isolated from generation/apply failure handling.
@@ -12,7 +12,10 @@
 
 - Treat `.agents/skills/harness/SKILL.md` as the concise router.
 - Put conditional design guidance in `references/`, deterministic helpers in `scripts/`, and output templates in `assets/`.
-- Generate agents and project skills only when repository evidence justifies them.
+- Generate agents and project skills only when workspace evidence justifies them.
+- Accept plain directories and non-Git directory workspaces. Never assume a Git work tree has a GitHub remote.
+- Never inspect or mutate Git remotes, credentials, branches, commits, pushes, pull requests, or deployments during generation.
+- In local Git roots, preserve tracked targets and user-owned instructions and keep generated paths local through the marker-owned info/exclude contract.
 - Preserve user-owned content and test idempotent updates.
 - Keep current-task roles, plans, messages, adapter selection, and retention out of the persistent manifest.
 

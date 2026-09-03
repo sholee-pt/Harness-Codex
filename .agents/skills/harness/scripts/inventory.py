@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Produce a bounded, content-free repository inventory for Harness."""
+"""Produce a bounded, content-free workspace inventory for Harness."""
 
 from __future__ import annotations
 
@@ -10,8 +10,10 @@ import subprocess
 from collections import Counter, defaultdict
 from pathlib import Path
 
+import harness_metadata
 
-IGNORED_DIRS = {
+
+INVENTORY_IGNORED_DIRS = {
     ".git",
     ".hg",
     ".svn",
@@ -27,6 +29,12 @@ IGNORED_DIRS = {
     "target",
     "__pycache__",
 }
+
+# Root-boundary discovery must not reuse the file-inventory exclusions above.
+# Dependencies, vendor trees, and output directories can contain independent Git
+# roots and therefore remain visible to this scan. Only metadata directories are
+# excluded after their owning root has been classified.
+ROOT_SCAN_EXCLUDED_DIRS = {".git", ".hg", ".svn"}
 
 SENSITIVE_NAMES = {
     ".env",
@@ -172,13 +180,44 @@ def _classify_nested_repository(root: Path, relative: str, marker_type: str) -> 
     return "independent-repository" if marker_type == "directory" else "linked-repository"
 
 
+def _containing_git_root(root: Path) -> Path | None:
+    """Return the local Git work-tree root without inspecting remotes."""
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0 or not completed.stdout.strip():
+        return None
+    return Path(completed.stdout.strip()).resolve()
+
+
 def inspect_root_context(root: Path, *, max_directories: int = 5000) -> dict:
-    """Inspect repository-root ambiguity independently from the bounded file budget."""
+    """Inspect workspace boundaries independently from the bounded file budget."""
     root = root.resolve()
     nested_repositories: list[dict[str, str]] = []
+    excluded_by_policy: list[dict[str, str]] = []
+    scan_errors: list[str] = []
     directory_count = 0
     scan_truncated = False
-    for current, dirs, files in os.walk(root, followlinks=False):
+
+    def record_error(error: OSError) -> None:
+        filename = getattr(error, "filename", None)
+        if filename:
+            try:
+                label = Path(filename).resolve().relative_to(root).as_posix()
+            except (OSError, ValueError):
+                label = "[outside-workspace]"
+        else:
+            label = "[unknown]"
+        scan_errors.append(label)
+
+    for current, dirs, files in os.walk(root, followlinks=False, onerror=record_error):
         current_path = Path(current)
         directory_count += 1
         if directory_count > max_directories:
@@ -198,41 +237,95 @@ def inspect_root_context(root: Path, *, max_directories: int = 5000) -> dict:
             )
             dirs[:] = []
             continue
-        dirs[:] = sorted(
-            directory
-            for directory in dirs
-            if directory not in IGNORED_DIRS
-            and not _is_artifact_directory(root, current_path, directory)
-        )
+        kept: list[str] = []
+        for directory in sorted(dirs):
+            if directory in ROOT_SCAN_EXCLUDED_DIRS:
+                excluded_by_policy.append(
+                    {
+                        "path": posix_relative(current_path / directory, root),
+                        "status": "excluded-by-policy",
+                        "reason": "version-control-metadata",
+                    }
+                )
+                continue
+            kept.append(directory)
+        dirs[:] = kept
     nested_repositories.sort(key=lambda item: item["path"])
+    excluded_by_policy.sort(key=lambda item: item["path"])
+    marker = _git_marker_kind(root)
+    containing_root = _containing_git_root(root)
+    contained_by_git = containing_root is not None and containing_root != root
+    if scan_errors:
+        scan_status = "unknown"
+    elif scan_truncated:
+        scan_status = "truncated"
+    else:
+        scan_status = "scanned"
+    if scan_status != "scanned":
+        workspace_kind = "scan-incomplete"
+    elif contained_by_git:
+        workspace_kind = "git-contained-directory"
+    elif marker == "directory":
+        workspace_kind = "git-repository"
+    elif marker == "file":
+        workspace_kind = "git-worktree"
+    elif nested_repositories:
+        workspace_kind = "directory-workspace"
+    else:
+        workspace_kind = "plain-directory"
+    nested_root_conflict = marker != "none" and any(
+        item["kind"] != "submodule" for item in nested_repositories
+    )
     return {
-        "schemaVersion": 1,
-        "rootGitState": _git_marker_kind(root),
+        "schemaVersion": harness_metadata.ROOT_CONTEXT_SCHEMA_VERSION,
+        "workspaceKind": workspace_kind,
+        "rootGitState": "contained" if contained_by_git else marker,
+        "containingGitRoot": str(containing_root) if contained_by_git else None,
         "directoryCount": directory_count,
         "scanTruncated": scan_truncated,
+        "scanCompleteness": {
+            "status": scan_status,
+            "maxDirectories": max_directories,
+            "scannedDirectories": min(directory_count, max_directories),
+            "excludedByPolicy": excluded_by_policy,
+            "unreadableDirectories": sorted(set(scan_errors)),
+        },
         "nestedRepositories": nested_repositories,
-        "rootSelectionRequired": scan_truncated
-        or any(item["kind"] != "submodule" for item in nested_repositories),
+        "rootSelectionRequired": scan_status != "scanned"
+        or contained_by_git
+        or nested_root_conflict,
     }
 
 
 def require_unambiguous_root(root: Path) -> dict:
     root = root.resolve()
     if not root.is_dir():
-        raise ValueError(f"repository root is not a directory: {root}")
+        raise ValueError(f"workspace root is not a directory: {root}")
     context = inspect_root_context(root)
-    if context["scanTruncated"]:
+    scan_status = context["scanCompleteness"]["status"]
+    if scan_status == "truncated":
         raise ValueError(
-            "repository root scan exceeded its directory budget; select a narrower root"
+            "workspace root scan exceeded its directory budget; select a narrower root"
         )
-    ambiguous = [
-        item for item in context["nestedRepositories"] if item["kind"] != "submodule"
-    ]
+    if scan_status == "unknown":
+        raise ValueError(
+            "workspace root scan could not read every directory; select a readable root"
+        )
+    if context["workspaceKind"] == "git-contained-directory":
+        raise ValueError(
+            "selected workspace is inside a Git work tree but is not its root; "
+            f"select {context['containingGitRoot']} or a directory outside that work tree"
+        )
+    ambiguous = (
+        [item for item in context["nestedRepositories"] if item["kind"] != "submodule"]
+        if context["rootGitState"] in {"directory", "file"}
+        else []
+    )
     if ambiguous:
         candidates = ", ".join(item["path"] for item in ambiguous)
         raise ValueError(
-            "repository root is ambiguous because it contains nested Git repositories: "
-            f"{candidates}; rerun Harness with one explicitly selected repository root"
+            "Git workspace root is ambiguous because it contains nested independent repositories: "
+            f"{candidates}; select one Git root or use a non-Git directory workspace"
         )
     return context
 
@@ -284,7 +377,7 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
 
         kept_dirs: list[str] = []
         for directory in sorted(dirs):
-            if directory in IGNORED_DIRS:
+            if directory in INVENTORY_IGNORED_DIRS:
                 continue
             if not include_artifacts and _is_artifact_directory(root, current_path, directory):
                 excluded_artifact_directories.append(
@@ -357,11 +450,29 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
         for name, count in sorted(boundary_counts.items(), key=lambda item: (-item[1], item[0]))
         if not name.startswith(".")
     ]
+    if root_context["workspaceKind"] == "directory-workspace":
+        known_candidates = {item["path"] for item in candidate_boundaries}
+        for nested in root_context["nestedRepositories"]:
+            if nested["path"] in known_candidates:
+                continue
+            candidate_boundaries.append(
+                {
+                    "path": nested["path"],
+                    "fileCount": 0,
+                    "fileRoles": {
+                        role: 0 for role in FILE_ROLES if role != "research-artifact"
+                    },
+                    "analysisPriority": "repository-boundary",
+                    "boundaryKind": nested["kind"],
+                }
+            )
+        candidate_boundaries.sort(key=lambda item: item["path"])
 
     return {
-        "schemaVersion": 3,
+        "schemaVersion": harness_metadata.INVENTORY_SCHEMA_VERSION,
         "root": str(root),
         "rootContext": root_context,
+        "workspaceKind": root_context["workspaceKind"],
         "rootGitState": root_context["rootGitState"],
         "nestedRepositories": root_context["nestedRepositories"],
         "rootSelectionRequired": root_context["rootSelectionRequired"],
@@ -413,7 +524,7 @@ def main() -> int:
 
     root = Path(args.root)
     if not root.is_dir():
-        parser.error(f"repository root is not a directory: {root}")
+        parser.error(f"workspace root is not a directory: {root}")
 
     print(
         json.dumps(

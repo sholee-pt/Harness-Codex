@@ -29,6 +29,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v6.8` | Harness for Codex v6.8 | Schema 3 | Schema 5 | Schema 2 | Canonical-handle runtime control, versioned public/local observation profiles, Runtime Receipt Schema 2, required-task accounting, installed draft-plan example |
 | `codex/v6.9` | Harness for Codex v6.9 | Schema 3 | Schema 5 | Schema 2 | Deterministic teamplay materialization, nested-root and research-artifact inventory, canonical capability registry, layered validation report |
 | `codex/v6.10` | Harness for Codex v6.10 | Schema 3 | Schema 5 | Schema 2 | Enforced single-root preflight, Inventory Schema 3 role summaries, instruction-state split, Authoring Contract 2 drafts |
+| `codex/v7` | Harness for Codex v7.0 | Schema 3 | Schema 6 | Schema 2 | Workspace-first roots, Inventory Schema 4 scan coverage, local-only Git exclusion, tracked-file and user-instruction protection |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -383,7 +384,25 @@ Harness for Codex v6.10 closes the remaining root-selection and inventory-semant
 - Introduces Authoring Contract 2 for draft plans. The builder rejects older draft revisions with migration guidance and removes the authoring-only field from the final Schema 3 plan.
 - Keeps v6.0 through v6.9 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v6.10 evidence.
 
-Harness remains repository-scoped. A non-Git workspace containing multiple independent repositories is not treated as one supported project root; select one repository or create a separately governed orchestration repository. Inventory roles are structural hints, not semantic responsibility claims, and `.gitignore`-complete classification remains outside this release.
+Harness v6.10 remains repository-scoped. A non-Git workspace containing multiple independent repositories is not treated as one supported project root in that release. Inventory roles are structural hints, not semantic responsibility claims, and `.gitignore`-complete classification remains outside it.
+
+## Harness for Codex v7.0
+
+Harness for Codex v7.0 changes generation from repository-first to local-workspace-first operation. Generation Plan Schema 3, Transaction Schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, Runtime Receipt Schema 2, and Evaluation Schema 2 remain unchanged. Manifest Schema 6 and Inventory Schema 4 record the new local-only workspace contract.
+
+- Classifies plain directories, non-Git directory workspaces, local Git repositories, linked worktrees, Git-contained selections, and incomplete scans without querying a Git remote or GitHub.
+- Separates content-inventory exclusions from root-boundary discovery, so `vendor`, dependency, output, data, and checkpoint trees remain visible when looking for nested Git roots.
+- Reports root scan coverage as scanned, truncated, unknown, or excluded-by-policy and refuses to infer completeness from unread or unvisited paths.
+- Allows independent nested repositories as explicit boundaries in a non-Git directory workspace while retaining strict ambiguity rejection inside a selected Git root. Registered submodules remain allowed.
+- Makes every generated installation local-only. Harness never stages, commits, pushes, opens pull requests, changes branches, reads remote URLs, or uses GitHub credentials.
+- Adds a marker-owned local `info/exclude` block containing exact generated paths and `/.harness/` before a Git-workspace apply. Existing lines remain user-owned.
+- Refuses to apply when any planned Harness target is already tracked, and rechecks both tracking and exclude-file drift immediately before writing.
+- Preserves existing user-owned or tracked root instructions byte-for-byte. Such installations use explicit `$project-harness` activation instead of creating an override that could suppress user guidance.
+- Records workspace kind, local-only scope, instruction activation, and Git protection in Manifest Schema 6 and validates them against current local state.
+- Keeps older managed artifacts as unchanged or removal candidates. It does not automatically delete superseded agents or skills, and task-topic changes continue to affect ephemeral runtime routing before persistent topology.
+- Keeps v6.0 through v6.10 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.0 evidence.
+
+Schema 4 and 5 installations upgrade only through re-analysis and a reviewed Schema 3 plan. A legacy Harness path already committed to Git must be untracked manually before local-only conversion; v7.0 does not rewrite Git history or index state.
 
 ## Harness for Claude Code releases
 

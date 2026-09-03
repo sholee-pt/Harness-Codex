@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -644,8 +645,8 @@ class CompatibilityTests(RuntimeFixtureTestCase):
     def test_generation_plan_schema_remains_3(self) -> None:
         self.assertEqual(harness_metadata.PLAN_SCHEMA_VERSION, 3)
 
-    def test_manifest_schema_remains_5(self) -> None:
-        self.assertEqual(harness_metadata.MANIFEST_SCHEMA_VERSION, 5)
+    def test_manifest_schema_is_6_for_local_only_workspace_state(self) -> None:
+        self.assertEqual(harness_metadata.MANIFEST_SCHEMA_VERSION, 6)
 
     def test_transaction_schema_remains_2(self) -> None:
         self.assertEqual(harness_metadata.TRANSACTION_SCHEMA_VERSION, 2)
@@ -711,10 +712,15 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
             if item["path"] == ".agents/skills/project-harness/SKILL.md"
         )
         self.assertEqual(project.count(harness_teamplay.PROJECT_BLOCK), 1)
-        application = harness_apply.build_application(
-            REPO_ROOT / "tests" / "fixtures" / "minimal-project", materialized
-        )
-        self.assertTrue(application["report"]["valid"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copytree(
+                REPO_ROOT / "tests" / "fixtures" / "minimal-project",
+                root,
+                dirs_exist_ok=True,
+            )
+            application = harness_apply.build_application(root, materialized)
+            self.assertTrue(application["report"]["valid"])
 
     def test_installed_minimal_draft_example_is_self_contained(self) -> None:
         example = json.loads(
@@ -723,10 +729,15 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
             )
         )
         materialized = harness_plan_builder.materialize_plan(example)
-        application = harness_apply.build_application(
-            REPO_ROOT / "tests" / "fixtures" / "minimal-project", materialized
-        )
-        self.assertTrue(application["report"]["valid"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copytree(
+                REPO_ROOT / "tests" / "fixtures" / "minimal-project",
+                root,
+                dirs_exist_ok=True,
+            )
+            application = harness_apply.build_application(root, materialized)
+            self.assertTrue(application["report"]["valid"])
 
     def test_builder_materializes_every_writer_contract(self) -> None:
         materialized = harness_plan_builder.materialize_plan(
@@ -807,12 +818,13 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
         ):
             harness_plan_builder.materialize_plan(draft)
 
-    def test_builder_rejects_ambiguous_repository_root(self) -> None:
+    def test_builder_rejects_nested_repository_inside_git_root(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            (root / ".git").mkdir()
             (root / "nested" / ".git").mkdir(parents=True)
             with self.assertRaisesRegex(
-                harness_plan_builder.PlanBuilderError, "repository root is ambiguous"
+                harness_plan_builder.PlanBuilderError, "Git workspace root is ambiguous"
             ):
                 harness_plan_builder.materialize_plan(self._draft(), root=root)
 
@@ -857,6 +869,10 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
             root = Path(directory)
             source = root / "draft.json"
             output = root / "plan.json"
+            project = root / "project"
+            shutil.copytree(
+                REPO_ROOT / "tests" / "fixtures" / "minimal-project", project
+            )
             source.write_text(json.dumps(self._draft()), encoding="utf-8")
             before = source.read_bytes()
             completed = subprocess.run(
@@ -864,7 +880,7 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
                     sys.executable,
                     str(SCRIPTS / "harness_plan_builder.py"),
                     "--root",
-                    str(REPO_ROOT / "tests" / "fixtures" / "minimal-project"),
+                    str(project),
                     "--input",
                     str(source),
                     "--output",

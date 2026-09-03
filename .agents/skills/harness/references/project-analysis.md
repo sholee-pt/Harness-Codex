@@ -1,12 +1,12 @@
 # Project Analysis
 
-Read this reference when profiling a new repository or when its structure has materially changed.
+Read this reference when profiling a new local project workspace or when its structure has materially changed.
 
 ## Evidence order
 
 Inspect high-signal sources before sampling implementation files:
 
-1. repository instructions and top-level documentation, including `AGENTS.override.md` precedence;
+1. workspace instructions and top-level documentation, including `AGENTS.override.md` precedence;
 2. package, workspace, build, and dependency manifests;
 3. application entry points and public interfaces;
 4. tests, CI workflows, schema or migration files;
@@ -14,11 +14,11 @@ Inspect high-signal sources before sampling implementation files:
 
 Do not read secret values, generated dependency trees, build outputs, or large datasets. File names may be inventoried, but sensitive files should not be opened unless the user explicitly places them in scope.
 
-Treat `environment.yml`, `environment.yaml`, and Conda lock files as dependency manifests. Inventory Schema 3 reports conservative `fileRoleSummary` counts and `nonArtifactFileCount`; neither field proves semantic responsibility. Candidate boundaries include role counts and an analysis priority so documentation-only or unknown directories remain visible without being treated as source automatically.
+Treat `environment.yml`, `environment.yaml`, and Conda lock files as dependency manifests. Inventory Schema 4 reports workspace kind, root-scan completeness, conservative `fileRoleSummary` counts, and `nonArtifactFileCount`; none proves semantic responsibility. Candidate boundaries include role counts and an analysis priority so documentation-only or unknown directories remain visible without being treated as source automatically.
 
-If `rootSelectionRequired` is true, select a narrower repository root before deriving boundaries; do not merge an independent or linked nested repository into its parent topology by file count. A registered Git submodule remains visible but does not by itself make the parent root ambiguous. Known checkpoint, dataset, log, run, cache, result, and output directories are excluded from boundary counts by default and remain visible in `artifactSummary`. Use `--include-artifacts` only when those files are part of the requested responsibility rather than generated evidence or bulk outputs.
+If `rootSelectionRequired` is true, select a complete supported root before deriving boundaries. In a Git root, do not merge an independent or linked nested repository into its parent topology; a registered submodule remains visible without making the root ambiguous by itself. In a non-Git `directory-workspace`, nested repositories are separate candidate boundaries and do not imply shared ownership, a shared commit, or cross-repository write permission. Known checkpoint, dataset, log, run, cache, result, and output directories are excluded from content boundary counts by default but remain visible to root-boundary discovery and in `artifactSummary`. Use `--include-artifacts` only when those files are part of the requested responsibility rather than generated evidence or bulk outputs.
 
-`existingActiveRootInstruction` reports the instruction file that currently exists and wins precedence, or `null`. `plannedRootInstruction` reports the file Harness would create or update. Do not treat a planned target as evidence that instructions already exist.
+`existingActiveRootInstruction` reports the instruction file that currently exists and wins precedence, or `null`. `plannedRootInstruction` reports the candidate path only; apply may preserve an existing user-owned or Git-tracked file and select explicit `$project-harness` activation instead. Do not treat a candidate target as evidence that instructions already exist or may be modified.
 
 ## Boundary model
 
@@ -58,7 +58,7 @@ Classify the persistent project topology independently from the current task:
 
 - `minimal`: zero or one material boundary and no recurring coordination;
 - `modular`: two or more boundaries with static selection or handoffs;
-- `coordinated`: repository evidence proves recurring dynamic allocation, fan-out/fan-in, cross-contract verification, reviewer chains, or phase freezing.
+- `coordinated`: workspace evidence proves recurring dynamic allocation, fan-out/fan-in, cross-contract verification, reviewer chains, or phase freezing.
 
 Boundary count alone does not force coordinated topology. Four or more modular boundaries require an explicit review warning. A destructive or otherwise high-risk current task may require coordinated runtime execution without changing persistent project topology.
 

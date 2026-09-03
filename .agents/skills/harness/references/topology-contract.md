@@ -4,15 +4,15 @@ Read this reference after repository profiling and before writing a schema 3 pla
 
 ## Persistent topology versus runtime execution
 
-The manifest records persistent repository structure:
+The manifest records persistent workspace structure:
 
 - `minimal`: zero or one material boundary and no recurring coordination;
 - `modular`: two or more material boundaries with static selection or handoffs;
-- `coordinated`: repository evidence proves recurring dynamic allocation, fan-out/fan-in, cross-contract verification, reviewer chains, or phase freezing.
+- `coordinated`: workspace evidence proves recurring dynamic allocation, fan-out/fan-in, cross-contract verification, reviewer chains, or phase freezing.
 
 Boundary count is not a coordinated-topology trigger. Four or more modular boundaries produce a review warning, not an automatic promotion. Current-task risk changes only runtime execution (`direct`, `delegated`, or `coordinated`) and must not appear in the generation plan or project manifest.
 
-Persistent collaboration patterns describe recurring repository structure, not a currently active team. Even a persistent `coordinated` topology requires current-task interaction value and a live capability probe before coordinated execution. Runtime roles, participants, task graphs, messages, adapter selection, retention, and provisional greenfield roles belong only to an ephemeral runtime plan and are not agent components or manifest fields.
+Persistent collaboration patterns describe recurring workspace structure, not a currently active team. Even a persistent `coordinated` topology requires current-task interaction value and a live capability probe before coordinated execution. Runtime roles, participants, task graphs, messages, adapter selection, retention, and provisional greenfield roles belong only to an ephemeral runtime plan and are not agent components or manifest fields.
 
 ## Material boundary
 
@@ -20,7 +20,7 @@ Every retained boundary must include:
 
 - a unique kebab-case `id` and one or more topology-wide unique, stable `decisionAreaIds`;
 - one or more types from `responsibility`, `execution-environment`, `contract`, `data-flow`, `quality-risk`, and `recurring-workflow`;
-- structured repository evidence;
+- structured workspace evidence;
 - concrete inputs, outputs, contracts, or read/write scopes;
 - verification and failure impact;
 - persistent-project evidence classified as `stable-structure`, `documented-recurring-workflow`, or `historically-observed`;

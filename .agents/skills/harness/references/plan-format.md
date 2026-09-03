@@ -1,6 +1,6 @@
 # Generation Plan Format
 
-Create one UTF-8 JSON draft with `authoringContractVersion: 2`, materialize its deterministic contracts, and pass the resulting plan to `scripts/harness_apply.py`. Schema 3 remains the normative generation input contract for Harness for Codex v5 and v6. The authoring revision belongs only to the draft: the builder verifies and removes it, then emits an ordinary Schema 3 plan without letting apply mutate its input.
+Create one UTF-8 JSON draft with `authoringContractVersion: 2`, materialize its deterministic contracts, and pass the resulting plan to `scripts/harness_apply.py`. Schema 3 remains the normative generation input contract for Harness for Codex v5 through v7. The authoring revision belongs only to the draft: the builder verifies and removes it, then emits an ordinary Schema 3 plan without letting apply mutate its input.
 
 Read [topology-contract.md](topology-contract.md) before filling the topology. Use the installed [minimal draft-plan example](minimal-draft-plan.json) as the packaging-safe starting point, then materialize its placeholders with `scripts/harness_plan_builder.py`.
 
@@ -63,7 +63,7 @@ Allowed dependency shapes are `independent`, `static-dag`, `cyclic-contract`, an
 
 The dependency shape is not free-form audit metadata. `independent` requires empty `dependsOn` relationships, `cyclic-contract` requires an `interactsWith` cycle, and `dynamic` requires coordinated topology with `dynamic-allocation`. `static-dag` describes the acyclic `dependsOn` execution graph and does not by itself prohibit non-ordering `interactsWith` cycles; use `cyclic-contract` when a structural interaction cycle is the material topology driver. Every coordination reason must be backed by the corresponding declared collaboration or execution structure.
 
-`minimal` permits at most one boundary and no recurring coordination. `modular` permits two or more statically coordinated boundaries. `coordinated` requires repository-level recurring coordination and at least one explicit reason. Boundary count alone never forces `coordinated`.
+`minimal` permits at most one boundary and no recurring coordination. `modular` permits two or more statically coordinated boundaries. `coordinated` requires workspace-level recurring coordination and at least one explicit reason. Boundary count alone never forces `coordinated`.
 
 ## Boundary and component linkage
 
@@ -168,7 +168,7 @@ conda run -n harness python <harness-skill-root>/scripts/harness_plan_builder.py
   --output PLAN.json
 ```
 
-The builder requires authoring contract 2 and every target exactly once, rejects an ambiguous repository root, emits a Schema 3 object without the authoring-only field, and leaves the apply validator responsible for the complete plan, evidence, ownership, and canonical exact-once checks. Apply repeats the root check so bypassing the builder cannot apply a plan at an ambiguous outer workspace.
+The builder requires authoring contract 2 and every target exactly once, rejects an incomplete or unsupported workspace root, emits a Schema 3 object without the authoring-only field, and leaves the apply validator responsible for the complete plan, evidence, ownership, and canonical exact-once checks. Apply repeats the root check so bypassing the builder cannot apply a plan to a Git-contained directory, an incompletely scanned root, or a Git root with an unregistered nested repository.
 
 - Generated skill frontmatter supports only single-line scalar `name` and `description` fields.
 - Include every generated dedicated file in `artifacts`, including supporting references, scripts, and assets.
@@ -179,8 +179,9 @@ The builder requires authoring contract 2 and every target exactly once, rejects
 - Missing, escaped, stale, or invalid evidence is rejected before a dry-run action map is created.
 - Evidence paths may not also be planned outputs.
 - If an agent lists a skill dependency, mention that skill in its generated `developer_instructions`.
-- Do not include `.harness/manifest.json`; the apply script derives manifest schema 5.
-- Do not specify the root instruction path. Harness selects `AGENTS.override.md` when present and otherwise selects `AGENTS.md`.
+- Do not include `.harness/manifest.json`; the apply script derives Manifest Schema 6.
+- Do not specify the root instruction path. Harness selects the active path but writes a pointer only when that path is absent or already Harness-managed and untracked. Existing user-owned or tracked instructions are preserved and Manifest Schema 6 records `explicit-skill` activation.
+- Do not specify Git or GitHub state in the plan. Local-only protection and workspace classification are derived deterministically at apply time and recorded in Manifest Schema 6.
 - Do not include `taskExecution`, `taskExecutionClass`, the current task's selected agent list, or runtime-only quality decisions.
 - Keep the plan in a temporary location. It is a proposal, not managed project state.
 

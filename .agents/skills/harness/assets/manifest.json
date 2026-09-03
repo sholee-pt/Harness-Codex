@@ -1,13 +1,22 @@
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "generator": {
     "name": "Harness",
-    "version": "6.10",
+    "version": "7.0",
     "runtime": "codex"
   },
   "application": {
     "mode": "journaled",
     "transactionSchemaVersion": 2
+  },
+  "workspace": {
+    "scope": "local-only",
+    "kind": "plain-directory",
+    "instructionMode": "managed-pointer",
+    "gitProtection": {
+      "mode": "not-applicable",
+      "patterns": []
+    }
   },
   "instructionFile": "AGENTS.md",
   "project": {

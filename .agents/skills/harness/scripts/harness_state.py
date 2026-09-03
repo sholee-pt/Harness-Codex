@@ -22,6 +22,7 @@ END_MARKER = "<!-- harness:end -->"
 RUNTIME = harness_metadata.RUNTIME
 CURRENT_SCHEMA_VERSION = harness_metadata.MANIFEST_SCHEMA_VERSION
 UPGRADE_SOURCE_SCHEMA_VERSION = 4
+LOCAL_ONLY_UPGRADE_SOURCE_SCHEMA_VERSION = 5
 GENERATOR_VERSION = harness_metadata.HARNESS_VERSION
 LEGACY_MIGRATION_GENERATOR_VERSION = "4.0"
 TRANSACTION_JOURNAL_RELATIVE = ".harness/transaction.json"
@@ -124,7 +125,7 @@ def resolve_inside(root: Path, relative: str, *, must_exist: bool = False) -> Pa
     resolved_root = root.resolve()
     candidate = resolved_root.joinpath(*candidate_rel.parts).resolve()
     if candidate == resolved_root or resolved_root not in candidate.parents:
-        raise StateError(f"managed path escapes repository root: {relative}")
+        raise StateError(f"managed path escapes workspace root: {relative}")
     if must_exist and not candidate.is_file():
         raise StateError(f"managed file is missing: {relative}")
     return candidate
@@ -352,7 +353,11 @@ def migrate_manifest(root: Path) -> dict:
         raise StateError("missing .harness/manifest.json")
     validate_runtime(manifest)
     version = manifest.get("schemaVersion")
-    if version in {UPGRADE_SOURCE_SCHEMA_VERSION, CURRENT_SCHEMA_VERSION}:
+    if version in {
+        UPGRADE_SOURCE_SCHEMA_VERSION,
+        LOCAL_ONLY_UPGRADE_SOURCE_SCHEMA_VERSION,
+        CURRENT_SCHEMA_VERSION,
+    }:
         return manifest
     if version not in {1, 2, 3}:
         raise StateError(f"unsupported manifest schemaVersion: {version!r}")
@@ -526,7 +531,7 @@ def main() -> int:
     args = parser.parse_args()
     root = Path(args.root).resolve()
     if not root.is_dir():
-        parser.error(f"repository root is not a directory: {root}")
+        parser.error(f"workspace root is not a directory: {root}")
 
     try:
         if args.command == "status":
