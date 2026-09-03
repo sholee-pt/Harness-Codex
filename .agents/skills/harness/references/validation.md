@@ -79,4 +79,6 @@ Test the applicable cases, using an isolated temporary repository when possible:
 
 Validation succeeds only when every planned artifact is accounted for and structural checks pass. Clearly separate structural validation from a live Codex discovery or delegation smoke test, which may require restarting the session.
 
+`validate_harness.py` reports static `validationLayers` separately from `externalCapabilities`. A green static report covers transaction state, manifest shape, evidence freshness, topology/artifact contracts, managed ownership, and runtime-state separation. `customAgentDiscovery` and `liveDelegation` remain `not-tested`, while task correctness and Harness benefit attribution remain `not-measured`, until their separate evidence-producing workflows run.
+
 Follow [codex-smoke-test.md](codex-smoke-test.md) for a repeatable live check. Do not report structural validation as proof that Codex discovered or delegated to generated agents.

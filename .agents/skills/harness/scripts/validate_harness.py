@@ -8,6 +8,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Callable
 
 import harness_state
 import harness_teamplay
@@ -67,12 +68,27 @@ class Validator:
         self.errors: list[str] = []
         self.warnings: list[str] = []
         self.manifest: dict = {}
+        self.validation_layers: dict[str, dict[str, str]] = {}
 
     def error(self, message: str) -> None:
         self.errors.append(message)
 
     def warning(self, message: str) -> None:
         self.warnings.append(message)
+
+    def run_layer(self, name: str, purpose: str, check: Callable[[], object]) -> None:
+        before = len(self.errors)
+        check()
+        self.validation_layers[name] = {
+            "status": "passed" if len(self.errors) == before else "failed",
+            "proves": purpose,
+        }
+
+    def mark_blocked(self, name: str, purpose: str) -> None:
+        self.validation_layers[name] = {
+            "status": "blocked",
+            "proves": purpose,
+        }
 
     def path(self, relative: str, *, must_exist: bool = True) -> Path | None:
         try:
@@ -465,23 +481,85 @@ class Validator:
                     self.error(f"obsolete runtime token {token!r} found in {relative}")
 
     def run(self) -> dict:
-        transaction = harness_state.transaction_status(self.root)
-        if transaction is not None:
-            self.error(
-                f"pending Harness transaction must be recovered before validation: "
-                f"{transaction.get('state')}"
-            )
-        self.load_manifest()
-        self.validate_manifest_shape()
+        def validate_transaction_state() -> None:
+            transaction = harness_state.transaction_status(self.root)
+            if transaction is not None:
+                self.error(
+                    f"pending Harness transaction must be recovered before validation: "
+                    f"{transaction.get('state')}"
+                )
+
+        self.run_layer(
+            "transactionSafety",
+            "No interrupted Harness transaction is pending.",
+            validate_transaction_state,
+        )
+        self.run_layer(
+            "manifestContract",
+            "The installed manifest has the supported schema and persistent-state shape.",
+            lambda: (self.load_manifest(), self.validate_manifest_shape()),
+        )
         if self.manifest:
-            self.validate_evidence_locations()
-            self.validate_topology()
-            self.validate_managed_files()
-            self.validate_root_pointer()
-            self.validate_forbidden_tokens()
+            self.run_layer(
+                "evidenceFreshness",
+                "All declared evidence paths, hashes, and optional line ranges still match.",
+                self.validate_evidence_locations,
+            )
+            self.run_layer(
+                "topologyAndArtifacts",
+                "Topology references and generated skill/agent contracts are structurally valid.",
+                self.validate_topology,
+            )
+            self.run_layer(
+                "managedOwnership",
+                "Managed files, hashes, modes, namespace, and the active root pointer match.",
+                lambda: (self.validate_managed_files(), self.validate_root_pointer()),
+            )
+            self.run_layer(
+                "runtimeStateSeparation",
+                "Managed files contain no prohibited persistent runtime state or obsolete primitives.",
+                self.validate_forbidden_tokens,
+            )
+        else:
+            self.mark_blocked(
+                "evidenceFreshness",
+                "All declared evidence paths, hashes, and optional line ranges still match.",
+            )
+            self.mark_blocked(
+                "topologyAndArtifacts",
+                "Topology references and generated skill/agent contracts are structurally valid.",
+            )
+            self.mark_blocked(
+                "managedOwnership",
+                "Managed files, hashes, modes, namespace, and the active root pointer match.",
+            )
+            self.mark_blocked(
+                "runtimeStateSeparation",
+                "Managed files contain no prohibited persistent runtime state or obsolete primitives.",
+            )
+        external_capabilities = {
+            "customAgentDiscovery": {
+                "status": "not-tested",
+                "requires": "a fresh Codex session or live discovery smoke test",
+            },
+            "liveDelegation": {
+                "status": "not-tested",
+                "requires": "an opt-in live runtime observation",
+            },
+            "taskCorrectness": {
+                "status": "not-measured",
+                "requires": "project-native verification for a concrete task",
+            },
+            "harnessBenefitAttribution": {
+                "status": "not-measured",
+                "requires": "eligible isolated paired evaluation runs",
+            },
+        }
         return {
             "runtime": harness_state.RUNTIME,
             "valid": not self.errors,
+            "validationLayers": self.validation_layers,
+            "externalCapabilities": external_capabilities,
             "errors": self.errors,
             "warnings": self.warnings,
         }

@@ -1576,6 +1576,43 @@ class TopologyContractTests(unittest.TestCase):
 
 
 class ValidatorTests(unittest.TestCase):
+    def test_validation_report_separates_static_checks_from_live_capabilities(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            harness_apply.apply_application(
+                harness_apply.build_application(root, minimal_plan(root))
+            )
+
+            report = validate_harness.Validator(root).run()
+
+            self.assertTrue(report["valid"])
+            self.assertTrue(
+                all(
+                    layer["status"] == "passed"
+                    for layer in report["validationLayers"].values()
+                )
+            )
+            self.assertEqual(
+                report["externalCapabilities"]["customAgentDiscovery"]["status"],
+                "not-tested",
+            )
+            self.assertEqual(
+                report["externalCapabilities"]["harnessBenefitAttribution"]["status"],
+                "not-measured",
+            )
+
+    def test_missing_manifest_blocks_dependent_validation_layers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            report = validate_harness.Validator(Path(directory)).run()
+
+            self.assertFalse(report["valid"])
+            self.assertEqual(
+                report["validationLayers"]["manifestContract"]["status"], "failed"
+            )
+            self.assertEqual(
+                report["validationLayers"]["managedOwnership"]["status"], "blocked"
+            )
+
     def test_manifest_rejects_case_only_managed_path_collisions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
