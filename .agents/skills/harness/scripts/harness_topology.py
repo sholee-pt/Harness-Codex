@@ -7,9 +7,10 @@ import re
 from pathlib import PurePosixPath
 from typing import Iterable, Iterator
 
+import harness_teamplay
+
 
 ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
-CAPABILITY_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 
 TOPOLOGY_CLASSES = {"minimal", "modular", "coordinated"}
 DEPENDENCY_SHAPES = {"independent", "static-dag", "cyclic-contract", "dynamic"}
@@ -648,8 +649,15 @@ def _validate_capability_policies(value: object) -> set[str]:
         capabilities = require_string_list(
             policy.get("requiredCapabilities"), f"{label}.requiredCapabilities"
         )
-        if any(not CAPABILITY_RE.fullmatch(capability) for capability in capabilities):
-            raise TopologyError(f"{label}.requiredCapabilities contains an invalid identifier")
+        try:
+            normalized_capabilities = [
+                harness_teamplay.normalize_capability_id(capability, allow_alias=False)
+                for capability in capabilities
+            ]
+        except harness_teamplay.TeamplayError as exc:
+            raise TopologyError(f"{label}.requiredCapabilities: {exc}") from exc
+        if len(normalized_capabilities) != len(set(normalized_capabilities)):
+            raise TopologyError(f"{label}.requiredCapabilities contains duplicates")
         mapping = policy.get("preferredRuntimeMapping")
         if mapping not in RUNTIME_MAPPINGS:
             raise TopologyError(f"{label}.preferredRuntimeMapping is unsupported")

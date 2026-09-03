@@ -143,6 +143,8 @@ A direct capability policy may require no special runtime feature:
 
 When `requiredCapabilities` is non-empty or `preferredRuntimeMapping` is `runtime-native`, add `probe: {"mode": "runtime-check"}` and a fallback containing `semanticMode`, `implementation`, and `preserves: ["input", "output", "verification"]`.
 
+Use only registered capability IDs: `parallel-delegation`, `peer-messaging`, and `shared-task-state`. The builder accepts the legacy `parallel-subagent-delegation` spelling only to normalize it to `parallel-delegation`; final plans never retain aliases or unregistered IDs.
+
 Routing policies require evidence-backed task categories, boundary references, a recommended execution class, declared collaboration patterns, quality-policy references, and one capability-policy reference. Task categories are globally unique across routes, and a direct route has no collaboration patterns. If multiple categories match, use the persistent route only when all matches resolve to that same route; otherwise report ambiguity and require an explicit runtime selection. If no route matches, runtime task classification selects the lightest safe execution class. Persistent routes do not store the current task decision.
 
 ## Artifact and safety constraints

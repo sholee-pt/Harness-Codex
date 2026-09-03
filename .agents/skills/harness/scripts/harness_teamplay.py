@@ -18,6 +18,10 @@ COLLABORATION_PATTERNS = {
 RUNTIME_ROLES = {"producer", "reviewer", "skeptic", "integrator", "supervisor", "scout"}
 MESSAGE_TYPES = {"finding", "challenge", "request", "handoff", "blocker", "decision", "complete"}
 PRESERVED_CONTRACTS = frozenset({"input", "output", "verification"})
+CANONICAL_CAPABILITIES = frozenset(
+    {"parallel-delegation", "peer-messaging", "shared-task-state"}
+)
+CAPABILITY_ALIASES = {"parallel-subagent-delegation": "parallel-delegation"}
 
 PROJECT_BLOCK = """<!-- harness:runtime-teamplay:v2:begin -->
 ## Runtime execution classification
@@ -100,6 +104,28 @@ class TeamplayError(ValueError):
     pass
 
 
+def normalize_capability_id(value: object, *, allow_alias: bool = True) -> str:
+    if not isinstance(value, str) or not value:
+        raise TeamplayError("capability identifiers must be non-empty strings")
+    normalized = CAPABILITY_ALIASES.get(value, value) if allow_alias else value
+    if normalized not in CANONICAL_CAPABILITIES:
+        if value in CAPABILITY_ALIASES:
+            raise TeamplayError(
+                f"capability {value!r} is an alias; use {CAPABILITY_ALIASES[value]!r}"
+            )
+        raise TeamplayError(f"capability {value!r} is not registered")
+    return normalized
+
+
+def normalize_capabilities(
+    values: Iterable[object], *, allow_alias: bool = True
+) -> set[str]:
+    normalized = {
+        normalize_capability_id(value, allow_alias=allow_alias) for value in values
+    }
+    return normalized
+
+
 def _boolean(signals: dict[str, Any], key: str) -> bool:
     value = signals.get(key, False)
     if not isinstance(value, bool):
@@ -147,9 +173,7 @@ def select_adapter(execution_class: str, available_capabilities: Iterable[str]) 
     """Map semantic execution to a capability-preserving runtime adapter."""
     if execution_class not in EXECUTION_CLASSES:
         raise TeamplayError(f"unsupported execution class: {execution_class!r}")
-    capabilities = set(available_capabilities)
-    if not all(isinstance(item, str) and item for item in capabilities):
-        raise TeamplayError("available capabilities must be non-empty strings")
+    capabilities = normalize_capabilities(available_capabilities)
     base = {"preserves": sorted(PRESERVED_CONTRACTS), "fallbackUsed": False}
     if execution_class == "direct":
         return {**base, "adapter": "direct", "communication": "none", "taskControl": "primary"}

@@ -38,16 +38,6 @@ def _require_list(value: Any, label: str) -> list[Any]:
     return value
 
 
-def _replace_exactly_once(value: str, placeholder: str, canonical: str, label: str) -> str:
-    if value.count(placeholder) != 1:
-        raise PlanBuilderError(f"{label} must contain {placeholder} exactly once")
-    if harness_change_discipline.normalize_line_endings(canonical) in (
-        harness_change_discipline.normalize_line_endings(value)
-    ):
-        raise PlanBuilderError(f"{label} already contains the canonical contract")
-    return value.replace(placeholder, canonical)
-
-
 def _materialize_contract(value: str, placeholder: str, canonical: str, label: str) -> str:
     """Replace one placeholder, or preserve one already-materialized canonical block."""
     normalized_value = harness_change_discipline.normalize_line_endings(value)
@@ -80,6 +70,29 @@ def _agent_paths(topology: dict[str, Any]) -> tuple[set[str], set[str]]:
     return agents, writers
 
 
+def _normalize_capability_policies(plan: dict[str, Any]) -> None:
+    policies = _require_list(plan.get("capabilityPolicies"), "capabilityPolicies")
+    for index, raw in enumerate(policies):
+        policy = _require_object(raw, f"capabilityPolicies[{index}]")
+        capabilities = _require_list(
+            policy.get("requiredCapabilities"),
+            f"capabilityPolicies[{index}].requiredCapabilities",
+        )
+        try:
+            normalized = [
+                harness_teamplay.normalize_capability_id(capability)
+                for capability in capabilities
+            ]
+        except harness_teamplay.TeamplayError as exc:
+            raise PlanBuilderError(str(exc)) from exc
+        if len(normalized) != len(set(normalized)):
+            raise PlanBuilderError(
+                f"capabilityPolicies[{index}].requiredCapabilities contains duplicates "
+                "after alias normalization"
+            )
+        policy["requiredCapabilities"] = normalized
+
+
 def materialize_plan(value: Any) -> dict[str, Any]:
     """Return a Schema 3 plan with canonical contracts substituted exactly once."""
     plan = copy.deepcopy(_require_object(value, "plan"))
@@ -88,6 +101,7 @@ def materialize_plan(value: Any) -> dict[str, Any]:
             f"plan schemaVersion must be {harness_metadata.PLAN_SCHEMA_VERSION}"
     )
     topology = _require_object(plan.get("topology"), "topology")
+    _normalize_capability_policies(plan)
     agent_paths, writer_paths = _agent_paths(topology)
     project_path = ".agents/skills/project-harness/SKILL.md"
     expected_paths = agent_paths | {project_path}

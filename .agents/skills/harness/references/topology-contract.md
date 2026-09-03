@@ -75,6 +75,8 @@ Each quality pattern accepts only its own budget keys: adversarial verification 
 
 Capability policies express semantic intent independently of a changing runtime. Direct instruction-driven execution may require no special capability. A policy that requires runtime capabilities or prefers runtime-native mapping must declare a runtime probe and a fallback that preserves input, output, and verification contracts.
 
+`requiredCapabilities` uses the canonical registry: `parallel-delegation`, `peer-messaging`, and `shared-task-state`. The draft-plan builder normalizes the legacy `parallel-subagent-delegation` alias to `parallel-delegation`; materialized plans and manifests must contain canonical IDs only. Unregistered custom capabilities are rejected because Schema 3 has no explicit declaration or fallback contract for them.
+
 Static validation proves that the declaration is complete. Actual capability availability is checked at task execution time.
 
 Harness for Codex v5+ does not add a persistent model-selection policy. Generated agents inherit the active model by default. A model override remains an explicitly reviewed runtime-specific choice and must not be used merely to signal role importance.

@@ -21,6 +21,7 @@ import harness_relay_receipt  # noqa: E402
 import harness_runtime_receipt  # noqa: E402
 import harness_runtime_receipt_schema1  # noqa: E402
 import harness_teamplay  # noqa: E402
+import harness_topology  # noqa: E402
 import harness_apply  # noqa: E402
 import validate_runtime_plan as runtime_plan  # noqa: E402
 
@@ -565,6 +566,17 @@ class CapabilityFallbackTests(unittest.TestCase):
         self.assertEqual(result["adapter"], "sequential-relay")
         self.assertTrue(result["fallbackUsed"])
 
+    def test_legacy_parallel_delegation_alias_is_normalized(self) -> None:
+        result = harness_teamplay.select_adapter(
+            "coordinated", {"parallel-subagent-delegation"}
+        )
+        self.assertEqual(result["adapter"], "codex-subagent-relay")
+        self.assertFalse(result["fallbackUsed"])
+
+    def test_unknown_capability_is_rejected(self) -> None:
+        with self.assertRaisesRegex(harness_teamplay.TeamplayError, "not registered"):
+            harness_teamplay.select_adapter("coordinated", {"imaginary-runtime"})
+
     def test_fallback_preserves_input_output_verification(self) -> None:
         result = harness_teamplay.select_adapter("coordinated", set())
         self.assertEqual(set(result["preserves"]), {"input", "output", "verification"})
@@ -728,6 +740,49 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
             all(harness_change_discipline.WRITER_BLOCK in content for content in writer_contents)
         )
         self.assertTrue(all(harness_teamplay.AGENT_BLOCK in content for content in writer_contents))
+
+    def test_builder_canonicalizes_registered_capability_aliases(self) -> None:
+        draft = self._draft()
+        policy = draft["capabilityPolicies"][0]
+        policy.update(
+            {
+                "semanticMode": "deterministic-orchestration",
+                "requiredCapabilities": ["parallel-subagent-delegation"],
+                "preferredRuntimeMapping": "runtime-native",
+                "probe": {"mode": "runtime-check"},
+                "fallback": {
+                    "semanticMode": "deterministic-orchestration",
+                    "implementation": "Use sequential parent relay.",
+                    "preserves": ["input", "output", "verification"],
+                },
+            }
+        )
+
+        materialized = harness_plan_builder.materialize_plan(draft)
+
+        self.assertEqual(
+            materialized["capabilityPolicies"][0]["requiredCapabilities"],
+            ["parallel-delegation"],
+        )
+        harness_topology.validate_contract(
+            materialized["topology"], materialized["capabilityPolicies"]
+        )
+
+    def test_builder_rejects_unregistered_capability(self) -> None:
+        draft = self._draft()
+        draft["capabilityPolicies"][0]["requiredCapabilities"] = ["imaginary-runtime"]
+        with self.assertRaisesRegex(harness_plan_builder.PlanBuilderError, "not registered"):
+            harness_plan_builder.materialize_plan(draft)
+
+    def test_materialized_plan_rejects_capability_aliases(self) -> None:
+        draft = self._draft()
+        draft["capabilityPolicies"][0]["requiredCapabilities"] = [
+            "parallel-subagent-delegation"
+        ]
+        with self.assertRaisesRegex(harness_topology.TopologyError, "is an alias"):
+            harness_topology.validate_contract(
+                draft["topology"], draft["capabilityPolicies"]
+            )
 
     def test_missing_project_teamplay_placeholder_is_rejected(self) -> None:
         draft = self._draft()
