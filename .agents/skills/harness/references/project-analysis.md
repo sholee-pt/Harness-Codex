@@ -14,7 +14,11 @@ Inspect high-signal sources before sampling implementation files:
 
 Do not read secret values, generated dependency trees, build outputs, or large datasets. File names may be inventoried, but sensitive files should not be opened unless the user explicitly places them in scope.
 
-Treat `environment.yml`, `environment.yaml`, and Conda lock files as dependency manifests. If the bounded inventory reports nested repositories, select the intended root before deriving boundaries; do not merge a nested repository into its parent topology by file count. Known checkpoint, dataset, log, run, cache, and output directories are excluded from boundary counts by default and remain visible in `artifactSummary`. Use `--include-artifacts` only when those files are part of the requested responsibility rather than generated evidence or bulk outputs.
+Treat `environment.yml`, `environment.yaml`, and Conda lock files as dependency manifests. Inventory Schema 3 reports conservative `fileRoleSummary` counts and `nonArtifactFileCount`; neither field proves semantic responsibility. Candidate boundaries include role counts and an analysis priority so documentation-only or unknown directories remain visible without being treated as source automatically.
+
+If `rootSelectionRequired` is true, select a narrower repository root before deriving boundaries; do not merge an independent or linked nested repository into its parent topology by file count. A registered Git submodule remains visible but does not by itself make the parent root ambiguous. Known checkpoint, dataset, log, run, cache, result, and output directories are excluded from boundary counts by default and remain visible in `artifactSummary`. Use `--include-artifacts` only when those files are part of the requested responsibility rather than generated evidence or bulk outputs.
+
+`existingActiveRootInstruction` reports the instruction file that currently exists and wins precedence, or `null`. `plannedRootInstruction` reports the file Harness would create or update. Do not treat a planned target as evidence that instructions already exist.
 
 ## Boundary model
 

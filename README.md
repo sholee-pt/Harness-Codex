@@ -180,7 +180,7 @@ conda run -n harness python .agents/skills/harness/scripts/harness_eval.py --hel
 conda run -n harness python -m unittest discover -s tests -v
 ```
 
-The inventory reports Conda manifests, nested Git roots, and research-output directories separately from source boundaries. A nested repository sets `rootSelectionRequired`; select the intended root before generating a plan. Known output directories are excluded by default and can be inspected deliberately with `--include-artifacts`.
+Inventory Schema 3 reports Conda manifests, conservative code/config/docs/test/artifact/unknown role counts, nested Git roots, and research-output directories separately. Independent or linked nested repositories set `rootSelectionRequired`; registered submodules do not. Select one unambiguous repository root before generating a plan. Known output directories are excluded by default and can be inspected deliberately with `--include-artifacts`. Existing instruction precedence and the instruction file Harness would create are reported separately.
 
 `evaluate_topology.py` validates only the persistent topology contract and reports `evidenceValidated: false`. It does not replace the evidence, ownership, and no-write checks performed by `harness_apply.py --dry-run`.
 

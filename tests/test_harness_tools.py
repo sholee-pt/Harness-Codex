@@ -172,8 +172,16 @@ class InventoryTests(unittest.TestCase):
 
             result = inventory.build_inventory(root, max_files=10)
 
-            self.assertEqual(result["activeRootInstruction"], "AGENTS.override.md")
+            self.assertEqual(result["existingActiveRootInstruction"], "AGENTS.override.md")
+            self.assertEqual(result["plannedRootInstruction"], "AGENTS.override.md")
             self.assertEqual(result["instructions"], ["AGENTS.md", "AGENTS.override.md"])
+
+    def test_inventory_distinguishes_missing_instruction_from_planned_target(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            result = inventory.build_inventory(Path(directory), max_files=10)
+
+            self.assertIsNone(result["existingActiveRootInstruction"])
+            self.assertEqual(result["plannedRootInstruction"], "AGENTS.md")
 
     def test_inventory_reports_conda_nested_repositories_and_research_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -190,19 +198,64 @@ class InventoryTests(unittest.TestCase):
 
             result = inventory.build_inventory(root, max_files=20)
 
-            self.assertEqual(result["schemaVersion"], 2)
+            self.assertEqual(result["schemaVersion"], 3)
             self.assertEqual(result["rootGitState"], "directory")
             self.assertTrue(result["rootSelectionRequired"])
             self.assertEqual(
                 result["nestedRepositories"],
-                [{"path": "vendor-project", "markerType": "directory"}],
+                [
+                    {
+                        "path": "vendor-project",
+                        "markerType": "directory",
+                        "kind": "independent-repository",
+                    }
+                ],
             )
             self.assertIn("environment.yml", result["manifests"])
             self.assertEqual(result["artifactFileCount"], 1)
+            self.assertEqual(result["nonArtifactFileCount"], 2)
+            self.assertNotIn("sourceFileCount", result)
+            self.assertEqual(result["fileRoleSummary"]["code"], 1)
+            self.assertEqual(result["fileRoleSummary"]["config"], 1)
+            self.assertEqual(result["fileRoleSummary"]["research-artifact"], 1)
             self.assertEqual(result["artifactSummary"]["excludedDirectories"], ["data"])
             self.assertEqual(result["artifactSummary"]["extensions"], {".pt": 1})
             boundaries = {item["path"]: item["fileCount"] for item in result["candidateBoundaries"]}
             self.assertEqual(boundaries["src"], 1)
+
+    def test_inventory_does_not_treat_registered_submodule_as_root_ambiguity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".git").mkdir()
+            (root / "dependency" / ".git").mkdir(parents=True)
+            with mock.patch.object(
+                inventory, "_classify_nested_repository", return_value="submodule"
+            ):
+                context = inventory.inspect_root_context(root)
+
+            self.assertFalse(context["rootSelectionRequired"])
+            self.assertEqual(context["nestedRepositories"][0]["kind"], "submodule")
+
+    def test_inventory_excludes_nested_output_directories_from_boundaries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "benchmark" / "script").mkdir(parents=True)
+            (root / "benchmark" / "script" / "run.py").write_text(
+                "print('run')\n", encoding="utf-8"
+            )
+            (root / "benchmark" / "output").mkdir()
+            (root / "benchmark" / "output" / "scores.csv").write_text(
+                "score\n1\n", encoding="utf-8"
+            )
+
+            result = inventory.build_inventory(root, max_files=10)
+
+            self.assertIn("benchmark/output", result["artifactSummary"]["excludedDirectories"])
+            boundary = next(
+                item for item in result["candidateBoundaries"] if item["path"] == "benchmark"
+            )
+            self.assertEqual(boundary["fileCount"], 1)
+            self.assertEqual(boundary["fileRoles"]["code"], 1)
 
     def test_inventory_can_include_excluded_artifact_directories_explicitly(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
