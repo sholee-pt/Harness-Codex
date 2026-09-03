@@ -28,6 +28,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v6.7` | Harness for Codex v6.7 | Schema 3 | Schema 5 | Schema 2 | Deterministic contract materialization, spawn/wait liveness gates, version-bound privacy-safe runtime receipts, stale-review and affected-agent relay accounting |
 | `codex/v6.8` | Harness for Codex v6.8 | Schema 3 | Schema 5 | Schema 2 | Canonical-handle runtime control, versioned public/local observation profiles, Runtime Receipt Schema 2, required-task accounting, installed draft-plan example |
 | `codex/v6.9` | Harness for Codex v6.9 | Schema 3 | Schema 5 | Schema 2 | Deterministic teamplay materialization, nested-root and research-artifact inventory, canonical capability registry, layered validation report |
+| `codex/v6.10` | Harness for Codex v6.10 | Schema 3 | Schema 5 | Schema 2 | Enforced single-root preflight, Inventory Schema 3 role summaries, instruction-state split, Authoring Contract 2 drafts |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -368,6 +369,21 @@ Harness for Codex v6.9 hardens the generator and its reporting without changing 
 - Keeps v6.0 through v6.8 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v6.9 evidence.
 
 This release does not claim `.gitignore`-complete filtering, semantic source-code classification, live Codex execution proof, or automatic long-term topology adaptation. Those concerns require separate evidence and are not inferred from a successful static validation report.
+
+## Harness for Codex v6.10
+
+Harness for Codex v6.10 closes the remaining root-selection and inventory-semantics gap from v6.9 without changing generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, or Runtime Receipt Schema 2.
+
+- Introduces Inventory Schema 3 with `nonArtifactFileCount` and conservative code, configuration, documentation, test, research-artifact, and unknown role counts.
+- Adds role counts and `primary` or `review` priority to candidate boundaries instead of describing every non-artifact file as source.
+- Separates an existing active root instruction from the `AGENTS.md` or `AGENTS.override.md` target Harness would create or update.
+- Excludes nested `output` and `results` directories from default boundary counts while retaining them in the artifact summary.
+- Classifies nested Git markers as registered submodules, independent repositories, or linked repositories. Registered submodules stay visible without making the parent root ambiguous by themselves.
+- Makes the builder, apply preflight, and installed-state validator reject ambiguous outer roots and bounded root scans that cannot establish completeness.
+- Introduces Authoring Contract 2 for draft plans. The builder rejects older draft revisions with migration guidance and removes the authoring-only field from the final Schema 3 plan.
+- Keeps v6.0 through v6.9 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v6.10 evidence.
+
+Harness remains repository-scoped. A non-Git workspace containing multiple independent repositories is not treated as one supported project root; select one repository or create a separately governed orchestration repository. Inventory roles are structural hints, not semantic responsibility claims, and `.gitignore`-complete classification remains outside this release.
 
 ## Harness for Claude Code releases
 

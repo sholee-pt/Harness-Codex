@@ -653,8 +653,8 @@ class CompatibilityTests(RuntimeFixtureTestCase):
     def test_evaluation_schema_remains_2(self) -> None:
         self.assertEqual(harness_metadata.EVALUATION_SCHEMA_VERSION, 2)
 
-    def test_v60_to_v68_records_remain_readable(self) -> None:
-        self.assertTrue({"6.0", "6.1", "6.2", "6.3", "6.4", "6.5", "6.6", "6.7", "6.8"}.issubset(
+    def test_v60_to_v69_records_remain_readable(self) -> None:
+        self.assertTrue({"6.0", "6.1", "6.2", "6.3", "6.4", "6.5", "6.6", "6.7", "6.8", "6.9"}.issubset(
             harness_metadata.READABLE_EVALUATION_VERSIONS
         ))
 

@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "generator": {
     "name": "Harness",
-    "version": "6.9",
+    "version": "6.10",
     "runtime": "codex"
   },
   "application": {

@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v6.9, a user-level harness generator with deterministic change-discipline and teamplay materialization, research-aware repository inventory, canonical runtime capabilities, layered validation reporting, and repository-state-safe Evaluation Schema 2 attribution.
+- This branch contains Harness for Codex v6.10, a user-level harness generator with enforced single-root selection, Inventory Schema 3 role summaries, Authoring Contract 2 draft migration, deterministic runtime contracts, and repository-state-safe Evaluation Schema 2 attribution.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add deployment, marketplace publishing, telemetry, or external service dependencies.
 - Keep evaluation default-off, user-local, and isolated from generation/apply failure handling.
