@@ -1,4 +1,5 @@
 {
+  "authoringContractVersion": 2,
   "schemaVersion": 3,
   "project": {
     "summary": "A small single-package Python fixture.",

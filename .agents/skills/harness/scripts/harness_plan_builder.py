@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import harness_change_discipline
+import inventory
 import harness_metadata
 import harness_teamplay
 
@@ -93,13 +94,25 @@ def _normalize_capability_policies(plan: dict[str, Any]) -> None:
         policy["requiredCapabilities"] = normalized
 
 
-def materialize_plan(value: Any) -> dict[str, Any]:
+def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
     """Return a Schema 3 plan with canonical contracts substituted exactly once."""
     plan = copy.deepcopy(_require_object(value, "plan"))
+    if plan.get("authoringContractVersion") != harness_metadata.AUTHORING_CONTRACT_VERSION:
+        raise PlanBuilderError(
+            "draft authoringContractVersion must be "
+            f"{harness_metadata.AUTHORING_CONTRACT_VERSION}; migrate older drafts by adding "
+            "the v2 project-teamplay and agent-teamplay placeholders"
+        )
     if plan.get("schemaVersion") != harness_metadata.PLAN_SCHEMA_VERSION:
         raise PlanBuilderError(
             f"plan schemaVersion must be {harness_metadata.PLAN_SCHEMA_VERSION}"
     )
+    if root is not None:
+        try:
+            inventory.require_unambiguous_root(root)
+        except ValueError as exc:
+            raise PlanBuilderError(str(exc)) from exc
+    plan.pop("authoringContractVersion")
     topology = _require_object(plan.get("topology"), "topology")
     _normalize_capability_policies(plan)
     agent_paths, writer_paths = _agent_paths(topology)
@@ -224,6 +237,7 @@ def _write_json_atomic(path: Path, value: dict[str, Any]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", required=True, help="Selected unambiguous repository root")
     parser.add_argument("--input", required=True, help="Draft Schema 3 plan")
     parser.add_argument("--output", required=True, help="Materialized Schema 3 plan")
     args = parser.parse_args()
@@ -231,12 +245,13 @@ def main() -> int:
         source = Path(args.input).resolve()
         output = Path(args.output).resolve()
         plan = json.loads(source.read_text(encoding="utf-8"))
-        materialized = materialize_plan(plan)
+        materialized = materialize_plan(plan, root=Path(args.root).resolve())
         _write_json_atomic(output, materialized)
         print(
             json.dumps(
                 {
                     "schemaVersion": harness_metadata.PLAN_SCHEMA_VERSION,
+                    "authoringContractVersion": harness_metadata.AUTHORING_CONTRACT_VERSION,
                     "materialized": True,
                     "output": output.name,
                     "warnings": [],
@@ -252,6 +267,7 @@ def main() -> int:
             json.dumps(
                 {
                     "schemaVersion": harness_metadata.PLAN_SCHEMA_VERSION,
+                    "authoringContractVersion": harness_metadata.AUTHORING_CONTRACT_VERSION,
                     "materialized": False,
                     "warnings": [],
                     "errors": [str(exc)],

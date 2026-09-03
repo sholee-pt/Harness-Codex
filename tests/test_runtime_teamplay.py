@@ -671,6 +671,7 @@ class CompatibilityTests(RuntimeFixtureTestCase):
 class DeterministicPlanBuilderTests(unittest.TestCase):
     def _draft(self, name: str = "minimal-plan.json") -> dict:
         plan = json.loads((REPO_ROOT / "tests" / "fixtures" / name).read_text(encoding="utf-8"))
+        plan["authoringContractVersion"] = harness_metadata.AUTHORING_CONTRACT_VERSION
         for artifact in plan["artifacts"]:
             if artifact["path"] == ".agents/skills/project-harness/SKILL.md":
                 artifact["content"] = artifact["content"].replace(
@@ -699,6 +700,7 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
         draft = self._draft()
         materialized = harness_plan_builder.materialize_plan(draft)
         self.assertEqual(materialized["schemaVersion"], 3)
+        self.assertNotIn("authoringContractVersion", materialized)
         self.assertNotIn(harness_plan_builder.PROJECT_PLACEHOLDER, json.dumps(materialized))
         self.assertNotIn(
             harness_plan_builder.PROJECT_TEAMPLAY_PLACEHOLDER, json.dumps(materialized)
@@ -797,6 +799,23 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
         with self.assertRaisesRegex(harness_plan_builder.PlanBuilderError, "exactly once"):
             harness_plan_builder.materialize_plan(draft)
 
+    def test_legacy_draft_without_authoring_version_is_rejected(self) -> None:
+        draft = self._draft()
+        del draft["authoringContractVersion"]
+        with self.assertRaisesRegex(
+            harness_plan_builder.PlanBuilderError, "authoringContractVersion must be 2"
+        ):
+            harness_plan_builder.materialize_plan(draft)
+
+    def test_builder_rejects_ambiguous_repository_root(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "nested" / ".git").mkdir(parents=True)
+            with self.assertRaisesRegex(
+                harness_plan_builder.PlanBuilderError, "repository root is ambiguous"
+            ):
+                harness_plan_builder.materialize_plan(self._draft(), root=root)
+
     def test_duplicate_agent_teamplay_placeholder_is_rejected(self) -> None:
         draft = self._draft("coordinated-cross-contract-plan.json")
         agent = next(
@@ -844,6 +863,8 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
                 [
                     sys.executable,
                     str(SCRIPTS / "harness_plan_builder.py"),
+                    "--root",
+                    str(REPO_ROOT / "tests" / "fixtures" / "minimal-project"),
                     "--input",
                     str(source),
                     "--output",

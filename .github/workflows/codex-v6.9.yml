@@ -55,7 +55,7 @@ jobs:
       - name: Materialize and dry-run the installed plan example
         shell: bash -el {0}
         run: |
-          conda run -n harness python .agents/skills/harness/scripts/harness_plan_builder.py --input .agents/skills/harness/references/minimal-draft-plan.json --output "${RUNNER_TEMP}/harness-minimal-plan.json"
+          conda run -n harness python .agents/skills/harness/scripts/harness_plan_builder.py --root tests/fixtures/minimal-project --input .agents/skills/harness/references/minimal-draft-plan.json --output "${RUNNER_TEMP}/harness-minimal-plan.json"
           conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root tests/fixtures/minimal-project --plan "${RUNNER_TEMP}/harness-minimal-plan.json" --dry-run
           test ! -e tests/fixtures/minimal-project/.harness/manifest.json
           test ! -e tests/fixtures/minimal-project/.harness/transaction.json

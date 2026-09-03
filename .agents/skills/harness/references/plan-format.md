@@ -1,6 +1,6 @@
 # Generation Plan Format
 
-Create one UTF-8 JSON draft, materialize its deterministic contracts, and pass the resulting plan to `scripts/harness_apply.py`. Schema 3 remains the normative generation input contract for Harness for Codex v5 and v6; the builder does not add a schema field or let apply mutate its input.
+Create one UTF-8 JSON draft with `authoringContractVersion: 2`, materialize its deterministic contracts, and pass the resulting plan to `scripts/harness_apply.py`. Schema 3 remains the normative generation input contract for Harness for Codex v5 and v6. The authoring revision belongs only to the draft: the builder verifies and removes it, then emits an ordinary Schema 3 plan without letting apply mutate its input.
 
 Read [topology-contract.md](topology-contract.md) before filling the topology. Use the installed [minimal draft-plan example](minimal-draft-plan.json) as the packaging-safe starting point, then materialize its placeholders with `scripts/harness_plan_builder.py`.
 
@@ -8,6 +8,7 @@ Read [topology-contract.md](topology-contract.md) before filling the topology. U
 
 ```json
 {
+  "authoringContractVersion": 2,
   "schemaVersion": 3,
   "project": {
     "summary": "Evidence-based project summary.",
@@ -162,11 +163,12 @@ Materialize the draft before dry-run:
 
 ```shell
 conda run -n harness python <harness-skill-root>/scripts/harness_plan_builder.py \
+  --root <repo-root> \
   --input DRAFT_PLAN.json \
   --output PLAN.json
 ```
 
-The builder requires every target exactly once, emits another Schema 3 object, and leaves the existing apply validator responsible for the complete plan, evidence, ownership, and canonical exact-once checks.
+The builder requires authoring contract 2 and every target exactly once, rejects an ambiguous repository root, emits a Schema 3 object without the authoring-only field, and leaves the apply validator responsible for the complete plan, evidence, ownership, and canonical exact-once checks. Apply repeats the root check so bypassing the builder cannot apply a plan at an ambiguous outer workspace.
 
 - Generated skill frontmatter supports only single-line scalar `name` and `description` fields.
 - Include every generated dedicated file in `artifacts`, including supporting references, scripts, and assets.

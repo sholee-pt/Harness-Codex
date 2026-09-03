@@ -6,6 +6,7 @@ from __future__ import annotations
 
 RUNTIME = "codex"
 HARNESS_VERSION = "6.9"
+AUTHORING_CONTRACT_VERSION = 2
 
 PLAN_SCHEMA_VERSION = 3
 MANIFEST_SCHEMA_VERSION = 5

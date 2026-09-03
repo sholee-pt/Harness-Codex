@@ -32,6 +32,8 @@ Read this reference after artifacts have been generated or updated.
 - Draft plans materialize every deterministic change-discipline placeholder exactly once before the unchanged Schema 3 apply validator runs.
 - Runtime receipts reject empty receivers, duplicate spawns, role/parent/session-source mismatch, unknown receivers, missing agent states, unsupported CLI parser versions, malformed or unknown critical events, and exhausted or inconsistent fixed wait budgets.
 - Relay receipts bind reviews to input packet hashes, invalidate stale reviews, and account for exactly the affected agents without changing Coordination Packet Schema 1.
+- Builder, apply, and installed-state validation reject an outer root containing unacknowledged independent or linked Git repositories. Registered submodules remain visible but do not make the parent root ambiguous by themselves.
+- Authoring-contract 2 drafts materialize to ordinary Schema 3 plans and cannot reach apply with the draft-only version field intact.
 
 ## Behavioral scenarios
 
@@ -79,6 +81,6 @@ Test the applicable cases, using an isolated temporary repository when possible:
 
 Validation succeeds only when every planned artifact is accounted for and structural checks pass. Clearly separate structural validation from a live Codex discovery or delegation smoke test, which may require restarting the session.
 
-`validate_harness.py` reports static `validationLayers` separately from `externalCapabilities`. A green static report covers transaction state, manifest shape, evidence freshness, topology/artifact contracts, managed ownership, and runtime-state separation. `customAgentDiscovery` and `liveDelegation` remain `not-tested`, while task correctness and Harness benefit attribution remain `not-measured`, until their separate evidence-producing workflows run.
+`validate_harness.py` reports static `validationLayers` separately from `externalCapabilities`. A green static report covers transaction state, selected-root context, manifest shape, evidence freshness, topology/artifact contracts, managed ownership, and runtime-state separation. `customAgentDiscovery` and `liveDelegation` remain `not-tested`, while task correctness and Harness benefit attribution remain `not-measured`, until their separate evidence-producing workflows run.
 
 Follow [codex-smoke-test.md](codex-smoke-test.md) for a repeatable live check. Do not report structural validation as proof that Codex discovered or delegated to generated agents.

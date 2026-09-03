@@ -541,6 +541,18 @@ class StateTests(unittest.TestCase):
 
 
 class ApplyTests(unittest.TestCase):
+    def test_apply_rejects_ambiguous_root_before_planning_writes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = minimal_plan(root)
+            (root / "nested-project" / ".git").mkdir(parents=True)
+
+            with self.assertRaisesRegex(harness_apply.PlanError, "repository root is ambiguous"):
+                harness_apply.build_application(root, plan)
+
+            self.assertFalse((root / ".harness" / "manifest.json").exists())
+            self.assertFalse((root / "AGENTS.md").exists())
+
     def test_project_harness_requires_one_canonical_change_discipline_block(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -632,6 +644,7 @@ class ApplyTests(unittest.TestCase):
             root = Path(directory)
             shutil.copytree(fixture_root, root, dirs_exist_ok=True)
             plan = harness_apply.load_plan(plan_path)
+            plan["authoringContractVersion"] = harness_metadata.AUTHORING_CONTRACT_VERSION
             for artifact in plan["artifacts"]:
                 if artifact["path"] == ".agents/skills/project-harness/SKILL.md":
                     artifact["content"] += (
@@ -646,7 +659,7 @@ class ApplyTests(unittest.TestCase):
                         + "\n\"\"\""
                         + closing
                     )
-            plan = harness_plan_builder.materialize_plan(plan)
+            plan = harness_plan_builder.materialize_plan(plan, root=root)
 
             dry_run = harness_apply.build_application(root, plan)
             self.assertFalse((root / ".harness" / "manifest.json").exists())
@@ -1629,6 +1642,24 @@ class TopologyContractTests(unittest.TestCase):
 
 
 class ValidatorTests(unittest.TestCase):
+    def test_validation_fails_when_root_becomes_ambiguous(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            harness_apply.apply_application(
+                harness_apply.build_application(root, minimal_plan(root))
+            )
+            (root / "nested-project" / ".git").mkdir(parents=True)
+
+            report = validate_harness.Validator(root).run()
+
+            self.assertFalse(report["valid"])
+            self.assertEqual(
+                report["validationLayers"]["rootContext"]["status"], "failed"
+            )
+            self.assertEqual(
+                report["validationLayers"]["managedOwnership"]["status"], "passed"
+            )
+
     def test_validation_report_separates_static_checks_from_live_capabilities(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

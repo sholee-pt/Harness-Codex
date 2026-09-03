@@ -13,6 +13,7 @@ from typing import Callable
 import harness_state
 import harness_teamplay
 import harness_topology
+import inventory
 
 try:
     import tomllib
@@ -493,6 +494,18 @@ class Validator:
             "transactionSafety",
             "No interrupted Harness transaction is pending.",
             validate_transaction_state,
+        )
+
+        def validate_root_context() -> None:
+            try:
+                inventory.require_unambiguous_root(self.root)
+            except ValueError as exc:
+                self.error(str(exc))
+
+        self.run_layer(
+            "rootContext",
+            "The selected root contains no unacknowledged independent or linked Git repository.",
+            validate_root_context,
         )
         self.run_layer(
             "manifestContract",

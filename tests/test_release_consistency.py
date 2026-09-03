@@ -27,6 +27,7 @@ import harness_transaction  # noqa: E402
 class ReleaseConsistencyTests(unittest.TestCase):
     def test_release_metadata_is_consistent(self) -> None:
         self.assertEqual(harness_metadata.HARNESS_VERSION, "6.9")
+        self.assertEqual(harness_metadata.AUTHORING_CONTRACT_VERSION, 2)
         self.assertEqual(harness_apply.GENERATOR_VERSION, harness_metadata.HARNESS_VERSION)
         self.assertEqual(harness_state.GENERATOR_VERSION, harness_metadata.HARNESS_VERSION)
         self.assertEqual(harness_eval_types.HARNESS_VERSION, harness_metadata.HARNESS_VERSION)

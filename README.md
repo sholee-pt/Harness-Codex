@@ -165,7 +165,7 @@ The generator includes standard-library-only Python tools. Run them through the 
 conda run -n harness python .agents/skills/harness/scripts/inventory.py .
 conda run -n harness python .agents/skills/harness/scripts/harness_state.py evidence --root . --path PATH_TO_EVIDENCE
 conda run -n harness python .agents/skills/harness/scripts/harness_state.py status --root .
-conda run -n harness python .agents/skills/harness/scripts/harness_plan_builder.py --input DRAFT_PLAN.json --output PLAN.json
+conda run -n harness python .agents/skills/harness/scripts/harness_plan_builder.py --root . --input DRAFT_PLAN.json --output PLAN.json
 conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --plan PATH_TO_PLAN.json --dry-run
 conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --inspect-transaction
 conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --recover

@@ -46,7 +46,7 @@ Read [skill-design.md](references/skill-design.md). Create a project skill only 
 
 ## Phase 3 — Plan native artifacts
 
-Use the templates in `assets/` as structural starting points, then tailor them to the project. Read [plan-format.md](references/plan-format.md) and write a draft schema 3 generation plan to a temporary file. Put `{{HARNESS_PROJECT_CHANGE_DISCIPLINE_V1}}` and `{{HARNESS_PROJECT_TEAMPLAY_V2}}` exactly once in the `project-harness` artifact. Put `{{HARNESS_AGENT_TEAMPLAY_V2}}` exactly once in every generated agent and `{{HARNESS_WRITER_CHANGE_DISCIPLINE_V1}}` exactly once in every writer agent's `developer_instructions`; do not ask the model to reproduce these canonical blocks. The draft contains the complete desired content and permission mode for:
+Use the templates in `assets/` as structural starting points, then tailor them to the project. Read [plan-format.md](references/plan-format.md) and write an authoring-contract 2 draft for schema 3 to a temporary file. Put `{{HARNESS_PROJECT_CHANGE_DISCIPLINE_V1}}` and `{{HARNESS_PROJECT_TEAMPLAY_V2}}` exactly once in the `project-harness` artifact. Put `{{HARNESS_AGENT_TEAMPLAY_V2}}` exactly once in every generated agent and `{{HARNESS_WRITER_CHANGE_DISCIPLINE_V1}}` exactly once in every writer agent's `developer_instructions`; do not ask the model to reproduce these canonical blocks. The draft contains the complete desired content and permission mode for:
 
 - `.codex/agents/<role>.toml` for justified agents
 - `.agents/skills/<skill>/SKILL.md` for justified project skills
@@ -68,7 +68,7 @@ The generated `project-harness` must include the bundled runtime classification,
 ## Phase 4 — Dry-run, apply, and validate
 
 1. Complete the draft topology, project evidence, rationale, artifacts, placeholders, and managed instruction block.
-2. Run `conda run -n harness python <harness-skill-root>/scripts/harness_plan_builder.py --input <draft-plan> --output <plan-file>`. Stop if any required placeholder is absent, duplicated, or appears in an unsupported artifact.
+2. Run `conda run -n harness python <harness-skill-root>/scripts/harness_plan_builder.py --root <repo-root> --input <draft-plan> --output <plan-file>`. Stop if the root is ambiguous, the authoring revision is wrong, or any required placeholder is absent, duplicated, or appears in an unsupported artifact.
 3. Run `conda run -n harness python <harness-skill-root>/scripts/harness_apply.py --root <repo-root> --plan <plan-file> --dry-run` and inspect every proposed action. Stop on any conflict.
 4. Run the same command without `--dry-run` only after the dry-run is clean.
 5. If apply reports a pending transaction, stop planning, read [transaction-recovery.md](references/transaction-recovery.md), and run `conda run -n harness python <harness-skill-root>/scripts/harness_apply.py --root <repo-root> --recover` before retrying.

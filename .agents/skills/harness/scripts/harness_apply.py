@@ -15,6 +15,7 @@ import harness_teamplay
 import harness_topology
 import harness_transaction
 import harness_change_discipline
+import inventory
 
 try:
     import tomllib
@@ -112,6 +113,10 @@ def load_plan(path: Path) -> dict:
     plan = require_object(data, "plan")
     if plan.get("schemaVersion") != PLAN_SCHEMA_VERSION:
         raise PlanError(f"plan schemaVersion must be {PLAN_SCHEMA_VERSION}")
+    if "authoringContractVersion" in plan:
+        raise PlanError(
+            "plan still contains authoringContractVersion; materialize the draft before apply"
+        )
     reject_runtime_state(plan)
     return plan
 
@@ -462,6 +467,10 @@ def classify_file(
 
 
 def build_application(root: Path, plan: dict) -> dict:
+    try:
+        inventory.require_unambiguous_root(root)
+    except ValueError as exc:
+        raise PlanError(str(exc)) from exc
     harness_transaction.ensure_no_pending_transaction(root)
     reject_runtime_state(plan)
     project = validate_project(root, plan)
