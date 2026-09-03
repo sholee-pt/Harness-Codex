@@ -217,6 +217,9 @@ def inspect_root_context(root: Path, *, max_directories: int = 5000) -> dict:
 
 
 def require_unambiguous_root(root: Path) -> dict:
+    root = root.resolve()
+    if not root.is_dir():
+        raise ValueError(f"repository root is not a directory: {root}")
     context = inspect_root_context(root)
     if context["scanTruncated"]:
         raise ValueError(
