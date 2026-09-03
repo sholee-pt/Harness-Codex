@@ -180,6 +180,8 @@ conda run -n harness python .agents/skills/harness/scripts/harness_eval.py --hel
 conda run -n harness python -m unittest discover -s tests -v
 ```
 
+The inventory reports Conda manifests, nested Git roots, and research-output directories separately from source boundaries. A nested repository sets `rootSelectionRequired`; select the intended root before generating a plan. Known output directories are excluded by default and can be inspected deliberately with `--include-artifacts`.
+
 `evaluate_topology.py` validates only the persistent topology contract and reports `evidenceValidated: false`. It does not replace the evidence, ownership, and no-write checks performed by `harness_apply.py --dry-run`.
 
 Use `--recover` only when status or a failed apply reports a pending journal. Use `--inspect-transaction` before maintenance. `--clean-orphaned-transaction` is restricted to the reserved staging directory when no journal exists; it never replaces recovery for a valid journal. Recovery first verifies that interrupted outputs were not edited externally and refuses destructive cleanup when their hashes are unknown.

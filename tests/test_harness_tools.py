@@ -175,6 +175,47 @@ class InventoryTests(unittest.TestCase):
             self.assertEqual(result["activeRootInstruction"], "AGENTS.override.md")
             self.assertEqual(result["instructions"], ["AGENTS.md", "AGENTS.override.md"])
 
+    def test_inventory_reports_conda_nested_repositories_and_research_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".git").mkdir()
+            (root / "environment.yml").write_text("name: fixture\n", encoding="utf-8")
+            (root / "src").mkdir()
+            (root / "src" / "model.py").write_text("MODEL = True\n", encoding="utf-8")
+            (root / "model.pt").write_bytes(b"checkpoint")
+            (root / "data").mkdir()
+            (root / "data" / "large.npy").write_bytes(b"array")
+            (root / "vendor-project" / ".git").mkdir(parents=True)
+            (root / "vendor-project" / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+            result = inventory.build_inventory(root, max_files=20)
+
+            self.assertEqual(result["schemaVersion"], 2)
+            self.assertEqual(result["rootGitState"], "directory")
+            self.assertTrue(result["rootSelectionRequired"])
+            self.assertEqual(
+                result["nestedRepositories"],
+                [{"path": "vendor-project", "markerType": "directory"}],
+            )
+            self.assertIn("environment.yml", result["manifests"])
+            self.assertEqual(result["artifactFileCount"], 1)
+            self.assertEqual(result["artifactSummary"]["excludedDirectories"], ["data"])
+            self.assertEqual(result["artifactSummary"]["extensions"], {".pt": 1})
+            boundaries = {item["path"]: item["fileCount"] for item in result["candidateBoundaries"]}
+            self.assertEqual(boundaries["src"], 1)
+
+    def test_inventory_can_include_excluded_artifact_directories_explicitly(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "checkpoints").mkdir()
+            (root / "checkpoints" / "model.ckpt").write_bytes(b"checkpoint")
+
+            result = inventory.build_inventory(root, max_files=10, include_artifacts=True)
+
+            self.assertTrue(result["artifactSummary"]["included"])
+            self.assertEqual(result["artifactFileCount"], 1)
+            self.assertEqual(result["artifactSummary"]["excludedDirectories"], [])
+
 
 class StateTests(unittest.TestCase):
     def test_resolve_inside_normalizes_the_repository_root(self) -> None:

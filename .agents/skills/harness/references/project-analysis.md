@@ -14,6 +14,8 @@ Inspect high-signal sources before sampling implementation files:
 
 Do not read secret values, generated dependency trees, build outputs, or large datasets. File names may be inventoried, but sensitive files should not be opened unless the user explicitly places them in scope.
 
+Treat `environment.yml`, `environment.yaml`, and Conda lock files as dependency manifests. If the bounded inventory reports nested repositories, select the intended root before deriving boundaries; do not merge a nested repository into its parent topology by file count. Known checkpoint, dataset, log, run, cache, and output directories are excluded from boundary counts by default and remain visible in `artifactSummary`. Use `--include-artifacts` only when those files are part of the requested responsibility rather than generated evidence or bulk outputs.
+
 ## Boundary model
 
 Describe the project through observable boundaries rather than language labels alone:

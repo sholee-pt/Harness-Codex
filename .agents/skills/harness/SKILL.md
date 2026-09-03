@@ -23,7 +23,7 @@ Build the smallest useful Codex-native harness for the current repository. Resol
 ## Phase 0 — Audit
 
 1. Find the repository root and read all applicable instructions.
-2. Run `conda run -n harness python <harness-skill-root>/scripts/inventory.py <repo-root>` for a bounded structural inventory. Do not inspect secret values.
+2. Run `conda run -n harness python <harness-skill-root>/scripts/inventory.py <repo-root>` for a bounded structural inventory. Do not inspect secret values. If `rootSelectionRequired` is true, stop topology design until the intended repository root is selected explicitly. Keep excluded research-output directories out of boundary counts unless the user deliberately reruns with `--include-artifacts`.
 3. If `.harness/manifest.json`, `.harness/transaction.json`, or `.harness/transactions/` exists, run `conda run -n harness python <harness-skill-root>/scripts/harness_state.py status --root <repo-root>`. Inspect transaction state before recovery or explicit orphan cleanup. Resolve it before continuing.
 4. If the manifest uses schema v1, v2, or v3, recover any pending Harness transaction with the matching maintenance release first, then run the guarded `migrate` command to prepare a clean schema 4 state. A schema 4 installation is upgraded only by a reviewed schema 3 plan; do not infer schema 5 boundaries from legacy manifest fields.
 5. Classify the run as new, safe update, or conflict-bearing audit. Read [safe-update.md](references/safe-update.md) before any update or merge.
