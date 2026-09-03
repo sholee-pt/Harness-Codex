@@ -111,7 +111,7 @@
     {
       "path": ".agents/skills/project-harness/SKILL.md",
       "mode": "0644",
-      "content": "---\nname: project-harness\ndescription: Coordinate repository-wide work for the minimal Python fixture.\n---\n\n# Project Harness\n\nUse direct execution because the repository has one persistent responsibility boundary.\n\n{{HARNESS_PROJECT_CHANGE_DISCIPLINE_V1}}\n"
+      "content": "---\nname: project-harness\ndescription: Coordinate repository-wide work for the minimal Python fixture.\n---\n\n# Project Harness\n\nUse direct execution because the repository has one persistent responsibility boundary.\n\n{{HARNESS_PROJECT_CHANGE_DISCIPLINE_V1}}\n\n{{HARNESS_PROJECT_TEAMPLAY_V2}}\n"
     }
   ],
   "instruction": {

@@ -46,7 +46,7 @@ Read [skill-design.md](references/skill-design.md). Create a project skill only 
 
 ## Phase 3 — Plan native artifacts
 
-Use the templates in `assets/` as structural starting points, then tailor them to the project. Read [plan-format.md](references/plan-format.md) and write a draft schema 3 generation plan to a temporary file. Put `{{HARNESS_PROJECT_CHANGE_DISCIPLINE_V1}}` exactly once in the `project-harness` artifact and `{{HARNESS_WRITER_CHANGE_DISCIPLINE_V1}}` exactly once in every writer agent's `developer_instructions`; do not ask the model to reproduce either canonical block. The draft contains the complete desired content and permission mode for:
+Use the templates in `assets/` as structural starting points, then tailor them to the project. Read [plan-format.md](references/plan-format.md) and write a draft schema 3 generation plan to a temporary file. Put `{{HARNESS_PROJECT_CHANGE_DISCIPLINE_V1}}` and `{{HARNESS_PROJECT_TEAMPLAY_V2}}` exactly once in the `project-harness` artifact. Put `{{HARNESS_AGENT_TEAMPLAY_V2}}` exactly once in every generated agent and `{{HARNESS_WRITER_CHANGE_DISCIPLINE_V1}}` exactly once in every writer agent's `developer_instructions`; do not ask the model to reproduce these canonical blocks. The draft contains the complete desired content and permission mode for:
 
 - `.codex/agents/<role>.toml` for justified agents
 - `.agents/skills/<skill>/SKILL.md` for justified project skills

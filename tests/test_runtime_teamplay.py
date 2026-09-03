@@ -665,10 +665,21 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
                     harness_change_discipline.PROJECT_BLOCK,
                     harness_plan_builder.PROJECT_PLACEHOLDER,
                 )
+                artifact["content"] += (
+                    "\n" + harness_plan_builder.PROJECT_TEAMPLAY_PLACEHOLDER + "\n"
+                )
             elif artifact["path"].startswith(".codex/agents/"):
                 artifact["content"] = artifact["content"].replace(
                     harness_change_discipline.WRITER_BLOCK,
                     harness_plan_builder.WRITER_PLACEHOLDER,
+                )
+                before, closing = artifact["content"].rsplit('"""', 1)
+                artifact["content"] = (
+                    before
+                    + "\n"
+                    + harness_plan_builder.AGENT_TEAMPLAY_PLACEHOLDER
+                    + "\n\"\"\""
+                    + closing
                 )
         return plan
 
@@ -677,6 +688,15 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
         materialized = harness_plan_builder.materialize_plan(draft)
         self.assertEqual(materialized["schemaVersion"], 3)
         self.assertNotIn(harness_plan_builder.PROJECT_PLACEHOLDER, json.dumps(materialized))
+        self.assertNotIn(
+            harness_plan_builder.PROJECT_TEAMPLAY_PLACEHOLDER, json.dumps(materialized)
+        )
+        project = next(
+            item["content"]
+            for item in materialized["artifacts"]
+            if item["path"] == ".agents/skills/project-harness/SKILL.md"
+        )
+        self.assertEqual(project.count(harness_teamplay.PROJECT_BLOCK), 1)
         application = harness_apply.build_application(
             REPO_ROOT / "tests" / "fixtures" / "minimal-project", materialized
         )
@@ -707,6 +727,29 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
         self.assertTrue(
             all(harness_change_discipline.WRITER_BLOCK in content for content in writer_contents)
         )
+        self.assertTrue(all(harness_teamplay.AGENT_BLOCK in content for content in writer_contents))
+
+    def test_missing_project_teamplay_placeholder_is_rejected(self) -> None:
+        draft = self._draft()
+        project = next(
+            item
+            for item in draft["artifacts"]
+            if item["path"] == ".agents/skills/project-harness/SKILL.md"
+        )
+        project["content"] = project["content"].replace(
+            harness_plan_builder.PROJECT_TEAMPLAY_PLACEHOLDER, ""
+        )
+        with self.assertRaisesRegex(harness_plan_builder.PlanBuilderError, "exactly once"):
+            harness_plan_builder.materialize_plan(draft)
+
+    def test_duplicate_agent_teamplay_placeholder_is_rejected(self) -> None:
+        draft = self._draft("coordinated-cross-contract-plan.json")
+        agent = next(
+            item for item in draft["artifacts"] if item["path"].startswith(".codex/agents/")
+        )
+        agent["content"] += harness_plan_builder.AGENT_TEAMPLAY_PLACEHOLDER
+        with self.assertRaisesRegex(harness_plan_builder.PlanBuilderError, "exactly once"):
+            harness_plan_builder.materialize_plan(draft)
 
     def test_missing_project_placeholder_is_rejected(self) -> None:
         draft = self._draft()

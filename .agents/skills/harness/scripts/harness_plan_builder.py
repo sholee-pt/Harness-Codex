@@ -13,10 +13,13 @@ from typing import Any
 
 import harness_change_discipline
 import harness_metadata
+import harness_teamplay
 
 
 PROJECT_PLACEHOLDER = "{{HARNESS_PROJECT_CHANGE_DISCIPLINE_V1}}"
 WRITER_PLACEHOLDER = "{{HARNESS_WRITER_CHANGE_DISCIPLINE_V1}}"
+PROJECT_TEAMPLAY_PLACEHOLDER = "{{HARNESS_PROJECT_TEAMPLAY_V2}}"
+AGENT_TEAMPLAY_PLACEHOLDER = "{{HARNESS_AGENT_TEAMPLAY_V2}}"
 
 
 class PlanBuilderError(ValueError):
@@ -45,18 +48,36 @@ def _replace_exactly_once(value: str, placeholder: str, canonical: str, label: s
     return value.replace(placeholder, canonical)
 
 
-def _writer_paths(topology: dict[str, Any]) -> set[str]:
-    result: set[str] = set()
+def _materialize_contract(value: str, placeholder: str, canonical: str, label: str) -> str:
+    """Replace one placeholder, or preserve one already-materialized canonical block."""
+    normalized_value = harness_change_discipline.normalize_line_endings(value)
+    normalized_canonical = harness_change_discipline.normalize_line_endings(canonical)
+    placeholder_count = value.count(placeholder)
+    canonical_count = normalized_value.count(normalized_canonical)
+    if placeholder_count == 1 and canonical_count == 0:
+        return value.replace(placeholder, canonical)
+    if placeholder_count == 0 and canonical_count == 1:
+        return value
+    raise PlanBuilderError(
+        f"{label} must contain {placeholder} exactly once before materialization "
+        "or the canonical contract exactly once afterward"
+    )
+
+
+def _agent_paths(topology: dict[str, Any]) -> tuple[set[str], set[str]]:
+    agents: set[str] = set()
+    writers: set[str] = set()
     for index, raw in enumerate(_require_list(topology.get("agents"), "topology.agents")):
         agent = _require_object(raw, f"topology.agents[{index}]")
         name = agent.get("name")
         path = agent.get("path")
         if not isinstance(name, str) or not name or not isinstance(path, str) or not path:
             raise PlanBuilderError(f"topology.agents[{index}] has an invalid name or path")
+        agents.add(path)
         accesses = _require_list(agent.get("fileAccess"), f"topology.agents[{index}].fileAccess")
         if any(isinstance(item, dict) and item.get("mode") == "write" for item in accesses):
-            result.add(path)
-    return result
+            writers.add(path)
+    return agents, writers
 
 
 def materialize_plan(value: Any) -> dict[str, Any]:
@@ -65,11 +86,11 @@ def materialize_plan(value: Any) -> dict[str, Any]:
     if plan.get("schemaVersion") != harness_metadata.PLAN_SCHEMA_VERSION:
         raise PlanBuilderError(
             f"plan schemaVersion must be {harness_metadata.PLAN_SCHEMA_VERSION}"
-        )
+    )
     topology = _require_object(plan.get("topology"), "topology")
-    writer_paths = _writer_paths(topology)
+    agent_paths, writer_paths = _agent_paths(topology)
     project_path = ".agents/skills/project-harness/SKILL.md"
-    expected_paths = writer_paths | {project_path}
+    expected_paths = agent_paths | {project_path}
 
     artifacts = _require_list(plan.get("artifacts"), "artifacts")
     by_path: dict[str, dict[str, Any]] = {}
@@ -95,26 +116,54 @@ def materialize_plan(value: Any) -> dict[str, Any]:
     for path, artifact in by_path.items():
         content = artifact["content"]
         if path == project_path:
-            artifact["content"] = _replace_exactly_once(
+            content = _materialize_contract(
                 content,
                 PROJECT_PLACEHOLDER,
                 harness_change_discipline.PROJECT_BLOCK,
                 path,
             )
-            harness_change_discipline.require_exactly_once(
-                artifact["content"], harness_change_discipline.PROJECT_BLOCK, path
-            )
-        elif path in writer_paths:
-            artifact["content"] = _replace_exactly_once(
+            artifact["content"] = _materialize_contract(
                 content,
-                WRITER_PLACEHOLDER,
-                harness_change_discipline.WRITER_BLOCK,
+                PROJECT_TEAMPLAY_PLACEHOLDER,
+                harness_teamplay.PROJECT_BLOCK,
                 path,
             )
             harness_change_discipline.require_exactly_once(
-                artifact["content"], harness_change_discipline.WRITER_BLOCK, path
+                artifact["content"], harness_change_discipline.PROJECT_BLOCK, path
             )
-        elif PROJECT_PLACEHOLDER in content or WRITER_PLACEHOLDER in content:
+            harness_teamplay.require_exactly_once(
+                artifact["content"], harness_teamplay.PROJECT_BLOCK, path
+            )
+        elif path in agent_paths:
+            if path in writer_paths:
+                content = _materialize_contract(
+                    content,
+                    WRITER_PLACEHOLDER,
+                    harness_change_discipline.WRITER_BLOCK,
+                    path,
+                )
+            artifact["content"] = _materialize_contract(
+                content,
+                AGENT_TEAMPLAY_PLACEHOLDER,
+                harness_teamplay.AGENT_BLOCK,
+                path,
+            )
+            if path in writer_paths:
+                harness_change_discipline.require_exactly_once(
+                    artifact["content"], harness_change_discipline.WRITER_BLOCK, path
+                )
+            harness_teamplay.require_exactly_once(
+                artifact["content"], harness_teamplay.AGENT_BLOCK, path
+            )
+        elif any(
+            placeholder in content
+            for placeholder in (
+                PROJECT_PLACEHOLDER,
+                WRITER_PLACEHOLDER,
+                PROJECT_TEAMPLAY_PLACEHOLDER,
+                AGENT_TEAMPLAY_PLACEHOLDER,
+            )
+        ):
             unexpected.append(path)
     if unexpected:
         raise PlanBuilderError(
@@ -124,7 +173,15 @@ def materialize_plan(value: Any) -> dict[str, Any]:
     remaining = [
         path
         for path, artifact in by_path.items()
-        if PROJECT_PLACEHOLDER in artifact["content"] or WRITER_PLACEHOLDER in artifact["content"]
+        if any(
+            placeholder in artifact["content"]
+            for placeholder in (
+                PROJECT_PLACEHOLDER,
+                WRITER_PLACEHOLDER,
+                PROJECT_TEAMPLAY_PLACEHOLDER,
+                AGENT_TEAMPLAY_PLACEHOLDER,
+            )
+        )
     ]
     if remaining:
         raise PlanBuilderError(

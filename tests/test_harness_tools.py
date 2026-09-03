@@ -19,7 +19,9 @@ sys.path.insert(0, str(SCRIPTS))
 import harness_apply  # noqa: E402
 import harness_change_discipline  # noqa: E402
 import harness_metadata  # noqa: E402
+import harness_plan_builder  # noqa: E402
 import harness_state  # noqa: E402
+import harness_teamplay  # noqa: E402
 import harness_topology  # noqa: E402
 import harness_transaction  # noqa: E402
 import evaluate_topology  # noqa: E402
@@ -45,6 +47,7 @@ def minimal_plan(root: Path, *, skill_suffix: str = "", skill_mode: str = "0644"
         "# Project Harness\n\n"
         "Run the smallest evidence-backed workflow.\n"
         f"\n{harness_change_discipline.PROJECT_BLOCK}\n"
+        f"\n{harness_teamplay.PROJECT_BLOCK}\n"
         f"{skill_suffix}"
     )
     return {
@@ -535,6 +538,21 @@ class ApplyTests(unittest.TestCase):
             root = Path(directory)
             shutil.copytree(fixture_root, root, dirs_exist_ok=True)
             plan = harness_apply.load_plan(plan_path)
+            for artifact in plan["artifacts"]:
+                if artifact["path"] == ".agents/skills/project-harness/SKILL.md":
+                    artifact["content"] += (
+                        "\n" + harness_plan_builder.PROJECT_TEAMPLAY_PLACEHOLDER + "\n"
+                    )
+                elif artifact["path"].startswith(".codex/agents/"):
+                    before, closing = artifact["content"].rsplit('"""', 1)
+                    artifact["content"] = (
+                        before
+                        + "\n"
+                        + harness_plan_builder.AGENT_TEAMPLAY_PLACEHOLDER
+                        + "\n\"\"\""
+                        + closing
+                    )
+            plan = harness_plan_builder.materialize_plan(plan)
 
             dry_run = harness_apply.build_application(root, plan)
             self.assertFalse((root / ".harness" / "manifest.json").exists())
@@ -1580,7 +1598,9 @@ class ValidatorTests(unittest.TestCase):
                     "content": (
                         'name = "contract_reviewer"\n'
                         'description = "Review project contracts."\n'
-                        'developer_instructions = "Use project-harness and report evidence."\n'
+                        'developer_instructions = """Use project-harness and report evidence.\n\n'
+                        f'{harness_teamplay.AGENT_BLOCK}\n'
+                        '"""\n'
                     ),
                 }
             )

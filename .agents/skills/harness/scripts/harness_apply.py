@@ -11,6 +11,7 @@ from pathlib import Path
 
 import harness_metadata
 import harness_state
+import harness_teamplay
 import harness_topology
 import harness_transaction
 import harness_change_discipline
@@ -269,6 +270,14 @@ def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> tupl
         )
     except ValueError as exc:
         raise PlanError(str(exc)) from exc
+    try:
+        harness_teamplay.require_exactly_once(
+            project_harness,
+            harness_teamplay.PROJECT_BLOCK,
+            "project-harness skill",
+        )
+    except ValueError as exc:
+        raise PlanError(str(exc)) from exc
 
     known_agents: set[str] = set()
     for index, item in enumerate(agents):
@@ -301,6 +310,14 @@ def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> tupl
                 raise PlanError(f"Codex agent {expected} is missing {key}")
         if data["name"] != name:
             raise PlanError(f"Codex agent name mismatch in {expected}")
+        try:
+            harness_teamplay.require_exactly_once(
+                data["developer_instructions"],
+                harness_teamplay.AGENT_BLOCK,
+                f"agent {name}",
+            )
+        except ValueError as exc:
+            raise PlanError(str(exc)) from exc
         file_access = require_list(agent.get("fileAccess"), f"agent {name} fileAccess")
         is_writer = any(
             isinstance(access, dict) and access.get("mode") == "write"

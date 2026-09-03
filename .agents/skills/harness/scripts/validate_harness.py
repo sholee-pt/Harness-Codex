@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import harness_state
+import harness_teamplay
 import harness_topology
 
 try:
@@ -277,6 +278,14 @@ class Validator:
                 self.error(f"Codex agent {relative} is missing {key}")
         if data.get("name") != name:
             self.error(f"agent name mismatch in {relative}")
+        instructions = data.get("developer_instructions")
+        if isinstance(instructions, str):
+            try:
+                harness_teamplay.require_exactly_once(
+                    instructions, harness_teamplay.AGENT_BLOCK, f"agent {name}"
+                )
+            except ValueError as exc:
+                self.error(str(exc))
         return data
 
     def validate_agent(self, item: dict, known_skills: set[str]) -> None:
@@ -341,6 +350,18 @@ class Validator:
                 known_skills.add(name)
         if "project-harness" not in known_skills:
             self.error("topology must include the project-harness skill")
+        else:
+            project_path = self.path(".agents/skills/project-harness/SKILL.md")
+            if project_path is not None:
+                try:
+                    project_content = project_path.read_text(encoding="utf-8")
+                    harness_teamplay.require_exactly_once(
+                        project_content,
+                        harness_teamplay.PROJECT_BLOCK,
+                        "project-harness skill",
+                    )
+                except (OSError, UnicodeError, ValueError) as exc:
+                    self.error(str(exc))
 
         known_agents: set[str] = set()
         for item in agent_items:

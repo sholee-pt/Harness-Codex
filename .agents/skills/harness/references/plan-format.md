@@ -150,8 +150,10 @@ Routing policies require evidence-backed task categories, boundary references, a
 The draft uses deterministic placeholders instead of reproducing fixed contracts probabilistically:
 
 - Put `{{HARNESS_PROJECT_CHANGE_DISCIPLINE_V1}}` exactly once in `.agents/skills/project-harness/SKILL.md`.
+- Put `{{HARNESS_PROJECT_TEAMPLAY_V2}}` exactly once in `.agents/skills/project-harness/SKILL.md`.
 - Put `{{HARNESS_WRITER_CHANGE_DISCIPLINE_V1}}` exactly once in every writer agent's `developer_instructions`.
-- Do not put either placeholder in a read-only agent, support artifact, or any other path.
+- Put `{{HARNESS_AGENT_TEAMPLAY_V2}}` exactly once in every generated agent's `developer_instructions`, including read-only agents.
+- Do not put a project placeholder in an agent or an agent placeholder in a support artifact or any other path.
 - Do not include a canonical block beside its placeholder.
 
 Materialize the draft before dry-run:
