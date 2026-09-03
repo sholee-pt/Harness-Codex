@@ -27,6 +27,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v6.6` | Harness for Codex v6.6 | Schema 3 | Schema 5 | Schema 2 | Native Codex subagent parent relay, scoped coordination-packet validation, conservative writer isolation and live-smoke accounting |
 | `codex/v6.7` | Harness for Codex v6.7 | Schema 3 | Schema 5 | Schema 2 | Deterministic contract materialization, spawn/wait liveness gates, version-bound privacy-safe runtime receipts, stale-review and affected-agent relay accounting |
 | `codex/v6.8` | Harness for Codex v6.8 | Schema 3 | Schema 5 | Schema 2 | Canonical-handle runtime control, versioned public/local observation profiles, Runtime Receipt Schema 2, required-task accounting, installed draft-plan example |
+| `codex/v6.9` | Harness for Codex v6.9 | Schema 3 | Schema 5 | Schema 2 | Deterministic teamplay materialization, nested-root and research-artifact inventory, canonical capability registry, layered validation report |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -352,6 +353,21 @@ Harness for Codex v6.8 is a narrow runtime-compatibility correction to v6.7. Gen
 - Packages `references/minimal-draft-plan.json` inside the installed skill, removing the repository-only `tests/fixtures/minimal-plan.json` dependency from plan-format guidance.
 
 The public core JSONL profile is based only on the documented `item.*` event envelope. `collab_tool_call` and local `SubAgentActivity` remain explicitly version-specific observed profiles rather than stable public OpenAI schemas. Harness remains an instruction, validation, and evidence layer; it does not replace Codex orchestration or schedule agents independently.
+
+## Harness for Codex v6.9
+
+Harness for Codex v6.9 hardens the generator and its reporting without changing generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, or Runtime Receipt Schema 2.
+
+- Adds deterministic project-teamplay and agent-teamplay placeholders beside the existing change-discipline placeholders.
+- Requires the canonical runtime-teamplay block exactly once in the generated `project-harness` and every generated Codex agent, both before apply and during installed-state validation.
+- Expands bounded inventory to recognize Conda manifests, report nested Git roots, require explicit root selection when ambiguity exists, and separate known research artifacts from source boundary counts.
+- Adds an opt-in `--include-artifacts` inventory mode without reading file contents or changing the default bounded scan.
+- Defines canonical runtime capability IDs and normalizes the legacy `parallel-subagent-delegation` alias before final topology validation.
+- Rejects unregistered capability IDs instead of allowing a validated name to silently select a fallback adapter.
+- Adds a validation capability matrix that distinguishes transaction, manifest, evidence, topology, ownership, and runtime-state checks from untested live agent discovery, delegation, task correctness, and benefit attribution.
+- Keeps v6.0 through v6.8 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v6.9 evidence.
+
+This release does not claim `.gitignore`-complete filtering, semantic source-code classification, live Codex execution proof, or automatic long-term topology adaptation. Those concerns require separate evidence and are not inferred from a successful static validation report.
 
 ## Harness for Claude Code releases
 

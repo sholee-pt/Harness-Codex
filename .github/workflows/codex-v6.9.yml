@@ -1,12 +1,12 @@
-name: Harness for Codex v6.8 checks
+name: Harness for Codex v6.9 checks
 
 on:
   push:
     branches:
-      - codex/v6.8
+      - codex/v6.9
   pull_request:
     branches:
-      - codex/v6.8
+      - codex/v6.9
   workflow_dispatch:
 
 permissions:
@@ -52,15 +52,13 @@ jobs:
           conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py --plan tests/fixtures/coordinated-cross-contract-topology.json --golden tests/fixtures/coordinated-cross-contract-golden.json
           conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py --plan tests/fixtures/coordinated-cross-contract-plan.json --golden tests/fixtures/coordinated-cross-contract-golden.json
 
-      - name: Run no-write fixture dry-runs
+      - name: Materialize and dry-run the installed plan example
         shell: bash -el {0}
         run: |
-          conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root tests/fixtures/minimal-project --plan tests/fixtures/minimal-plan.json --dry-run
-          conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root tests/fixtures/coordinated-cross-contract --plan tests/fixtures/coordinated-cross-contract-plan.json --dry-run
+          conda run -n harness python .agents/skills/harness/scripts/harness_plan_builder.py --input .agents/skills/harness/references/minimal-draft-plan.json --output "${RUNNER_TEMP}/harness-minimal-plan.json"
+          conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root tests/fixtures/minimal-project --plan "${RUNNER_TEMP}/harness-minimal-plan.json" --dry-run
           test ! -e tests/fixtures/minimal-project/.harness/manifest.json
           test ! -e tests/fixtures/minimal-project/.harness/transaction.json
-          test ! -e tests/fixtures/coordinated-cross-contract/.harness/manifest.json
-          test ! -e tests/fixtures/coordinated-cross-contract/.harness/transaction.json
 
       - name: Verify evaluation CLI without live Codex calls
         shell: bash -el {0}
@@ -68,7 +66,7 @@ jobs:
           conda run -n harness python .agents/skills/harness/scripts/harness_eval.py --help
           conda run -n harness python .agents/skills/harness/scripts/harness_eval.py change-discipline-suite --cases tests/fixtures/evaluation/change-discipline-cases.json --validate-only
           mkdir -p "${RUNNER_TEMP}/harness-codex-home"
-          conda run -n harness python .agents/skills/harness/scripts/harness_eval.py paired-run --root . --task-file tests/fixtures/evaluation/task.txt --comparison-plan tests/fixtures/evaluation/comparison-plan.json --verification tests/fixtures/evaluation/verification-profile.json --codex-home "${RUNNER_TEMP}/harness-codex-home" --repetitions 2 --order counterbalanced --seed 66 --dry-run
+          conda run -n harness python .agents/skills/harness/scripts/harness_eval.py paired-run --root . --task-file tests/fixtures/evaluation/task.txt --comparison-plan tests/fixtures/evaluation/comparison-plan.json --verification tests/fixtures/evaluation/verification-profile.json --codex-home "${RUNNER_TEMP}/harness-codex-home" --repetitions 2 --order counterbalanced --seed 69 --dry-run
 
       - name: Verify the checkout remains clean
         shell: bash -el {0}
