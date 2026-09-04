@@ -23,12 +23,18 @@ Harness performs no GitHub API request and no Git remote inspection. It does not
 
 For `git-repository` and `git-worktree` roots, apply uses only local Git metadata:
 
-1. Refuse any planned Harness target that is already tracked.
-2. Add exact generated paths and `/.harness/` to a marker-owned block in the local `info/exclude` file before writing project artifacts.
-3. Preserve every line outside that block.
-4. Recheck tracking and exclude-file drift immediately before apply.
+1. Read `git worktree list --porcelain -z` and require exactly one registered worktree. The common `info/exclude` file is shared by the main and linked worktrees, so any count above one is rejected regardless of which worktree is selected.
+2. Refuse any planned Harness target that is already tracked.
+3. Reject generated path components containing C0 controls or DEL. Encode Git ignore metacharacters, including spaces, as literal path characters instead of broadening the match.
+4. Add the exact encoded generated paths and `/.harness/` to a marker-owned block in the local `info/exclude` file before writing project artifacts.
+5. Preserve every byte outside that block, including the existing newline form and file mode.
+6. Recheck the worktree count, tracking state, and exclude-file drift immediately before apply.
 
 The local exclude reduces accidental inclusion but cannot prevent a user from force-adding a path manually. Report this limitation accurately.
+
+If project application fails synchronously before a transaction is pending, Harness conditionally restores the original exclusion file. Restoration occurs only when the current file is exactly the block Harness just wrote; an external edit, a pending recovery journal, or an uncertain transaction state stops automatic restoration and requires explicit recovery. This compensation does not cover abrupt process termination between the exclusion write and transaction-journal creation.
+
+A Harness-owned marker block without a matching manifest is unbound state. The builder and installed-state validator report it instead of silently adopting or deleting it. Inspect the shared Git metadata and remove the block explicitly only after confirming that no installation or pending recovery depends on it.
 
 For plain directories, Git protection is `not-applicable`; generated files still remain only in that local directory.
 

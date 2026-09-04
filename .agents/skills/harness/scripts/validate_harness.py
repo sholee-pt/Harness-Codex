@@ -605,10 +605,35 @@ class Validator:
                 self.validate_forbidden_tokens,
             )
         else:
-            self.mark_blocked(
-                "localOnlyProtection",
-                "Generated files remain local and local Git workspaces exclude every managed path.",
+            protection_purpose = (
+                "Generated files remain local and local Git workspaces exclude every managed path."
             )
+            try:
+                context = inventory.inspect_root_context(self.root)
+                inspection = harness_workspace.inspect_local_protection(
+                    self.root, context.get("workspaceKind")
+                )
+                if inspection["state"] in {
+                    "present-unbound",
+                    "shared-ambiguous",
+                    "malformed",
+                }:
+                    self.error(
+                        "local Git contains a Harness protection block without a manifest; "
+                        f"state={inspection['state']}; explicit inspection and cleanup are required"
+                    )
+                    self.validation_layers["localOnlyProtection"] = {
+                        "status": "failed",
+                        "proves": protection_purpose,
+                    }
+                else:
+                    self.mark_blocked("localOnlyProtection", protection_purpose)
+            except (OSError, UnicodeError, harness_workspace.WorkspaceError) as exc:
+                self.error(str(exc))
+                self.validation_layers["localOnlyProtection"] = {
+                    "status": "failed",
+                    "proves": protection_purpose,
+                }
             self.mark_blocked(
                 "evidenceFreshness",
                 "All declared evidence paths, hashes, and optional line ranges still match.",

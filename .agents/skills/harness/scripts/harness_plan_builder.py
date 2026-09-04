@@ -100,8 +100,8 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
     if plan.get("authoringContractVersion") != harness_metadata.AUTHORING_CONTRACT_VERSION:
         raise PlanBuilderError(
             "draft authoringContractVersion must be "
-            f"{harness_metadata.AUTHORING_CONTRACT_VERSION}; migrate older drafts by adding "
-            "the v2 project-teamplay and agent-teamplay placeholders"
+            f"{harness_metadata.AUTHORING_CONTRACT_VERSION}; add or update that field explicitly. "
+            "Deterministic contract placeholders are validated separately after the version check"
         )
     if plan.get("schemaVersion") != harness_metadata.PLAN_SCHEMA_VERSION:
         raise PlanBuilderError(

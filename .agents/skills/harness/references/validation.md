@@ -35,6 +35,7 @@ Read this reference after artifacts have been generated or updated.
 - Relay receipts bind reviews to input packet hashes, invalidate stale reviews, and account for exactly the affected agents without changing Coordination Packet Schema 1.
 - Builder, apply, and installed-state validation reject an outer root containing unacknowledged independent or linked Git repositories. Registered submodules remain visible but do not make the parent root ambiguous by themselves.
 - Authoring-contract 2 drafts materialize to ordinary Schema 3 plans and cannot reach apply with the draft-only version field intact.
+- Git local-only protection is valid only with exactly one registered worktree; its literal encoded patterns match the manifest and an unbound Harness marker without a manifest is rejected.
 
 ## Behavioral scenarios
 
@@ -79,6 +80,11 @@ Test the applicable cases, using an isolated temporary repository when possible:
 37. A missing or unlisted canonical receiver handle, wait on an unknown handle, exhausted wait budget, agent-reported-only result, or verified terminal/binding contradiction cannot be reported as observed completion. Missing optional public or local evidence lowers evidence strength without stopping a valid bounded handle wait.
 38. Runtime Receipt Schema 2 marks an unregistered profile/CLI pair as unsupported and malformed or unknown structures as degraded; absence alone is not a conflict. An exact profile contradiction, verified binding mismatch, or incompatible terminal outcome fails closed, while raw prompts, messages, paths, IDs, handles, task names, and credentials never enter a receipt.
 39. A review bound to an older packet hash is stale after revision, and rerun accounting rejects both missing affected agents and unrelated reruns.
+40. Adding a second registered worktree makes both the main and linked worktree reject shared `info/exclude` application; installed-state validation also fails if a sibling appears after installation.
+41. Generated paths containing Git ignore metacharacters exclude only their literal target, while C0, CR, LF, NUL, and DEL path characters are rejected before protection or project writes.
+42. A transaction precondition failure or a fully rolled-back project apply restores the exact original exclusion file when Harness's just-written destination remains unchanged.
+43. An external edit to the exclusion file prevents compensating restoration and reports explicit recovery state instead of overwriting that edit.
+44. A Harness exclusion marker without a manifest is detected as unbound state and is neither adopted nor removed automatically.
 
 ## Completion gate
 

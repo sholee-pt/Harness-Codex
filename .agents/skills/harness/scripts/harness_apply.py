@@ -491,6 +491,18 @@ def build_application(root: Path, plan: dict) -> dict:
     capability_policies = require_list(plan.get("capabilityPolicies"), "capabilityPolicies")
     managed_block = validate_instruction(plan)
     manifest, old_managed = existing_manifest_state(root)
+    if manifest is None:
+        try:
+            protection_state = harness_workspace.inspect_local_protection(
+                root, root_context["workspaceKind"]
+            )
+        except harness_workspace.WorkspaceError as exc:
+            raise PlanError(str(exc)) from exc
+        if protection_state["state"] not in {"absent", "not-applicable"}:
+            raise PlanError(
+                "local Git contains a Harness protection block without a manifest; "
+                f"state={protection_state['state']}; inspect and remove it explicitly before retrying"
+            )
 
     instruction_relative = harness_state.active_instruction_relative(root)
     planned_paths = set(artifacts) | {".harness/manifest.json"}
@@ -733,23 +745,44 @@ def apply_application(application: dict) -> dict:
     desired_modes = application_modes(application)
     root = application["manifestPath"].parents[1]
     try:
-        harness_workspace.apply_local_protection(
+        protection_result = harness_workspace.apply_local_protection(
             root, application["localProtection"], application["protectedPaths"]
         )
     except harness_workspace.WorkspaceError as exc:
         raise PlanError(str(exc)) from exc
-    journal = harness_transaction.prepare_transaction(
-        root,
-        application_outputs(application),
-        action_by_path,
-        application["originalHashes"],
-        application["originalModes"],
-        desired_modes,
-        application["managedPreconditions"],
-    )
-    if journal is None:
-        return {"state": "unchanged", "writes": 0, "cleaned": True}
-    return harness_transaction.apply_transaction(root, journal)
+    journal: dict | None = None
+    try:
+        journal = harness_transaction.prepare_transaction(
+            root,
+            application_outputs(application),
+            action_by_path,
+            application["originalHashes"],
+            application["originalModes"],
+            desired_modes,
+            application["managedPreconditions"],
+        )
+        if journal is None:
+            return {"state": "unchanged", "writes": 0, "cleaned": True}
+        return harness_transaction.apply_transaction(root, journal)
+    except Exception as apply_error:
+        protection_changed = protection_result.get("action") not in {None, "unchanged"}
+        manifest_was_already_current = (
+            action_by_path.get(".harness/manifest.json") == "unchanged"
+        )
+        transaction_committed = journal is not None and journal.get("state") == "committed"
+        if protection_changed and not manifest_was_already_current and not transaction_committed:
+            try:
+                pending = harness_state.transaction_status(root)
+                if pending is None:
+                    harness_workspace.rollback_local_protection(
+                        root, application["localProtection"]
+                    )
+            except (OSError, UnicodeError, harness_state.StateError, harness_workspace.WorkspaceError) as rollback_error:
+                raise PlanError(
+                    "project apply failed and local Git protection could not be restored safely; "
+                    f"original error: {apply_error}; protection recovery error: {rollback_error}"
+                ) from apply_error
+        raise
 
 
 def main() -> int:

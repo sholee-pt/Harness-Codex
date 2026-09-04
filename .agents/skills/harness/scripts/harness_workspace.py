@@ -14,6 +14,7 @@ LOCAL_SCOPE = "local-only"
 BEGIN_MARKER = "# harness:local-only:begin"
 END_MARKER = "# harness:local-only:end"
 GIT_WORKSPACE_KINDS = {"git-repository", "git-worktree"}
+GITIGNORE_LITERAL_ESCAPES = frozenset("*?[]#! ")
 
 
 class WorkspaceError(ValueError):
@@ -74,6 +75,39 @@ def _exclude_file(root: Path) -> Path:
     return path
 
 
+def registered_worktrees(root: Path) -> list[str]:
+    """Return every locally registered worktree without consulting a remote."""
+    _require_git_root(root)
+    result = _run_git(root, ["worktree", "list", "--porcelain", "-z"])
+    if result.returncode != 0:
+        raise WorkspaceError("local Git could not enumerate registered worktrees")
+    worktrees = [
+        field.removeprefix("worktree ")
+        for field in result.stdout.split("\0")
+        if field.startswith("worktree ") and field.removeprefix("worktree ")
+    ]
+    if not worktrees:
+        raise WorkspaceError("local Git reported no registered worktree for the selected root")
+    return worktrees
+
+
+def require_exclusive_info_exclude(root: Path) -> None:
+    worktrees = registered_worktrees(root)
+    if len(worktrees) != 1:
+        raise WorkspaceError(
+            "local Git info/exclude is shared across registered worktrees; "
+            f"found {len(worktrees)} worktrees, so local-only protection is refused; "
+            "remove or prune unused worktrees before retrying"
+        )
+
+
+def _read_text_exact(path: Path) -> str:
+    try:
+        return path.read_bytes().decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise WorkspaceError("local Git info/exclude must be valid UTF-8") from exc
+
+
 def _normalize_pattern(relative: str) -> str:
     if relative == ".harness/":
         return "/.harness/"
@@ -83,7 +117,12 @@ def _normalize_pattern(relative: str) -> str:
         raise WorkspaceError(str(exc)) from exc
     if not key:
         raise WorkspaceError("local exclusion path cannot be empty")
-    return f"/{PurePosixPath(relative).as_posix()}"
+    portable = PurePosixPath(relative).as_posix()
+    escaped = "".join(
+        f"\\{character}" if character in GITIGNORE_LITERAL_ESCAPES else character
+        for character in portable
+    )
+    return f"/{escaped}"
 
 
 def local_patterns(relatives: Iterable[str]) -> list[str]:
@@ -157,8 +196,12 @@ def plan_local_protection(root: Path, workspace_kind: str, relatives: Iterable[s
             "action": "unchanged",
             "path": None,
             "originalSha256": None,
+            "originalExists": False,
+            "originalMode": None,
+            "originalText": None,
             "desiredText": None,
         }
+    require_exclusive_info_exclude(root)
     tracked = tracked_paths(root, [*managed_relatives, ".harness"])
     if tracked:
         raise WorkspaceError(
@@ -167,14 +210,18 @@ def plan_local_protection(root: Path, workspace_kind: str, relatives: Iterable[s
     path = _exclude_file(root)
     if path.exists() and not path.is_file():
         raise WorkspaceError("local Git info/exclude is not a regular file")
-    existing = path.read_text(encoding="utf-8") if path.is_file() else ""
+    existed = path.is_file()
+    existing = _read_text_exact(path) if existed else ""
     desired = _merge_block(existing, patterns)
     return {
         "mode": "git-info-exclude",
         "patterns": patterns,
         "action": "unchanged" if desired == existing else ("update" if path.exists() else "create"),
         "path": path,
-        "originalSha256": harness_state.digest_bytes(existing.encode("utf-8")) if path.is_file() else None,
+        "originalSha256": harness_state.digest_bytes(existing.encode("utf-8")) if existed else None,
+        "originalExists": existed,
+        "originalMode": harness_state.current_mode(path) if existed else None,
+        "originalText": existing,
         "desiredText": desired,
     }
 
@@ -184,6 +231,7 @@ def apply_local_protection(root: Path, protection: dict, relatives: Iterable[str
         return {"mode": "not-applicable", "action": "unchanged"}
     if protection.get("mode") != "git-info-exclude":
         raise WorkspaceError("unsupported local-only protection mode")
+    require_exclusive_info_exclude(root)
     tracked = tracked_paths(root, [*relatives, ".harness"])
     if tracked:
         raise WorkspaceError(
@@ -193,8 +241,10 @@ def apply_local_protection(root: Path, protection: dict, relatives: Iterable[str
     desired = protection.get("desiredText")
     if not isinstance(path, Path) or not isinstance(desired, str):
         raise WorkspaceError("local-only protection plan is incomplete")
+    if path.resolve() != _exclude_file(root):
+        raise WorkspaceError("local-only protection path changed after dry-run")
     exists = path.is_file()
-    existing = path.read_text(encoding="utf-8") if exists else ""
+    existing = _read_text_exact(path) if exists else ""
     actual_hash = harness_state.digest_bytes(existing.encode("utf-8")) if exists else None
     if actual_hash != protection.get("originalSha256"):
         raise WorkspaceError("local Git info/exclude changed after dry-run")
@@ -206,6 +256,67 @@ def apply_local_protection(root: Path, protection: dict, relatives: Iterable[str
         mode=harness_state.current_mode(path) if exists else harness_state.DEFAULT_FILE_MODE,
     )
     return {"mode": "git-info-exclude", "action": protection.get("action")}
+
+
+def rollback_local_protection(root: Path, protection: dict) -> dict:
+    """Compensate a synchronous failed apply without overwriting external edits."""
+    if protection.get("mode") == "not-applicable" or protection.get("action") == "unchanged":
+        return {"mode": protection.get("mode"), "action": "unchanged"}
+    if protection.get("mode") != "git-info-exclude":
+        raise WorkspaceError("unsupported local-only protection rollback mode")
+    require_exclusive_info_exclude(root)
+    path = protection.get("path")
+    desired = protection.get("desiredText")
+    original = protection.get("originalText")
+    original_exists = protection.get("originalExists")
+    original_mode = protection.get("originalMode")
+    if (
+        not isinstance(path, Path)
+        or not isinstance(desired, str)
+        or not isinstance(original, str)
+        or not isinstance(original_exists, bool)
+        or (original_exists and not isinstance(original_mode, int))
+    ):
+        raise WorkspaceError("local-only protection rollback plan is incomplete")
+    if path.resolve() != _exclude_file(root):
+        raise WorkspaceError("local-only protection path changed before rollback")
+    if not path.is_file() or _read_text_exact(path) != desired:
+        raise WorkspaceError(
+            "local Git info/exclude changed after Harness wrote it; automatic rollback refused"
+        )
+    if original_exists:
+        harness_state.atomic_write_text(path, original, mode=original_mode)
+        return {"mode": "git-info-exclude", "action": "restored"}
+    path.unlink()
+    harness_state.sync_directory(path.parent)
+    return {"mode": "git-info-exclude", "action": "removed-created-file"}
+
+
+def inspect_local_protection(root: Path, workspace_kind: str) -> dict:
+    if workspace_kind not in GIT_WORKSPACE_KINDS:
+        return {"state": "not-applicable", "worktreeCount": 0, "patternCount": 0}
+    worktrees = registered_worktrees(root)
+    path = _exclude_file(root)
+    if not path.is_file():
+        return {"state": "absent", "worktreeCount": len(worktrees), "patternCount": 0}
+    text = _read_text_exact(path)
+    begin_count = text.count(BEGIN_MARKER)
+    end_count = text.count(END_MARKER)
+    if begin_count == 0 and end_count == 0:
+        return {"state": "absent", "worktreeCount": len(worktrees), "patternCount": 0}
+    if begin_count != 1 or end_count != 1:
+        return {"state": "malformed", "worktreeCount": len(worktrees), "patternCount": 0}
+    start = text.index(BEGIN_MARKER) + len(BEGIN_MARKER)
+    try:
+        end = text.index(END_MARKER, start)
+    except ValueError:
+        return {"state": "malformed", "worktreeCount": len(worktrees), "patternCount": 0}
+    patterns = [line for line in text[start:end].splitlines() if line]
+    return {
+        "state": "shared-ambiguous" if len(worktrees) != 1 else "present-unbound",
+        "worktreeCount": len(worktrees),
+        "patternCount": len(patterns),
+    }
 
 
 def validate_manifest_protection(root: Path, workspace: object, managed_paths: Iterable[str]) -> None:
@@ -224,6 +335,7 @@ def validate_manifest_protection(root: Path, workspace: object, managed_paths: I
     managed_relatives = tuple(managed_paths)
     expected_patterns = local_patterns(managed_relatives)
     if workspace.get("kind") in GIT_WORKSPACE_KINDS:
+        require_exclusive_info_exclude(root)
         if protection.get("mode") != "git-info-exclude" or protection.get("patterns") != expected_patterns:
             raise WorkspaceError("manifest Git exclusion patterns do not match managed paths")
         if tracked_paths(root, [*managed_relatives, ".harness"]):
@@ -231,7 +343,7 @@ def validate_manifest_protection(root: Path, workspace: object, managed_paths: I
         path = _exclude_file(root)
         if not path.is_file():
             raise WorkspaceError("local Git info/exclude is missing")
-        text = path.read_text(encoding="utf-8")
+        text = _read_text_exact(path)
         if _merge_block(text, expected_patterns) != text:
             raise WorkspaceError("local Git info/exclude does not contain the manifest patterns")
     elif protection != {"mode": "not-applicable", "patterns": []}:

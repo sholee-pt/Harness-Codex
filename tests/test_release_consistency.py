@@ -26,7 +26,7 @@ import harness_transaction  # noqa: E402
 
 class ReleaseConsistencyTests(unittest.TestCase):
     def test_release_metadata_is_consistent(self) -> None:
-        self.assertEqual(harness_metadata.HARNESS_VERSION, "7.0")
+        self.assertEqual(harness_metadata.HARNESS_VERSION, "7.1")
         self.assertEqual(harness_metadata.AUTHORING_CONTRACT_VERSION, 2)
         self.assertEqual(harness_metadata.INVENTORY_SCHEMA_VERSION, 4)
         self.assertEqual(harness_metadata.ROOT_CONTEXT_SCHEMA_VERSION, 2)
@@ -54,15 +54,15 @@ class ReleaseConsistencyTests(unittest.TestCase):
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         versions = (REPO_ROOT / "VERSIONS.md").read_text(encoding="utf-8")
         agents = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        workflow_path = REPO_ROOT / ".github" / "workflows" / "codex-v7.yml"
+        workflow_path = REPO_ROOT / ".github" / "workflows" / "codex-v7.1.yml"
         workflow = workflow_path.read_text(encoding="utf-8")
-        self.assertIn("Harness_for_Codex-v7.0", readme)
-        self.assertIn("--branch codex/v7", readme)
-        self.assertIn("| `codex/v7` | Harness for Codex v7.0 |", versions)
-        self.assertIn("This branch contains Harness for Codex v7.0", agents)
-        self.assertIn("name: Harness for Codex v7.0 checks", workflow)
-        self.assertIn("- codex/v7", workflow)
-        self.assertFalse((workflow_path.parent / "codex-v6.10.yml").exists())
+        self.assertIn("Harness_for_Codex-v7.1", readme)
+        self.assertIn("--branch codex/v7.1", readme)
+        self.assertIn("| `codex/v7.1` | Harness for Codex v7.1 |", versions)
+        self.assertIn("This branch contains Harness for Codex v7.1", agents)
+        self.assertIn("name: Harness for Codex v7.1 checks", workflow)
+        self.assertIn("- codex/v7.1", workflow)
+        self.assertFalse((workflow_path.parent / "codex-v7.yml").exists())
 
     def test_manifest_asset_uses_current_generator_and_stable_schemas(self) -> None:
         asset = json.loads(

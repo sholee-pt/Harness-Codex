@@ -814,7 +814,7 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
         draft = self._draft()
         del draft["authoringContractVersion"]
         with self.assertRaisesRegex(
-            harness_plan_builder.PlanBuilderError, "authoringContractVersion must be 2"
+            harness_plan_builder.PlanBuilderError, "placeholders are validated separately"
         ):
             harness_plan_builder.materialize_plan(draft)
 

@@ -115,6 +115,8 @@ def atomic_write_text(path: Path, text: str, *, mode: int | None = None) -> None
 def resolve_inside(root: Path, relative: str, *, must_exist: bool = False) -> Path:
     if not isinstance(relative, str) or "\\" in relative:
         raise StateError(f"managed path must use POSIX separators: {relative!r}")
+    if any(ord(character) < 32 or ord(character) == 127 for character in relative):
+        raise StateError(f"managed path must not contain control characters: {relative!r}")
     candidate_rel = PurePosixPath(relative)
     if (
         candidate_rel.is_absolute()
@@ -134,6 +136,8 @@ def resolve_inside(root: Path, relative: str, *, must_exist: bool = False) -> Pa
 def portable_path_key(relative: str) -> tuple[str, ...]:
     if not isinstance(relative, str) or "\\" in relative:
         raise StateError(f"managed path must use POSIX separators: {relative!r}")
+    if any(ord(character) < 32 or ord(character) == 127 for character in relative):
+        raise StateError(f"managed path must not contain control characters: {relative!r}")
     path = PurePosixPath(relative)
     if (
         path.is_absolute()

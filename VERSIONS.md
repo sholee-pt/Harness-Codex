@@ -30,6 +30,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v6.9` | Harness for Codex v6.9 | Schema 3 | Schema 5 | Schema 2 | Deterministic teamplay materialization, nested-root and research-artifact inventory, canonical capability registry, layered validation report |
 | `codex/v6.10` | Harness for Codex v6.10 | Schema 3 | Schema 5 | Schema 2 | Enforced single-root preflight, Inventory Schema 3 role summaries, instruction-state split, Authoring Contract 2 drafts |
 | `codex/v7` | Harness for Codex v7.0 | Schema 3 | Schema 6 | Schema 2 | Workspace-first roots, Inventory Schema 4 scan coverage, local-only Git exclusion, tracked-file and user-instruction protection |
+| `codex/v7.1` | Harness for Codex v7.1 | Schema 3 | Schema 6 | Schema 2 | Single-worktree exclusion isolation, literal Git ignore paths, safe synchronous protection rollback, unbound-marker detection |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -403,6 +404,20 @@ Harness for Codex v7.0 changes generation from repository-first to local-workspa
 - Keeps v6.0 through v6.10 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.0 evidence.
 
 Schema 4 and 5 installations upgrade only through re-analysis and a reviewed Schema 3 plan. A legacy Harness path already committed to Git must be untracked manually before local-only conversion; v7.0 does not rewrite Git history or index state.
+
+## Harness for Codex v7.1
+
+Harness for Codex v7.1 is a local-only protection maintenance patch. Generation Plan Schema 3, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, runtime, relay, receipt, and evaluation schemas remain unchanged.
+
+- Rejects local Git protection whenever the selected repository has more than one registered worktree, whether the selected root is the main or a linked worktree, because `info/exclude` belongs to their shared Git directory.
+- Rejects C0 and DEL control characters in managed paths and encodes Git ignore metacharacters so each protection line denotes the intended literal generated path.
+- Preserves exact exclusion-file bytes outside the Harness marker and rechecks worktree count, tracking state, and exclusion drift immediately before apply.
+- Restores a just-written exclusion block after a synchronous precondition failure or completed project rollback only when no pending transaction exists and the destination content has not changed externally.
+- Detects a Harness exclusion marker without a manifest as unbound state and refuses silent adoption or cleanup.
+- Clarifies authoring-contract migration errors so a version mismatch is not misreported as a missing-placeholder defect.
+- Keeps v6.0 through v7.0 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.1 evidence.
+
+This release does not make `info/exclude` part of Transaction Schema 2. Abrupt process termination between the exclusion write and transaction-journal creation can still leave an unbound block, which subsequent build and validation detect for explicit resolution.
 
 ## Harness for Claude Code releases
 

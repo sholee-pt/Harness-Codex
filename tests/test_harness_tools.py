@@ -1257,7 +1257,7 @@ class WorkspaceTests(unittest.TestCase):
         with self.assertRaisesRegex(harness_workspace.WorkspaceError, "crosses independent"):
             harness_workspace.validate_directory_workspace_writers(context, topology)
 
-    def test_linked_worktree_uses_local_exclusion_without_tracking_outputs(self) -> None:
+    def test_multiple_worktrees_refuse_shared_local_exclusion(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)
             repository = parent / "repository"
@@ -1285,22 +1285,195 @@ class WorkspaceTests(unittest.TestCase):
                 capture_output=True,
             )
 
-            harness_apply.apply_application(
-                harness_apply.build_application(worktree, minimal_plan(worktree))
+            exclude = repository / ".git" / "info" / "exclude"
+            before = exclude.read_bytes()
+            for selected in (repository, worktree):
+                with self.subTest(selected=selected):
+                    with self.assertRaisesRegex(
+                        harness_apply.PlanError, "shared across registered worktrees"
+                    ):
+                        harness_apply.build_application(selected, minimal_plan(selected))
+            self.assertEqual(exclude.read_bytes(), before)
+
+    def test_validator_rejects_a_sibling_worktree_added_after_install(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            repository = parent / "repository"
+            worktree = parent / "worktree"
+            subprocess.run(["git", "init", str(repository)], check=True, capture_output=True)
+            plan = minimal_plan(repository)
+            subprocess.run(
+                ["git", "-C", str(repository), "add", "pyproject.toml"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(repository), "-c", "user.name=Harness Tests",
+                    "-c", "user.email=harness@example.invalid", "commit", "-m", "fixture",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            harness_apply.apply_application(harness_apply.build_application(repository, plan))
+            subprocess.run(
+                ["git", "-C", str(repository), "worktree", "add", "-b", "sibling", str(worktree)],
+                check=True,
+                capture_output=True,
             )
 
-            manifest = json.loads(
-                (worktree / ".harness" / "manifest.json").read_text(encoding="utf-8")
+            report = validate_harness.Validator(repository).run()
+
+            self.assertFalse(report["valid"])
+            self.assertEqual(
+                report["validationLayers"]["localOnlyProtection"]["status"], "failed"
             )
-            self.assertEqual(manifest["workspace"]["kind"], "git-worktree")
+            self.assertTrue(
+                any("shared across registered worktrees" in error for error in report["errors"])
+            )
+
+    def test_gitignore_metacharacters_are_encoded_as_literal_path_characters(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
+            target_relative = "notes/[ab] report.txt"
+            sibling_relative = "notes/a report.txt"
+            protection = harness_workspace.plan_local_protection(
+                root, "git-repository", [target_relative]
+            )
+
+            self.assertIn("/notes/\\[ab\\]\\ report.txt", protection["patterns"])
+            self.assertEqual(
+                harness_workspace._normalize_pattern("notes/*-draft?.txt"),
+                "/notes/\\*-draft\\?.txt",
+            )
+            harness_workspace.apply_local_protection(root, protection, [target_relative])
+            for relative in (target_relative, sibling_relative):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("fixture\n", encoding="utf-8")
+
+            target = subprocess.run(
+                ["git", "-C", str(root), "check-ignore", "--no-index", target_relative],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            sibling = subprocess.run(
+                ["git", "-C", str(root), "check-ignore", "--no-index", sibling_relative],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(target.returncode, 0, target.stderr)
+            self.assertEqual(sibling.returncode, 1, sibling.stdout)
+
+    def test_control_characters_are_rejected_from_managed_paths(self) -> None:
+        for relative in (
+            ".agents/skills/project-harness/references/bad\nname.md",
+            ".agents/skills/project-harness/references/bad\rname.md",
+            ".agents/skills/project-harness/references/bad\x00name.md",
+            ".agents/skills/project-harness/references/bad\x7fname.md",
+        ):
+            with self.subTest(relative=repr(relative)):
+                with self.assertRaisesRegex(harness_state.StateError, "control characters"):
+                    harness_state.portable_path_key(relative)
+
+    def test_transaction_precondition_failure_restores_local_exclude(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
+            application = harness_apply.build_application(root, minimal_plan(root))
+            exclude = root / ".git" / "info" / "exclude"
+            before = exclude.read_bytes()
+            target = root / ".agents" / "skills" / "project-harness" / "SKILL.md"
+            target.parent.mkdir(parents=True)
+            target.write_text("concurrent user file\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                harness_transaction.TransactionError, "create target appeared before apply"
+            ):
+                harness_apply.apply_application(application)
+
+            self.assertEqual(exclude.read_bytes(), before)
+            self.assertFalse((root / ".harness" / "manifest.json").exists())
             status = subprocess.run(
-                ["git", "-C", str(worktree), "status", "--porcelain=v1", "--untracked-files=all"],
+                ["git", "-C", str(root), "status", "--porcelain=v1", "--untracked-files=all"],
                 check=True,
                 capture_output=True,
                 text=True,
             )
-            self.assertEqual(status.stdout, "")
-            self.assertTrue(validate_harness.Validator(worktree).run()["valid"])
+            self.assertIn(".agents/skills/project-harness/SKILL.md", status.stdout)
+
+    def test_mid_apply_project_rollback_also_restores_local_exclude(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
+            application = harness_apply.build_application(root, minimal_plan(root))
+            exclude = root / ".git" / "info" / "exclude"
+            before = exclude.read_bytes()
+            original_write = harness_state.atomic_write_bytes
+            failed = False
+
+            def fail_once(path: Path, data: bytes, *, mode: int | None = None) -> None:
+                nonlocal failed
+                if Path(path) == (root / "AGENTS.md").resolve() and not failed:
+                    failed = True
+                    raise OSError("injected target failure")
+                original_write(Path(path), data, mode=mode)
+
+            with mock.patch.object(harness_state, "atomic_write_bytes", side_effect=fail_once):
+                with self.assertRaises(harness_transaction.TransactionError):
+                    harness_apply.apply_application(application)
+
+            self.assertTrue(failed)
+            self.assertEqual(exclude.read_bytes(), before)
+            self.assertFalse((root / ".harness" / "manifest.json").exists())
+            self.assertIsNone(harness_state.transaction_status(root))
+
+    def test_external_exclude_edit_refuses_compensating_rollback(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
+            application = harness_apply.build_application(root, minimal_plan(root))
+            exclude = root / ".git" / "info" / "exclude"
+
+            def fail_after_external_edit(*_args, **_kwargs):
+                with exclude.open("a", encoding="utf-8") as stream:
+                    stream.write("# external edit\n")
+                raise harness_transaction.TransactionError("injected preparation failure")
+
+            with mock.patch.object(
+                harness_transaction, "prepare_transaction", side_effect=fail_after_external_edit
+            ):
+                with self.assertRaisesRegex(
+                    harness_apply.PlanError, "could not be restored safely"
+                ):
+                    harness_apply.apply_application(application)
+
+            self.assertIn("# external edit", exclude.read_text(encoding="utf-8"))
+            self.assertFalse((root / ".harness" / "manifest.json").exists())
+
+    def test_orphan_local_protection_block_is_detected_and_not_adopted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
+            protection = harness_workspace.plan_local_protection(
+                root, "git-repository", [".agents/skills/project-harness/SKILL.md"]
+            )
+            harness_workspace.apply_local_protection(
+                root, protection, [".agents/skills/project-harness/SKILL.md"]
+            )
+
+            report = validate_harness.Validator(root).run()
+
+            self.assertFalse(report["valid"])
+            self.assertEqual(
+                report["validationLayers"]["localOnlyProtection"]["status"], "failed"
+            )
+            self.assertTrue(any("without a manifest" in error for error in report["errors"]))
+            with self.assertRaisesRegex(harness_apply.PlanError, "without a manifest"):
+                harness_apply.build_application(root, minimal_plan(root))
 
     def test_tracked_harness_control_file_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1916,7 +2089,7 @@ class TopologyContractTests(unittest.TestCase):
             self.assertEqual(manifest["topology"]["classification"]["class"], "minimal")
 
     def test_current_workflow_checks_tracked_and_untracked_cleanliness(self) -> None:
-        workflow = (REPO_ROOT / ".github" / "workflows" / "codex-v7.yml").read_text(
+        workflow = (REPO_ROOT / ".github" / "workflows" / "codex-v7.1.yml").read_text(
             encoding="utf-8"
         )
         self.assertIn("git diff --exit-code", workflow)
