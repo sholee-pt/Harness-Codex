@@ -1,11 +1,13 @@
 # Paired Evaluation Isolation
 
-`paired-run` compares a baseline without Harness-managed agents, skills, and instruction block against a treatment with the clean Harness installation.
+`paired-run` compares a baseline without Harness-managed agents, skills, and instruction block against a treatment reconstructed from a verified local-only Harness installation.
 
 ## Preconditions
 
-- clean Git repository;
-- two detached temporary worktrees from one commit;
+- clean Git repository containing a valid current-version local-only Harness installation;
+- exactly one registered source worktree, so reading and checking the source `info/exclude` has unambiguous scope;
+- an exact bounded in-memory snapshot of the manifest, every manifest-managed file, and every manifest-referenced evidence file, including file modes;
+- two independent temporary local clones from one commit, each with its own Git metadata, no retained remote, and one registered worktree;
 - user-owned project instructions, source, tests, agents, and skills preserved in both arms;
 - dedicated `CODEX_HOME` with no global instructions, Harness skill, or comparison-changing config;
 - a distinct temporary user home for each arm, with no authentication or configuration copied from the caller's home;
@@ -15,6 +17,8 @@
 - randomized or counterbalanced arm order with the seed recorded.
 
 Codex builds global and project instruction chains independently on every run. Merely deleting `.codex/agents` is not a valid baseline.
+
+Before either arm starts, Harness validates the source installation, confirms that no transaction is pending, and verifies the source commit, clean Git status, worktree count, manifest bytes, and captured managed and evidence bytes. Snapshot size and file count are bounded. Unknown ignored or untracked project content is deliberately not copied. Both clones receive the same captured evidence bytes so checkout line-ending conversion cannot create an arm difference. Harness then removes its managed state from the baseline and installs the verified managed snapshot with a clone-local exclusion block in the treatment. Any pre-existing overlay target fails before files are written.
 
 ## Verification profile
 
@@ -26,6 +30,6 @@ Success, failure, and timeout handling all invoke process-group cleanup before t
 
 On Windows, complete live isolation additionally requires a user-local JSON receipt whose implementation digest matches the current process-tree cleanup function. Without it, the run is retained with `windows-process-tree-unverified` and partial isolation. The receipt is support evidence, not project state, and is never copied into the target repository.
 
-Each arm is committed to a clean synthetic pre-task commit after baseline/treatment preparation. Both Run records retain the original user commit as `sourceSnapshotId`, while result fingerprinting and patch-scope evaluation compare the post-task state with that arm-specific internal base. The internal base is not added to Run Record Schema 2.
+Each arm is committed to a clean synthetic pre-task commit after baseline/treatment preparation. Both Run records retain the original user commit as `sourceSnapshotId`, while result fingerprinting and patch-scope evaluation compare the post-task state with that arm-specific internal base. The internal base is not added to Run Record Schema 2. `--dry-run` performs source preflight and reports the clone-overlay mode, source worktree count, managed-file count, and snapshot digests without cloning, invoking Codex, or writing evaluation state.
 
 Partial or failed isolation may be retained as paired replay evidence but cannot contribute Proposal support statistics or concrete attribution. A task outcome failure under complete comparability remains valid harmful evidence when the planned outcome measurement is available.

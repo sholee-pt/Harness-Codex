@@ -673,6 +673,7 @@ def build_application(root: Path, plan: dict) -> dict:
                 "mode": local_protection["mode"],
                 "action": local_protection["action"],
                 "patterns": local_protection["patterns"],
+                "worktreeCount": local_protection["worktreeCount"],
             },
             "activation": (
                 "managed-pointer"

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import copy
+import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -27,7 +29,12 @@ import harness_eval_store as store_module  # noqa: E402
 import harness_eval_types as types  # noqa: E402
 import harness_eval_schema2 as schema2  # noqa: E402
 import harness_eval_view as evaluation_view  # noqa: E402
+import harness_apply  # noqa: E402
+import harness_plan_builder  # noqa: E402
 import harness_patch_scope  # noqa: E402
+import harness_state  # noqa: E402
+import harness_workspace  # noqa: E402
+import validate_harness  # noqa: E402
 
 
 FIXED_TIME = datetime(2026, 8, 31, 12, 0, tzinfo=timezone.utc)
@@ -1015,7 +1022,7 @@ class ComparisonTests(unittest.TestCase):
             v64["runtime"]["harnessVersion"],
             schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS,
         )
-        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {"7.1"})
+        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {"7.2"})
         plan = self.comparison_plan()
         v60_comparison = compare.compare_runs(
             baseline=manual_record(repository_id, uuid_text(2), arm="baseline", verification="failed", harness_version="6.0"),
@@ -1494,6 +1501,48 @@ class PairedIsolationTests(unittest.TestCase):
         ).stdout.strip()
         return root, base_ref
 
+    @staticmethod
+    def _local_only_repository(parent: Path) -> tuple[Path, str]:
+        root = parent / "source"
+        shutil.copytree(REPO_ROOT / "tests" / "fixtures" / "minimal-project", root)
+        subprocess.run(["git", "init", str(root)], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(
+            ["git", "-C", str(root), "config", "user.email", "fixture@example.invalid"],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(root), "config", "user.name", "Fixture"], check=True
+        )
+        subprocess.run(
+            ["git", "-C", str(root), "add", "README.md", "pyproject.toml"], check=True
+        )
+        subprocess.run(
+            ["git", "-C", str(root), "commit", "-m", "fixture"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+        commit = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            check=True,
+            stdout=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+        ).stdout.strip()
+        draft = json.loads(
+            (
+                REPO_ROOT
+                / ".agents"
+                / "skills"
+                / "harness"
+                / "references"
+                / "minimal-draft-plan.json"
+            ).read_text(encoding="utf-8")
+        )
+        plan = harness_plan_builder.materialize_plan(draft, root=root)
+        harness_apply.apply_application(harness_apply.build_application(root, plan))
+        assert validate_harness.Validator(root).run()["valid"]
+        return root, commit
+
     def test_runtime_environment_uses_an_isolated_user_home(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1540,6 +1589,125 @@ class PairedIsolationTests(unittest.TestCase):
         )
         with self.assertRaises(types.EvaluationError):
             harness_eval._paired_arm_orders(0, "randomized", 123)
+
+    def test_local_only_installation_materializes_independent_clone_arms(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source, commit = self._local_only_repository(parent)
+            source_exclude = source / ".git" / "info" / "exclude"
+            source_exclude_before = source_exclude.read_bytes()
+            snapshot = harness_eval._capture_local_harness_snapshot(source, commit)
+            baseline = parent / "pair" / "baseline"
+            treatment = parent / "pair" / "treatment"
+
+            harness_eval._clone_local_evaluation_arm(source, baseline, commit)
+            harness_eval._clone_local_evaluation_arm(source, treatment, commit)
+            removed = harness_eval._materialize_paired_arms(
+                baseline, treatment, snapshot
+            )
+
+            self.assertTrue(removed)
+            self.assertFalse((baseline / ".harness" / "manifest.json").exists())
+            self.assertFalse(
+                (baseline / ".agents" / "skills" / "project-harness" / "SKILL.md").exists()
+            )
+            self.assertTrue(validate_harness.Validator(treatment).run()["valid"])
+            self.assertEqual(
+                harness_eval._manifest_metadata(treatment)[0],
+                snapshot["treatmentManifestSha256"],
+            )
+            self.assertEqual(len(harness_workspace.registered_worktrees(source)), 1)
+            self.assertEqual(source_exclude.read_bytes(), source_exclude_before)
+            self.assertEqual(harness_eval._git(baseline, "remote").stdout.strip(), "")
+            self.assertEqual(harness_eval._git(treatment, "remote").stdout.strip(), "")
+
+            baseline_base = harness_eval._prepare_task_base(baseline, commit)
+            treatment_base = harness_eval._prepare_task_base(treatment, commit)
+            for root, task_base in (
+                (baseline, baseline_base),
+                (treatment, treatment_base),
+            ):
+                self.assertEqual(
+                    harness_eval._git(root, "rev-parse", f"{task_base}^").stdout.strip(),
+                    commit,
+                )
+                self.assertEqual(harness_eval._git(root, "status", "--porcelain").stdout, "")
+
+    def test_paired_snapshot_preflight_detects_managed_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source, commit = self._local_only_repository(parent)
+            snapshot = harness_eval._capture_local_harness_snapshot(source, commit)
+            skill = source / ".agents" / "skills" / "project-harness" / "SKILL.md"
+            skill.write_text(skill.read_text(encoding="utf-8") + "external edit\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(types.EvaluationError, "managed file changed"):
+                harness_eval._verify_local_harness_snapshot(source, snapshot)
+
+    def test_paired_materialization_refuses_target_collision_before_overlay(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source, commit = self._local_only_repository(parent)
+            snapshot = harness_eval._capture_local_harness_snapshot(source, commit)
+            baseline = parent / "pair" / "baseline"
+            treatment = parent / "pair" / "treatment"
+            harness_eval._clone_local_evaluation_arm(source, baseline, commit)
+            harness_eval._clone_local_evaluation_arm(source, treatment, commit)
+            collision = treatment / snapshot["managedFiles"][0]["path"]
+            collision.parent.mkdir(parents=True, exist_ok=True)
+            collision.write_text("user-owned\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(types.EvaluationError, "conflicting Harness target"):
+                harness_eval._materialize_paired_arms(baseline, treatment, snapshot)
+
+            self.assertEqual(collision.read_text(encoding="utf-8"), "user-owned\n")
+            self.assertFalse((baseline / ".harness" / "manifest.json").exists())
+
+    def test_paired_dry_run_preflights_and_reports_local_materialization(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source, _commit = self._local_only_repository(parent)
+            codex_home = parent / "codex-home"
+            codex_home.mkdir()
+            args = harness_eval.build_parser().parse_args(
+                [
+                    "paired-run",
+                    "--root",
+                    str(source),
+                    "--task-file",
+                    str(FIXTURES / "task.txt"),
+                    "--comparison-plan",
+                    str(FIXTURES / "comparison-plan.json"),
+                    "--verification",
+                    str(FIXTURES / "verification-profile.json"),
+                    "--codex-home",
+                    str(codex_home),
+                    "--repetitions",
+                    "2",
+                    "--order",
+                    "counterbalanced",
+                    "--seed",
+                    "72",
+                    "--dry-run",
+                ]
+            )
+            output = io.StringIO()
+            with mock.patch("sys.stdout", output):
+                self.assertEqual(harness_eval.command_paired_run(args), 0)
+            report = json.loads(output.getvalue())
+
+            self.assertTrue(report["valid"])
+            self.assertFalse(report["stateWritten"])
+            self.assertEqual(
+                report["materialization"]["mode"],
+                harness_eval.PAIRED_MATERIALIZATION_MODE,
+            )
+            self.assertEqual(report["materialization"]["sourceWorktreeCount"], 1)
+            self.assertGreater(report["materialization"]["managedFileCount"], 0)
+
+            (source / ".harness" / "manifest.json").unlink()
+            with self.assertRaisesRegex(types.EvaluationError, "valid local-only"):
+                harness_eval.command_paired_run(args)
 
     def test_baseline_removal_preserves_user_instruction_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

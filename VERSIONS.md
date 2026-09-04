@@ -31,6 +31,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v6.10` | Harness for Codex v6.10 | Schema 3 | Schema 5 | Schema 2 | Enforced single-root preflight, Inventory Schema 3 role summaries, instruction-state split, Authoring Contract 2 drafts |
 | `codex/v7` | Harness for Codex v7.0 | Schema 3 | Schema 6 | Schema 2 | Workspace-first roots, Inventory Schema 4 scan coverage, local-only Git exclusion, tracked-file and user-instruction protection |
 | `codex/v7.1` | Harness for Codex v7.1 | Schema 3 | Schema 6 | Schema 2 | Single-worktree exclusion isolation, literal Git ignore paths, safe synchronous protection rollback, unbound-marker detection |
+| `codex/v7.2` | Harness for Codex v7.2 | Schema 3 | Schema 6 | Schema 2 | Verified local-only paired evaluation, independent no-remote clones, source snapshot preflight, dry-run worktree-count diagnostics |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -418,6 +419,22 @@ Harness for Codex v7.1 is a local-only protection maintenance patch. Generation 
 - Keeps v6.0 through v7.0 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.1 evidence.
 
 This release does not make `info/exclude` part of Transaction Schema 2. Abrupt process termination between the exclusion write and transaction-journal creation can still leave an unbound block, which subsequent build and validation detect for explicit resolution.
+
+## Harness for Codex v7.2
+
+Harness for Codex v7.2 is a narrow paired-evaluation compatibility patch for local-only installations. Generation Plan Schema 3, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, Runtime Receipt Schema 2, and Evaluation Schema 2 remain unchanged.
+
+- Requires `paired-run` to start from a clean, valid current-version local-only installation with exactly one registered source worktree.
+- Validates and captures exact manifest, managed-file, and manifest-referenced evidence bytes and file modes before either arm is created; a later source drift fails the run.
+- Creates independent local clones at one source commit instead of registered sibling worktrees, removes every clone remote, and confirms that each arm has private Git metadata and one worktree.
+- Reconstructs the baseline by removing only verified Harness-managed state and reconstructs the treatment from the verified snapshot with its own local exclusion block.
+- Writes the same captured evidence bytes into both arms before making clean synthetic task-base commits, preventing checkout line-ending conversion from becoming an arm difference.
+- Rejects overlay collisions before writing and bounds the number and total size of captured files. Arbitrary ignored or untracked project files are not copied.
+- Makes `paired-run --dry-run` validate the source materialization prerequisites and report the materialization mode, worktree count, managed-file count, and snapshot digests without invoking Codex or writing evaluation state.
+- Adds `worktreeCount` to successful generation dry-run `localProtection` output for explicit Git-scope diagnostics.
+- Keeps v6.0 through v7.1 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.2 evidence.
+
+This release makes the optional paired evaluator compatible with local-only generated files; it does not make evaluation automatic, prove runtime use of declared agents, or establish a performance benefit without complete eligible live pairs.
 
 ## Harness for Claude Code releases
 

@@ -756,6 +756,7 @@ class ApplyTests(unittest.TestCase):
 
             self.assertFalse((root / ".harness" / "manifest.json").exists())
             self.assertTrue(all(item["action"] == "create" for item in application["report"]["actions"]))
+            self.assertEqual(application["report"]["localProtection"]["worktreeCount"], 0)
 
             harness_apply.apply_application(application)
             first_manifest = (root / ".harness" / "manifest.json").read_bytes()
@@ -1129,6 +1130,7 @@ class ApplyTests(unittest.TestCase):
 
             application = harness_apply.build_application(root, minimal_plan(root))
             self.assertEqual(application["report"]["localProtection"]["action"], "update")
+            self.assertEqual(application["report"]["localProtection"]["worktreeCount"], 1)
             harness_apply.apply_application(application)
 
             self.assertEqual(
@@ -2089,7 +2091,7 @@ class TopologyContractTests(unittest.TestCase):
             self.assertEqual(manifest["topology"]["classification"]["class"], "minimal")
 
     def test_current_workflow_checks_tracked_and_untracked_cleanliness(self) -> None:
-        workflow = (REPO_ROOT / ".github" / "workflows" / "codex-v7.1.yml").read_text(
+        workflow = (REPO_ROOT / ".github" / "workflows" / "codex-v7.2.yml").read_text(
             encoding="utf-8"
         )
         self.assertIn("git diff --exit-code", workflow)

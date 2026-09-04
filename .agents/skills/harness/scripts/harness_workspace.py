@@ -91,7 +91,7 @@ def registered_worktrees(root: Path) -> list[str]:
     return worktrees
 
 
-def require_exclusive_info_exclude(root: Path) -> None:
+def require_exclusive_info_exclude(root: Path) -> int:
     worktrees = registered_worktrees(root)
     if len(worktrees) != 1:
         raise WorkspaceError(
@@ -99,6 +99,7 @@ def require_exclusive_info_exclude(root: Path) -> None:
             f"found {len(worktrees)} worktrees, so local-only protection is refused; "
             "remove or prune unused worktrees before retrying"
         )
+    return len(worktrees)
 
 
 def _read_text_exact(path: Path) -> str:
@@ -200,8 +201,9 @@ def plan_local_protection(root: Path, workspace_kind: str, relatives: Iterable[s
             "originalMode": None,
             "originalText": None,
             "desiredText": None,
+            "worktreeCount": 0,
         }
-    require_exclusive_info_exclude(root)
+    worktree_count = require_exclusive_info_exclude(root)
     tracked = tracked_paths(root, [*managed_relatives, ".harness"])
     if tracked:
         raise WorkspaceError(
@@ -223,6 +225,7 @@ def plan_local_protection(root: Path, workspace_kind: str, relatives: Iterable[s
         "originalMode": harness_state.current_mode(path) if existed else None,
         "originalText": existing,
         "desiredText": desired,
+        "worktreeCount": worktree_count,
     }
 
 

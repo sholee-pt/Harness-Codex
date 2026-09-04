@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v7.1, a local-only workspace harness generator with isolated single-worktree Git protection, literal ignore patterns, synchronous protection rollback, Inventory Schema 4 boundary coverage, Manifest Schema 6 workspace state, and deterministic runtime contracts.
+- This branch contains Harness for Codex v7.2, a local-only workspace harness generator with independent-clone paired evaluation, verified treatment materialization, single-worktree Git protection, Inventory Schema 4 boundary coverage, Manifest Schema 6 workspace state, and deterministic runtime contracts.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add deployment, marketplace publishing, telemetry, or external service dependencies.
 - Keep evaluation default-off, user-local, and isolated from generation/apply failure handling.

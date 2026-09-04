@@ -1,12 +1,12 @@
-name: Harness for Codex v7.1 checks
+name: Harness for Codex v7.2 checks
 
 on:
   push:
     branches:
-      - codex/v7.1
+      - codex/v7.2
   pull_request:
     branches:
-      - codex/v7.1
+      - codex/v7.2
   workflow_dispatch:
 
 permissions:
@@ -66,8 +66,16 @@ jobs:
         run: |
           conda run -n harness python .agents/skills/harness/scripts/harness_eval.py --help
           conda run -n harness python .agents/skills/harness/scripts/harness_eval.py change-discipline-suite --cases tests/fixtures/evaluation/change-discipline-cases.json --validate-only
+          cp -R tests/fixtures/minimal-project "${RUNNER_TEMP}/harness-eval-project"
+          git -C "${RUNNER_TEMP}/harness-eval-project" init
+          git -C "${RUNNER_TEMP}/harness-eval-project" config user.email "fixture@example.invalid"
+          git -C "${RUNNER_TEMP}/harness-eval-project" config user.name "Harness CI"
+          git -C "${RUNNER_TEMP}/harness-eval-project" add README.md pyproject.toml
+          git -C "${RUNNER_TEMP}/harness-eval-project" commit -m "Create evaluation fixture"
+          conda run -n harness python .agents/skills/harness/scripts/harness_plan_builder.py --root "${RUNNER_TEMP}/harness-eval-project" --input .agents/skills/harness/references/minimal-draft-plan.json --output "${RUNNER_TEMP}/harness-eval-plan.json"
+          conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root "${RUNNER_TEMP}/harness-eval-project" --plan "${RUNNER_TEMP}/harness-eval-plan.json"
           mkdir -p "${RUNNER_TEMP}/harness-codex-home"
-          conda run -n harness python .agents/skills/harness/scripts/harness_eval.py paired-run --root . --task-file tests/fixtures/evaluation/task.txt --comparison-plan tests/fixtures/evaluation/comparison-plan.json --verification tests/fixtures/evaluation/verification-profile.json --codex-home "${RUNNER_TEMP}/harness-codex-home" --repetitions 2 --order counterbalanced --seed 710 --dry-run
+          conda run -n harness python .agents/skills/harness/scripts/harness_eval.py paired-run --root "${RUNNER_TEMP}/harness-eval-project" --task-file tests/fixtures/evaluation/task.txt --comparison-plan tests/fixtures/evaluation/comparison-plan.json --verification tests/fixtures/evaluation/verification-profile.json --codex-home "${RUNNER_TEMP}/harness-codex-home" --repetitions 2 --order counterbalanced --seed 720 --dry-run
 
       - name: Verify the checkout remains clean
         shell: bash -el {0}
