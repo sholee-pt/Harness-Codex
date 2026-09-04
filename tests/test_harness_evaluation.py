@@ -1022,7 +1022,7 @@ class ComparisonTests(unittest.TestCase):
             v64["runtime"]["harnessVersion"],
             schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS,
         )
-        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {"7.2"})
+        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {"7.3"})
         plan = self.comparison_plan()
         v60_comparison = compare.compare_runs(
             baseline=manual_record(repository_id, uuid_text(2), arm="baseline", verification="failed", harness_version="6.0"),
@@ -1597,6 +1597,7 @@ class PairedIsolationTests(unittest.TestCase):
             source_exclude = source / ".git" / "info" / "exclude"
             source_exclude_before = source_exclude.read_bytes()
             snapshot = harness_eval._capture_local_harness_snapshot(source, commit)
+            self.assertTrue(all(item["tracked"] for item in snapshot["evidenceFiles"]))
             baseline = parent / "pair" / "baseline"
             treatment = parent / "pair" / "treatment"
 
@@ -1692,7 +1693,11 @@ class PairedIsolationTests(unittest.TestCase):
                 ]
             )
             output = io.StringIO()
-            with mock.patch("sys.stdout", output):
+            with mock.patch("sys.stdout", output), mock.patch.object(
+                harness_eval,
+                "_clone_local_evaluation_arm",
+                side_effect=AssertionError("default dry-run must not clone"),
+            ):
                 self.assertEqual(harness_eval.command_paired_run(args), 0)
             report = json.loads(output.getvalue())
 
@@ -1704,10 +1709,73 @@ class PairedIsolationTests(unittest.TestCase):
             )
             self.assertEqual(report["materialization"]["sourceWorktreeCount"], 1)
             self.assertGreater(report["materialization"]["managedFileCount"], 0)
+            self.assertFalse(report["materialization"]["clonePerformed"])
+            self.assertFalse(report["materialization"]["materializationValidated"])
+            self.assertFalse(report["materialization"]["expectedGitRemoteRetained"])
+            self.assertIsNone(report["materialization"]["observedGitRemoteRetained"])
+
+            args.validate_materialization = True
+            output = io.StringIO()
+            with mock.patch("sys.stdout", output):
+                self.assertEqual(harness_eval.command_paired_run(args), 0)
+            validated = json.loads(output.getvalue())
+            self.assertTrue(validated["materialization"]["clonePerformed"])
+            self.assertTrue(validated["materialization"]["materializationValidated"])
+            self.assertFalse(
+                validated["materialization"]["observedGitRemoteRetained"]
+            )
 
             (source / ".harness" / "manifest.json").unlink()
             with self.assertRaisesRegex(types.EvaluationError, "valid local-only"):
                 harness_eval.command_paired_run(args)
+
+    def test_snapshot_classifies_manifest_referenced_ignored_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source, commit = self._local_only_repository(parent)
+            evidence = source / "private" / "context.txt"
+            evidence.parent.mkdir()
+            evidence.write_bytes(b"ignored local evidence\n")
+            exclude = source / ".git" / "info" / "exclude"
+            exclude.write_bytes(b"private/context.txt\n" + exclude.read_bytes())
+            manifest_path = source / ".harness" / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["project"]["evidence"].append(
+                {
+                    "path": "private/context.txt",
+                    "sha256": types.digest_bytes(evidence.read_bytes()),
+                    "claim": "Supplies private local context for the test.",
+                }
+            )
+            manifest_path.write_text(
+                json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+            )
+            validation = validate_harness.Validator(source).run()
+            self.assertTrue(validation["valid"], validation["errors"])
+
+            snapshot = harness_eval._capture_local_harness_snapshot(source, commit)
+
+            captured = {
+                item["path"]: item for item in snapshot["evidenceFiles"]
+            }
+            self.assertFalse(captured["private/context.txt"]["tracked"])
+            self.assertEqual(
+                captured["private/context.txt"]["data"], b"ignored local evidence\n"
+            )
+            baseline = parent / "pair" / "baseline"
+            treatment = parent / "pair" / "treatment"
+            harness_eval._clone_local_evaluation_arm(source, baseline, commit)
+            harness_eval._clone_local_evaluation_arm(source, treatment, commit)
+            harness_eval._materialize_paired_arms(baseline, treatment, snapshot)
+            self.assertEqual(evidence.read_bytes(), b"ignored local evidence\n")
+            self.assertEqual(
+                (baseline / "private" / "context.txt").read_bytes(),
+                b"ignored local evidence\n",
+            )
+            self.assertEqual(
+                (treatment / "private" / "context.txt").read_bytes(),
+                b"ignored local evidence\n",
+            )
 
     def test_baseline_removal_preserves_user_instruction_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1736,6 +1804,129 @@ class PairedIsolationTests(unittest.TestCase):
             harness_eval._assert_baseline_isolated(root, removed)
             self.assertEqual(agents.read_text(encoding="utf-8"), original.replace(block, "", 1))
             self.assertFalse(managed.exists())
+            self.assertEqual(
+                removed["isolationGaps"],
+                ["baseline-instruction-provenance-unavailable"],
+            )
+
+    def test_baseline_removal_deletes_generated_only_instruction_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            agents = root / "AGENTS.md"
+            manifest = root / ".harness" / "manifest.json"
+            manifest.parent.mkdir(parents=True)
+            block = (
+                f"{harness_eval.harness_state.BEGIN_MARKER}\nmanaged\n"
+                f"{harness_eval.harness_state.END_MARKER}"
+            )
+            agents.write_text(f"{block}\n", encoding="utf-8")
+            manifest.write_text(
+                json.dumps(
+                    {"managedFiles": [{"path": "AGENTS.md", "kind": "managed-block"}]}
+                ),
+                encoding="utf-8",
+            )
+
+            removed = harness_eval._remove_managed_baseline(root)
+
+            harness_eval._assert_baseline_isolated(root, removed)
+            self.assertFalse(agents.exists())
+            self.assertEqual(removed["isolationGaps"], [])
+
+    def test_untracked_evidence_is_materialized_in_both_clone_arms(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source, commit = self._local_only_repository(parent)
+            snapshot = harness_eval._capture_local_harness_snapshot(source, commit)
+            evidence = {
+                "path": "private/context.txt",
+                "data": b"local evidence\n",
+                "mode": 0o640,
+                "contentSha256": types.digest_bytes(b"local evidence\n"),
+                "tracked": False,
+            }
+            snapshot["evidenceFiles"].append(evidence)
+            baseline = parent / "pair" / "baseline"
+            treatment = parent / "pair" / "treatment"
+            harness_eval._clone_local_evaluation_arm(source, baseline, commit)
+            harness_eval._clone_local_evaluation_arm(source, treatment, commit)
+            for root in (baseline, treatment):
+                target = root / evidence["path"]
+                target.parent.mkdir(parents=True)
+                target.write_bytes(b"stale local material\n")
+
+            result = harness_eval._materialize_paired_arms(
+                baseline, treatment, snapshot
+            )
+            for root in (baseline, treatment):
+                self.assertEqual((root / evidence["path"]).read_bytes(), evidence["data"])
+            self.assertEqual(result["isolationGaps"], [])
+
+            harness_eval._prepare_task_base(baseline, commit)
+            harness_eval._prepare_task_base(treatment, commit)
+            for root in (baseline, treatment):
+                self.assertEqual((root / evidence["path"]).read_bytes(), evidence["data"])
+                self.assertEqual(harness_eval._git(root, "status", "--porcelain").stdout, "")
+
+    def test_evidence_preflight_checks_both_arms_before_first_write(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source, commit = self._local_only_repository(parent)
+            snapshot = harness_eval._capture_local_harness_snapshot(source, commit)
+            evidence = {
+                "path": "private/context.txt",
+                "data": b"local evidence\n",
+                "mode": 0o640,
+                "contentSha256": types.digest_bytes(b"local evidence\n"),
+                "tracked": False,
+            }
+            snapshot["evidenceFiles"].append(evidence)
+            baseline = parent / "pair" / "baseline"
+            treatment = parent / "pair" / "treatment"
+            harness_eval._clone_local_evaluation_arm(source, baseline, commit)
+            harness_eval._clone_local_evaluation_arm(source, treatment, commit)
+            (treatment / "private" / "context.txt").mkdir(parents=True)
+
+            with self.assertRaisesRegex(types.EvaluationError, "not a regular file"):
+                harness_eval._materialize_paired_arms(
+                    baseline, treatment, snapshot
+                )
+
+            self.assertFalse((baseline / evidence["path"]).exists())
+
+    def test_evidence_preflight_rejects_symlink_ancestors(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source, commit = self._local_only_repository(parent)
+            snapshot = harness_eval._capture_local_harness_snapshot(source, commit)
+            snapshot["evidenceFiles"].append(
+                {
+                    "path": "private/context.txt",
+                    "data": b"local evidence\n",
+                    "mode": 0o640,
+                    "contentSha256": types.digest_bytes(b"local evidence\n"),
+                    "tracked": False,
+                }
+            )
+            baseline = parent / "pair" / "baseline"
+            treatment = parent / "pair" / "treatment"
+            harness_eval._clone_local_evaluation_arm(source, baseline, commit)
+            harness_eval._clone_local_evaluation_arm(source, treatment, commit)
+            external = parent / "external"
+            external.mkdir()
+            try:
+                (treatment / "private").symlink_to(external, target_is_directory=True)
+            except OSError:
+                self.skipTest("creating symlinks may require Windows developer mode")
+
+            with self.assertRaisesRegex(
+                types.EvaluationError, "symlink or reparse point"
+            ):
+                harness_eval._materialize_paired_arms(
+                    baseline, treatment, snapshot
+                )
+
+            self.assertFalse((baseline / "private" / "context.txt").exists())
 
     def test_arm_task_bases_exclude_harness_preparation_from_task_patch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

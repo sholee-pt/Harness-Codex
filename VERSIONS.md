@@ -32,6 +32,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v7` | Harness for Codex v7.0 | Schema 3 | Schema 6 | Schema 2 | Workspace-first roots, Inventory Schema 4 scan coverage, local-only Git exclusion, tracked-file and user-instruction protection |
 | `codex/v7.1` | Harness for Codex v7.1 | Schema 3 | Schema 6 | Schema 2 | Single-worktree exclusion isolation, literal Git ignore paths, safe synchronous protection rollback, unbound-marker detection |
 | `codex/v7.2` | Harness for Codex v7.2 | Schema 3 | Schema 6 | Schema 2 | Verified local-only paired evaluation, independent no-remote clones, source snapshot preflight, dry-run worktree-count diagnostics |
+| `codex/v7.3` | Harness for Codex v7.3 | Schema 3 | Schema 6 | Schema 2 | Exact ignored/untracked evidence materialization, instruction-provenance isolation gaps, paired pre-task invariants, truthful optional materialization dry-run |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -435,6 +436,21 @@ Harness for Codex v7.2 is a narrow paired-evaluation compatibility patch for loc
 - Keeps v6.0 through v7.1 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.2 evidence.
 
 This release makes the optional paired evaluator compatible with local-only generated files; it does not make evaluation automatic, prove runtime use of declared agents, or establish a performance benefit without complete eligible live pairs.
+
+## Harness for Codex v7.3
+
+Harness for Codex v7.3 is a narrow paired-evaluation fidelity patch. Generation Plan Schema 3, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, Runtime Receipt Schema 2, and Evaluation Schema 2 remain unchanged.
+
+- Records whether each manifest-referenced evidence file belongs to the source commit and materializes ignored or untracked evidence into both independent clone arms.
+- Preflights every evidence destination in both arms before the first write, rejecting lexical symlink and reparse-point ancestors, non-regular targets, missing tracked files, and managed/evidence namespace overlap; absent untracked evidence is created and an existing regular target is replaced with the captured bytes.
+- Deletes a generated-only instruction file from the baseline instead of retaining a framing newline.
+- Preserves mixed user/Harness instruction content while recording `baseline-instruction-provenance-unavailable`; affected pairs remain descriptive and cannot support concrete attribution.
+- Verifies evidence bytes and modes, baseline isolation, treatment validity, commit identity, remote removal, allowed changed paths, and normalized instruction remainders immediately before synthetic task-base creation.
+- Advances synthetic task-base `HEAD` without a hard checkout so platform line-ending conversion cannot rewrite captured evidence, then verifies evidence again before execution.
+- Makes default `paired-run --dry-run` distinguish expected properties from unobserved ones. The opt-in `--validate-materialization` flag creates disposable clones and reports actually validated materialization without invoking Codex or writing evaluation state.
+- Keeps v6.0 through v7.2 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.3 evidence.
+
+This release does not add full pre-install instruction provenance, copy arbitrary ignored project content, change persistent schemas, or broaden the evaluation system into an execution engine.
 
 ## Harness for Claude Code releases
 

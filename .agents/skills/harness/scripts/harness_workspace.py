@@ -54,10 +54,10 @@ def tracked_paths(root: Path, relatives: Iterable[str]) -> list[str]:
         return []
     _require_git_root(root)
     literal_paths = [f":(literal){value}" for value in values]
-    result = _run_git(root, ["ls-files", "--cached", "--", *literal_paths])
+    result = _run_git(root, ["ls-files", "--cached", "-z", "--", *literal_paths])
     if result.returncode != 0:
         raise WorkspaceError("local Git could not classify tracked Harness targets")
-    return sorted(line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip())
+    return sorted(value.replace("\\", "/") for value in result.stdout.split("\0") if value)
 
 
 def _exclude_file(root: Path) -> Path:

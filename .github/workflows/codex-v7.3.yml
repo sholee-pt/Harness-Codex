@@ -1,12 +1,12 @@
-name: Harness for Codex v7.2 checks
+name: Harness for Codex v7.3 checks
 
 on:
   push:
     branches:
-      - codex/v7.2
+      - codex/v7.3
   pull_request:
     branches:
-      - codex/v7.2
+      - codex/v7.3
   workflow_dispatch:
 
 permissions:
@@ -75,7 +75,7 @@ jobs:
           conda run -n harness python .agents/skills/harness/scripts/harness_plan_builder.py --root "${RUNNER_TEMP}/harness-eval-project" --input .agents/skills/harness/references/minimal-draft-plan.json --output "${RUNNER_TEMP}/harness-eval-plan.json"
           conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root "${RUNNER_TEMP}/harness-eval-project" --plan "${RUNNER_TEMP}/harness-eval-plan.json"
           mkdir -p "${RUNNER_TEMP}/harness-codex-home"
-          conda run -n harness python .agents/skills/harness/scripts/harness_eval.py paired-run --root "${RUNNER_TEMP}/harness-eval-project" --task-file tests/fixtures/evaluation/task.txt --comparison-plan tests/fixtures/evaluation/comparison-plan.json --verification tests/fixtures/evaluation/verification-profile.json --codex-home "${RUNNER_TEMP}/harness-codex-home" --repetitions 2 --order counterbalanced --seed 720 --dry-run
+          conda run -n harness python .agents/skills/harness/scripts/harness_eval.py paired-run --root "${RUNNER_TEMP}/harness-eval-project" --task-file tests/fixtures/evaluation/task.txt --comparison-plan tests/fixtures/evaluation/comparison-plan.json --verification tests/fixtures/evaluation/verification-profile.json --codex-home "${RUNNER_TEMP}/harness-codex-home" --repetitions 2 --order counterbalanced --seed 730 --dry-run --validate-materialization
 
       - name: Verify the checkout remains clean
         shell: bash -el {0}

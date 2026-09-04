@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in local evaluation and observability CLI for Harness for Codex v7.2."""
+"""Opt-in local evaluation and observability CLI for Harness for Codex v7.3."""
 
 from __future__ import annotations
 
@@ -1239,8 +1239,12 @@ def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str,
     if not all(isinstance(path, str) for path in managed_paths):
         raise types.EvaluationError("paired-run manifest contains an invalid managed path")
     try:
-        harness_state.validate_file_namespace(managed_paths, label="paired Harness overlay")
+        harness_state.validate_file_namespace(
+            [*managed_paths, ".harness/manifest.json", *sorted(evidence_paths)],
+            label="paired Harness and evidence paths",
+        )
         harness_workspace.validate_manifest_protection(root, workspace, managed_paths)
+        tracked_evidence = set(harness_workspace.tracked_paths(root, evidence_paths))
     except (harness_state.StateError, harness_workspace.WorkspaceError) as exc:
         raise types.EvaluationError(str(exc)) from exc
 
@@ -1274,12 +1278,9 @@ def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str,
             }
         )
     for relative in sorted(evidence_paths):
-        try:
-            path = harness_state.resolve_inside(root, relative, must_exist=True)
-        except harness_state.StateError as exc:
-            raise types.EvaluationError(str(exc)) from exc
-        if path.is_symlink() or not path.is_file():
-            raise types.EvaluationError(f"paired evidence source is not a regular file: {relative}")
+        path, exists = _evidence_target(root, relative)
+        if not exists:
+            raise types.EvaluationError(f"paired evidence source is missing: {relative}")
         data = path.read_bytes()
         total_bytes += len(data)
         if total_bytes > PAIRED_OVERLAY_MAX_BYTES:
@@ -1290,6 +1291,7 @@ def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str,
                 "data": data,
                 "mode": harness_state.current_mode(path),
                 "contentSha256": types.digest_bytes(data),
+                "tracked": relative in tracked_evidence,
             }
         )
 
@@ -1316,6 +1318,7 @@ def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str,
                 "path": item["path"],
                 "mode": harness_state.mode_text(item["mode"]),
                 "contentSha256": item["contentSha256"],
+                "tracked": item["tracked"],
             }
             for item in evidence_captured
         ],
@@ -1369,13 +1372,9 @@ def _verify_local_harness_snapshot(root: Path, snapshot: dict[str, Any]) -> None
                 f"paired-run source managed file changed during preflight: {item['path']}"
             )
     for item in snapshot["evidenceFiles"]:
-        try:
-            path = harness_state.resolve_inside(root, item["path"], must_exist=True)
-        except harness_state.StateError as exc:
-            raise types.EvaluationError(str(exc)) from exc
+        path, exists = _evidence_target(root, item["path"])
         if (
-            path.is_symlink()
-            or not path.is_file()
+            not exists
             or path.read_bytes() != item["data"]
             or harness_state.current_mode(path) != item["mode"]
         ):
@@ -1434,6 +1433,63 @@ def _assert_overlay_targets_unused(root: Path, snapshot: dict[str, Any]) -> None
             )
 
 
+def _evidence_target(root: Path, relative: str) -> tuple[Path, bool]:
+    """Resolve an evidence path without following lexical symlink/reparse ancestors."""
+    try:
+        parts = harness_state.portable_path_key(relative)
+    except harness_state.StateError as exc:
+        raise types.EvaluationError(str(exc)) from exc
+    resolved_root = root.resolve()
+    candidate = resolved_root
+    original_parts = Path(relative).parts
+    if len(parts) != len(original_parts):
+        raise types.EvaluationError(f"paired evidence path is not portable: {relative}")
+    exists = True
+    for index, part in enumerate(original_parts):
+        candidate = candidate / part
+        try:
+            metadata = candidate.lstat()
+        except FileNotFoundError:
+            exists = False
+            continue
+        except OSError as exc:
+            raise types.EvaluationError(
+                f"could not inspect paired evidence target: {relative}"
+            ) from exc
+        attributes = getattr(metadata, "st_file_attributes", 0)
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        if stat.S_ISLNK(metadata.st_mode) or (reparse_flag and attributes & reparse_flag):
+            raise types.EvaluationError(
+                f"paired evidence target uses a symlink or reparse point: {relative}"
+            )
+        if index < len(original_parts) - 1 and not stat.S_ISDIR(metadata.st_mode):
+            raise types.EvaluationError(
+                f"paired evidence target has a non-directory ancestor: {relative}"
+            )
+        if index == len(original_parts) - 1 and not stat.S_ISREG(metadata.st_mode):
+            raise types.EvaluationError(
+                f"paired evidence target is not a regular file: {relative}"
+            )
+    try:
+        resolved = harness_state.resolve_inside(resolved_root, relative)
+    except harness_state.StateError as exc:
+        raise types.EvaluationError(str(exc)) from exc
+    return resolved, exists and resolved.exists()
+
+
+def _preflight_evidence_targets(
+    roots: tuple[Path, Path], snapshot: dict[str, Any]
+) -> None:
+    """Validate every evidence target in both arms before the first evidence write."""
+    for root in roots:
+        for item in snapshot["evidenceFiles"]:
+            _path, exists = _evidence_target(root, item["path"])
+            if item["tracked"] and not exists:
+                raise types.EvaluationError(
+                    f"tracked paired evidence is missing from clone: {item['path']}"
+                )
+
+
 def _write_harness_overlay(root: Path, snapshot: dict[str, Any]) -> None:
     _assert_overlay_targets_unused(root, snapshot)
     for item in snapshot["managedFiles"]:
@@ -1450,31 +1506,114 @@ def _write_harness_overlay(root: Path, snapshot: dict[str, Any]) -> None:
 def _write_evidence_snapshot(root: Path, snapshot: dict[str, Any]) -> None:
     """Give both arms the exact evidence bytes used by the source manifest."""
     for item in snapshot["evidenceFiles"]:
-        try:
-            path = harness_state.resolve_inside(root, item["path"], must_exist=True)
-        except harness_state.StateError as exc:
-            raise types.EvaluationError(str(exc)) from exc
-        if path.is_symlink() or not path.is_file():
-            raise types.EvaluationError(
-                f"paired-run clone evidence target is not a regular file: {item['path']}"
-            )
+        path, _exists = _evidence_target(root, item["path"])
         harness_state.atomic_write_bytes(path, item["data"], mode=item["mode"])
+
+
+def _assert_evidence_snapshot(root: Path, snapshot: dict[str, Any]) -> None:
+    for item in snapshot["evidenceFiles"]:
+        path, exists = _evidence_target(root, item["path"])
+        if (
+            not exists
+            or path.read_bytes() != item["data"]
+            or not harness_state.mode_matches(path, item["mode"])
+        ):
+            raise types.EvaluationError(
+                f"paired evidence differs from the captured snapshot: {item['path']}"
+            )
+
+
+def _instruction_remainder(path: Path) -> bytes | None:
+    if not path.exists():
+        return None
+    if not path.is_file() or path.is_symlink():
+        raise types.EvaluationError("paired instruction target is not a regular file")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise types.EvaluationError("paired instruction target is not UTF-8 text") from exc
+    if harness_state.BEGIN_MARKER not in text and harness_state.END_MARKER not in text:
+        return text.encode("utf-8")
+    try:
+        block = harness_state.extract_managed_block(text)
+    except harness_state.StateError as exc:
+        raise types.EvaluationError(str(exc)) from exc
+    if text == f"{block.rstrip()}\n":
+        return None
+    return text.replace(block, "", 1).encode("utf-8")
+
+
+def _changed_project_paths(root: Path) -> set[str]:
+    changed = {
+        value
+        for value in _git(root, "diff", "--name-only", "-z", "HEAD").stdout.split("\0")
+        if value
+    }
+    untracked = {
+        value
+        for value in _git(
+            root, "ls-files", "--others", "--exclude-standard", "-z"
+        ).stdout.split("\0")
+        if value
+    }
+    return {value.replace("\\", "/") for value in changed | untracked}
+
+
+def _assert_materialization_invariants(
+    baseline_root: Path,
+    treatment_root: Path,
+    snapshot: dict[str, Any],
+    removal: dict[str, Any],
+) -> None:
+    """Check paired fidelity immediately before synthetic task-base creation."""
+    _assert_baseline_isolated(baseline_root, removal["removed"])
+    _assert_evidence_snapshot(baseline_root, snapshot)
+    _assert_evidence_snapshot(treatment_root, snapshot)
+    if _git(baseline_root, "rev-parse", "HEAD").stdout.strip() != snapshot["sourceCommit"]:
+        raise types.EvaluationError("paired baseline commit changed during materialization")
+    if _git(treatment_root, "rev-parse", "HEAD").stdout.strip() != snapshot["sourceCommit"]:
+        raise types.EvaluationError("paired treatment commit changed during materialization")
+    if _git(baseline_root, "remote").stdout.strip() or _git(treatment_root, "remote").stdout.strip():
+        raise types.EvaluationError("paired materialization retained a Git remote")
+
+    allowed = {
+        *snapshot["managedPaths"],
+        ".harness/manifest.json",
+        *(item["path"] for item in snapshot["evidenceFiles"]),
+    }
+    for root in (baseline_root, treatment_root):
+        unexpected = _changed_project_paths(root) - allowed
+        if unexpected:
+            raise types.EvaluationError(
+                "paired materialization changed a non-Harness project path: "
+                + sorted(unexpected)[0]
+            )
+    for item in snapshot["managedFiles"]:
+        if item["kind"] != "managed-block":
+            continue
+        baseline = harness_state.resolve_inside(baseline_root, item["path"])
+        treatment = harness_state.resolve_inside(treatment_root, item["path"])
+        if _instruction_remainder(baseline) != _instruction_remainder(treatment):
+            raise types.EvaluationError(
+                f"paired instruction user content differs between arms: {item['path']}"
+            )
 
 
 def _materialize_paired_arms(
     baseline_root: Path,
     treatment_root: Path,
     snapshot: dict[str, Any],
-) -> list[tuple[str, str]]:
+) -> dict[str, Any]:
     """Create isolated baseline and treatment states before any Codex process starts."""
     _assert_overlay_targets_unused(baseline_root, snapshot)
     _assert_overlay_targets_unused(treatment_root, snapshot)
+    _preflight_evidence_targets((baseline_root, treatment_root), snapshot)
     _write_evidence_snapshot(baseline_root, snapshot)
     _write_evidence_snapshot(treatment_root, snapshot)
 
     _write_harness_overlay(baseline_root, snapshot)
     removed = _remove_managed_baseline(baseline_root)
-    _assert_baseline_isolated(baseline_root, removed)
+    _assert_baseline_isolated(baseline_root, removed["removed"])
 
     try:
         protection = harness_workspace.plan_local_protection(
@@ -1500,15 +1639,19 @@ def _materialize_paired_arms(
     manifest_hash, _topology_hash = _manifest_metadata(treatment_root)
     if manifest_hash != snapshot["treatmentManifestSha256"]:
         raise types.EvaluationError("paired-run treatment manifest changed during materialization")
+    _assert_materialization_invariants(
+        baseline_root, treatment_root, snapshot, removed
+    )
     return removed
 
 
-def _remove_managed_baseline(root: Path) -> list[tuple[str, str]]:
+def _remove_managed_baseline(root: Path) -> dict[str, Any]:
     manifest_path = root / ".harness" / "manifest.json"
     if not manifest_path.is_file():
         raise types.EvaluationError("paired baseline requires a Harness manifest")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     removed: list[tuple[str, str]] = []
+    isolation_gaps: list[str] = []
     for entry in manifest.get("managedFiles", []):
         if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
             raise types.EvaluationError("manifest managedFiles entry is invalid")
@@ -1518,8 +1661,14 @@ def _remove_managed_baseline(root: Path) -> list[tuple[str, str]]:
                 raise types.EvaluationError(f"managed instruction file is missing: {entry['path']}")
             text = target.read_text(encoding="utf-8")
             block = harness_state.extract_managed_block(text)
-            cleaned = text.replace(block, "", 1)
-            harness_state.atomic_write_text(target, cleaned, mode=harness_state.current_mode(target))
+            if text == f"{block.rstrip()}\n":
+                target.unlink()
+            else:
+                cleaned = text.replace(block, "", 1)
+                harness_state.atomic_write_text(
+                    target, cleaned, mode=harness_state.current_mode(target)
+                )
+                isolation_gaps.append("baseline-instruction-provenance-unavailable")
             removed.append((entry["path"], "managed-block"))
         else:
             if target.is_file():
@@ -1528,10 +1677,17 @@ def _remove_managed_baseline(root: Path) -> list[tuple[str, str]]:
     harness_root = root / ".harness"
     if harness_root.is_dir():
         shutil.rmtree(harness_root)
-    return removed
+    return {
+        "removed": removed,
+        "isolationGaps": sorted(set(isolation_gaps)),
+    }
 
 
-def _assert_baseline_isolated(root: Path, removed: list[tuple[str, str]]) -> None:
+def _assert_baseline_isolated(
+    root: Path, removed: list[tuple[str, str]] | dict[str, Any]
+) -> None:
+    if isinstance(removed, dict):
+        removed = removed["removed"]
     if (root / ".harness").exists():
         raise types.EvaluationError("baseline still contains Harness project state")
     for relative, kind in removed:
@@ -1571,7 +1727,9 @@ def _prepare_task_base(root: Path, original_commit: str) -> str:
     except (OSError, subprocess.CalledProcessError) as exc:
         raise types.EvaluationError("could not create the arm pre-task commit") from exc
     task_base_ref = process.stdout.strip()
-    _git(root, "reset", "--hard", task_base_ref)
+    # The index already matches the new tree. A soft reset advances HEAD without
+    # re-checking files through platform line-ending conversion.
+    _git(root, "reset", "--soft", task_base_ref)
     if _git(root, "rev-parse", "HEAD").stdout.strip() != task_base_ref:
         raise types.EvaluationError("arm pre-task commit was not installed as HEAD")
     if _git(root, "status", "--porcelain").stdout.strip():
@@ -1671,6 +1829,7 @@ def _paired_arm(
     patch_scope_profile: dict[str, Any] | None,
     source_snapshot_id: str,
     task_base_ref: str,
+    materialization_isolation_gaps: list[str],
 ) -> dict[str, Any]:
     record = _new_record(
         evaluation_store=evaluation_store,
@@ -1690,6 +1849,7 @@ def _paired_arm(
     )
     if not windows_cleanup_verified:
         isolation_gaps.append("windows-process-tree-unverified")
+    isolation_gaps.extend(materialization_isolation_gaps)
     record["comparison"]["isolationGaps"] = sorted(set(isolation_gaps))
     record["comparison"]["isolationStatus"] = (
         "complete" if not record["comparison"]["isolationGaps"] else "partial"
@@ -1782,6 +1942,8 @@ def _paired_arm(
 
 def command_paired_run(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
+    if args.validate_materialization and not args.dry_run:
+        raise types.EvaluationError("--validate-materialization requires --dry-run")
     if _git(root, "status", "--porcelain").stdout.strip():
         raise types.EvaluationError("paired-run requires a clean Git repository")
     prompt_bytes = _prompt_bytes(args)
@@ -1818,11 +1980,38 @@ def command_paired_run(args: argparse.Namespace) -> int:
         "sourceManifestSha256": harness_snapshot["sourceManifestSha256"],
         "treatmentManifestSha256": harness_snapshot["treatmentManifestSha256"],
         "overlaySha256": harness_snapshot["overlaySha256"],
-        "gitRemoteRetained": False,
+        "clonePerformed": False,
+        "materializationValidated": False,
+        "expectedGitRemoteRetained": False,
+        "observedGitRemoteRetained": None,
     }
     seed = args.seed if args.seed is not None else random.SystemRandom().randrange(2**32)
     arm_orders = _paired_arm_orders(args.repetitions, args.order, seed)
     if args.dry_run:
+        materialization_gaps: list[str] = []
+        if args.validate_materialization:
+            with tempfile.TemporaryDirectory(prefix="harness-materialization-") as directory:
+                pair_root = Path(directory)
+                baseline_root = pair_root / "baseline"
+                treatment_root = pair_root / "treatment"
+                _verify_local_harness_snapshot(root, harness_snapshot)
+                _clone_local_evaluation_arm(root, baseline_root, commit)
+                _clone_local_evaluation_arm(root, treatment_root, commit)
+                result = _materialize_paired_arms(
+                    baseline_root, treatment_root, harness_snapshot
+                )
+                _prepare_task_base(baseline_root, commit)
+                _prepare_task_base(treatment_root, commit)
+                _assert_evidence_snapshot(baseline_root, harness_snapshot)
+                _assert_evidence_snapshot(treatment_root, harness_snapshot)
+                materialization_gaps = result["isolationGaps"]
+            materialization_report.update(
+                {
+                    "clonePerformed": True,
+                    "materializationValidated": True,
+                    "observedGitRemoteRetained": False,
+                }
+            )
         _print(
             {
                 "valid": True,
@@ -1839,6 +2028,7 @@ def command_paired_run(args: argparse.Namespace) -> int:
                 "windowsCleanupReceiptValid": windows_cleanup_verified,
                 "isolationGaps": sorted(set(
                     admin_isolation_gaps
+                    + materialization_gaps
                     + ([] if windows_cleanup_verified else ["windows-process-tree-unverified"])
                 )),
             }
@@ -1848,6 +2038,13 @@ def command_paired_run(args: argparse.Namespace) -> int:
     evaluation_store = _store(args)
     repository_id = evaluation_store.register_repository(root)
     comparison_records: list[dict[str, Any]] = []
+    materialization_report.update(
+        {
+            "clonePerformed": True,
+            "materializationValidated": True,
+            "observedGitRemoteRetained": False,
+        }
+    )
     with tempfile.TemporaryDirectory(prefix="harness-paired-") as directory:
         temporary = Path(directory)
         for repetition_index, arm_order in enumerate(arm_orders, start=1):
@@ -1861,11 +2058,15 @@ def command_paired_run(args: argparse.Namespace) -> int:
             _clone_local_evaluation_arm(root, baseline_root, commit)
             _clone_local_evaluation_arm(root, treatment_root, commit)
             try:
-                _materialize_paired_arms(baseline_root, treatment_root, harness_snapshot)
+                materialization = _materialize_paired_arms(
+                    baseline_root, treatment_root, harness_snapshot
+                )
                 task_base_refs = {
                     "baseline": _prepare_task_base(baseline_root, commit),
                     "harness": _prepare_task_base(treatment_root, commit),
                 }
+                _assert_evidence_snapshot(baseline_root, harness_snapshot)
+                _assert_evidence_snapshot(treatment_root, harness_snapshot)
                 source_snapshot_id = f"git:{commit}"
                 records: dict[str, dict[str, Any]] = {}
                 for index, arm in enumerate(arm_order):
@@ -1888,6 +2089,7 @@ def command_paired_run(args: argparse.Namespace) -> int:
                         patch_scope_profile=patch_scope_profile,
                         source_snapshot_id=source_snapshot_id,
                         task_base_ref=task_base_refs[arm],
+                        materialization_isolation_gaps=materialization["isolationGaps"],
                     )
                 comparison_record = compare.compare_runs(
                     baseline=records["baseline"],
@@ -2246,6 +2448,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="randomized",
     )
     paired.add_argument("--dry-run", action="store_true")
+    paired.add_argument(
+        "--validate-materialization",
+        action="store_true",
+        help="With --dry-run, create disposable clones and validate paired materialization",
+    )
     paired.add_argument("--patch-scope-profile")
     paired.add_argument(
         "--windows-cleanup-receipt",
