@@ -1022,7 +1022,7 @@ class ComparisonTests(unittest.TestCase):
             v64["runtime"]["harnessVersion"],
             schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS,
         )
-        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {"7.4"})
+        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {"7.5"})
         plan = self.comparison_plan()
         v60_comparison = compare.compare_runs(
             baseline=manual_record(repository_id, uuid_text(2), arm="baseline", verification="failed", harness_version="6.0"),
@@ -1731,6 +1731,14 @@ class PairedIsolationTests(unittest.TestCase):
                 report["materialization"]["effectiveProjectConfigLoad"],
                 "not-applicable",
             )
+            self.assertEqual(report["materialization"]["projectAgentConfigCount"], 0)
+            self.assertEqual(
+                report["materialization"]["effectiveProjectAgentLoad"],
+                "not-applicable",
+            )
+            self.assertIsNone(
+                report["materialization"]["projectAgentDependenciesVerified"]
+            )
             self.assertEqual(
                 report["materialization"]["projectRules"],
                 "intentionally-disabled",
@@ -1849,8 +1857,14 @@ class PairedIsolationTests(unittest.TestCase):
             )
             self.assertTrue(snapshot["projectConfigPresent"])
             self.assertFalse(snapshot["projectConfigLoadVerified"])
+            self.assertEqual(snapshot["projectAgentConfigCount"], 1)
+            self.assertFalse(snapshot["projectAgentLoadVerified"])
+            self.assertFalse(snapshot["projectAgentDependenciesVerified"])
             self.assertIn(
                 "project-config-load-unverified", snapshot["isolationGaps"]
+            )
+            self.assertIn(
+                "project-agent-load-unverified", snapshot["isolationGaps"]
             )
 
             baseline = parent / "pair" / "baseline"
@@ -1863,6 +1877,7 @@ class PairedIsolationTests(unittest.TestCase):
             self.assertEqual(result["baselineInstruction"], "PROJECT_GUIDE.md")
             self.assertEqual(result["treatmentInstruction"], "AGENTS.md")
             self.assertIn("project-config-load-unverified", result["isolationGaps"])
+            self.assertIn("project-agent-load-unverified", result["isolationGaps"])
             force_files = [
                 *snapshot["evidenceFiles"],
                 *snapshot["projectContextFiles"],
@@ -1894,6 +1909,36 @@ class PairedIsolationTests(unittest.TestCase):
                 evaluation_store, baseline, base_ref=baseline_base
             )
             self.assertNotEqual(before, after)
+
+    def test_unmanaged_custom_agent_requires_load_and_dependency_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source, commit = self._local_only_repository(parent)
+            exclude = source / ".git" / "info" / "exclude"
+            exclude.write_bytes(
+                b".codex/agents/user-specialist.toml\n" + exclude.read_bytes()
+            )
+            agent = source / ".codex" / "agents" / "user-specialist.toml"
+            agent.parent.mkdir(parents=True, exist_ok=True)
+            agent.write_text(
+                'name = "user-specialist"\ndescription = "User-owned specialist"\n',
+                encoding="utf-8",
+            )
+            self.assertEqual(harness_eval._git(source, "status", "--porcelain").stdout, "")
+
+            snapshot = harness_eval._capture_local_harness_snapshot(source, commit)
+
+            self.assertFalse(snapshot["projectConfigPresent"])
+            self.assertEqual(snapshot["projectAgentConfigCount"], 1)
+            self.assertFalse(snapshot["projectAgentLoadVerified"])
+            self.assertFalse(snapshot["projectAgentDependenciesVerified"])
+            self.assertEqual(
+                snapshot["isolationGaps"], ["project-agent-load-unverified"]
+            )
+            self.assertIn(
+                ".codex/agents/user-specialist.toml",
+                {item["path"] for item in snapshot["projectContextFiles"]},
+            )
 
     def test_baseline_removal_preserves_user_instruction_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

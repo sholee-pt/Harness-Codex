@@ -34,6 +34,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v7.2` | Harness for Codex v7.2 | Schema 3 | Schema 6 | Schema 2 | Verified local-only paired evaluation, independent no-remote clones, source snapshot preflight, dry-run worktree-count diagnostics |
 | `codex/v7.3` | Harness for Codex v7.3 | Schema 3 | Schema 6 | Schema 2 | Exact ignored/untracked evidence materialization, instruction-provenance isolation gaps, paired pre-task invariants, truthful optional materialization dry-run |
 | `codex/v7.4` | Harness for Codex v7.4 | Schema 3 | Schema 6 | Schema 2 | Reserved evidence namespaces, shared instruction discovery, project-context parity, effective-config load gaps, literal task-base coverage |
+| `codex/v7.5` | Harness for Codex v7.5 | Schema 3 | Schema 6 | Schema 2 | Opt-in per-turn operations evidence, privacy-safe outcome review, custom-agent load and dependency attribution gaps |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -467,6 +468,21 @@ Harness for Codex v7.4 is a paired-evaluation context and safety patch. Generati
 - Keeps v6.0 through v7.3 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.4 evidence.
 
 This release does not claim that `.codex/config.toml` was effectively loaded merely because it was copied, enable project rules or hooks, change persistent schemas, or copy arbitrary unrelated ignored files.
+
+## Harness for Codex v7.5
+
+Harness for Codex v7.5 adds opt-in, task-scoped operations evidence and tightens custom-agent attribution without changing Generation Plan Schema 3, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, Runtime Receipt Schema 2, Evaluation Schema 2, or result fingerprint v3. Operations Event Schema 1 is separate user-local state.
+
+- Treats every interactive `UserPromptSubmit` turn as a distinct work item, so unrelated tasks, refinements, corrections, follow-ups, reopens, and cancellations can coexist in one Codex session.
+- Offers an explicit user-level hook template for prompt, subagent, stop, and session lifecycle events. The handler ignores workspaces without a current local-only Harness manifest and fails open on observability errors.
+- Stores only local HMAC references, finite classifications, timestamps, and integrity metadata; raw prompts, responses, transcripts, agent identities, commands, source content, and absolute workspace paths are excluded.
+- Keeps completion, verification, agent-reported outcome, and user acceptance separate. Unknown evidence stays unknown, and audit results never regenerate topology automatically.
+- Adds immutable per-event records, idempotent lifecycle replay, linked annotation supersession, tamper detection, bounded retention, explicit per-workspace purge, and task-level correction, agent-use, and agent-selection review summaries.
+- Marks paired snapshots containing unmanaged custom agents with `project-agent-load-unverified`; symmetric TOML materialization no longer implies registry discovery, selected-agent configuration loading, or external skill/MCP dependency closure.
+- Reports custom-agent count, effective-load status, and dependency-verification status in paired dry-run output while keeping the existing evaluation schema and fingerprint unchanged.
+- Keeps v6.0 through v7.4 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.5 evidence.
+
+This release does not continuously judge semantic answer quality, parse Codex transcripts, automatically redesign a project Harness, enable paired-run project hooks, or claim that a custom agent was used because its TOML file was present. Operations evidence must be explicitly enabled and reviewed through Codex hook trust.
 
 ## Harness for Claude Code releases
 

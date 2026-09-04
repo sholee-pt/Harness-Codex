@@ -1,6 +1,6 @@
 # Evaluation Contract
 
-Harness for Codex v7.4 uses attribution-aware Evaluation Schema 2 while keeping evaluation optional and user-local. The v7.4 project-context materialization patch does not change Evaluation Schema 2, Manifest Schema 6, generation Plan Schema 3, Transaction Schema 2, runtime-plan schema 1, coordination-packet schema 1, managed-file ownership, or the opt-in evaluation boundary.
+Harness for Codex v7.5 uses attribution-aware Evaluation Schema 2 while keeping evaluation optional and user-local. The v7.5 task-scoped operations and custom-agent load-evidence patch does not change Evaluation Schema 2, Manifest Schema 6, generation Plan Schema 3, Transaction Schema 2, runtime-plan schema 1, coordination-packet schema 1, managed-file ownership, or the opt-in evaluation boundary. Operations Event Schema 1 remains a separate user-local evidence collection.
 
 ## Boundary
 
@@ -8,7 +8,8 @@ Harness for Codex v7.4 uses attribution-aware Evaluation Schema 2 while keeping 
 - Evaluation records are auxiliary user-local state, never project authority.
 - Evaluator failure does not roll back or fail a successful Harness generation or apply.
 - Results never edit agents, skills, topology, routing, or the manifest automatically.
-- Hooks, an SDK controller, runtime enforcement, and greenfield generation remain out of scope.
+- Paired evaluation does not enable project hooks. The separately installed user-level operations hook does not upgrade evaluation isolation or attribution.
+- An SDK controller, runtime enforcement, and greenfield generation remain out of scope.
 
 ## Supported modes
 
@@ -55,4 +56,4 @@ The canonical store, parser, locking, observation lifecycle, and fixture tests s
 
 ## Compatibility
 
-Harness for Codex v7.4 reads existing evaluation Schema 1 records for list, inspect, export, integrity validation, repair, and purge. It does not rewrite them, infer absent configuration snapshots, or mix them into Schema 2 attribution groups. It reads v6.0 through v7.3 Schema 2 runs descriptively, but concrete attribution requires v7.4 runs, complete comparability, independent Run pairs, and a validated Comparison Plan whose digest matches every included comparison. New evaluation records use Schema 2. Runtime receipts use Schema 2 while validation-only legacy Runtime Receipt Schema 1 records remain readable; Observation, structured report, coordination-packet, and relay-receipt schemas remain unchanged. Existing user-owned edits remain protected by the normal ownership and hash checks.
+Harness for Codex v7.5 reads existing evaluation Schema 1 records for list, inspect, export, integrity validation, repair, and purge. It does not rewrite them, infer absent configuration snapshots, or mix them into Schema 2 attribution groups. It reads v6.0 through v7.4 Schema 2 runs descriptively, but concrete attribution requires v7.5 runs, complete comparability, independent Run pairs, and a validated Comparison Plan whose digest matches every included comparison. A paired snapshot containing unmanaged custom agents remains partial until deterministic registry-load and selected-agent dependency evidence is available. New evaluation records use Schema 2. Runtime receipts use Schema 2 while validation-only legacy Runtime Receipt Schema 1 records remain readable; Operations Event Schema 1, Observation, structured report, coordination-packet, and relay-receipt schemas remain separate and unchanged. Existing user-owned edits remain protected by the normal ownership and hash checks.

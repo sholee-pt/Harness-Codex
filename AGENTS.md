@@ -2,10 +2,11 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v7.4, a local-only workspace harness generator with project-context-aware independent-clone paired evaluation, reserved-metadata evidence protection, shared instruction discovery, single-worktree Git protection, Inventory Schema 4 boundary coverage, Manifest Schema 6 workspace state, and deterministic runtime contracts.
+- This branch contains Harness for Codex v7.5, a local-only workspace harness generator with opt-in task-scoped operations evidence, custom-agent load-aware paired evaluation, reserved-metadata evidence protection, shared instruction discovery, single-worktree Git protection, Inventory Schema 4 boundary coverage, Manifest Schema 6 workspace state, and deterministic runtime contracts.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add deployment, marketplace publishing, telemetry, or external service dependencies.
 - Keep evaluation default-off, user-local, and isolated from generation/apply failure handling.
+- Keep operations evidence opt-in, enum-only, user-local, and outside generated project artifacts. Never retain raw prompts, responses, transcripts, agent names, or absolute paths.
 - Preserve the proprietary license and independently authored implementation.
 
 ## Skill maintenance

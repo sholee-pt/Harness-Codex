@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in local evaluation and observability CLI for Harness for Codex v7.4."""
+"""Opt-in local evaluation and observability CLI for Harness for Codex v7.5."""
 
 from __future__ import annotations
 
@@ -236,6 +236,7 @@ PAIRED_MATERIALIZATION_MODE = "independent-local-clone-overlay"
 PAIRED_OVERLAY_MAX_FILES = 4096
 PAIRED_OVERLAY_MAX_BYTES = 64 * 1024 * 1024
 PROJECT_CONFIG_LOAD_GAP = "project-config-load-unverified"
+PROJECT_AGENT_LOAD_GAP = "project-agent-load-unverified"
 PROJECT_CONTEXT_GAP = "user-project-context-unavailable"
 
 
@@ -1317,6 +1318,11 @@ def _capture_project_context(
         value for key, value in candidate_kinds.items() if key not in excluded
     ]
     selected.sort(key=lambda value: harness_state.portable_path_key(value[0]))
+    project_agent_config_count = sum(
+        1 for _relative, kind in selected if kind == "custom-agent"
+    )
+    if project_agent_config_count:
+        gaps.append(PROJECT_AGENT_LOAD_GAP)
     if len(selected) > PAIRED_OVERLAY_MAX_FILES:
         raise types.EvaluationError("paired-run project context exceeds the file limit")
     try:
@@ -1368,6 +1374,9 @@ def _capture_project_context(
         "sourceInstruction": source_instruction,
         "projectConfigPresent": project_config_present,
         "projectConfigLoadVerified": False if project_config_present else None,
+        "projectAgentConfigCount": project_agent_config_count,
+        "projectAgentLoadVerified": False if project_agent_config_count else None,
+        "projectAgentDependenciesVerified": False if project_agent_config_count else None,
         "isolationGaps": sorted(set(gaps)),
     }
 
@@ -1542,6 +1551,11 @@ def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str,
         "sourceInstruction": project_context["sourceInstruction"],
         "projectConfigPresent": project_context["projectConfigPresent"],
         "projectConfigLoadVerified": project_context["projectConfigLoadVerified"],
+        "projectAgentConfigCount": project_context["projectAgentConfigCount"],
+        "projectAgentLoadVerified": project_context["projectAgentLoadVerified"],
+        "projectAgentDependenciesVerified": project_context[
+            "projectAgentDependenciesVerified"
+        ],
     }
     snapshot = {
         "sourceCommit": source_commit,
@@ -1558,6 +1572,11 @@ def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str,
         "sourceInstruction": project_context["sourceInstruction"],
         "projectConfigPresent": project_context["projectConfigPresent"],
         "projectConfigLoadVerified": project_context["projectConfigLoadVerified"],
+        "projectAgentConfigCount": project_context["projectAgentConfigCount"],
+        "projectAgentLoadVerified": project_context["projectAgentLoadVerified"],
+        "projectAgentDependenciesVerified": project_context[
+            "projectAgentDependenciesVerified"
+        ],
         "isolationGaps": project_context["isolationGaps"],
         "managedPaths": managed_paths,
         "overlaySha256": types.digest_bytes(types.canonical_bytes(identity)),
@@ -2422,6 +2441,15 @@ def command_paired_run(args: argparse.Namespace) -> int:
         "effectiveProjectConfigLoad": (
             "unverified" if harness_snapshot["projectConfigPresent"] else "not-applicable"
         ),
+        "projectAgentConfigCount": harness_snapshot["projectAgentConfigCount"],
+        "effectiveProjectAgentLoad": (
+            "unverified"
+            if harness_snapshot["projectAgentConfigCount"]
+            else "not-applicable"
+        ),
+        "projectAgentDependenciesVerified": harness_snapshot[
+            "projectAgentDependenciesVerified"
+        ],
         "projectRules": "intentionally-disabled",
         "projectHooks": "not-enabled-by-harness",
         "sourceManifestSha256": harness_snapshot["sourceManifestSha256"],
