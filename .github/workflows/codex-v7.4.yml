@@ -1,12 +1,12 @@
-name: Harness for Codex v7.3 checks
+name: Harness for Codex v7.4 checks
 
 on:
   push:
     branches:
-      - codex/v7.3
+      - codex/v7.4
   pull_request:
     branches:
-      - codex/v7.3
+      - codex/v7.4
   workflow_dispatch:
 
 permissions:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate a Harness for Codex v7.3 topology against golden expectations."""
+"""Evaluate a Harness for Codex v7.4 topology against golden expectations."""
 
 from __future__ import annotations
 

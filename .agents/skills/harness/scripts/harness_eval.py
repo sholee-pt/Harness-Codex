@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in local evaluation and observability CLI for Harness for Codex v7.3."""
+"""Opt-in local evaluation and observability CLI for Harness for Codex v7.4."""
 
 from __future__ import annotations
 
@@ -235,6 +235,8 @@ VERIFICATION_QUIESCENCE_SECONDS = 0.2
 PAIRED_MATERIALIZATION_MODE = "independent-local-clone-overlay"
 PAIRED_OVERLAY_MAX_FILES = 4096
 PAIRED_OVERLAY_MAX_BYTES = 64 * 1024 * 1024
+PROJECT_CONFIG_LOAD_GAP = "project-config-load-unverified"
+PROJECT_CONTEXT_GAP = "user-project-context-unavailable"
 
 
 def _length_prefixed(payload: bytearray, value: bytes) -> None:
@@ -1183,6 +1185,193 @@ def _record_verification_repository_state(
         comparison["isolationStatus"] = "partial"
 
 
+def _lexical_tree_files(
+    root: Path,
+    relative_directory: str,
+    *,
+    recursive: bool,
+    suffix: str | None = None,
+) -> tuple[list[str], list[str]]:
+    """List regular project-context files without following filesystem links."""
+    try:
+        directory = harness_state.resolve_inside(root, relative_directory)
+    except harness_state.StateError as exc:
+        raise types.EvaluationError(str(exc)) from exc
+    if not directory.exists() and not directory.is_symlink():
+        return [], []
+    try:
+        metadata = directory.lstat()
+    except OSError:
+        return [], [PROJECT_CONTEXT_GAP]
+    attributes = getattr(metadata, "st_file_attributes", 0)
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    if stat.S_ISLNK(metadata.st_mode) or (reparse_flag and attributes & reparse_flag):
+        return [], [PROJECT_CONTEXT_GAP]
+    if not stat.S_ISDIR(metadata.st_mode):
+        return [], [PROJECT_CONTEXT_GAP]
+
+    files: list[str] = []
+    gaps: list[str] = []
+
+    def visit(current: Path) -> None:
+        try:
+            children = sorted(current.iterdir(), key=lambda value: value.name.casefold())
+        except OSError:
+            gaps.append(PROJECT_CONTEXT_GAP)
+            return
+        for child in children:
+            try:
+                child_metadata = child.lstat()
+            except OSError:
+                gaps.append(PROJECT_CONTEXT_GAP)
+                continue
+            child_attributes = getattr(child_metadata, "st_file_attributes", 0)
+            if stat.S_ISLNK(child_metadata.st_mode) or (
+                reparse_flag and child_attributes & reparse_flag
+            ):
+                gaps.append(PROJECT_CONTEXT_GAP)
+                continue
+            if stat.S_ISDIR(child_metadata.st_mode):
+                if recursive:
+                    visit(child)
+                continue
+            if not stat.S_ISREG(child_metadata.st_mode):
+                gaps.append(PROJECT_CONTEXT_GAP)
+                continue
+            if suffix is not None and child.suffix.casefold() != suffix.casefold():
+                continue
+            relative = child.relative_to(root.resolve()).as_posix()
+            try:
+                harness_state.portable_path_key(relative)
+            except harness_state.StateError:
+                gaps.append(PROJECT_CONTEXT_GAP)
+                continue
+            if len(files) >= PAIRED_OVERLAY_MAX_FILES:
+                raise types.EvaluationError(
+                    "paired-run project context exceeds the file limit"
+                )
+            files.append(relative)
+
+    visit(directory)
+    return files, gaps
+
+
+def _capture_project_context(
+    root: Path,
+    *,
+    managed_paths: list[str],
+    evidence_paths: set[str],
+) -> dict[str, Any]:
+    """Capture unmanaged Codex context that can change a paired task's behavior."""
+    try:
+        instruction_candidates = harness_state.project_instruction_candidates(root)
+        source_instruction = harness_state.active_instruction_relative(root)
+    except harness_state.StateError as exc:
+        raise types.EvaluationError(
+            f"could not discover project instruction context: {exc}"
+        ) from exc
+
+    candidate_kinds: dict[tuple[str, ...], tuple[str, str]] = {}
+    gaps: list[str] = []
+
+    def add_candidate(relative: str, kind: str) -> None:
+        key = harness_state.portable_path_key(relative)
+        existing = candidate_kinds.get(key)
+        if existing is not None and existing[0] != relative:
+            raise types.EvaluationError(
+                "paired project context has a portable path collision: "
+                f"{existing[0]} vs {relative}"
+            )
+        candidate_kinds[key] = (relative, kind)
+
+    config_relative = harness_state.PROJECT_CONFIG_RELATIVE
+    config_path = root / config_relative
+    project_config_present = config_path.exists() or config_path.is_symlink()
+    if project_config_present:
+        add_candidate(config_relative, "project-config")
+        gaps.append(PROJECT_CONFIG_LOAD_GAP)
+
+    for relative in instruction_candidates:
+        path = root.joinpath(*Path(relative).parts)
+        if path.exists() or path.is_symlink():
+            add_candidate(relative, "instruction-candidate")
+
+    agent_paths, agent_gaps = _lexical_tree_files(
+        root, ".codex/agents", recursive=False, suffix=".toml"
+    )
+    skill_paths, skill_gaps = _lexical_tree_files(
+        root, ".agents/skills", recursive=True
+    )
+    gaps.extend(agent_gaps)
+    gaps.extend(skill_gaps)
+    for relative in agent_paths:
+        add_candidate(relative, "custom-agent")
+    for relative in skill_paths:
+        add_candidate(relative, "project-skill")
+
+    excluded = {
+        harness_state.portable_path_key(relative)
+        for relative in [*managed_paths, *evidence_paths]
+    }
+    selected = [
+        value for key, value in candidate_kinds.items() if key not in excluded
+    ]
+    selected.sort(key=lambda value: harness_state.portable_path_key(value[0]))
+    if len(selected) > PAIRED_OVERLAY_MAX_FILES:
+        raise types.EvaluationError("paired-run project context exceeds the file limit")
+    try:
+        tracked = set(
+            harness_workspace.tracked_paths(root, [relative for relative, _kind in selected])
+        )
+    except harness_workspace.WorkspaceError as exc:
+        raise types.EvaluationError(str(exc)) from exc
+
+    files: list[dict[str, Any]] = []
+    total_bytes = 0
+    for relative, kind in selected:
+        try:
+            path, present = harness_state.resolve_lexical_regular_inside(
+                root,
+                relative,
+                must_exist=True,
+                label="project context",
+            )
+        except harness_state.StateError:
+            gaps.append(PROJECT_CONTEXT_GAP)
+            continue
+        if not present:
+            gaps.append(PROJECT_CONTEXT_GAP)
+            continue
+        try:
+            data = path.read_bytes()
+        except OSError:
+            gaps.append(PROJECT_CONTEXT_GAP)
+            continue
+        total_bytes += len(data)
+        if total_bytes > PAIRED_OVERLAY_MAX_BYTES:
+            raise types.EvaluationError(
+                "paired-run project context exceeds the byte limit"
+            )
+        files.append(
+            {
+                "path": relative,
+                "kind": kind,
+                "data": data,
+                "mode": harness_state.current_mode(path),
+                "contentSha256": types.digest_bytes(data),
+                "tracked": relative in tracked,
+            }
+        )
+    return {
+        "files": files,
+        "instructionCandidates": instruction_candidates,
+        "sourceInstruction": source_instruction,
+        "projectConfigPresent": project_config_present,
+        "projectConfigLoadVerified": False if project_config_present else None,
+        "isolationGaps": sorted(set(gaps)),
+    }
+
+
 def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str, Any]:
     """Capture one verified local-only installation without persisting raw content."""
     try:
@@ -1233,12 +1422,12 @@ def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str,
     if isinstance(topology, dict):
         evidence_paths.update(harness_topology.evidence_paths(topology))
     manifest_bytes = manifest_path.read_bytes()
-    if 1 + len(entries) + len(evidence_paths) > PAIRED_OVERLAY_MAX_FILES:
-        raise types.EvaluationError("paired-run Harness overlay exceeds the managed-file limit")
     managed_paths = [entry.get("path") for entry in entries]
     if not all(isinstance(path, str) for path in managed_paths):
         raise types.EvaluationError("paired-run manifest contains an invalid managed path")
     try:
+        for relative in sorted(evidence_paths):
+            harness_state.validate_evidence_relative(relative)
         harness_state.validate_file_namespace(
             [*managed_paths, ".harness/manifest.json", *sorted(evidence_paths)],
             label="paired Harness and evidence paths",
@@ -1247,6 +1436,19 @@ def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str,
         tracked_evidence = set(harness_workspace.tracked_paths(root, evidence_paths))
     except (harness_state.StateError, harness_workspace.WorkspaceError) as exc:
         raise types.EvaluationError(str(exc)) from exc
+    project_context = _capture_project_context(
+        root,
+        managed_paths=managed_paths,
+        evidence_paths=evidence_paths,
+    )
+    if (
+        1
+        + len(entries)
+        + len(evidence_paths)
+        + len(project_context["files"])
+        > PAIRED_OVERLAY_MAX_FILES
+    ):
+        raise types.EvaluationError("paired-run overlay exceeds the file limit")
 
     captured: list[dict[str, Any]] = []
     evidence_captured: list[dict[str, Any]] = []
@@ -1294,6 +1496,10 @@ def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str,
                 "tracked": relative in tracked_evidence,
             }
         )
+    for item in project_context["files"]:
+        total_bytes += len(item["data"])
+        if total_bytes > PAIRED_OVERLAY_MAX_BYTES:
+            raise types.EvaluationError("paired-run overlay exceeds the byte limit")
 
     manifest_mode = harness_state.current_mode(manifest_path)
     treatment_manifest = copy.deepcopy(manifest)
@@ -1322,6 +1528,20 @@ def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str,
             }
             for item in evidence_captured
         ],
+        "projectContext": [
+            {
+                "path": item["path"],
+                "kind": item["kind"],
+                "mode": harness_state.mode_text(item["mode"]),
+                "contentSha256": item["contentSha256"],
+                "tracked": item["tracked"],
+            }
+            for item in project_context["files"]
+        ],
+        "instructionCandidates": project_context["instructionCandidates"],
+        "sourceInstruction": project_context["sourceInstruction"],
+        "projectConfigPresent": project_context["projectConfigPresent"],
+        "projectConfigLoadVerified": project_context["projectConfigLoadVerified"],
     }
     snapshot = {
         "sourceCommit": source_commit,
@@ -1333,6 +1553,12 @@ def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str,
         "manifestMode": manifest_mode,
         "managedFiles": captured,
         "evidenceFiles": evidence_captured,
+        "projectContextFiles": project_context["files"],
+        "instructionCandidates": project_context["instructionCandidates"],
+        "sourceInstruction": project_context["sourceInstruction"],
+        "projectConfigPresent": project_context["projectConfigPresent"],
+        "projectConfigLoadVerified": project_context["projectConfigLoadVerified"],
+        "isolationGaps": project_context["isolationGaps"],
         "managedPaths": managed_paths,
         "overlaySha256": types.digest_bytes(types.canonical_bytes(identity)),
         "worktreeCount": worktree_count,
@@ -1380,6 +1606,24 @@ def _verify_local_harness_snapshot(root: Path, snapshot: dict[str, Any]) -> None
         ):
             raise types.EvaluationError(
                 f"paired-run source evidence changed during preflight: {item['path']}"
+            )
+    for item in snapshot["projectContextFiles"]:
+        try:
+            path, exists = harness_state.resolve_lexical_regular_inside(
+                root,
+                item["path"],
+                must_exist=True,
+                label="project context",
+            )
+        except harness_state.StateError as exc:
+            raise types.EvaluationError(str(exc)) from exc
+        if (
+            not exists
+            or path.read_bytes() != item["data"]
+            or harness_state.current_mode(path) != item["mode"]
+        ):
+            raise types.EvaluationError(
+                f"paired-run source project context changed during preflight: {item['path']}"
             )
 
 
@@ -1436,45 +1680,14 @@ def _assert_overlay_targets_unused(root: Path, snapshot: dict[str, Any]) -> None
 def _evidence_target(root: Path, relative: str) -> tuple[Path, bool]:
     """Resolve an evidence path without following lexical symlink/reparse ancestors."""
     try:
-        parts = harness_state.portable_path_key(relative)
+        harness_state.validate_evidence_relative(relative)
+        return harness_state.resolve_lexical_regular_inside(
+            root,
+            relative,
+            label="paired evidence target",
+        )
     except harness_state.StateError as exc:
         raise types.EvaluationError(str(exc)) from exc
-    resolved_root = root.resolve()
-    candidate = resolved_root
-    original_parts = Path(relative).parts
-    if len(parts) != len(original_parts):
-        raise types.EvaluationError(f"paired evidence path is not portable: {relative}")
-    exists = True
-    for index, part in enumerate(original_parts):
-        candidate = candidate / part
-        try:
-            metadata = candidate.lstat()
-        except FileNotFoundError:
-            exists = False
-            continue
-        except OSError as exc:
-            raise types.EvaluationError(
-                f"could not inspect paired evidence target: {relative}"
-            ) from exc
-        attributes = getattr(metadata, "st_file_attributes", 0)
-        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-        if stat.S_ISLNK(metadata.st_mode) or (reparse_flag and attributes & reparse_flag):
-            raise types.EvaluationError(
-                f"paired evidence target uses a symlink or reparse point: {relative}"
-            )
-        if index < len(original_parts) - 1 and not stat.S_ISDIR(metadata.st_mode):
-            raise types.EvaluationError(
-                f"paired evidence target has a non-directory ancestor: {relative}"
-            )
-        if index == len(original_parts) - 1 and not stat.S_ISREG(metadata.st_mode):
-            raise types.EvaluationError(
-                f"paired evidence target is not a regular file: {relative}"
-            )
-    try:
-        resolved = harness_state.resolve_inside(resolved_root, relative)
-    except harness_state.StateError as exc:
-        raise types.EvaluationError(str(exc)) from exc
-    return resolved, exists and resolved.exists()
 
 
 def _preflight_evidence_targets(
@@ -1487,6 +1700,30 @@ def _preflight_evidence_targets(
             if item["tracked"] and not exists:
                 raise types.EvaluationError(
                     f"tracked paired evidence is missing from clone: {item['path']}"
+                )
+
+
+def _project_context_target(root: Path, relative: str) -> tuple[Path, bool]:
+    try:
+        return harness_state.resolve_lexical_regular_inside(
+            root,
+            relative,
+            label="paired project context target",
+        )
+    except harness_state.StateError as exc:
+        raise types.EvaluationError(str(exc)) from exc
+
+
+def _preflight_project_context_targets(
+    roots: tuple[Path, Path], snapshot: dict[str, Any]
+) -> None:
+    """Validate all context destinations in both arms before any paired write."""
+    for root in roots:
+        for item in snapshot["projectContextFiles"]:
+            _path, exists = _project_context_target(root, item["path"])
+            if item["tracked"] and not exists:
+                raise types.EvaluationError(
+                    f"tracked paired project context is missing from clone: {item['path']}"
                 )
 
 
@@ -1510,6 +1747,13 @@ def _write_evidence_snapshot(root: Path, snapshot: dict[str, Any]) -> None:
         harness_state.atomic_write_bytes(path, item["data"], mode=item["mode"])
 
 
+def _write_project_context_snapshot(root: Path, snapshot: dict[str, Any]) -> None:
+    """Materialize exact project context bytes in one disposable arm."""
+    for item in snapshot["projectContextFiles"]:
+        path, _exists = _project_context_target(root, item["path"])
+        harness_state.atomic_write_bytes(path, item["data"], mode=item["mode"])
+
+
 def _assert_evidence_snapshot(root: Path, snapshot: dict[str, Any]) -> None:
     for item in snapshot["evidenceFiles"]:
         path, exists = _evidence_target(root, item["path"])
@@ -1520,6 +1764,19 @@ def _assert_evidence_snapshot(root: Path, snapshot: dict[str, Any]) -> None:
         ):
             raise types.EvaluationError(
                 f"paired evidence differs from the captured snapshot: {item['path']}"
+            )
+
+
+def _assert_project_context_snapshot(root: Path, snapshot: dict[str, Any]) -> None:
+    for item in snapshot["projectContextFiles"]:
+        path, exists = _project_context_target(root, item["path"])
+        if (
+            not exists
+            or path.read_bytes() != item["data"]
+            or not harness_state.mode_matches(path, item["mode"])
+        ):
+            raise types.EvaluationError(
+                f"paired project context differs from the captured snapshot: {item['path']}"
             )
 
 
@@ -1569,6 +1826,8 @@ def _assert_materialization_invariants(
     _assert_baseline_isolated(baseline_root, removal["removed"])
     _assert_evidence_snapshot(baseline_root, snapshot)
     _assert_evidence_snapshot(treatment_root, snapshot)
+    _assert_project_context_snapshot(baseline_root, snapshot)
+    _assert_project_context_snapshot(treatment_root, snapshot)
     if _git(baseline_root, "rev-parse", "HEAD").stdout.strip() != snapshot["sourceCommit"]:
         raise types.EvaluationError("paired baseline commit changed during materialization")
     if _git(treatment_root, "rev-parse", "HEAD").stdout.strip() != snapshot["sourceCommit"]:
@@ -1580,6 +1839,7 @@ def _assert_materialization_invariants(
         *snapshot["managedPaths"],
         ".harness/manifest.json",
         *(item["path"] for item in snapshot["evidenceFiles"]),
+        *(item["path"] for item in snapshot["projectContextFiles"]),
     }
     for root in (baseline_root, treatment_root):
         unexpected = _changed_project_paths(root) - allowed
@@ -1597,6 +1857,25 @@ def _assert_materialization_invariants(
             raise types.EvaluationError(
                 f"paired instruction user content differs between arms: {item['path']}"
             )
+    try:
+        treatment_instruction = harness_state.active_instruction_relative(treatment_root)
+        baseline_instruction = harness_state.active_instruction_relative(baseline_root)
+    except harness_state.StateError as exc:
+        raise types.EvaluationError(
+            f"paired instruction discovery failed after materialization: {exc}"
+        ) from exc
+    if treatment_instruction != snapshot["sourceInstruction"]:
+        raise types.EvaluationError(
+            "paired treatment changed the active project instruction candidate"
+        )
+    if baseline_instruction in {
+        relative
+        for relative, kind in removal["removed"]
+        if kind == "file"
+    }:
+        raise types.EvaluationError(
+            "paired baseline reactivated a removed Harness instruction artifact"
+        )
 
 
 def _materialize_paired_arms(
@@ -1608,8 +1887,11 @@ def _materialize_paired_arms(
     _assert_overlay_targets_unused(baseline_root, snapshot)
     _assert_overlay_targets_unused(treatment_root, snapshot)
     _preflight_evidence_targets((baseline_root, treatment_root), snapshot)
+    _preflight_project_context_targets((baseline_root, treatment_root), snapshot)
     _write_evidence_snapshot(baseline_root, snapshot)
     _write_evidence_snapshot(treatment_root, snapshot)
+    _write_project_context_snapshot(baseline_root, snapshot)
+    _write_project_context_snapshot(treatment_root, snapshot)
 
     _write_harness_overlay(baseline_root, snapshot)
     removed = _remove_managed_baseline(baseline_root)
@@ -1642,7 +1924,14 @@ def _materialize_paired_arms(
     _assert_materialization_invariants(
         baseline_root, treatment_root, snapshot, removed
     )
-    return removed
+    return {
+        "removed": removed["removed"],
+        "isolationGaps": sorted(
+            set(removed["isolationGaps"] + snapshot["isolationGaps"])
+        ),
+        "baselineInstruction": harness_state.active_instruction_relative(baseline_root),
+        "treatmentInstruction": harness_state.active_instruction_relative(treatment_root),
+    }
 
 
 def _remove_managed_baseline(root: Path) -> dict[str, Any]:
@@ -1700,9 +1989,146 @@ def _assert_baseline_isolated(
                 raise types.EvaluationError(f"baseline still contains a managed instruction block: {relative}")
 
 
-def _prepare_task_base(root: Path, original_commit: str) -> str:
+def _git_blob(root: Path, object_id: str) -> bytes:
+    try:
+        return subprocess.run(
+            ["git", "-C", str(root.resolve()), "cat-file", "blob", object_id],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise types.EvaluationError("could not read a paired task-base blob") from exc
+
+
+def _git_blob_for_worktree_bytes(root: Path, relative: str, data: bytes) -> tuple[str, bytes]:
+    """Return Git's canonical blob identity for exact worktree bytes at one path."""
+    try:
+        process = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(root.resolve()),
+                "hash-object",
+                "-w",
+                f"--path={relative}",
+                "--stdin",
+            ],
+            check=True,
+            input=data,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise types.EvaluationError(
+            f"could not normalize paired task-base context: {relative}"
+        ) from exc
+    object_id = process.stdout.decode("ascii").strip()
+    return object_id, _git_blob(root, object_id)
+
+
+def _assert_index_snapshot_files(root: Path, files: list[dict[str, Any]]) -> None:
+    """Prove ignored context is represented exactly in the synthetic base index."""
+    for item in files:
+        result = _git(
+            root,
+            "--literal-pathspecs",
+            "ls-files",
+            "--stage",
+            "-z",
+            "--",
+            item["path"],
+        ).stdout
+        entries = [value for value in result.split("\0") if value]
+        if len(entries) != 1 or "\t" not in entries[0]:
+            raise types.EvaluationError(
+                f"paired task-base did not index context exactly once: {item['path']}"
+            )
+        metadata, indexed_path = entries[0].split("\t", 1)
+        fields = metadata.split()
+        if len(fields) != 3 or indexed_path.replace("\\", "/") != item["path"]:
+            raise types.EvaluationError(
+                f"paired task-base indexed an unexpected context path: {item['path']}"
+            )
+        expected_mode = "100755" if item["mode"] & 0o111 else "100644"
+        if fields[0] != expected_mode or fields[2] != "0":
+            raise types.EvaluationError(
+                f"paired task-base context mode differs from its snapshot: {item['path']}"
+            )
+        expected_object, expected_data = _git_blob_for_worktree_bytes(
+            root, item["path"], item["data"]
+        )
+        if fields[1] != expected_object or _git_blob(root, fields[1]) != expected_data:
+            raise types.EvaluationError(
+                f"paired task-base context bytes differ from its snapshot: {item['path']}"
+            )
+
+
+def _assert_task_base_snapshot_files(
+    root: Path,
+    task_base_ref: str,
+    files: list[dict[str, Any]],
+    *,
+    verify_worktree_snapshot: bool = True,
+) -> None:
+    """Verify that every explicit context file remains measurable from the task base."""
+    for item in files:
+        result = _git(
+            root,
+            "--literal-pathspecs",
+            "ls-tree",
+            "-z",
+            task_base_ref,
+            "--",
+            item["path"],
+        ).stdout
+        entries = [value for value in result.split("\0") if value]
+        if len(entries) != 1 or "\t" not in entries[0]:
+            raise types.EvaluationError(
+                f"paired task-base does not retain measurable context: {item['path']}"
+            )
+        metadata, tree_path = entries[0].split("\t", 1)
+        fields = metadata.split()
+        expected_mode = "100755" if item["mode"] & 0o111 else "100644"
+        if (
+            len(fields) != 3
+            or fields[0] != expected_mode
+            or fields[1] != "blob"
+            or tree_path.replace("\\", "/") != item["path"]
+        ):
+            raise types.EvaluationError(
+                f"paired task-base context identity is invalid: {item['path']}"
+            )
+        tree_data = _git_blob(root, fields[2])
+        if not verify_worktree_snapshot:
+            continue
+        expected_object, expected_data = _git_blob_for_worktree_bytes(
+            root, item["path"], item["data"]
+        )
+        if fields[2] != expected_object or tree_data != expected_data:
+            raise types.EvaluationError(
+                f"paired task-base context blob is invalid: {item['path']}"
+            )
+
+
+def _prepare_task_base(
+    root: Path,
+    original_commit: str,
+    force_files: list[dict[str, Any]] | None = None,
+) -> str:
     """Create a clean synthetic commit for one disposable evaluation arm."""
     _git(root, "add", "-A")
+    force_files = force_files or []
+    if force_files:
+        _git(
+            root,
+            "--literal-pathspecs",
+            "add",
+            "-f",
+            "--",
+            *(item["path"] for item in force_files),
+        )
+        _assert_index_snapshot_files(root, force_files)
     tree = _git(root, "write-tree").stdout.strip()
     environment = os.environ.copy()
     environment.update({
@@ -1734,6 +2160,7 @@ def _prepare_task_base(root: Path, original_commit: str) -> str:
         raise types.EvaluationError("arm pre-task commit was not installed as HEAD")
     if _git(root, "status", "--porcelain").stdout.strip():
         raise types.EvaluationError("paired worktree is not clean at task start")
+    _assert_task_base_snapshot_files(root, task_base_ref, force_files)
     return task_base_ref
 
 
@@ -1829,6 +2256,7 @@ def _paired_arm(
     patch_scope_profile: dict[str, Any] | None,
     source_snapshot_id: str,
     task_base_ref: str,
+    task_context_files: list[dict[str, Any]],
     materialization_isolation_gaps: list[str],
 ) -> dict[str, Any]:
     record = _new_record(
@@ -1878,6 +2306,12 @@ def _paired_arm(
         cleanup_verified=cleanup_verified,
         codex_version=version,
         ended_at=types.timestamp_text(evaluation_store.clock.now_utc()),
+    )
+    _assert_task_base_snapshot_files(
+        root,
+        task_base_ref,
+        task_context_files,
+        verify_worktree_snapshot=False,
     )
     task_fingerprint = _result_fingerprint(
         evaluation_store, root, base_ref=task_base_ref
@@ -1973,10 +2407,23 @@ def command_paired_run(args: argparse.Namespace) -> int:
     )
     commit = _git(root, "rev-parse", "HEAD").stdout.strip()
     harness_snapshot = _capture_local_harness_snapshot(root, commit)
+    task_context_files = [
+        *harness_snapshot["evidenceFiles"],
+        *harness_snapshot["projectContextFiles"],
+    ]
     materialization_report = {
         "mode": PAIRED_MATERIALIZATION_MODE,
         "sourceWorktreeCount": harness_snapshot["worktreeCount"],
         "managedFileCount": len(harness_snapshot["managedFiles"]),
+        "evidenceFileCount": len(harness_snapshot["evidenceFiles"]),
+        "projectContextFileCount": len(harness_snapshot["projectContextFiles"]),
+        "projectConfigPresent": harness_snapshot["projectConfigPresent"],
+        "projectConfigMaterialized": False,
+        "effectiveProjectConfigLoad": (
+            "unverified" if harness_snapshot["projectConfigPresent"] else "not-applicable"
+        ),
+        "projectRules": "intentionally-disabled",
+        "projectHooks": "not-enabled-by-harness",
         "sourceManifestSha256": harness_snapshot["sourceManifestSha256"],
         "treatmentManifestSha256": harness_snapshot["treatmentManifestSha256"],
         "overlaySha256": harness_snapshot["overlaySha256"],
@@ -1988,7 +2435,7 @@ def command_paired_run(args: argparse.Namespace) -> int:
     seed = args.seed if args.seed is not None else random.SystemRandom().randrange(2**32)
     arm_orders = _paired_arm_orders(args.repetitions, args.order, seed)
     if args.dry_run:
-        materialization_gaps: list[str] = []
+        materialization_gaps: list[str] = list(harness_snapshot["isolationGaps"])
         if args.validate_materialization:
             with tempfile.TemporaryDirectory(prefix="harness-materialization-") as directory:
                 pair_root = Path(directory)
@@ -2000,15 +2447,28 @@ def command_paired_run(args: argparse.Namespace) -> int:
                 result = _materialize_paired_arms(
                     baseline_root, treatment_root, harness_snapshot
                 )
-                _prepare_task_base(baseline_root, commit)
-                _prepare_task_base(treatment_root, commit)
+                baseline_base = _prepare_task_base(
+                    baseline_root, commit, task_context_files
+                )
+                treatment_base = _prepare_task_base(
+                    treatment_root, commit, task_context_files
+                )
                 _assert_evidence_snapshot(baseline_root, harness_snapshot)
                 _assert_evidence_snapshot(treatment_root, harness_snapshot)
+                _assert_project_context_snapshot(baseline_root, harness_snapshot)
+                _assert_project_context_snapshot(treatment_root, harness_snapshot)
+                _assert_task_base_snapshot_files(
+                    baseline_root, baseline_base, task_context_files
+                )
+                _assert_task_base_snapshot_files(
+                    treatment_root, treatment_base, task_context_files
+                )
                 materialization_gaps = result["isolationGaps"]
             materialization_report.update(
                 {
                     "clonePerformed": True,
                     "materializationValidated": True,
+                    "projectConfigMaterialized": harness_snapshot["projectConfigPresent"],
                     "observedGitRemoteRetained": False,
                 }
             )
@@ -2042,6 +2502,7 @@ def command_paired_run(args: argparse.Namespace) -> int:
         {
             "clonePerformed": True,
             "materializationValidated": True,
+            "projectConfigMaterialized": harness_snapshot["projectConfigPresent"],
             "observedGitRemoteRetained": False,
         }
     )
@@ -2062,11 +2523,17 @@ def command_paired_run(args: argparse.Namespace) -> int:
                     baseline_root, treatment_root, harness_snapshot
                 )
                 task_base_refs = {
-                    "baseline": _prepare_task_base(baseline_root, commit),
-                    "harness": _prepare_task_base(treatment_root, commit),
+                    "baseline": _prepare_task_base(
+                        baseline_root, commit, task_context_files
+                    ),
+                    "harness": _prepare_task_base(
+                        treatment_root, commit, task_context_files
+                    ),
                 }
                 _assert_evidence_snapshot(baseline_root, harness_snapshot)
                 _assert_evidence_snapshot(treatment_root, harness_snapshot)
+                _assert_project_context_snapshot(baseline_root, harness_snapshot)
+                _assert_project_context_snapshot(treatment_root, harness_snapshot)
                 source_snapshot_id = f"git:{commit}"
                 records: dict[str, dict[str, Any]] = {}
                 for index, arm in enumerate(arm_order):
@@ -2089,6 +2556,7 @@ def command_paired_run(args: argparse.Namespace) -> int:
                         patch_scope_profile=patch_scope_profile,
                         source_snapshot_id=source_snapshot_id,
                         task_base_ref=task_base_refs[arm],
+                        task_context_files=task_context_files,
                         materialization_isolation_gaps=materialization["isolationGaps"],
                     )
                 comparison_record = compare.compare_runs(

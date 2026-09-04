@@ -1022,7 +1022,7 @@ class ComparisonTests(unittest.TestCase):
             v64["runtime"]["harnessVersion"],
             schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS,
         )
-        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {"7.3"})
+        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {"7.4"})
         plan = self.comparison_plan()
         v60_comparison = compare.compare_runs(
             baseline=manual_record(repository_id, uuid_text(2), arm="baseline", verification="failed", harness_version="6.0"),
@@ -1575,6 +1575,16 @@ class PairedIsolationTests(unittest.TestCase):
                 ["admin-harness-skill", "user-harness-skill"],
             )
 
+    def test_paired_evidence_target_rejects_reserved_metadata_before_read(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in (".git/config", ".GIT/config", ".harness/manifest.json"):
+                with self.subTest(relative=relative):
+                    with self.assertRaisesRegex(
+                        types.EvaluationError, "reserved control namespace"
+                    ):
+                        harness_eval._evidence_target(root, relative)
+
     def test_arm_orders_are_seeded_and_counterbalanced(self) -> None:
         first = harness_eval._paired_arm_orders(4, "randomized", 123)
         self.assertEqual(first, harness_eval._paired_arm_orders(4, "randomized", 123))
@@ -1598,6 +1608,10 @@ class PairedIsolationTests(unittest.TestCase):
             source_exclude_before = source_exclude.read_bytes()
             snapshot = harness_eval._capture_local_harness_snapshot(source, commit)
             self.assertTrue(all(item["tracked"] for item in snapshot["evidenceFiles"]))
+            self.assertFalse(snapshot["projectConfigPresent"])
+            self.assertNotIn(
+                "project-config-load-unverified", snapshot["isolationGaps"]
+            )
             baseline = parent / "pair" / "baseline"
             treatment = parent / "pair" / "treatment"
 
@@ -1711,6 +1725,20 @@ class PairedIsolationTests(unittest.TestCase):
             self.assertGreater(report["materialization"]["managedFileCount"], 0)
             self.assertFalse(report["materialization"]["clonePerformed"])
             self.assertFalse(report["materialization"]["materializationValidated"])
+            self.assertFalse(report["materialization"]["projectConfigPresent"])
+            self.assertFalse(report["materialization"]["projectConfigMaterialized"])
+            self.assertEqual(
+                report["materialization"]["effectiveProjectConfigLoad"],
+                "not-applicable",
+            )
+            self.assertEqual(
+                report["materialization"]["projectRules"],
+                "intentionally-disabled",
+            )
+            self.assertEqual(
+                report["materialization"]["projectHooks"],
+                "not-enabled-by-harness",
+            )
             self.assertFalse(report["materialization"]["expectedGitRemoteRetained"])
             self.assertIsNone(report["materialization"]["observedGitRemoteRetained"])
 
@@ -1776,6 +1804,96 @@ class PairedIsolationTests(unittest.TestCase):
                 (treatment / "private" / "context.txt").read_bytes(),
                 b"ignored local evidence\n",
             )
+
+    def test_paired_arms_preserve_and_measure_ignored_project_context(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            source, commit = self._local_only_repository(parent)
+            exclude = source / ".git" / "info" / "exclude"
+            exclude.write_bytes(
+                (
+                    ".codex/config.toml\n"
+                    ".codex/agents/user-reviewer.toml\n"
+                    ".agents/skills/user-check/\n"
+                    "PROJECT_GUIDE.md\n"
+                ).encode("utf-8")
+                + exclude.read_bytes()
+            )
+            config = source / ".codex" / "config.toml"
+            config.parent.mkdir(parents=True, exist_ok=True)
+            config.write_text(
+                'project_doc_fallback_filenames = ["PROJECT_GUIDE.md"]\n',
+                encoding="utf-8",
+            )
+            user_agent = source / ".codex" / "agents" / "user-reviewer.toml"
+            user_agent.parent.mkdir(parents=True, exist_ok=True)
+            user_agent.write_text('name = "user-reviewer"\n', encoding="utf-8")
+            user_skill = source / ".agents" / "skills" / "user-check" / "SKILL.md"
+            user_skill.parent.mkdir(parents=True, exist_ok=True)
+            user_skill.write_text("---\nname: user-check\n---\n", encoding="utf-8")
+            fallback = source / "PROJECT_GUIDE.md"
+            fallback.write_text("# Project fallback\n", encoding="utf-8")
+            self.assertEqual(harness_eval._git(source, "status", "--porcelain").stdout, "")
+
+            snapshot = harness_eval._capture_local_harness_snapshot(source, commit)
+
+            captured = {item["path"]: item for item in snapshot["projectContextFiles"]}
+            self.assertEqual(
+                set(captured),
+                {
+                    ".codex/config.toml",
+                    ".codex/agents/user-reviewer.toml",
+                    ".agents/skills/user-check/SKILL.md",
+                    "PROJECT_GUIDE.md",
+                },
+            )
+            self.assertTrue(snapshot["projectConfigPresent"])
+            self.assertFalse(snapshot["projectConfigLoadVerified"])
+            self.assertIn(
+                "project-config-load-unverified", snapshot["isolationGaps"]
+            )
+
+            baseline = parent / "pair" / "baseline"
+            treatment = parent / "pair" / "treatment"
+            harness_eval._clone_local_evaluation_arm(source, baseline, commit)
+            harness_eval._clone_local_evaluation_arm(source, treatment, commit)
+            result = harness_eval._materialize_paired_arms(
+                baseline, treatment, snapshot
+            )
+            self.assertEqual(result["baselineInstruction"], "PROJECT_GUIDE.md")
+            self.assertEqual(result["treatmentInstruction"], "AGENTS.md")
+            self.assertIn("project-config-load-unverified", result["isolationGaps"])
+            force_files = [
+                *snapshot["evidenceFiles"],
+                *snapshot["projectContextFiles"],
+            ]
+            baseline_base = harness_eval._prepare_task_base(
+                baseline, commit, force_files
+            )
+            treatment_base = harness_eval._prepare_task_base(
+                treatment, commit, force_files
+            )
+            for root, base_ref in (
+                (baseline, baseline_base),
+                (treatment, treatment_base),
+            ):
+                harness_eval._assert_task_base_snapshot_files(
+                    root, base_ref, force_files
+                )
+                for relative, item in captured.items():
+                    self.assertEqual((root / relative).read_bytes(), item["data"])
+
+            evaluation_store = store_module.EvaluationStore(parent / "state")
+            before = harness_eval._result_fingerprint(
+                evaluation_store, baseline, base_ref=baseline_base
+            )
+            (baseline / ".codex" / "agents" / "user-reviewer.toml").write_text(
+                'name = "changed"\n', encoding="utf-8"
+            )
+            after = harness_eval._result_fingerprint(
+                evaluation_store, baseline, base_ref=baseline_base
+            )
+            self.assertNotEqual(before, after)
 
     def test_baseline_removal_preserves_user_instruction_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

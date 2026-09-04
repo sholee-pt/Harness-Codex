@@ -1,6 +1,6 @@
 # Evaluation Contract
 
-Harness for Codex v7.3 uses attribution-aware Evaluation Schema 2 while keeping evaluation optional and user-local. The v7.3 paired-materialization patch does not change Evaluation Schema 2, Manifest Schema 6, generation Plan Schema 3, Transaction Schema 2, runtime-plan schema 1, coordination-packet schema 1, managed-file ownership, or the opt-in evaluation boundary.
+Harness for Codex v7.4 uses attribution-aware Evaluation Schema 2 while keeping evaluation optional and user-local. The v7.4 project-context materialization patch does not change Evaluation Schema 2, Manifest Schema 6, generation Plan Schema 3, Transaction Schema 2, runtime-plan schema 1, coordination-packet schema 1, managed-file ownership, or the opt-in evaluation boundary.
 
 ## Boundary
 
@@ -55,4 +55,4 @@ The canonical store, parser, locking, observation lifecycle, and fixture tests s
 
 ## Compatibility
 
-Harness for Codex v7.3 reads existing evaluation Schema 1 records for list, inspect, export, integrity validation, repair, and purge. It does not rewrite them, infer absent configuration snapshots, or mix them into Schema 2 attribution groups. It reads v6.0 through v7.2 Schema 2 runs descriptively, but concrete attribution requires v7.3 runs, complete comparability, independent Run pairs, and a validated Comparison Plan whose digest matches every included comparison. New evaluation records use Schema 2. Runtime receipts use Schema 2 while validation-only legacy Runtime Receipt Schema 1 records remain readable; Observation, structured report, coordination-packet, and relay-receipt schemas remain unchanged. Existing user-owned edits remain protected by the normal ownership and hash checks.
+Harness for Codex v7.4 reads existing evaluation Schema 1 records for list, inspect, export, integrity validation, repair, and purge. It does not rewrite them, infer absent configuration snapshots, or mix them into Schema 2 attribution groups. It reads v6.0 through v7.3 Schema 2 runs descriptively, but concrete attribution requires v7.4 runs, complete comparability, independent Run pairs, and a validated Comparison Plan whose digest matches every included comparison. New evaluation records use Schema 2. Runtime receipts use Schema 2 while validation-only legacy Runtime Receipt Schema 1 records remain readable; Observation, structured report, coordination-packet, and relay-receipt schemas remain unchanged. Existing user-owned edits remain protected by the normal ownership and hash checks.

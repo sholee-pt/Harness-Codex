@@ -33,6 +33,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v7.1` | Harness for Codex v7.1 | Schema 3 | Schema 6 | Schema 2 | Single-worktree exclusion isolation, literal Git ignore paths, safe synchronous protection rollback, unbound-marker detection |
 | `codex/v7.2` | Harness for Codex v7.2 | Schema 3 | Schema 6 | Schema 2 | Verified local-only paired evaluation, independent no-remote clones, source snapshot preflight, dry-run worktree-count diagnostics |
 | `codex/v7.3` | Harness for Codex v7.3 | Schema 3 | Schema 6 | Schema 2 | Exact ignored/untracked evidence materialization, instruction-provenance isolation gaps, paired pre-task invariants, truthful optional materialization dry-run |
+| `codex/v7.4` | Harness for Codex v7.4 | Schema 3 | Schema 6 | Schema 2 | Reserved evidence namespaces, shared instruction discovery, project-context parity, effective-config load gaps, literal task-base coverage |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -451,6 +452,21 @@ Harness for Codex v7.3 is a narrow paired-evaluation fidelity patch. Generation 
 - Keeps v6.0 through v7.2 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.3 evidence.
 
 This release does not add full pre-install instruction provenance, copy arbitrary ignored project content, change persistent schemas, or broaden the evaluation system into an execution engine.
+
+## Harness for Codex v7.4
+
+Harness for Codex v7.4 is a paired-evaluation context and safety patch. Generation Plan Schema 3, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, Runtime Receipt Schema 2, Evaluation Schema 2, and result fingerprint v3 remain unchanged.
+
+- Rejects `.git/**` and `.harness/**` as evidence at plan validation, installed validation, and paired snapshot capture before those files are read or hashed.
+- Uses one instruction discovery function for generation, apply, validation, and evaluation, including configured root fallback filenames after `AGENTS.override.md` and `AGENTS.md`.
+- Captures and materializes root instruction candidates, `.codex/config.toml`, unmanaged `.codex/agents/*.toml`, and unmanaged `.agents/skills/**` with bounded exact bytes and modes in both independent clone arms.
+- Separates project-config materialization from effective-load verification. A present config without deterministic load evidence records `project-config-load-unverified`, keeps isolation partial, and cannot support concrete attribution.
+- States that project rules are intentionally disabled by the evaluator and that project hooks are not enabled without a separate trust and safety contract.
+- Preflights every evidence and context target in both arms before the first paired write, verifies context symmetry and post-removal instruction selection, and includes context identity in the in-memory overlay digest.
+- Literal force-adds ignored evidence and project context into each synthetic task base, verifies Git-normalized blob identity and executable bits, and rechecks the immutable task-base context after Codex exits so result fingerprint v3 measures later changes.
+- Keeps v6.0 through v7.3 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.4 evidence.
+
+This release does not claim that `.codex/config.toml` was effectively loaded merely because it was copied, enable project rules or hooks, change persistent schemas, or copy arbitrary unrelated ignored files.
 
 ## Harness for Claude Code releases
 

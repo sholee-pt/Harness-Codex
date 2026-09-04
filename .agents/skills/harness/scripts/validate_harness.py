@@ -220,22 +220,32 @@ class Validator:
             if not isinstance(evidence_path, str):
                 self.error(f"{label}.path must be text")
                 continue
+            try:
+                harness_state.validate_evidence_relative(evidence_path)
+                path, present = harness_state.resolve_lexical_regular_inside(
+                    self.root,
+                    evidence_path,
+                    must_exist=True,
+                    label="evidence",
+                )
+            except harness_state.StateError as exc:
+                self.error(f"invalid {label}.path: {exc}")
+                continue
             if not isinstance(claim, str) or not claim.strip():
                 self.error(f"{label}.claim must be non-empty text")
             if not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
                 self.error(f"{label}.sha256 must be a SHA-256 hash")
-                continue
-            try:
-                path = harness_state.resolve_inside(self.root, evidence_path)
-            except harness_state.StateError as exc:
-                self.error(f"{label}.path is invalid: {exc}")
-                continue
-            if not path.is_file():
+            if not present:
                 self.error(f"{label}.path does not exist: {evidence_path}")
                 continue
-            actual_hash = harness_state.digest_bytes(path.read_bytes())
-            if actual_hash != expected_hash:
-                self.error(f"{label} changed after harness generation: {evidence_path}")
+            if isinstance(expected_hash, str) and re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+                try:
+                    actual_hash = harness_state.digest_bytes(path.read_bytes())
+                except OSError as exc:
+                    self.error(f"could not read {label}.path: {exc}")
+                    continue
+                if actual_hash != expected_hash:
+                    self.error(f"{label}.path changed after generation: {evidence_path}")
             lines = relative.get("lines")
             if lines is not None:
                 if not isinstance(lines, dict):
@@ -459,6 +469,11 @@ class Validator:
         workspace = self.manifest.get("workspace")
         instruction_mode = workspace.get("instructionMode") if isinstance(workspace, dict) else None
         filename = self.manifest.get("instructionFile")
+        try:
+            active = harness_state.active_instruction_relative(self.root)
+        except harness_state.StateError as exc:
+            self.error(f"could not discover project instructions: {exc}")
+            return
         if instruction_mode == "explicit-skill":
             if filename is not None:
                 self.error("explicit-skill mode cannot declare an instructionFile")
@@ -477,7 +492,6 @@ class Validator:
             return
         if not isinstance(filename, str):
             return
-        active = harness_state.active_instruction_relative(self.root)
         if filename != active:
             self.error(f"instructionFile {filename!r} is inactive; Codex will prefer {active!r}")
         path = self.root / filename

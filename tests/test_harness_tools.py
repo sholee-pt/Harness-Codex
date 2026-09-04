@@ -557,6 +557,54 @@ class StateTests(unittest.TestCase):
             with self.assertRaisesRegex(harness_apply.PlanError, "cannot also be planned outputs"):
                 harness_apply.build_application(root, plan)
 
+    def test_evidence_rejects_reserved_control_namespaces_before_reading(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in (".git/config", ".GIT/config", ".harness/manifest.json"):
+                with self.subTest(relative=relative):
+                    with self.assertRaisesRegex(
+                        harness_apply.PlanError, "reserved control namespace"
+                    ):
+                        harness_apply.validate_evidence(
+                            root,
+                            [
+                                {
+                                    "path": relative,
+                                    "sha256": "0" * 64,
+                                    "claim": "Must be rejected without reading control metadata.",
+                                }
+                            ],
+                            "project.evidence",
+                        )
+
+    def test_configured_instruction_fallback_is_preserved_as_explicit_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / ".codex" / "config.toml"
+            config.parent.mkdir(parents=True)
+            config.write_text(
+                'project_doc_fallback_filenames = ["PROJECT_GUIDE.md"]\n',
+                encoding="utf-8",
+            )
+            (root / "PROJECT_GUIDE.md").write_text(
+                "# Existing project instructions\n", encoding="utf-8"
+            )
+
+            application = harness_apply.build_application(root, minimal_plan(root))
+
+            self.assertEqual(
+                application["report"]["workspace"]["instructionMode"],
+                "explicit-skill",
+            )
+            manifest = json.loads(application["manifestText"])
+            self.assertIsNone(manifest["instructionFile"])
+            self.assertFalse(
+                any(
+                    item["path"] == "AGENTS.md"
+                    for item in application["report"]["actions"]
+                )
+            )
+
     def test_atomic_write_requests_parent_directory_sync(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "managed.txt"
@@ -2091,7 +2139,7 @@ class TopologyContractTests(unittest.TestCase):
             self.assertEqual(manifest["topology"]["classification"]["class"], "minimal")
 
     def test_current_workflow_checks_tracked_and_untracked_cleanliness(self) -> None:
-        workflow = (REPO_ROOT / ".github" / "workflows" / "codex-v7.3.yml").read_text(
+        workflow = (REPO_ROOT / ".github" / "workflows" / "codex-v7.4.yml").read_text(
             encoding="utf-8"
         )
         self.assertIn("git diff --exit-code", workflow)
@@ -2102,6 +2150,33 @@ class TopologyContractTests(unittest.TestCase):
 
 
 class ValidatorTests(unittest.TestCase):
+    def test_installed_validation_rejects_reserved_evidence_namespace(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            harness_apply.apply_application(
+                harness_apply.build_application(root, minimal_plan(root))
+            )
+            manifest_path = root / ".harness" / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["project"]["evidence"] = [
+                {
+                    "path": ".harness/manifest.json",
+                    "sha256": "0" * 64,
+                    "claim": "Reserved metadata must never be accepted as evidence.",
+                }
+            ]
+            manifest_path.write_text(
+                json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+            )
+
+            report = validate_harness.Validator(root).run()
+
+            self.assertFalse(report["valid"])
+            self.assertTrue(
+                any("reserved control namespace" in error for error in report["errors"]),
+                report["errors"],
+            )
+
     def test_validation_requires_reanalysis_when_workspace_kind_changes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

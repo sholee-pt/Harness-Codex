@@ -135,10 +135,16 @@ def validate_evidence(root: Path, value: object, label: str) -> list[dict]:
         if not isinstance(relative, str):
             raise PlanError(f"{label}[{index}].path must be text")
         try:
-            path = harness_state.resolve_inside(root, relative)
+            harness_state.validate_evidence_relative(relative)
+            path, present = harness_state.resolve_lexical_regular_inside(
+                root,
+                relative,
+                must_exist=True,
+                label="evidence",
+            )
         except harness_state.StateError as exc:
             raise PlanError(f"invalid {label}[{index}].path: {exc}") from exc
-        if not path.is_file():
+        if not present:
             raise PlanError(f"{label}[{index}].path does not exist: {relative}")
         if not isinstance(claim, str) or not claim.strip():
             raise PlanError(f"{label}[{index}].claim must be a non-empty string")
@@ -504,7 +510,10 @@ def build_application(root: Path, plan: dict) -> dict:
                 f"state={protection_state['state']}; inspect and remove it explicitly before retrying"
             )
 
-    instruction_relative = harness_state.active_instruction_relative(root)
+    try:
+        instruction_relative = harness_state.active_instruction_relative(root)
+    except harness_state.StateError as exc:
+        raise PlanError(f"could not discover project instructions: {exc}") from exc
     planned_paths = set(artifacts) | {".harness/manifest.json"}
     overlap = sorted(evidence_paths(project, topology) & planned_paths)
     if overlap:

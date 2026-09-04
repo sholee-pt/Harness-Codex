@@ -11,6 +11,7 @@ import os
 import re
 import stat
 import tempfile
+import tomllib
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
@@ -29,6 +30,9 @@ TRANSACTION_JOURNAL_RELATIVE = ".harness/transaction.json"
 TRANSACTION_SCHEMA_VERSION = harness_metadata.TRANSACTION_SCHEMA_VERSION
 MODE_RE = re.compile(r"^0[0-7]{3}$")
 DEFAULT_FILE_MODE = 0o644
+PROJECT_CONFIG_RELATIVE = ".codex/config.toml"
+PROJECT_CONFIG_MAX_BYTES = 1024 * 1024
+DEFAULT_INSTRUCTION_CANDIDATES = ("AGENTS.override.md", "AGENTS.md")
 
 
 class StateError(ValueError):
@@ -148,6 +152,99 @@ def portable_path_key(relative: str) -> tuple[str, ...]:
     return tuple(part.casefold() for part in path.parts)
 
 
+def validate_evidence_relative(relative: str) -> tuple[str, ...]:
+    """Reject control metadata before an evidence path is resolved or read."""
+    key = portable_path_key(relative)
+    if key and key[0] in {".git", ".harness"}:
+        raise StateError(
+            f"evidence path uses a reserved control namespace: {relative}"
+        )
+    return key
+
+
+def resolve_lexical_regular_inside(
+    root: Path,
+    relative: str,
+    *,
+    must_exist: bool = False,
+    label: str = "file",
+) -> tuple[Path, bool]:
+    """Resolve a regular file without following lexical symlink/reparse components."""
+    key = portable_path_key(relative)
+    original_parts = PurePosixPath(relative).parts
+    if len(key) != len(original_parts):
+        raise StateError(f"{label} path is not portable: {relative}")
+    resolved_root = root.resolve()
+    candidate = resolved_root
+    exists = True
+    for index, part in enumerate(original_parts):
+        candidate = candidate / part
+        try:
+            metadata = candidate.lstat()
+        except FileNotFoundError:
+            exists = False
+            continue
+        except OSError as exc:
+            raise StateError(f"could not inspect {label} path: {relative}") from exc
+        attributes = getattr(metadata, "st_file_attributes", 0)
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        if stat.S_ISLNK(metadata.st_mode) or (
+            reparse_flag and attributes & reparse_flag
+        ):
+            raise StateError(
+                f"{label} path uses a symlink or reparse point: {relative}"
+            )
+        if index < len(original_parts) - 1 and not stat.S_ISDIR(metadata.st_mode):
+            raise StateError(f"{label} path has a non-directory ancestor: {relative}")
+        if index == len(original_parts) - 1 and not stat.S_ISREG(metadata.st_mode):
+            raise StateError(f"{label} path is not a regular file: {relative}")
+    resolved = resolve_inside(resolved_root, relative)
+    present = exists and resolved.exists()
+    if must_exist and not present:
+        raise StateError(f"{label} path does not exist: {relative}")
+    return resolved, present
+
+
+def project_instruction_candidates(root: Path) -> list[str]:
+    """Return root instruction candidates in Codex precedence order."""
+    candidates = list(DEFAULT_INSTRUCTION_CANDIDATES)
+    config_path = root / PROJECT_CONFIG_RELATIVE
+    if config_path.exists() or config_path.is_symlink():
+        path, present = resolve_lexical_regular_inside(
+            root,
+            PROJECT_CONFIG_RELATIVE,
+            must_exist=True,
+            label="project Codex config",
+        )
+        if not present:
+            raise StateError("project Codex config is missing")
+        try:
+            config_bytes = path.read_bytes()
+            if len(config_bytes) > PROJECT_CONFIG_MAX_BYTES:
+                raise StateError("project Codex config exceeds the size limit")
+            config = tomllib.loads(config_bytes.decode("utf-8"))
+        except StateError:
+            raise
+        except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
+            raise StateError(f"invalid project Codex config: {exc}") from exc
+        fallbacks = config.get("project_doc_fallback_filenames", [])
+        if not isinstance(fallbacks, list) or any(
+            not isinstance(value, str) for value in fallbacks
+        ):
+            raise StateError(
+                "project_doc_fallback_filenames must be an array of filenames"
+            )
+        for fallback in fallbacks:
+            key = portable_path_key(fallback)
+            if len(key) != 1:
+                raise StateError(
+                    "project_doc_fallback_filenames entries must be root filenames"
+                )
+            if key not in {portable_path_key(value) for value in candidates}:
+                candidates.append(fallback)
+    return candidates
+
+
 def validate_file_namespace(paths: Iterable[str], *, label: str = "managed paths") -> None:
     entries: list[tuple[str, tuple[str, ...]]] = []
     for relative in paths:
@@ -241,8 +338,23 @@ def validate_runtime(manifest: dict) -> None:
 
 
 def active_instruction_relative(root: Path) -> str:
-    """Return the root instruction file Codex will prefer."""
-    return "AGENTS.override.md" if (root / "AGENTS.override.md").is_file() else "AGENTS.md"
+    """Return the root instruction file Codex will prefer or safely preserve."""
+    candidates = project_instruction_candidates(root)
+    first_existing: str | None = None
+    for relative in candidates:
+        path, present = resolve_lexical_regular_inside(
+            root, relative, label="project instruction"
+        )
+        if not present:
+            continue
+        if first_existing is None:
+            first_existing = relative
+        try:
+            if path.read_text(encoding="utf-8").strip():
+                return relative
+        except (OSError, UnicodeError) as exc:
+            raise StateError(f"project instruction is not UTF-8: {relative}") from exc
+    return first_existing or "AGENTS.md"
 
 
 def entry_status(root: Path, entry: dict) -> dict:
