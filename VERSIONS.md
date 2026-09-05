@@ -37,6 +37,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v7.5` | Harness for Codex v7.5 | Schema 3 | Schema 6 | Schema 2 | Opt-in per-turn operations evidence, privacy-safe outcome review, custom-agent load and dependency attribution gaps |
 | `codex/v7.6` | Harness for Codex v7.6 | Schema 3 | Schema 6 | Schema 2 | Activation diagnostics, explicit usage coverage, and lighter direct-task guidance |
 | `codex/v8` | Harness for Codex v8.0 | Schema 3 | Schema 6 | Schema 2 | Authoring Contract 3, Artifact Contract 1, strict frontmatter, topology-bound agent contracts, explicit upgrade status |
+| `codex/v8.1` | Harness for Codex v8.1 | Schema 3 | Schema 6 | Schema 2 | Apply rejects unsupported existing artifact contracts while preserving supported v8.0 and legacy updates |
 
 Only the latest Codex and latest Claude branches are retained. The default branch follows the latest verified release; earlier release history remains reachable through commits. Historical branch names in this table identify releases and are not a promise that those branches still exist.
 
@@ -512,6 +513,17 @@ This major release requires Authoring Contract 3 drafts and Artifact Contract 1 
 - Supplies a fixed input/expected-value corpus, a seeded differential generator, a pinned optional PyYAML 6.0.1 test oracle, and cross-platform CI. Runtime dependencies remain unchanged.
 - Preserves prior evaluation records descriptively through v7.6; concrete attribution requires eligible v8.0 evidence.
 - Makes no claim of full YAML compatibility, semantic consistency of arbitrary prose, actual runtime discovery, token savings, or improved scRAE performance.
+
+## Harness for Codex v8.1
+
+This maintenance release enforces the existing installation's artifact compatibility before normal apply, including dry-run. Authoring Contract 3, Artifact Contract 1, and all outer schema versions are unchanged.
+
+- Rejects unsupported or incomplete Schema 6 generator/artifact combinations before any local Git protection, staging, journal, or managed-file write.
+- Keeps v8.0 and v8.1 installations with Artifact Contract 1 compatible. Installation compatibility follows an explicit supported release set rather than equality with the latest generator version.
+- Preserves recognized v7.0–v7.6 legacy updates, separate Schema 4/5 regeneration upgrades, hash ownership, external-edit protection, transaction recovery, and no-op updates.
+- Adds API and CLI regression cases across installation validation, doctor, runtime-plan validation, dry-run, and real apply, including file/mtime/journal/Git exclude preservation.
+- Extends the real-source upgrade reproducer to v7.6 and v8.0 baselines. Retains evaluation records through v8.0 descriptively; attribution and live receipt release binding retain their existing release-specific policies.
+- Claims no new live agent, model-quality, time, or token-efficiency result.
 
 ## Harness for Claude Code releases
 

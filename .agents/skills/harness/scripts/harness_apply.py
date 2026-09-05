@@ -424,6 +424,14 @@ def existing_manifest_state(root: Path) -> tuple[dict | None, dict[str, dict]]:
             f", {harness_state.LOCAL_ONLY_UPGRADE_SOURCE_SCHEMA_VERSION}, or "
             f"{harness_state.CURRENT_SCHEMA_VERSION} before a schema 6 upgrade"
         )
+    if manifest.get("schemaVersion") == harness_state.CURRENT_SCHEMA_VERSION:
+        try:
+            # A valid incoming plan does not authorize replacing an unsupported
+            # installed contract. Known legacy installations still use the
+            # reviewed regeneration path, with all ownership checks below.
+            harness_metadata.artifact_contract_state(manifest)
+        except ValueError as exc:
+            raise PlanError(f"existing manifest artifact compatibility: {exc}; apply refused") from exc
     if manifest.get("schemaVersion") == harness_state.UPGRADE_SOURCE_SCHEMA_VERSION:
         validate_project(root, manifest)
         legacy_topology = require_object(manifest.get("topology"), "existing topology")

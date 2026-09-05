@@ -1,12 +1,12 @@
-name: Harness for Codex v8.0 checks
+name: Harness for Codex v8.1 checks
 
 on:
   push:
     branches:
-      - codex/v8
+      - codex/v8.1
   pull_request:
     branches:
-      - codex/v8
+      - codex/v8.1
   workflow_dispatch:
 
 permissions:
@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Check out the Harness release branch
         uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Create the harness environment
         uses: conda-incubator/setup-miniconda@v4.0.1
@@ -43,6 +45,15 @@ jobs:
         run: |
           conda run -n harness python -m pip install -r tests/requirements-validation.txt
           conda run -n harness python tests/frontmatter_differential.py --seed 20260905 --count 11000 --output "${RUNNER_TEMP}/frontmatter-report.json"
+
+      - name: Cross-check real v7.6 and v8.0 installation upgrades
+        shell: bash -el {0}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/harness-v76-source" "${RUNNER_TEMP}/harness-v80-source"
+          git archive d91f0a5ae261d44c86f4082ba5098d55b7e5cc4c | tar -x -C "${RUNNER_TEMP}/harness-v76-source"
+          git archive ed2972555562c736496e8d90463f52efabf05305 | tar -x -C "${RUNNER_TEMP}/harness-v80-source"
+          conda run -n harness python tests/verify_release_upgrade.py --baseline "${RUNNER_TEMP}/harness-v76-source" --output "${RUNNER_TEMP}/upgrade-v76.json"
+          conda run -n harness python tests/verify_release_upgrade.py --baseline "${RUNNER_TEMP}/harness-v80-source" --output "${RUNNER_TEMP}/upgrade-v80.json"
 
       - name: Run runtime-plan, receipt, relay, and operations fixtures
         shell: bash -el {0}

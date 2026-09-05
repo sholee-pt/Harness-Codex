@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v8.0, a local-only workspace harness generator with strict shared frontmatter validation, topology-derived agent contracts, explicit artifact compatibility, read-only activation diagnostics, explicit usage coverage, lighter direct-task guidance, opt-in operations evidence, custom-agent load-aware paired evaluation, single-worktree Git protection, Manifest Schema 6 workspace state, and deterministic runtime contracts.
+- This branch contains Harness for Codex v8.1, a local-only workspace harness generator with strict shared frontmatter validation, topology-derived agent contracts, explicit artifact compatibility, read-only activation diagnostics, explicit usage coverage, lighter direct-task guidance, opt-in operations evidence, custom-agent load-aware paired evaluation, single-worktree Git protection, Manifest Schema 6 workspace state, and deterministic runtime contracts.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add deployment, marketplace publishing, telemetry, or external service dependencies.
 - Keep evaluation default-off, user-local, and isolated from generation/apply failure handling.

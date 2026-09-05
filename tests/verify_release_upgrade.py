@@ -1,4 +1,4 @@
-"""Reproduce a real v7.6 install -> v8.0 update using two source trees.
+"""Reproduce a real v7.6 or v8.0 install -> v8.1 update using two source trees.
 
 Run with the harness Conda Python. No network or live Codex is used.
 """
@@ -36,14 +36,14 @@ def worker(source, root, stage):
 
     draft = test_runtime_teamplay.DeterministicPlanBuilderTests()._draft('coordinated-cross-contract-plan.json')
     if stage == 'baseline':
-        assert harness_metadata.HARNESS_VERSION == '7.6'
+        assert harness_metadata.HARNESS_VERSION in {'7.6', '8.0'}
         shutil.copytree(source / 'tests/fixtures/coordinated-cross-contract', root, dirs_exist_ok=True)
         plan = harness_plan_builder.materialize_plan(draft, root=root)
         harness_apply.apply_application(harness_apply.build_application(root, plan))
         report = validate_harness.Validator(root).run()
         assert report['valid'], report['errors']
         return {'generatorVersion': harness_metadata.HARNESS_VERSION, 'valid': report['valid'], 'instructionSizes': instruction_sizes(root), 'agentCount': len(plan['topology']['agents'])}
-    assert harness_metadata.HARNESS_VERSION == '8.0'
+    assert harness_metadata.HARNESS_VERSION == '8.1'
     before = snapshot(root)
     legacy = validate_harness.Validator(root).run()
     assert snapshot(root) == before
@@ -56,7 +56,9 @@ def worker(source, root, stage):
             assert snapshot(root) == before
             return {'installationStatus': legacy['installationStatus'], 'updateRefused': True, 'externalEditPreserved': True}
         raise AssertionError('A modified installation must not be overwritten')
-    assert legacy['installationStatus'] == 'upgrade-required' and legacy['integrityValid'], legacy
+    original_version = json.loads((root / '.harness/manifest.json').read_text(encoding='utf-8'))['generator']['version']
+    expected_status = 'valid' if original_version == '8.0' else 'upgrade-required'
+    assert legacy['installationStatus'] == expected_status and legacy['integrityValid'], legacy
     application = harness_apply.build_application(root, plan)
     assert application['report']['valid'] and snapshot(root) == before
     applied = harness_apply.apply_application(application)
@@ -86,7 +88,7 @@ def main():
         if process.returncode:
             raise RuntimeError(process.stdout + process.stderr)
         return json.loads(process.stdout)
-    with tempfile.TemporaryDirectory(prefix='harness-v80-upgrade-') as directory:
+    with tempfile.TemporaryDirectory(prefix='harness-release-upgrade-') as directory:
         clean = Path(directory) / 'clean'
         dirty = Path(directory) / 'dirty'
         baseline = invoke(args.baseline, clean, 'baseline')

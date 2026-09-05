@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the machine-readable Harness for Codex v8.0 topology contract."""
+"""Validate the machine-readable Harness for Codex v8.1 topology contract."""
 
 from __future__ import annotations
 
