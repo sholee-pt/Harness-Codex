@@ -33,7 +33,10 @@ def diagnose(root: Path) -> dict:
     return {
         "diagnosticVersion": 1,
         "harnessVersion": harness_metadata.HARNESS_VERSION,
-        "valid": not errors,
+        "valid": validation["valid"] and not errors,
+        "installationStatus": validation["installationStatus"],
+        "integrityValid": validation["integrityValid"],
+        "upgradeRequirements": validation["upgradeRequirements"],
         "environment": {
             "harnessCondaEnvironment": harness_environment,
             "pythonSupported": python_supported,
@@ -59,7 +62,7 @@ def main() -> int:
     except (OSError, ValueError) as exc:
         report = {"valid": False, "errors": [str(exc)], "workspaceWrites": False, "codexInvoked": False}
     print(json.dumps(report, indent=2, ensure_ascii=False))
-    return 0 if report["valid"] else 1
+    return 0 if report["valid"] else 2 if report.get("installationStatus") == "upgrade-required" and not report["errors"] else 1
 
 
 if __name__ == "__main__":

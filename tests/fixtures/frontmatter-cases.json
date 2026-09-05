@@ -1,0 +1,305 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "plain",
+      "header": "---\nname: project-harness\ndescription: Coordinate fixture work.\n---\n",
+      "expected": {
+        "name": "project-harness",
+        "description": "Coordinate fixture work."
+      }
+    },
+    {
+      "id": "quoted-colon",
+      "header": "---\nname: project-harness\ndescription: \"Review: validate folds.\"\n---\n",
+      "expected": {
+        "name": "project-harness",
+        "description": "Review: validate folds."
+      }
+    },
+    {
+      "id": "quoted-collections",
+      "header": "---\nname: project-harness\ndescription: \"[benchmark] {review}\"\n---\n",
+      "expected": {
+        "name": "project-harness",
+        "description": "[benchmark] {review}"
+      }
+    },
+    {
+      "id": "single-quote",
+      "header": "---\nname: project-harness\ndescription: 'It''s a review.'\n---\n",
+      "expected": {
+        "name": "project-harness",
+        "description": "It's a review."
+      }
+    },
+    {
+      "id": "literal-emoji",
+      "header": "---\nname: project-harness\ndescription: \"Review \ud83d\ude00 \ud55c\uae00\"\n---\n",
+      "expected": {
+        "name": "project-harness",
+        "description": "Review \ud83d\ude00 \ud55c\uae00"
+      }
+    },
+    {
+      "id": "bmp-escape",
+      "header": "---\nname: project-harness\ndescription: \"\\u03B1 review\"\n---\n",
+      "expected": {
+        "name": "project-harness",
+        "description": "\u03b1 review"
+      }
+    },
+    {
+      "id": "literal-backslash-u",
+      "header": "---\nname: project-harness\ndescription: \"\\\\ud83d\\\\ude00\"\n---\n",
+      "expected": {
+        "name": "project-harness",
+        "description": "\\ud83d\\ude00"
+      }
+    },
+    {
+      "id": "quoted-on",
+      "header": "---\nname: project-harness\ndescription: \"on\"\n---\n",
+      "expected": {
+        "name": "project-harness",
+        "description": "on"
+      }
+    },
+    {
+      "id": "quoted-null",
+      "header": "---\nname: project-harness\ndescription: 'null'\n---\n",
+      "expected": {
+        "name": "project-harness",
+        "description": "null"
+      }
+    },
+    {
+      "id": "quoted-number",
+      "header": "---\nname: project-harness\ndescription: \"123\"\n---\n",
+      "expected": {
+        "name": "project-harness",
+        "description": "123"
+      }
+    },
+    {
+      "id": "quoted-hash",
+      "header": "---\nname: project-harness\ndescription: \"Review # details\" # comment\n---\n",
+      "expected": {
+        "name": "project-harness",
+        "description": "Review # details"
+      }
+    },
+    {
+      "id": "plain-hash",
+      "header": "---\nname: project-harness\ndescription: Review#details\n---\n",
+      "expected": {
+        "name": "project-harness",
+        "description": "Review#details"
+      }
+    },
+    {
+      "id": "plain-comment",
+      "header": "---\nname: project-harness\ndescription: Review details.  # comment\n---\n",
+      "expected": {
+        "name": "project-harness",
+        "description": "Review details."
+      }
+    },
+    {
+      "id": "nbsp-content",
+      "header": "---\nname: project-harness\ndescription: \"Review\u00a0details\"\n---\n",
+      "expected": {
+        "name": "project-harness",
+        "description": "Review\u00a0details"
+      }
+    },
+    {
+      "id": "array",
+      "header": "---\nname: project-harness\ndescription: [benchmark, review]\n---\n",
+      "expected": null,
+      "rejectionReason": "collection"
+    },
+    {
+      "id": "mapping",
+      "header": "---\nname: project-harness\ndescription: {benchmark: review}\n---\n",
+      "expected": null,
+      "rejectionReason": "collection"
+    },
+    {
+      "id": "number",
+      "header": "---\nname: project-harness\ndescription: 123\n---\n",
+      "expected": null,
+      "rejectionReason": "non-string"
+    },
+    {
+      "id": "boolean",
+      "header": "---\nname: project-harness\ndescription: true\n---\n",
+      "expected": null,
+      "rejectionReason": "non-string"
+    },
+    {
+      "id": "null",
+      "header": "---\nname: project-harness\ndescription: null\n---\n",
+      "expected": null,
+      "rejectionReason": "non-string"
+    },
+    {
+      "id": "on",
+      "header": "---\nname: project-harness\ndescription: on\n---\n",
+      "expected": null,
+      "rejectionReason": "ambiguous YAML type"
+    },
+    {
+      "id": "date",
+      "header": "---\nname: project-harness\ndescription: 2026-09-05\n---\n",
+      "expected": null,
+      "rejectionReason": "ambiguous YAML type"
+    },
+    {
+      "id": "colon",
+      "header": "---\nname: project-harness\ndescription: Benchmark review: validate folds.\n---\n",
+      "expected": null,
+      "rejectionReason": "syntax"
+    },
+    {
+      "id": "quote",
+      "header": "---\nname: project-harness\ndescription: \"Review.\n---\n",
+      "expected": null,
+      "rejectionReason": "unclosed quote"
+    },
+    {
+      "id": "single-quote-open",
+      "header": "---\nname: project-harness\ndescription: 'Review.\n---\n",
+      "expected": null,
+      "rejectionReason": "unclosed quote"
+    },
+    {
+      "id": "duplicate",
+      "header": "---\nname: project-harness\ndescription: First.\ndescription: Second.\n---\n",
+      "expected": null,
+      "rejectionReason": "duplicate key"
+    },
+    {
+      "id": "extra",
+      "header": "---\nname: project-harness\ndescription: Review.\nunsupported-key: value\n---\n",
+      "expected": null,
+      "rejectionReason": "unsupported key"
+    },
+    {
+      "id": "block",
+      "header": "---\nname: project-harness\ndescription: |\n  Review.\n---\n",
+      "expected": null,
+      "rejectionReason": "multiline"
+    },
+    {
+      "id": "anchor",
+      "header": "---\nname: project-harness\ndescription: &ref Review.\n---\n",
+      "expected": null,
+      "rejectionReason": "anchor"
+    },
+    {
+      "id": "alias",
+      "header": "---\nname: project-harness\ndescription: *ref\n---\n",
+      "expected": null,
+      "rejectionReason": "alias"
+    },
+    {
+      "id": "tag",
+      "header": "---\nname: project-harness\ndescription: !!str Review.\n---\n",
+      "expected": null,
+      "rejectionReason": "tag"
+    },
+    {
+      "id": "tab",
+      "header": "---\nname: project-harness\ndescription: \tReview.\n---\n",
+      "expected": null,
+      "rejectionReason": "non-ASCII syntax spacing"
+    },
+    {
+      "id": "unicode-blank",
+      "header": "---\nname: project-harness\ndescription: Review.\n\u00a0\n---\n",
+      "expected": null,
+      "rejectionReason": "non-ASCII syntax spacing"
+    },
+    {
+      "id": "unicode-comment-prefix",
+      "header": "---\nname: project-harness\ndescription: Review.\n\u00a0#comment\n---\n",
+      "expected": null,
+      "rejectionReason": "non-ASCII syntax spacing"
+    },
+    {
+      "id": "unicode-tail",
+      "header": "---\nname: project-harness\ndescription: \"Review.\"\u00a0\n---\n",
+      "expected": null,
+      "rejectionReason": "non-ASCII syntax spacing"
+    },
+    {
+      "id": "bare-cr",
+      "header": "---\nname: project-harness\ndescription: Review.\rbroken\n---\n",
+      "expected": null,
+      "rejectionReason": "bare CR"
+    },
+    {
+      "id": "surrogate-pair",
+      "header": "---\nname: project-harness\ndescription: \"\\ud83d\\ude00\"\n---\n",
+      "expected": null,
+      "rejectionReason": "surrogate escapes"
+    },
+    {
+      "id": "high-surrogate",
+      "header": "---\nname: project-harness\ndescription: \"\\ud83d\"\n---\n",
+      "expected": null,
+      "rejectionReason": "surrogate escape"
+    },
+    {
+      "id": "low-surrogate",
+      "header": "---\nname: project-harness\ndescription: \"\\ude00\"\n---\n",
+      "expected": null,
+      "rejectionReason": "surrogate escape"
+    },
+    {
+      "id": "raw-surrogate",
+      "header": "---\nname: project-harness\ndescription: \"\ud83d\"\n---\n",
+      "expected": null,
+      "rejectionReason": "surrogate code point"
+    },
+    {
+      "id": "escaped-newline",
+      "header": "---\nname: project-harness\ndescription: \"Review\\nwork\"\n---\n",
+      "expected": null,
+      "rejectionReason": "decoded control character"
+    },
+    {
+      "id": "escaped-nel",
+      "header": "---\nname: project-harness\ndescription: \"Review\\u0085work\"\n---\n",
+      "expected": null,
+      "rejectionReason": "decoded control character"
+    },
+    {
+      "id": "unicode-separator",
+      "header": "---\nname: project-harness\ndescription: \"Review\u2028work\"\n---\n",
+      "expected": null,
+      "rejectionReason": "line separator"
+    },
+    {
+      "id": "yaml-only-escape",
+      "header": "---\nname: project-harness\ndescription: \"\\U0001F600\"\n---\n",
+      "expected": null,
+      "rejectionReason": "unsupported escape"
+    },
+    {
+      "id": "empty",
+      "header": "---\nname: project-harness\ndescription: \"\"\n---\n",
+      "expected": null,
+      "rejectionReason": "empty description"
+    },
+    {
+      "id": "crlf",
+      "header": "---\r\nname: project-harness\r\ndescription: Coordinate fixture work.\r\n---\r\n",
+      "expected": {
+        "name": "project-harness",
+        "description": "Coordinate fixture work."
+      }
+    }
+  ]
+}

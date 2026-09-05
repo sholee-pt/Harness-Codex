@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -15,6 +16,7 @@ SCRIPTS = REPO_ROOT / ".agents" / "skills" / "harness" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import harness_metadata  # noqa: E402
+import harness_agent_contract  # noqa: E402
 import harness_coordination  # noqa: E402
 import harness_change_discipline  # noqa: E402
 import harness_plan_builder  # noqa: E402
@@ -35,6 +37,7 @@ def fixture_manifest() -> dict:
     )
     return {
         "schemaVersion": harness_metadata.MANIFEST_SCHEMA_VERSION,
+        "artifactContractVersion": harness_metadata.ARTIFACT_CONTRACT_VERSION,
         "generator": {
             "name": "Harness",
             "version": harness_metadata.HARNESS_VERSION,
@@ -744,7 +747,7 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
             self._draft("coordinated-cross-contract-plan.json")
         )
         writer_contents = [
-            item["content"]
+            tomllib.loads(item["content"])["developer_instructions"]
             for item in materialized["artifacts"]
             if item["path"].startswith(".codex/agents/")
         ]
@@ -833,7 +836,10 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
         agent = next(
             item for item in draft["artifacts"] if item["path"].startswith(".codex/agents/")
         )
-        agent["content"] += harness_plan_builder.AGENT_TEAMPLAY_PLACEHOLDER
+        instructions = tomllib.loads(agent["content"])["developer_instructions"]
+        agent["content"] = harness_agent_contract.replace_instructions(
+            agent["content"], instructions + harness_plan_builder.AGENT_TEAMPLAY_PLACEHOLDER
+        )
         with self.assertRaisesRegex(harness_plan_builder.PlanBuilderError, "exactly once"):
             harness_plan_builder.materialize_plan(draft)
 
@@ -848,7 +854,10 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
         writer = next(
             item for item in draft["artifacts"] if item["path"].startswith(".codex/agents/")
         )
-        writer["content"] += harness_plan_builder.WRITER_PLACEHOLDER
+        instructions = tomllib.loads(writer["content"])["developer_instructions"]
+        writer["content"] = harness_agent_contract.replace_instructions(
+            writer["content"], instructions + harness_plan_builder.WRITER_PLACEHOLDER
+        )
         with self.assertRaisesRegex(harness_plan_builder.PlanBuilderError, "exactly once"):
             harness_plan_builder.materialize_plan(draft)
 

@@ -2,7 +2,7 @@
   "schemaVersion": 6,
   "generator": {
     "name": "Harness",
-    "version": "7.6",
+    "version": "8.0",
     "runtime": "codex"
   },
   "application": {
@@ -69,5 +69,6 @@
     "handoffs": []
   },
   "capabilityPolicies": [],
-  "managedFiles": []
+  "managedFiles": [],
+  "artifactContractVersion": 1
 }

@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v7.6, a local-only workspace harness generator with read-only activation diagnostics, explicit usage coverage, lighter direct-task guidance, opt-in operations evidence, custom-agent load-aware paired evaluation, single-worktree Git protection, Manifest Schema 6 workspace state, and deterministic runtime contracts.
+- This branch contains Harness for Codex v8.0, a local-only workspace harness generator with strict shared frontmatter validation, topology-derived agent contracts, explicit artifact compatibility, read-only activation diagnostics, explicit usage coverage, lighter direct-task guidance, opt-in operations evidence, custom-agent load-aware paired evaluation, single-worktree Git protection, Manifest Schema 6 workspace state, and deterministic runtime contracts.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add deployment, marketplace publishing, telemetry, or external service dependencies.
 - Keep evaluation default-off, user-local, and isolated from generation/apply failure handling.
@@ -36,4 +36,4 @@
 - Harness for Claude Code version branches use `claude/vN` or `claude/vN.M`.
 - Displayed Harness and generator versions use two components (`N.M`); major `.0` release branches may retain the shorter `codex/vN` form.
 - Later commits use `[Feat]`, `[Fix]`, `[Docs]`, `[Refactor]`, `[Test]`, or `[Chore]`.
-- Do not commit, push, merge, or rewrite history unless the user has authorized it.
+- Do not commit, push, merge, or rewrite history unless the user has authorized it. An explicit implementation request from this repository owner includes commit and push. Keep the latest verified release as the default branch and retain only the latest Codex and latest Claude release branches, as authorized by the owner. This repository-maintenance convention does not authorize remote operations during generated-project configuration.

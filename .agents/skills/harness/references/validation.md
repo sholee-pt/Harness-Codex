@@ -30,11 +30,13 @@ Read this reference after artifacts have been generated or updated.
 - A clean plan dry-run reports the same create, update, or unchanged actions that the actual apply performs.
 - A runtime plan is bound to the exact current manifest and canonical topology, references only allowed persistent agents or explicitly provisional participants, and does not modify either file.
 - Coordinated runtime plans have finite communication and reassignment budgets, evidence-backed challenges, stopping conditions, capability fallback, isolated writers, and ephemeral retention by default.
-- Draft plans materialize every deterministic change-discipline placeholder exactly once before the unchanged Schema 3 apply validator runs.
+- Draft plans materialize every deterministic change-discipline, teamplay, and topology-derived agent contract exactly once before apply checks the Schema 3 plan and Artifact Contract 1.
 - Runtime receipts reject empty receivers, duplicate spawns, role/parent/session-source mismatch, unknown receivers, missing agent states, unsupported CLI parser versions, malformed or unknown critical events, and exhausted or inconsistent fixed wait budgets.
 - Relay receipts bind reviews to input packet hashes, invalidate stale reviews, and account for exactly the affected agents without changing Coordination Packet Schema 1.
 - Builder, apply, and installed-state validation reject an outer root containing unacknowledged independent or linked Git repositories. Registered submodules remain visible but do not make the parent root ambiguous by themselves.
-- Authoring-contract 2 drafts materialize to ordinary Schema 3 plans and cannot reach apply with the draft-only version field intact.
+- Authoring Contract 3 drafts materialize to Schema 3 plans with Artifact Contract 1 and cannot reach apply with the draft-only version field intact.
+- Skill metadata uses the shared strict string parser, and decoded agent instructions match the topology-derived block; arbitrary prose is not semantically verified.
+- Clean recognized v7 installations report `upgrade-required`, while corruption and incomplete current contracts remain `invalid`; see [generated-contracts.md](generated-contracts.md).
 - Git local-only protection is valid only with exactly one registered worktree; its literal encoded patterns match the manifest and an unbound Harness marker without a manifest is rejected.
 
 ## Behavioral scenarios

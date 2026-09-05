@@ -8,6 +8,7 @@ import copy
 import json
 import os
 import tempfile
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,8 @@ import harness_change_discipline
 import inventory
 import harness_metadata
 import harness_teamplay
+import harness_agent_contract
+import harness_frontmatter
 
 
 PROJECT_PLACEHOLDER = "{{HARNESS_PROJECT_CHANGE_DISCIPLINE_V1}}"
@@ -97,7 +100,7 @@ def _normalize_capability_policies(plan: dict[str, Any]) -> None:
 def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
     """Return a Schema 3 plan with canonical contracts substituted exactly once."""
     plan = copy.deepcopy(_require_object(value, "plan"))
-    if plan.get("authoringContractVersion") != harness_metadata.AUTHORING_CONTRACT_VERSION:
+    if type(plan.get("authoringContractVersion")) is not int or plan.get("authoringContractVersion") != harness_metadata.AUTHORING_CONTRACT_VERSION:
         raise PlanBuilderError(
             "draft authoringContractVersion must be "
             f"{harness_metadata.AUTHORING_CONTRACT_VERSION}; add or update that field explicitly. "
@@ -113,6 +116,9 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
         except ValueError as exc:
             raise PlanBuilderError(str(exc)) from exc
     plan.pop("authoringContractVersion")
+    if "artifactContractVersion" in plan and (type(plan["artifactContractVersion"]) is not int or plan["artifactContractVersion"] != harness_metadata.ARTIFACT_CONTRACT_VERSION):
+        raise PlanBuilderError("unsupported artifactContractVersion")
+    plan["artifactContractVersion"] = harness_metadata.ARTIFACT_CONTRACT_VERSION
     topology = _require_object(plan.get("topology"), "topology")
     _normalize_capability_policies(plan)
     agent_paths, writer_paths = _agent_paths(topology)
@@ -162,7 +168,7 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
                 artifact["content"], harness_teamplay.PROJECT_BLOCK, path
             )
             # Advisory routing refinement, not a new required artifact contract.
-            # Older Schema 3 plans and canonical v2 blocks remain valid.
+            # The canonical v2 runtime block itself is unchanged in v8.
             if harness_teamplay.DIRECT_EXECUTION_GUIDANCE not in artifact["content"]:
                 artifact["content"] = artifact["content"].replace(
                     harness_teamplay.PROJECT_BLOCK,
@@ -170,29 +176,42 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
                     1,
                 )
         elif path in agent_paths:
+            try:
+                original_instructions = tomllib.loads(content).get("developer_instructions")
+            except ValueError as exc:
+                raise PlanBuilderError(f"{path}: invalid TOML: {exc}") from exc
+            if not isinstance(original_instructions, str):
+                raise PlanBuilderError(f"{path}: developer_instructions must be a string")
+            instructions = original_instructions
             if path in writer_paths:
-                content = _materialize_contract(
-                    content,
+                instructions = _materialize_contract(
+                    instructions,
                     WRITER_PLACEHOLDER,
                     harness_change_discipline.WRITER_BLOCK,
                     path,
                 )
-            artifact["content"] = _materialize_contract(
-                content,
+            instructions = _materialize_contract(
+                instructions,
                 AGENT_TEAMPLAY_PLACEHOLDER,
                 harness_teamplay.AGENT_BLOCK,
                 path,
             )
             if path in writer_paths:
                 harness_change_discipline.require_exactly_once(
-                    artifact["content"], harness_change_discipline.WRITER_BLOCK, path
+                    instructions, harness_change_discipline.WRITER_BLOCK, path
                 )
             harness_teamplay.require_exactly_once(
-                artifact["content"], harness_teamplay.AGENT_BLOCK, path
+                instructions, harness_teamplay.AGENT_BLOCK, path
             )
+            try:
+                if instructions != original_instructions:
+                    artifact["content"] = harness_agent_contract.replace_instructions(content, instructions)
+            except ValueError as exc:
+                raise PlanBuilderError(f"{path}: {exc}") from exc
         elif any(
             placeholder in content
             for placeholder in (
+                harness_agent_contract.PLACEHOLDER,
                 PROJECT_PLACEHOLDER,
                 WRITER_PLACEHOLDER,
                 PROJECT_TEAMPLAY_PLACEHOLDER,
@@ -223,6 +242,19 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
             "deterministic contract placeholder remains after materialization: "
             + ", ".join(sorted(remaining))
         )
+    # Parse actual TOML fields after teamplay materialization; a placeholder in
+    # comments or description cannot satisfy the developer-instructions contract.
+    agents_by_path = {agent["path"]: agent for agent in topology["agents"]}
+    for path, artifact in by_path.items():
+        try:
+            if path in agents_by_path:
+                artifact["content"] = harness_agent_contract.materialize(artifact["content"], agents_by_path[path], topology)
+            elif path.endswith("/SKILL.md"):
+                harness_frontmatter.parse(artifact["content"])
+            if harness_agent_contract.PLACEHOLDER in artifact["content"]:
+                raise harness_agent_contract.AgentContractError("agent contract placeholder remains outside materialized instructions")
+        except (ValueError, KeyError, TypeError) as exc:
+            raise PlanBuilderError(f"{path}: {exc}") from exc
     return plan
 
 
@@ -261,6 +293,7 @@ def main() -> int:
                     "schemaVersion": harness_metadata.PLAN_SCHEMA_VERSION,
                     "authoringContractVersion": harness_metadata.AUTHORING_CONTRACT_VERSION,
                     "materialized": True,
+                    "artifactContractVersion": harness_metadata.ARTIFACT_CONTRACT_VERSION,
                     "output": output.name,
                     "warnings": [],
                     "errors": [],

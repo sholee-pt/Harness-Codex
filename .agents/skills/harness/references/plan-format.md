@@ -1,6 +1,6 @@
 # Generation Plan Format
 
-Create one UTF-8 JSON draft with `authoringContractVersion: 2`, materialize its deterministic contracts, and pass the resulting plan to `scripts/harness_apply.py`. Schema 3 remains the normative generation input contract for Harness for Codex v5 through v7. The authoring revision belongs only to the draft: the builder verifies and removes it, then emits an ordinary Schema 3 plan without letting apply mutate its input.
+Create one UTF-8 JSON draft with `authoringContractVersion: 3`, materialize its deterministic contracts, and pass the resulting plan to `scripts/harness_apply.py`. Harness for Codex v8.0 retains Plan Schema 3 but requires `artifactContractVersion: 1`. The builder removes the authoring-only revision and emits the artifact revision. Read [generated-contracts.md](generated-contracts.md): outer schema stability does not imply artifact compatibility.
 
 Read [topology-contract.md](topology-contract.md) before filling the topology. Use the installed [minimal draft-plan example](minimal-draft-plan.json) as the packaging-safe starting point, then materialize its placeholders with `scripts/harness_plan_builder.py`.
 
@@ -8,7 +8,7 @@ Read [topology-contract.md](topology-contract.md) before filling the topology. U
 
 ```json
 {
-  "authoringContractVersion": 2,
+  "authoringContractVersion": 3,
   "schemaVersion": 3,
   "project": {
     "summary": "Evidence-based project summary.",
@@ -155,6 +155,7 @@ The draft uses deterministic placeholders instead of reproducing fixed contracts
 - Put `{{HARNESS_PROJECT_CHANGE_DISCIPLINE_V1}}` exactly once in `.agents/skills/project-harness/SKILL.md`.
 - Put `{{HARNESS_PROJECT_TEAMPLAY_V2}}` exactly once in `.agents/skills/project-harness/SKILL.md`.
 - Put `{{HARNESS_WRITER_CHANGE_DISCIPLINE_V1}}` exactly once in every writer agent's `developer_instructions`.
+- Put `{{HARNESS_AGENT_CONTRACT_V1}}` exactly once in every agent's `developer_instructions`; topology fields are its source of truth.
 - Put `{{HARNESS_AGENT_TEAMPLAY_V2}}` exactly once in every generated agent's `developer_instructions`, including read-only agents.
 - Do not put a project placeholder in an agent or an agent placeholder in a support artifact or any other path.
 - Do not include a canonical block beside its placeholder.
@@ -168,9 +169,9 @@ conda run -n harness python <harness-skill-root>/scripts/harness_plan_builder.py
   --output PLAN.json
 ```
 
-The builder requires authoring contract 2 and every target exactly once, rejects an incomplete or unsupported workspace root, emits a Schema 3 object without the authoring-only field, and leaves the apply validator responsible for the complete plan, evidence, ownership, and canonical exact-once checks. Apply repeats the root check so bypassing the builder cannot apply a plan to a Git-contained directory, an incompletely scanned root, or a Git root with an unregistered nested repository.
+The builder requires authoring contract 3 and every target exactly once, rejects an incomplete or unsupported workspace root, emits a Schema 3 object without the authoring-only field, and leaves the apply validator responsible for the complete plan, evidence, ownership, and canonical exact-once checks. Apply repeats the root check so bypassing the builder cannot apply a plan to a Git-contained directory, an incompletely scanned root, or a Git root with an unregistered nested repository.
 
-- Generated skill frontmatter supports only single-line scalar `name` and `description` fields.
+- Generated skill frontmatter follows the strict string-only subset in [generated-contracts.md](generated-contracts.md). Use the shared renderer for quoting; collections, duplicate keys, coercible plain types, and surrogate escapes fail.
 - Include every generated dedicated file in `artifacts`, including supporting references, scripts, and assets.
 - Artifact paths must remain unique under portable case-folded comparison. Two file outputs may not have an ancestor/descendant relationship.
 - Every project, boundary, persistence record, quality policy, route, skill, and agent that requires evidence uses at least one structured evidence object.

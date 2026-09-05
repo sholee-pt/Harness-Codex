@@ -36,8 +36,9 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v7.4` | Harness for Codex v7.4 | Schema 3 | Schema 6 | Schema 2 | Reserved evidence namespaces, shared instruction discovery, project-context parity, effective-config load gaps, literal task-base coverage |
 | `codex/v7.5` | Harness for Codex v7.5 | Schema 3 | Schema 6 | Schema 2 | Opt-in per-turn operations evidence, privacy-safe outcome review, custom-agent load and dependency attribution gaps |
 | `codex/v7.6` | Harness for Codex v7.6 | Schema 3 | Schema 6 | Schema 2 | Activation diagnostics, explicit usage coverage, and lighter direct-task guidance |
+| `codex/v8` | Harness for Codex v8.0 | Schema 3 | Schema 6 | Schema 2 | Authoring Contract 3, Artifact Contract 1, strict frontmatter, topology-bound agent contracts, explicit upgrade status |
 
-All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
+Only the latest Codex and latest Claude branches are retained. The default branch follows the latest verified release; earlier release history remains reachable through commits. Historical branch names in this table identify releases and are not a promise that those branches still exist.
 
 ## Harness for Codex v1.0
 
@@ -500,6 +501,17 @@ Harness for Codex v7.6 adds read-only activation diagnostics, presentation-only 
 - Keeps v6.0 through v7.5 evaluation records readable descriptively. Only complete, independent, plan-verified v7.6 pairs are eligible for concrete configuration attribution.
 
 This minor release does not introduce a hard token-budget controller, per-agent usage aggregation, automatic model routing or topology adaptation, broader worktree support, or new runtime observation profiles. Evaluation and operations evidence remain opt-in. The diagnostic and usage reports are additive CLI output, not new persistent schemas.
+
+## Harness for Codex v8.0
+
+This major release requires Authoring Contract 3 drafts and Artifact Contract 1 plans and installations. Plan Schema 3 and Manifest Schema 6 remain unchanged, but previously valid generated agents lack a newly required contract. Schema stability is not artifact compatibility.
+
+- Uses one stdlib-only string parser across materialization, apply, and installed validation, with explicit rejection of ambiguous YAML types and malformed syntax. Literal Unicode is preserved; surrogate escapes are unsupported.
+- Derives each agent's canonical responsibility, boundaries, skills, access lanes, phases, and handoffs from the topology and verifies decoded TOML instructions. Project-specific methods remain authored prose.
+- Reports clean known v7 installations as `upgrade-required`, with CLI exit 2; integrity errors, unsupported metadata, and incomplete v8 installations remain invalid. Safe updates preserve ownership checks, transaction recovery, and no-op behavior.
+- Supplies a fixed input/expected-value corpus, a seeded differential generator, a pinned optional PyYAML 6.0.1 test oracle, and cross-platform CI. Runtime dependencies remain unchanged.
+- Preserves prior evaluation records descriptively through v7.6; concrete attribution requires eligible v8.0 evidence.
+- Makes no claim of full YAML compatibility, semantic consistency of arbitrary prose, actual runtime discovery, token savings, or improved scRAE performance.
 
 ## Harness for Claude Code releases
 

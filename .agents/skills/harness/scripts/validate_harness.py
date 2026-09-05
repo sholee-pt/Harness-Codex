@@ -15,6 +15,10 @@ import harness_teamplay
 import harness_topology
 import harness_workspace
 import inventory
+import harness_metadata
+import harness_frontmatter
+import harness_agent_contract
+import harness_change_discipline
 
 try:
     import tomllib
@@ -45,23 +49,7 @@ FORBIDDEN_PERSISTENT_KEYS = {
 
 
 def read_frontmatter(path: Path) -> dict[str, str]:
-    text = path.read_text(encoding="utf-8")
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        raise ValueError("missing opening YAML frontmatter delimiter")
-    try:
-        end = next(index for index, line in enumerate(lines[1:], start=1) if line.strip() == "---")
-    except StopIteration as exc:
-        raise ValueError("missing closing YAML frontmatter delimiter") from exc
-    values: dict[str, str] = {}
-    for line in lines[1:end]:
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        if ":" not in line:
-            raise ValueError(f"unsupported frontmatter line: {line}")
-        key, value = line.split(":", 1)
-        values[key.strip()] = value.strip().strip('"').strip("'")
-    return values
+    return harness_frontmatter.parse(path.read_text(encoding="utf-8"))
 
 
 class Validator:
@@ -71,6 +59,8 @@ class Validator:
         self.warnings: list[str] = []
         self.manifest: dict = {}
         self.validation_layers: dict[str, dict[str, str]] = {}
+        self.legacy_artifacts = False
+        self.upgrade_requirements: list[str] = []
 
     def error(self, message: str) -> None:
         self.errors.append(message)
@@ -132,6 +122,12 @@ class Validator:
         generator = self.manifest.get("generator")
         if not isinstance(generator, dict) or not all(generator.get(key) for key in ("name", "version", "runtime")):
             self.error("generator must contain name, version, and runtime")
+        try:
+            self.legacy_artifacts = harness_metadata.artifact_contract_state(self.manifest) == "legacy"
+            if self.legacy_artifacts:
+                self.upgrade_requirements.append("Review an Authoring Contract 3 draft and apply Artifact Contract 1 through the guarded update workflow.")
+        except ValueError as exc:
+            self.error(str(exc))
         application = self.manifest.get("application")
         if not isinstance(application, dict):
             self.error("application must be an object")
@@ -350,6 +346,13 @@ class Validator:
             self.error(f"agent {name} path must be {expected}")
         path = self.path(relative)
         data = self.validate_codex_agent(name, path, relative) if path is not None else None
+        if data is not None and isinstance(data.get("developer_instructions"), str):
+            try:
+                harness_agent_contract.validate(data["developer_instructions"], item, self.manifest["topology"], allow_missing=self.legacy_artifacts)
+                if any(isinstance(access, dict) and access.get("mode") == "write" for access in item.get("fileAccess", [])):
+                    harness_change_discipline.require_exactly_once(data["developer_instructions"], harness_change_discipline.WRITER_BLOCK, f"writer agent {name}")
+            except (ValueError, KeyError, TypeError) as exc:
+                self.error(f"agent contract {name}: {exc}")
         skills = item.get("skills", [])
         if not isinstance(skills, list):
             self.error(f"agent {name} skills must be an array")
@@ -401,6 +404,7 @@ class Validator:
             if project_path is not None:
                 try:
                     project_content = project_path.read_text(encoding="utf-8")
+                    harness_change_discipline.require_exactly_once(project_content, harness_change_discipline.PROJECT_BLOCK, "project-harness skill")
                     harness_teamplay.require_exactly_once(
                         project_content,
                         harness_teamplay.PROJECT_BLOCK,
@@ -682,10 +686,24 @@ class Validator:
                 "requires": "eligible isolated paired evaluation runs",
             },
         }
+        installation_status = "invalid" if self.errors else "upgrade-required" if self.upgrade_requirements else "valid"
+        self.validation_layers["artifactCompatibility"] = {
+            "status": "failed" if self.errors else "upgrade-required" if self.upgrade_requirements else "passed",
+            "proves": "Current artifact-contract compatibility is separate from installation integrity.",
+        }
+        activation = activation_report(self.manifest, valid=installation_status == "valid")
+        if installation_status == "upgrade-required":
+            activation["status"] = "upgrade-required"
+            activation["nextStep"] = self.upgrade_requirements[0]
         return {
             "runtime": harness_state.RUNTIME,
-            "valid": not self.errors,
-            "activation": activation_report(self.manifest, valid=not self.errors),
+            "valid": installation_status == "valid",
+            "installationStatus": installation_status,
+            "integrityValid": not self.errors,
+            "artifactContractVersion": self.manifest.get("artifactContractVersion"),
+            "requiredArtifactContractVersion": harness_metadata.ARTIFACT_CONTRACT_VERSION,
+            "upgradeRequirements": self.upgrade_requirements,
+            "activation": activation,
             "validationLayers": self.validation_layers,
             "externalCapabilities": external_capabilities,
             "errors": self.errors,
@@ -729,7 +747,7 @@ def main() -> int:
         parser.error(f"workspace root is not a directory: {root}")
     report = Validator(root).run()
     print(json.dumps(report, indent=2, ensure_ascii=False))
-    return 0 if report["valid"] else 1
+    return 0 if report["valid"] else 2 if report["installationStatus"] == "upgrade-required" else 1
 
 
 if __name__ == "__main__":

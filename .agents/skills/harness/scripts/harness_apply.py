@@ -16,6 +16,8 @@ import harness_topology
 import harness_transaction
 import harness_workspace
 import harness_change_discipline
+import harness_frontmatter
+import harness_agent_contract
 import inventory
 
 try:
@@ -88,22 +90,10 @@ def require_list(value: object, label: str) -> list:
 
 
 def read_frontmatter_text(text: str, label: str) -> dict[str, str]:
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        raise PlanError(f"{label} is missing opening YAML frontmatter delimiter")
     try:
-        end = next(index for index, line in enumerate(lines[1:], start=1) if line.strip() == "---")
-    except StopIteration as exc:
-        raise PlanError(f"{label} is missing closing YAML frontmatter delimiter") from exc
-    values: dict[str, str] = {}
-    for line in lines[1:end]:
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        if ":" not in line:
-            raise PlanError(f"{label} contains unsupported frontmatter: {line}")
-        key, value = line.split(":", 1)
-        values[key.strip()] = value.strip().strip('"').strip("'")
-    return values
+        return harness_frontmatter.parse(text)
+    except harness_frontmatter.FrontmatterError as exc:
+        raise PlanError(f"{label}: {exc}") from exc
 
 
 def load_plan(path: Path) -> dict:
@@ -332,6 +322,7 @@ def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> tupl
         if data["name"] != name:
             raise PlanError(f"Codex agent name mismatch in {expected}")
         try:
+            harness_agent_contract.validate(data["developer_instructions"], agent, topology)
             harness_teamplay.require_exactly_once(
                 data["developer_instructions"],
                 harness_teamplay.AGENT_BLOCK,
@@ -485,6 +476,8 @@ def classify_file(
 
 
 def build_application(root: Path, plan: dict) -> dict:
+    if type(plan.get("artifactContractVersion")) is not int or plan.get("artifactContractVersion") != harness_metadata.ARTIFACT_CONTRACT_VERSION:
+        raise PlanError("plan requires artifactContractVersion 1; rebuild a reviewed Authoring Contract 3 draft")
     try:
         root_context = inventory.require_unambiguous_root(root)
     except ValueError as exc:
@@ -621,6 +614,7 @@ def build_application(root: Path, plan: dict) -> dict:
 
     desired_manifest = {
         "schemaVersion": harness_state.CURRENT_SCHEMA_VERSION,
+        "artifactContractVersion": harness_metadata.ARTIFACT_CONTRACT_VERSION,
         "generator": {
             "name": "Harness",
             "version": GENERATOR_VERSION,

@@ -1,22 +1,16 @@
 name = "__AGENT_NAME__"
 description = "__WHEN_CODEX_SHOULD_DELEGATE_TO_THIS_AGENT__"
 developer_instructions = """
-# Responsibility
-
-__UNIQUE_RESPONSIBILITY_AND_EXCLUSIONS__
+{{HARNESS_AGENT_CONTRACT_V1}}
 
 # Evidence
 
 This role exists because: __REPOSITORY_EVIDENCE__
 
-# Contract
+# Task inputs and outputs
 
 - Input: __INPUT_CONTRACT__
 - Output: __OUTPUT_CONTRACT__
-- Material boundaries: __BOUNDARY_REFS__
-- Read scopes and lanes: __READ_SCOPES_AND_LANES__
-- Write scopes and lanes: __WRITE_SCOPES_AND_LANES_OR_READ_ONLY__
-- Required handoffs: __ORDERED_HANDOFFS_OR_NONE__
 
 # Method
 

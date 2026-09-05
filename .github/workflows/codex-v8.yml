@@ -1,12 +1,12 @@
-name: Harness for Codex v7.6 checks
+name: Harness for Codex v8.0 checks
 
 on:
   push:
     branches:
-      - codex/v7.6
+      - codex/v8
   pull_request:
     branches:
-      - codex/v7.6
+      - codex/v8
   workflow_dispatch:
 
 permissions:
@@ -37,6 +37,12 @@ jobs:
       - name: Run unit tests
         shell: bash -el {0}
         run: conda run -n harness python -m unittest discover -s tests -v
+
+      - name: Verify the pinned frontmatter oracle
+        shell: bash -el {0}
+        run: |
+          conda run -n harness python -m pip install -r tests/requirements-validation.txt
+          conda run -n harness python tests/frontmatter_differential.py --seed 20260905 --count 11000 --output "${RUNNER_TEMP}/frontmatter-report.json"
 
       - name: Run runtime-plan, receipt, relay, and operations fixtures
         shell: bash -el {0}

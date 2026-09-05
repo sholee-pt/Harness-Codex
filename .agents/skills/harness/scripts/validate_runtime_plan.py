@@ -361,6 +361,11 @@ class RuntimePlanValidator:
                 f"manifest schemaVersion must be {harness_metadata.MANIFEST_SCHEMA_VERSION}"
             )
         try:
+            if harness_metadata.artifact_contract_state(manifest) != "current":
+                raise RuntimePlanError("upgrade-required: review and update the installed artifact contract before v8 runtime validation")
+        except ValueError as exc:
+            raise RuntimePlanError(str(exc)) from exc
+        try:
             harness_state.validate_runtime(manifest)
             harness_topology.validate_contract(
                 manifest.get("topology"), manifest.get("capabilityPolicies")

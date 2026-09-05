@@ -20,7 +20,11 @@
       "materialBoundaryCount": 2,
       "dependencyShape": "static-dag",
       "recurringCoordination": true,
-      "coordinationReasons": ["cross-contract-verification", "reviewer-chain", "phase-freeze"],
+      "coordinationReasons": [
+        "cross-contract-verification",
+        "reviewer-chain",
+        "phase-freeze"
+      ],
       "rationale": "Every release performs an ordered API-to-storage contract synchronization and review.",
       "mergedCandidates": [],
       "uncertainties": []
@@ -29,7 +33,9 @@
       {
         "id": "api-contract",
         "name": "API contract",
-        "types": ["contract"],
+        "types": [
+          "contract"
+        ],
         "summary": "Owns the public API schema.",
         "evidence": [
           {
@@ -38,13 +44,27 @@
             "claim": "Defines the API contract."
           }
         ],
-        "decisionAreaIds": ["api-contract"],
-        "inputs": ["API requirements"],
-        "outputs": ["frozen API schema"],
-        "contracts": ["API schema"],
-        "readScopes": ["contracts/api.schema"],
-        "writeScopes": ["contracts/**"],
-        "verification": ["validate the API schema"],
+        "decisionAreaIds": [
+          "api-contract"
+        ],
+        "inputs": [
+          "API requirements"
+        ],
+        "outputs": [
+          "frozen API schema"
+        ],
+        "contracts": [
+          "API schema"
+        ],
+        "readScopes": [
+          "contracts/api.schema"
+        ],
+        "writeScopes": [
+          "contracts/**"
+        ],
+        "verification": [
+          "validate the API schema"
+        ],
         "failureImpact": "Consumers may receive an incompatible API.",
         "persistence": {
           "kind": "documented-recurring-workflow",
@@ -56,15 +76,21 @@
             }
           ]
         },
-        "separationBenefits": {"specializedJudgment": true},
+        "separationBenefits": {
+          "specializedJudgment": true
+        },
         "dependsOn": [],
-        "interactsWith": ["storage-contract"],
+        "interactsWith": [
+          "storage-contract"
+        ],
         "overlapWith": []
       },
       {
         "id": "storage-contract",
         "name": "Storage contract",
-        "types": ["contract"],
+        "types": [
+          "contract"
+        ],
         "summary": "Owns storage compatibility with the API schema.",
         "evidence": [
           {
@@ -73,13 +99,27 @@
             "claim": "Defines the storage contract."
           }
         ],
-        "decisionAreaIds": ["storage-contract"],
-        "inputs": ["frozen API schema"],
-        "outputs": ["verified storage schema"],
-        "contracts": ["storage schema"],
-        "readScopes": ["contracts/storage.schema"],
-        "writeScopes": ["contracts/generated/**"],
-        "verification": ["validate API and storage compatibility"],
+        "decisionAreaIds": [
+          "storage-contract"
+        ],
+        "inputs": [
+          "frozen API schema"
+        ],
+        "outputs": [
+          "verified storage schema"
+        ],
+        "contracts": [
+          "storage schema"
+        ],
+        "readScopes": [
+          "contracts/storage.schema"
+        ],
+        "writeScopes": [
+          "contracts/generated/**"
+        ],
+        "verification": [
+          "validate API and storage compatibility"
+        ],
         "failureImpact": "Stored data may become incompatible with the API.",
         "persistence": {
           "kind": "documented-recurring-workflow",
@@ -91,13 +131,21 @@
             }
           ]
         },
-        "separationBenefits": {"independentReview": true},
-        "dependsOn": ["api-contract"],
-        "interactsWith": ["api-contract"],
+        "separationBenefits": {
+          "independentReview": true
+        },
+        "dependsOn": [
+          "api-contract"
+        ],
+        "interactsWith": [
+          "api-contract"
+        ],
         "overlapWith": []
       }
     ],
-    "collaborationPatterns": ["producer-reviewer"],
+    "collaborationPatterns": [
+      "producer-reviewer"
+    ],
     "qualityPatternPolicies": [
       {
         "id": "contract-completeness",
@@ -110,8 +158,13 @@
             "claim": "Requires recurring verification."
           }
         ],
-        "boundaryRefs": ["api-contract", "storage-contract"],
-        "budget": {"maxRounds": 2},
+        "boundaryRefs": [
+          "api-contract",
+          "storage-contract"
+        ],
+        "budget": {
+          "maxRounds": 2
+        },
         "stoppingCondition": "Stop after compatibility succeeds or two rounds complete.",
         "failurePolicy": "Report incompatible contracts and stop the release."
       }
@@ -130,7 +183,9 @@
           }
         ],
         "scope": "boundary",
-        "boundaryRefs": ["api-contract"],
+        "boundaryRefs": [
+          "api-contract"
+        ],
         "skills": [],
         "fileAccess": [
           {
@@ -154,7 +209,10 @@
           }
         ],
         "scope": "cross-boundary",
-        "boundaryRefs": ["api-contract", "storage-contract"],
+        "boundaryRefs": [
+          "api-contract",
+          "storage-contract"
+        ],
         "skills": [],
         "fileAccess": [
           {
@@ -192,17 +250,44 @@
             "claim": "Defines a recurring release route."
           }
         ],
-        "taskCategories": ["release-sync"],
-        "activeBoundaryRefs": ["api-contract", "storage-contract"],
+        "taskCategories": [
+          "release-sync"
+        ],
+        "activeBoundaryRefs": [
+          "api-contract",
+          "storage-contract"
+        ],
         "recommendedExecutionClass": "coordinated",
-        "collaborationPatterns": ["producer-reviewer"],
-        "qualityPolicyRefs": ["contract-completeness"],
+        "collaborationPatterns": [
+          "producer-reviewer"
+        ],
+        "qualityPolicyRefs": [
+          "contract-completeness"
+        ],
         "capabilityPolicyRef": "direct-default"
       }
     ],
     "executionPhases": [
-      {"id": "produce", "order": 0, "concurrencyGroups": [{"id": "producer", "order": 0}]},
-      {"id": "review", "order": 1, "concurrencyGroups": [{"id": "reviewer", "order": 0}]}
+      {
+        "id": "produce",
+        "order": 0,
+        "concurrencyGroups": [
+          {
+            "id": "producer",
+            "order": 0
+          }
+        ]
+      },
+      {
+        "id": "review",
+        "order": 1,
+        "concurrencyGroups": [
+          {
+            "id": "reviewer",
+            "order": 0
+          }
+        ]
+      }
     ],
     "handoffs": [
       {
@@ -231,12 +316,12 @@
     {
       "path": ".codex/agents/api_producer.toml",
       "mode": "0644",
-      "content": "name = \"api_producer\"\ndescription = \"Prepare and freeze API contract changes for review.\"\ndeveloper_instructions = \"\"\"Own the API producer phase. Freeze and report the generated contract hash before handoff.\n\nFor code-changing work, follow the project-harness change discipline: surface material ambiguity and simpler alternatives before editing, make the smallest scoped change without adjacent cleanup, define verification before implementation, and report completion only after the checks pass.\"\"\"\n"
+      "content": "name = \"api_producer\"\ndescription = \"Prepare and freeze API contract changes for review.\"\ndeveloper_instructions = \"\"\"Own the API producer phase. Freeze and report the generated contract hash before handoff.\n\nFor code-changing work, follow the project-harness change discipline: surface material ambiguity and simpler alternatives before editing, make the smallest scoped change without adjacent cleanup, define verification before implementation, and report completion only after the checks pass.\n{{HARNESS_AGENT_CONTRACT_V1}}\n\"\"\"\n"
     },
     {
       "path": ".codex/agents/contract_reviewer.toml",
       "mode": "0644",
-      "content": "name = \"contract_reviewer\"\ndescription = \"Verify storage compatibility against a frozen API contract.\"\ndeveloper_instructions = \"\"\"Review the complete contracts/generated/** overlap only after verifying the producer handoff hash.\n\nFor code-changing work, follow the project-harness change discipline: surface material ambiguity and simpler alternatives before editing, make the smallest scoped change without adjacent cleanup, define verification before implementation, and report completion only after the checks pass.\"\"\"\n"
+      "content": "name = \"contract_reviewer\"\ndescription = \"Verify storage compatibility against a frozen API contract.\"\ndeveloper_instructions = \"\"\"Review the complete contracts/generated/** overlap only after verifying the producer handoff hash.\n\nFor code-changing work, follow the project-harness change discipline: surface material ambiguity and simpler alternatives before editing, make the smallest scoped change without adjacent cleanup, define verification before implementation, and report completion only after the checks pass.\n{{HARNESS_AGENT_CONTRACT_V1}}\n\"\"\"\n"
     },
     {
       "path": ".agents/skills/project-harness/SKILL.md",
@@ -246,5 +331,6 @@
   ],
   "instruction": {
     "managedBlock": "<!-- harness:begin -->\n## Project Harness\n\nUse the `$project-harness` skill for recurring API and storage contract synchronization.\n<!-- harness:end -->"
-  }
+  },
+  "artifactContractVersion": 1
 }
