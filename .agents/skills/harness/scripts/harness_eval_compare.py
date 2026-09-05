@@ -34,6 +34,15 @@ def _verification_pass_rate(record: dict[str, Any]) -> float | None:
     return sum(check["result"] == "passed" for check in checks) / len(checks)
 
 
+def _complete_token_counter(record: dict[str, Any], name: str) -> float | None:
+    # Partial observations remain visible in `view`, but cannot become a
+    # complete paired outcome merely because both arms contain a number.
+    item = record["measurements"].get(name)
+    if not isinstance(item, dict) or item.get("completeness") != "complete":
+        return None
+    return _measured(record, name)
+
+
 def outcome_value(
     record: dict[str, Any],
     metric: str,
@@ -49,7 +58,13 @@ def outcome_value(
     if metric == "wall-time-ms":
         return _measured(record, "wallTimeMs")
     if metric == "output-tokens":
-        return _measured(record, "outputTokens")
+        return _complete_token_counter(record, "outputTokens")
+    if metric == "input-tokens":
+        return _complete_token_counter(record, "inputTokens")
+    if metric == "cached-input-tokens":
+        return _complete_token_counter(record, "cachedInputTokens")
+    if metric == "reasoning-output-tokens":
+        return _complete_token_counter(record, "reasoningOutputTokens")
     raise ComparisonError(f"unsupported primary outcome: {metric}")
 
 
@@ -170,6 +185,7 @@ def _compare_runs_v1(
     baseline_value = outcome_value(baseline, metric, correction_count=baseline_corrections)
     treatment_value = outcome_value(treatment, metric, correction_count=treatment_corrections)
     if baseline_value is None or treatment_value is None:
+        baseline_value = treatment_value = None
         delta = None
         direction = "unknown"
         completeness = 0.0
@@ -431,6 +447,7 @@ def _compare_runs_v2(
     baseline_value = outcome_value(effective_baseline, outcome["metric"], correction_count=baseline_corrections)
     treatment_value = outcome_value(effective_treatment, outcome["metric"], correction_count=treatment_corrections)
     if baseline_value is None or treatment_value is None:
+        baseline_value = treatment_value = None
         delta_value = None
         direction = "unknown"
         completeness = 0.0

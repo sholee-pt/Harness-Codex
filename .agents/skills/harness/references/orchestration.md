@@ -22,6 +22,8 @@ Separate collaboration patterns, which distribute work, from quality patterns, w
 
 ## Required run protocol
 
+For a small direct task, keep scope, outputs, and verification in the current task. Do not materialize a runtime-plan file, coordination packet, relay receipt, or disposable capability probe. Honor explicitly requested planning or auditing and required quality checks. Resolve routing ambiguity before taking this path. If later findings require delegation, validate the ephemeral plan before spawning. This clarification does not bypass generation/apply preflight or create a cache of live permissions and ownership checks.
+
 1. Define the objective, completion criteria, scopes, planned artifacts, material assumptions, conflicting interpretations, simpler alternatives, and verification method before implementation.
 2. Resolve the selected routing policy and probe required runtime capabilities before assignment. If a required capability is absent, select the declared fallback or stop that path. Static manifest validation does not prove live capability availability.
 3. Give every delegated task an owner, input, output contract, write boundary, and verification method.
@@ -40,4 +42,4 @@ Separate collaboration patterns, which distribute work, from quality patterns, w
 
 ## Generated orchestrator contents
 
-The `project-harness` skill should contain the project-specific trigger, topology, task-routing rules, inputs and outputs, phase boundaries, bounded semantic communication, leader authority, capability fallback, isolated-writer rules, freeze protocol, verification, safe stopping conditions, ephemeral retention, completion reporting, and the common change discipline from the bundled template. Keep detailed domain procedures in separate project skills.
+The `project-harness` skill should contain the project-specific trigger, topology, task-routing rules, inputs and outputs, and the canonical contracts from the bundled template. Do not restate those contracts in a second generic run protocol. The builder adds concise direct-execution guidance without changing the required canonical v2 block. Keep detailed domain procedures in separate project skills and load delegation references only when that execution path is selected.

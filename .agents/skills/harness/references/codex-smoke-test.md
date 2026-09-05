@@ -11,7 +11,7 @@ Use this optional check after structural validation when the generated harness m
 ## Discovery
 
 1. Ask Codex to identify the active project harness without changing files.
-2. Confirm that it references `$project-harness` from the active `AGENTS.md` or `AGENTS.override.md`.
+2. Read `activation.mode` from `validate_harness.py` or `harness_doctor.py --root REPOSITORY`. For `managed-pointer`, confirm that the active `AGENTS.md` or `AGENTS.override.md` selects `$project-harness` in a fresh task. For `explicit-skill`, invoke `$project-harness` explicitly and confirm that the workspace's generated skill is selected; no managed root pointer is required. Do not modify user-owned instructions to pass this check.
 3. Confirm that every reported custom agent and project skill exists in the generated topology.
 
 ## Delegation
@@ -37,4 +37,4 @@ Use read-only subagents and at most one writer unless the runtime visibly establ
 
 ## Result
 
-Record discovery, delegation, packet validation, parent relay, selected/spawned/observed/completed subagents, revision count, and fallback separately as `passed`, `failed`, or `not applicable`. A structural, packet, receipt-integrity, or relay-lineage pass does not override a live failure. This smoke test is opt-in and is not part of normal CI because it requires an actual Codex runtime. Do not modify generated files merely to make the smoke test pass; revise and dry-run a new plan.
+Record activation mode, skill discovery, delegation, packet validation, parent relay, selected/spawned/observed/completed subagents, revision count, and fallback separately as `passed`, `failed`, `not-tested`, or `not-applicable`. An unobserved step stays `not-tested`; only a step that does not apply is `not-applicable`. A structural, packet, receipt-integrity, or relay-lineage pass does not override a live failure. This smoke test is opt-in and is not part of normal CI because it requires an actual Codex runtime. Do not modify generated files merely to make the smoke test pass; revise and dry-run a new plan.

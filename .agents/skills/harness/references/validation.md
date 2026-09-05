@@ -88,6 +88,8 @@ Test the applicable cases, using an isolated temporary repository when possible:
 
 ## Completion gate
 
+The `activation` report distinguishes a structurally configured managed pointer from explicit skill activation. `runtimeLoaded` remains `not-tested` for both. Invalid installations report blocked activation and no recommended invocation until errors are resolved. `harness_doctor.py --root WORKSPACE` combines these checks with environment diagnostics without launching Codex or writing the workspace.
+
 Validation succeeds only when every planned artifact is accounted for and structural checks pass. Clearly separate structural validation from a live Codex discovery or delegation smoke test. Codex detects skill changes automatically; when new custom agents, a new skill, or a newly created root pointer is not active, start one fresh task in the same workspace rather than deleting tasks or restarting after each request.
 
 `validate_harness.py` reports static `validationLayers` separately from `externalCapabilities`. A green static report covers transaction state, selected-root context, manifest shape, evidence freshness, topology/artifact contracts, managed ownership, and runtime-state separation. `customAgentDiscovery` and `liveDelegation` remain `not-tested`, while task correctness and Harness benefit attribution remain `not-measured`, until their separate evidence-producing workflows run.

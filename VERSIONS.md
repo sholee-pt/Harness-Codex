@@ -35,6 +35,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v7.3` | Harness for Codex v7.3 | Schema 3 | Schema 6 | Schema 2 | Exact ignored/untracked evidence materialization, instruction-provenance isolation gaps, paired pre-task invariants, truthful optional materialization dry-run |
 | `codex/v7.4` | Harness for Codex v7.4 | Schema 3 | Schema 6 | Schema 2 | Reserved evidence namespaces, shared instruction discovery, project-context parity, effective-config load gaps, literal task-base coverage |
 | `codex/v7.5` | Harness for Codex v7.5 | Schema 3 | Schema 6 | Schema 2 | Opt-in per-turn operations evidence, privacy-safe outcome review, custom-agent load and dependency attribution gaps |
+| `codex/v7.6` | Harness for Codex v7.6 | Schema 3 | Schema 6 | Schema 2 | Activation diagnostics, explicit usage coverage, and lighter direct-task guidance |
 
 All earlier branches remain preserved for existing installations. New changes are added on a later Harness branch rather than rewriting a published version branch.
 
@@ -483,6 +484,22 @@ Harness for Codex v7.5 adds opt-in, task-scoped operations evidence and tightens
 - Keeps v6.0 through v7.4 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.5 evidence.
 
 This release does not continuously judge semantic answer quality, parse Codex transcripts, automatically redesign a project Harness, enable paired-run project hooks, or claim that a custom agent was used because its TOML file was present. Operations evidence must be explicitly enabled and reviewed through Codex hook trust.
+
+## Harness for Codex v7.6
+
+Harness for Codex v7.6 adds read-only activation diagnostics, presentation-only usage coverage, and a lighter direct-task path. Existing Generation Plan Schema 3, Authoring Contract 2, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, runtime schemas, and Evaluation Schema 2 remain unchanged.
+
+- Reports configured activation separately from runtime loading. The smoke test handles both managed root pointers and explicit `$project-harness` activation without editing user-owned instructions.
+- Adds `harness_doctor.py --root WORKSPACE` for environment, installed-state, activation, and capability-gap diagnostics. It neither launches Codex nor changes the workspace.
+- Adds a non-persistent `usageSummary` to evaluation `view` output, distinguishing selected, reported-only, unavailable, partial, and conflicted measurements without promoting coverage or altering comparison view fingerprints.
+- Supports input, cached-input, output, and reasoning-output counters as separate comparison metrics. Counter overlap and child coverage remain unverified; account totals and billing costs are not fabricated.
+- Keeps a paired counter outcome unavailable when either arm lacks complete metric coverage, preserving partial values in the individual views. Cache counters accept either explicitly chosen direction.
+- Adds advisory direct-execution guidance during draft materialization and removes a redundant generic run protocol from the router template. Small direct tasks do not require runtime-plan files, coordination packets, relay receipts, or disposable probes; verification, permissions, explicit planning requests, and delegation-transition validation remain intact.
+- Preserves the canonical v2 runtime contract and accepts older valid Schema 3 plans and generated artifacts. Existing installations receive the advisory only through a reviewed, hash-checked update.
+- Extends the synthetic one-line-change probe to reject unnecessary runtime artifacts and unverified completion. A classification probe is not proof of live editing behavior or token savings.
+- Keeps v6.0 through v7.5 evaluation records readable descriptively. Only complete, independent, plan-verified v7.6 pairs are eligible for concrete configuration attribution.
+
+This minor release does not introduce a hard token-budget controller, per-agent usage aggregation, automatic model routing or topology adaptation, broader worktree support, or new runtime observation profiles. Evaluation and operations evidence remain opt-in. The diagnostic and usage reports are additive CLI output, not new persistent schemas.
 
 ## Harness for Claude Code releases
 

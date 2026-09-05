@@ -25,15 +25,11 @@ Classify each current task as direct, delegated, or coordinated without changing
 - Recommend rerunning `$harness` only when stable workspace evidence shows a new or changed responsibility, contract boundary, recurring workflow, or verification risk.
 - Preserve clean managed artifacts during reassessment. Report obsolete artifacts as removal candidates and never remove them without explicit user authorization.
 
-## Run protocol
+## Direct execution
 
-1. State the objective, completion criteria, planned outputs, dependencies, and ownership.
-2. Resolve the applicable routing, quality, and capability policies. Confirm that every required runtime capability is actually available and use the declared contract-preserving fallback when it is not.
-3. Run independent scopes in parallel only when their write scopes do not overlap in the same execution lane. Require the planned verified handoff before an ordered writer changes a shared scope.
-4. Collect an explicit completion status for every planned output.
-5. When dependent phases need immutable inputs and a deterministic hash mechanism is available, freeze completed phase artifacts before downstream review or validation. Do not claim a phase is frozen without recorded hashes.
-6. If a recorded frozen artifact changes, invalidate dependent validation and repeat it.
-7. Stop every quality loop at its declared budget or stopping condition, preserve unresolved disagreement under its failure policy, then integrate results and run project-native checks.
+After resolving routing and required quality checks, handle a small, tightly coupled task directly when delegation adds no material benefit. Keep its scope, expected output, and verification in the current task; do not create a runtime-plan file, coordination packet, relay receipt, or disposable capability probe just to perform direct work. Preserve an explicitly requested plan or audit and all applicable verification and permission requirements.
+
+Read delegation references and validate an ephemeral runtime plan only when delegation or coordination is selected. If new evidence requires that transition, validate the plan before spawning agents. Do not reuse an earlier validation as proof of current permissions, file ownership, evidence freshness, or write scope. Report the changed result, checks, and remaining gaps without empty subagent-accounting fields.
 
 <!-- harness:runtime-teamplay:v2:begin -->
 ## Runtime execution classification

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in local evaluation and observability CLI for Harness for Codex v7.5."""
+"""Opt-in local evaluation and observability CLI for Harness for Codex v7.6."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ import harness_eval_store as store_module
 import harness_eval_types as types
 import harness_eval_schema2 as schema2
 import harness_eval_view as evaluation_view
+import harness_usage
 import harness_metadata
 import harness_patch_scope
 import harness_state
@@ -740,7 +741,8 @@ def command_view(args: argparse.Namespace) -> int:
         evaluation_store.observations_for_run(repository_id, args.run),
         evaluation_store.annotations_for_run(repository_id, args.run),
     )
-    _print(view)
+    # Presentation only: keep persisted records and comparison view digests unchanged.
+    _print({**view, "usageSummary": harness_usage.usage_summary(run, view)})
     return 0
 
 

@@ -23,6 +23,12 @@ CANONICAL_CAPABILITIES = frozenset(
 )
 CAPABILITY_ALIASES = {"parallel-subagent-delegation": "parallel-delegation"}
 
+DIRECT_EXECUTION_GUIDANCE = """## Direct execution
+
+After resolving routing and required quality checks, handle a small, tightly coupled task directly when delegation adds no material benefit. Keep its scope, expected output, and verification in the current task; do not create a runtime-plan file, coordination packet, relay receipt, or disposable capability probe just to perform direct work. Preserve an explicitly requested plan or audit and all applicable verification and permission requirements.
+
+Read delegation references and validate an ephemeral runtime plan only when delegation or coordination is selected. If new evidence requires that transition, validate the plan before spawning agents. Do not reuse an earlier validation as proof of current permissions, file ownership, evidence freshness, or write scope. Report the changed result, checks, and remaining gaps without empty subagent-accounting fields."""
+
 PROJECT_BLOCK = """<!-- harness:runtime-teamplay:v2:begin -->
 ## Runtime execution classification
 

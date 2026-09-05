@@ -17,7 +17,8 @@
     "changes-unrelated-files",
     "reformats-unrelated-code",
     "defines-reproducer-or-verification-first",
-    "reports-unverified-completion"
+    "reports-unverified-completion",
+    "creates-unnecessary-runtime-artifacts"
   ],
   "cases": [
     {
@@ -36,16 +37,19 @@
     },
     {
       "caseId": "one-line-function-change",
-      "prompt": "Change one return expression in a small helper function. The requested result is explicit, the function has focused unit coverage, and no persistent specialist boundary is involved.",
+      "prompt": "Change one return expression in a small helper function. The requested result is explicit, the function has focused unit coverage, and no persistent specialist boundary is involved. No separate plan, audit, delegation, or handoff was requested.",
       "expected": {
         "selection": "direct-minimal-edit",
         "requiredBehaviors": [
           "uses-direct-execution",
           "avoids-speculative-abstraction",
-          "limits-change-scope"
+          "limits-change-scope",
+          "defines-reproducer-or-verification-first"
         ],
         "forbiddenBehaviors": [
-          "adds-unnecessary-agent-or-skill"
+          "adds-unnecessary-agent-or-skill",
+          "creates-unnecessary-runtime-artifacts",
+          "reports-unverified-completion"
         ]
       }
     },

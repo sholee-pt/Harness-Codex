@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Harness_for_Codex-v7.5-brightgreen.svg" alt="Harness for Codex v7.5">
+  <img src="https://img.shields.io/badge/Harness_for_Codex-v7.6-brightgreen.svg" alt="Harness for Codex v7.6">
   <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
   <img src="https://img.shields.io/badge/Type-Harness_Generator-orange.svg" alt="Harness Generator">
   <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
@@ -33,7 +33,7 @@ Harness requires Anaconda or Miniconda. Clone this branch, create the dedicated 
 ### PowerShell
 
 ```powershell
-git clone --branch codex/v7.5 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v7.6 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file "Harness/environment.yml"
 New-Item -ItemType Directory -Force "$HOME/.agents/skills" | Out-Null
 New-Item -ItemType Directory -Force "$HOME/.agents/skills/harness" | Out-Null
@@ -43,7 +43,7 @@ Copy-Item -Recurse -Force "Harness/.agents/skills/harness/*" "$HOME/.agents/skil
 ### macOS and Linux
 
 ```shell
-git clone --branch codex/v7.5 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v7.6 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 mkdir -p ~/.agents/skills
 mkdir -p ~/.agents/skills/harness
@@ -66,13 +66,25 @@ The skill also recognizes direct requests such as “configure the harness” an
 
 Harness first creates a structured proposal and runs a no-write dry-run. It applies files only when all ownership, workspace-boundary, local-only, and instruction-precedence checks pass. Changed outputs are staged with backups before a journaled apply, and the manifest is written last. Codex detects skill changes automatically. A newly created `AGENTS.md` pointer applies on a fresh run; if a new custom agent or skill is not visible, start one new task in the same directory. No task deletion or per-request restart is required.
 
-Harness for Codex v7.5 does not ask the model to reproduce fixed change-discipline or runtime-teamplay contracts. Authoring Contract 2 drafts use path-specific placeholders, and `harness_plan_builder.py` deterministically materializes a normal Schema 3 plan before the existing apply validator runs. Every project router and generated agent receives its required canonical block exactly once; an old draft revision, incomplete or unsupported workspace root, or missing, duplicate, or misplaced placeholder fails before any workspace write.
+Harness for Codex v7.6 does not ask the model to reproduce fixed change-discipline or runtime-teamplay contracts. Authoring Contract 2 drafts use path-specific placeholders, and `harness_plan_builder.py` deterministically materializes a normal Schema 3 plan before the existing apply validator runs. Every project router and generated agent receives its required canonical block exactly once; an old draft revision, incomplete or unsupported workspace root, or missing, duplicate, or misplaced placeholder fails before any workspace write.
 
 The installed skill includes `references/minimal-draft-plan.json`, so plan authoring does not depend on repository-only test fixtures.
 
+## Activation Diagnostics
+
+After generation, run the read-only diagnostic when installation or activation is unclear:
+
+```shell
+conda run -n harness python ~/.agents/skills/harness/scripts/harness_doctor.py --root TARGET_WORKSPACE
+```
+
+The report checks the dedicated environment and installed-state validation, then distinguishes `managed-pointer` from `explicit-skill` activation. `configured` means the files and activation contract validate; `runtimeLoaded: not-tested` means live loading has not been observed. A missing Codex CLI does not invalidate a desktop installation. The diagnostic never launches Codex, installs hooks, or repairs files. Use the mode-aware [live smoke test](.agents/skills/harness/references/codex-smoke-test.md) when actual discovery or delegation must be observed.
+
+For a small direct task, the generated router keeps scope, expected output, and verification in the current task. It does not require a separate runtime-plan file, coordination packet, relay receipt, or disposable capability probe. Explicit planning requests and required quality checks still apply. If the task later needs delegation, validate the ephemeral plan before spawning. The canonical runtime contract remains unchanged; this is a reduction of unnecessary task artifacts, not a measured token-saving claim.
+
 ## Local-only Workspaces
 
-Harness for Codex v7.5 never queries GitHub or Git remotes and never stages, commits, pushes, opens pull requests, or changes branches. In a local Git root with exactly one registered worktree, it refuses targets already tracked by Git and writes literal-encoded generated paths to a marker-owned block in the local `info/exclude` file before applying files. Multiple registered worktrees are rejected because that exclude file is shared. A successful dry-run reports the observed worktree count. A synchronous project-apply failure restores the original exclude bytes only when no transaction is pending and no external edit occurred; an unbound block is detected rather than adopted. These protections prevent ordinary `git add` and status workflows from picking up generated files, but cannot prevent a deliberate force-add or guarantee recovery from process termination before project journaling begins.
+Harness for Codex v7.6 never queries GitHub or Git remotes and never stages, commits, pushes, opens pull requests, or changes branches. In a local Git root with exactly one registered worktree, it refuses targets already tracked by Git and writes literal-encoded generated paths to a marker-owned block in the local `info/exclude` file before applying files. Multiple registered worktrees are rejected because that exclude file is shared. A successful dry-run reports the observed worktree count. A synchronous project-apply failure restores the original exclude bytes only when no transaction is pending and no external edit occurred; an unbound block is detected rather than adopted. These protections prevent ordinary `git add` and status workflows from picking up generated files, but cannot prevent a deliberate force-add or guarantee recovery from process termination before project journaling begins.
 
 Inventory Schema 4 classifies `plain-directory`, `directory-workspace`, `git-repository`, and `git-worktree` roots. A non-Git directory may contain multiple nested repositories, which remain analysis boundaries. A Git root may contain registered submodules, but an unacknowledged independent nested repository remains ambiguous. Root-boundary scanning includes dependency, vendor, output, data, and checkpoint trees even when the content inventory excludes them, and reports truncated or unreadable coverage instead of claiming that no boundary exists.
 
@@ -80,7 +92,7 @@ If `AGENTS.md` or `AGENTS.override.md` is already user-owned or tracked, Harness
 
 ## Optional Local Operations Evidence
 
-Harness for Codex v7.5 can observe long-running interactive use without treating one CLI session as one task. Each `UserPromptSubmit` turn becomes a separate pseudonymous work item. Subagent lifecycle events, enum-only execution and agent-selection assessments, verification state, outcome, and an optional relationship to an earlier turn are attached to that work item. Explicit acceptance, correction, refinement, follow-up, reopened work, cancellation, or an unrelated new task can therefore be distinguished inside the same session.
+Harness for Codex v7.6 can observe long-running interactive use without treating one CLI session as one task. Each `UserPromptSubmit` turn becomes a separate pseudonymous work item. Subagent lifecycle events, enum-only execution and agent-selection assessments, verification state, outcome, and an optional relationship to an earlier turn are attached to that work item. Explicit acceptance, correction, refinement, follow-up, reopened work, cancellation, or an unrelated new task can therefore be distinguished inside the same session.
 
 This mode is disabled until the user explicitly installs the user-level hook. Generate a candidate configuration first:
 
@@ -101,7 +113,7 @@ An audit reports task-level routing, agent use, verification, adverse outcomes, 
 
 ## Optional Evaluation
 
-Harness for Codex v7.5 can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, attribute results only to a plan-bound declared or preassigned configuration delta, ingest structured observations, and probe change-discipline decisions against synthetic cases. The delta comes from immutable arm configuration snapshots; it does not prove that every declared route, agent, skill, or policy was used at runtime. Evaluation is disabled by default and does not change generation, ownership, apply, recovery, operations evidence, or runtime-teamplay validation behavior.
+Harness for Codex v7.6 can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, attribute results only to a plan-bound declared or preassigned configuration delta, ingest structured observations, and probe change-discipline decisions against synthetic cases. The delta comes from immutable arm configuration snapshots; it does not prove that every declared route, agent, skill, or policy was used at runtime. Evaluation is disabled by default and does not change generation, ownership, apply, recovery, operations evidence, or runtime-teamplay validation behavior.
 
 ```shell
 conda run -n harness python .agents/skills/harness/scripts/harness_eval.py run \
@@ -125,11 +137,13 @@ conda run -n harness python .agents/skills/harness/scripts/harness_eval.py chang
 
 Run records distinguish measured empty sets, unavailable values, and non-applicable concepts. Schema 2 separately records declared configuration, expected execution, runtime discovery, and observed execution. Raw prompts, reports, component names, transcripts, commands, paths, source content, and JSONL events are not written to Harness evaluation state. `--ephemeral` prevents local Codex rollout persistence; service-side processing still follows the configured Codex account and provider policy.
 
+The `view` output includes a presentation-only `usageSummary` that preserves selected measurements, reported-only values, missing counters, conflicts, and partial coverage. Terminal-event counters do not establish parent-only, all-child, or account-wide usage. Harness does not sum overlapping counters or infer billing cost. Comparison plans can select `input-tokens`, `cached-input-tokens`, `output-tokens`, and `reasoning-output-tokens` individually; these are counter comparisons, not total-cost attribution. See [capture-provenance.md](.agents/skills/harness/references/capture-provenance.md). Existing records and comparison view fingerprints are not rewritten by this display supplement.
+
 The change-discipline suite checks a model's declared decision and behavior tags for four synthetic cases: material ambiguity, a one-line direct change, a file-scoped bug fix, and verification-first handling of a reproducible bug. It is a classification probe, not proof that a later code-editing run followed the declared behavior. Use `--validate-only` to validate the fixture without invoking Codex.
 
 See [evaluation-contract.md](.agents/skills/harness/references/evaluation-contract.md) for the boundary, [run-record-schema.md](.agents/skills/harness/references/run-record-schema.md) for schemas, and [evaluation-isolation.md](.agents/skills/harness/references/evaluation-isolation.md) before paired runs.
 
-Paired runs require a clean, valid Harness for Codex v7.5 local-only installation in a Git repository with exactly one registered worktree, plus Comparison Plan Schema 2 before either arm executes. The evaluator verifies and snapshots manifest-managed files, every manifest-referenced evidence file, and bounded project context that can alter Codex behavior: root instruction candidates, `.codex/config.toml`, unmanaged `.codex/agents/*.toml`, and unmanaged `.agents/skills/**`. It then creates two independent local clones at that commit, removes every remote, and gives each clone its own Git metadata and exclusion file. Tracked, ignored, and untracked evidence and project context are materialized identically in both arms. All destinations in both arms are checked before the first write, including lexical symlink, Windows reparse-point, directory-collision, and namespace conflicts. Evidence under `.git/**` or `.harness/**` is rejected before content is read or hashed.
+Paired runs require a clean, valid Harness for Codex v7.6 local-only installation in a Git repository with exactly one registered worktree, plus Comparison Plan Schema 2 before either arm executes. The evaluator verifies and snapshots manifest-managed files, every manifest-referenced evidence file, and bounded project context that can alter Codex behavior: root instruction candidates, `.codex/config.toml`, unmanaged `.codex/agents/*.toml`, and unmanaged `.agents/skills/**`. It then creates two independent local clones at that commit, removes every remote, and gives each clone its own Git metadata and exclusion file. Tracked, ignored, and untracked evidence and project context are materialized identically in both arms. All destinations in both arms are checked before the first write, including lexical symlink, Windows reparse-point, directory-collision, and namespace conflicts. Evidence under `.git/**` or `.harness/**` is rejected before content is read or hashed.
 
 The baseline removes generated-only instruction files completely, then re-runs the same root instruction discovery used during generation so an existing fallback can become active. If a managed instruction file also contains preserved user content but its exact pre-install bytes are unavailable, that content remains in both arms and the comparison records `baseline-instruction-provenance-unavailable`, making it descriptive rather than eligible for concrete attribution. Immediately before clean synthetic pre-task commits are created, the evaluator rechecks evidence and project-context bytes and modes, absence of baseline Harness state, treatment validity, remote removal, source commits, allowed changed paths, and instruction selection. Ignored context is literal force-added to both task bases, and the indexed blob and executable bit are verified so later fingerprints measure changes to those paths. A present `.codex/config.toml` is preserved and hashed, but materialization is not proof that Codex effectively loaded it: until a deterministic load receipt exists, the pair records `project-config-load-unverified`, remains partial, and cannot support concrete configuration attribution. Likewise, unmanaged custom-agent files are preserved symmetrically, but their registry discovery, selected configuration layer, external skill references, and MCP dependencies are not inferred from file presence. A pair containing them records `project-agent-load-unverified` and remains descriptive until deterministic discovery and selected-agent dependency receipts exist. User and project rules are intentionally disabled by `--ignore-rules`; project hooks are not enabled by this evaluator. Paired runs accept `--repetitions` and an `--order` policy of `randomized`, `counterbalanced`, `baseline-first`, or `harness-first`. Task fingerprinting and patch-scope measurement occur immediately after Codex exits. Verification profiles must not change repository content, `HEAD`, symbolic `HEAD`, index entries, or porcelain status; a changed or non-quiescent repository is retained descriptively with partial comparability and a `verification-repository-state-mutated` gap. Verification runs in a dedicated process group and its cleanup must be confirmed. Known Harness skills in user, compatibility, Codex-home, or readable POSIX admin locations downgrade isolation; a dirty dedicated `CODEX_HOME` is rejected. Fixed arm order is retained as an explicit confounder. Windows runs require a matching user-local cleanup receipt before isolation can be labelled complete.
 
@@ -143,7 +157,7 @@ Concrete positive or negative configuration attribution requires `propose --comp
 
 ## Runtime Teamplay
 
-Harness for Codex v7.5 keeps persistent workspace topology separate from current-task execution. It creates no permanent team merely because multiple agents exist. A temporary runtime plan selects `direct`, `delegated`, or `coordinated` execution from interaction value: independent work delegates, one review pass uses delegated producer-reviewer, and only repeated feedback, conflicting expert judgment, cross-boundary agreement, or dynamic reassignment justifies coordination.
+Harness for Codex v7.6 keeps persistent workspace topology separate from current-task execution. It creates no permanent team merely because multiple agents exist. A temporary runtime plan selects `direct`, `delegated`, or `coordinated` execution from interaction value: independent work delegates, one review pass uses delegated producer-reviewer, and only repeated feedback, conflicting expert judgment, cross-boundary agreement, or dynamic reassignment justifies coordination.
 
 Runtime plans are bound to the exact manifest and canonical topology, validated before execution, and ephemeral by default. Their `participants` are the persistent agents activated for the current task. For delegated or coordinated work, Codex is instructed to spawn only those custom agents, collect parent-facing coordination packets, relay material evidence to affected agents, and keep final integration and task state under parent control. Parallel delegation uses `codex-subagent-relay`; unavailable delegation falls back to sequential relay or direct execution while preserving input, output, and verification contracts. Runtime roles and task state are never inserted into the persistent manifest.
 
@@ -163,7 +177,7 @@ conda run -n harness python .agents/skills/harness/scripts/harness_relay_receipt
   --receipt RELAY_RECEIPT.json
 ```
 
-See [teamplay-contract.md](.agents/skills/harness/references/teamplay-contract.md), [runtime-plan.md](.agents/skills/harness/references/runtime-plan.md), [native-subagent-relay.md](.agents/skills/harness/references/native-subagent-relay.md), [runtime-observation.md](.agents/skills/harness/references/runtime-observation.md), [relay-receipt.md](.agents/skills/harness/references/relay-receipt.md), and [team-recipes.md](.agents/skills/harness/references/team-recipes.md). v7.5 keeps Codex as the execution engine while using canonical receiver handles for bounded control, optional versioned public/local observation profiles for evidence, required-task accounting, and hash-bound offline review lineage. Capability policies use a small canonical registry so validated names cannot silently select a different fallback path. Missing observation evidence lowers confidence without cancelling a valid handle execution; verified binding or terminal-outcome contradictions fail closed.
+See [teamplay-contract.md](.agents/skills/harness/references/teamplay-contract.md), [runtime-plan.md](.agents/skills/harness/references/runtime-plan.md), [native-subagent-relay.md](.agents/skills/harness/references/native-subagent-relay.md), [runtime-observation.md](.agents/skills/harness/references/runtime-observation.md), [relay-receipt.md](.agents/skills/harness/references/relay-receipt.md), and [team-recipes.md](.agents/skills/harness/references/team-recipes.md). v7.6 keeps Codex as the execution engine while using canonical receiver handles for bounded control, optional versioned public/local observation profiles for evidence, required-task accounting, and hash-bound offline review lineage. Capability policies use a small canonical registry so validated names cannot silently select a different fallback path. Missing observation evidence lowers confidence without cancelling a valid handle execution; verified binding or terminal-outcome contradictions fail closed.
 
 ## Design Rules
 
@@ -221,7 +235,7 @@ Use `--recover` only when status or a failed apply reports a pending journal. Us
 
 If Windows Conda raises `UnicodeEncodeError` while forwarding a child-process error, inspect transaction status before retrying and rerun the diagnostic with `conda run --no-capture-output -n harness python ...`. This keeps the required environment while exposing the original Harness result.
 
-Harness for Codex v7.5 keeps generation plan schema 3, manifest schema 6, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, and Evaluation Schema 2. Inventory Schema 4 and Runtime Receipt Schema 2 also remain unchanged. Operations Event Schema 1 is separate user-local evidence and is never inserted into the manifest. Evaluation records from v6.0 through v7.4 remain readable for descriptive inspection, while only v7.5 runs in complete, independent, plan-verified comparison pairs are eligible for concrete attribution. Runtime-plan, packet, relay, receipt, and operations validation cannot alter persistent topology. Clean Manifest Schema 4 or 5 installations require workspace re-analysis and a reviewed Schema 3 plan; any tracked legacy Harness target must be untracked manually before local-only conversion.
+Harness for Codex v7.6 keeps generation plan schema 3, manifest schema 6, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, and Evaluation Schema 2. Inventory Schema 4 and Runtime Receipt Schema 2 also remain unchanged. Operations Event Schema 1 is separate user-local evidence and is never inserted into the manifest. Evaluation records from v6.0 through v7.5 remain readable for descriptive inspection, while only v7.6 runs in complete, independent, plan-verified comparison pairs are eligible for concrete attribution. Runtime-plan, packet, relay, receipt, and operations validation cannot alter persistent topology. Clean Manifest Schema 4 or 5 installations require workspace re-analysis and a reviewed Schema 3 plan; any tracked legacy Harness target must be untracked manually before local-only conversion.
 
 ## Versioning
 

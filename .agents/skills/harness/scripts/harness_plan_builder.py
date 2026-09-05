@@ -161,6 +161,14 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
             harness_teamplay.require_exactly_once(
                 artifact["content"], harness_teamplay.PROJECT_BLOCK, path
             )
+            # Advisory routing refinement, not a new required artifact contract.
+            # Older Schema 3 plans and canonical v2 blocks remain valid.
+            if harness_teamplay.DIRECT_EXECUTION_GUIDANCE not in artifact["content"]:
+                artifact["content"] = artifact["content"].replace(
+                    harness_teamplay.PROJECT_BLOCK,
+                    harness_teamplay.DIRECT_EXECUTION_GUIDANCE + "\n\n" + harness_teamplay.PROJECT_BLOCK,
+                    1,
+                )
         elif path in agent_paths:
             if path in writer_paths:
                 content = _materialize_contract(

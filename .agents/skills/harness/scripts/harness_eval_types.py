@@ -126,6 +126,9 @@ PRIMARY_OUTCOMES = {
     "correction-count",
     "wall-time-ms",
     "output-tokens",
+    "input-tokens",
+    "cached-input-tokens",
+    "reasoning-output-tokens",
 }
 DIRECTIONS = {"higher-is-better", "lower-is-better"}
 
@@ -352,7 +355,7 @@ def _validate_comparison_plan_v1(value: Any) -> dict[str, Any]:
     metric = _require_enum(outcome["metric"], PRIMARY_OUTCOMES, "primaryOutcome.metric")
     direction = _require_enum(outcome["direction"], DIRECTIONS, "primaryOutcome.direction")
     expected_direction = "higher-is-better" if metric == "verification-pass-rate" else "lower-is-better"
-    if direction != expected_direction:
+    if metric != "cached-input-tokens" and direction != expected_direction:
         raise EvaluationError(f"primary outcome {metric} must use direction {expected_direction}")
     minimum = outcome["minimumEffect"]
     if isinstance(minimum, bool) or not isinstance(minimum, (int, float)) or minimum < 0 or not math.isfinite(minimum):
@@ -728,7 +731,7 @@ def _validate_comparison_record_v1(value: Any, *, verify_hash: bool = True) -> d
     metric = _require_enum(outcome["metric"], PRIMARY_OUTCOMES, "primaryOutcome.metric")
     direction_rule = _require_enum(outcome["directionRule"], DIRECTIONS, "primaryOutcome.directionRule")
     expected_direction = "higher-is-better" if metric == "verification-pass-rate" else "lower-is-better"
-    if direction_rule != expected_direction:
+    if metric != "cached-input-tokens" and direction_rule != expected_direction:
         raise EvaluationError(f"primary outcome {metric} must use direction {expected_direction}")
     for key in ("minimumEffect", "baselineValue", "treatmentValue", "delta", "completeness"):
         _require_number_or_null(outcome[key], f"primaryOutcome.{key}")

@@ -685,11 +685,38 @@ class Validator:
         return {
             "runtime": harness_state.RUNTIME,
             "valid": not self.errors,
+            "activation": activation_report(self.manifest, valid=not self.errors),
             "validationLayers": self.validation_layers,
             "externalCapabilities": external_capabilities,
             "errors": self.errors,
             "warnings": self.warnings,
         }
+
+
+def activation_report(manifest: dict, *, valid: bool) -> dict:
+    """Describe the validated activation contract without claiming runtime loading."""
+    if not valid:
+        return {
+            "status": "blocked",
+            "mode": "unknown",
+            "instructionFile": None,
+            "invocation": None,
+            "runtimeLoaded": "not-tested",
+            "nextStep": "Resolve structural validation errors before testing activation.",
+        }
+    mode = manifest["workspace"]["instructionMode"]
+    return {
+        "status": "configured",
+        "mode": mode,
+        "instructionFile": manifest.get("instructionFile"),
+        "invocation": "$project-harness",
+        "runtimeLoaded": "not-tested",
+        "nextStep": (
+            "In a fresh task, confirm the active managed root instruction selects $project-harness."
+            if mode == "managed-pointer"
+            else "Invoke $project-harness explicitly in the target workspace; no managed root pointer is required."
+        ),
+    }
 
 
 def main() -> int:

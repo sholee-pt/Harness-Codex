@@ -16,4 +16,12 @@ Records include `parserVersion` and `parserCompatibility`. Unknown payloads are 
 
 Task classification and execution configuration have their own provenance. Configured or assigned agents are not described as runtime-observed agents unless the event stream explicitly proves invocation.
 
+## Usage coverage in `view`
+
+`harness_eval.py view --run RUN_ID` adds a non-persistent `usageSummary` at the presentation boundary. It separates selected terminal-event measurements, reported-only values, unavailable counters, and conflicts. It preserves each measurement's fidelity and completeness; zero remains measured zero. A conflicted counter has no selected value.
+
+Terminal-event scope does not establish parent-only or all-child coverage. Child coverage and counter overlap remain unverified, account usage is not measured, and no total token or billing-cost value is computed. Cached-input and reasoning-output counters must not be added blindly to input/output counters. Generation, operations, evaluation, and unrelated runs are not a measured lifecycle total. The summary is not persisted and does not alter immutable records, Derived View fingerprints, or attribution eligibility.
+
+Comparison plans may separately select `input-tokens`, `cached-input-tokens`, `output-tokens`, or `reasoning-output-tokens`. These are reported counters, not account costs. Choose direction explicitly: more cache hits can be beneficial depending on the experiment. If either counter is missing or has incomplete metric coverage, both paired outcome values and the delta remain unavailable with unknown direction; each arm's original values remain inspectable in its view. Partial numbers cannot become complete evidence merely because both arms contain a number. Keep the same runtime stratum, coverage limitations, and correctness gate when comparing arms.
+
 Supported Codex reasoning-effort labels are `minimal`, `low`, `medium`, `high`, `xhigh`, and `unknown`. Model support is checked separately; `xhigh` is not universal.
