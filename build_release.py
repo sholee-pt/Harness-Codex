@@ -14,7 +14,7 @@ import stat
 import subprocess
 import tarfile
 
-ROOT_FILES = ("harness.py", "install.py", "install.sh", "environment.yml", "README.md", "LICENSE")
+ROOT_FILES = ("harness.py", "install.py", "install.sh", "install_harness.sh", "environment.yml", "README.md", "LICENSE")
 ROOT_DIRS = ("harness_cli", ".agents/skills/harness")
 
 
@@ -87,26 +87,31 @@ def build(root: Path, output: Path, *, allow_dirty: bool = False) -> dict:
             if not allow_dirty:
                 raise ValueError("Release payload does not match the source commit")
             commit = None
-    files["_release.json"] = (json.dumps({"version": version, "commit": commit, "branch": f"codex/v{version}"}, sort_keys=True, indent=2) + "\n").encode()
+    files["_release.json"] = (json.dumps({"runtime": "codex", "version": version, "commit": commit, "branch": f"codex/v{version}"}, sort_keys=True, indent=2) + "\n").encode()
     files["CONTENTS.sha256"] = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in sorted(files.items())).encode()
     output.mkdir(parents=True, exist_ok=True)
-    artifact = output / f"harness-{version}-linux.tar.gz"
+    artifact = output / f"harness-codex-{version}-linux.tar.gz"
     content = io.BytesIO()
     with tarfile.open(fileobj=content, mode="w", format=tarfile.PAX_FORMAT) as archive:
         for name, data in sorted(files.items()):
-            info = tarfile.TarInfo(f"harness-{version}/{name}")
+            info = tarfile.TarInfo(f"harness-codex-{version}/{name}")
             info.size = len(data)
-            info.mode = 0o755 if name in {"install.sh", "harness.py"} else 0o644
+            info.mode = 0o755 if name in {"install.sh", "install_harness.sh", "harness.py"} else 0o644
             info.mtime = 0
             archive.addfile(info, io.BytesIO(data))
     with artifact.open("xb") as stream:
         with gzip.GzipFile(fileobj=stream, filename="", mode="wb", mtime=0) as compressed:
             compressed.write(content.getvalue())
     digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    bootstrap = output / "install_harness.sh"
+    with bootstrap.open("xb") as stream:
+        stream.write(files["install_harness.sh"])
+    bootstrap.chmod(0o755)
+    bootstrap_digest = hashlib.sha256(files["install_harness.sh"]).hexdigest()
     with (output / "SHA256SUMS").open("x", encoding="utf-8", newline="\n") as stream:
-        stream.write(f"{digest}  {artifact.name}\n")
-    report = {"version": version, "commit": commit, "developmentBuild": commit is None,
-              "artifact": str(artifact), "sha256": digest, "files": len(files)}
+        stream.write(f"{digest}  {artifact.name}\n{bootstrap_digest}  {bootstrap.name}\n")
+    report = {"runtime": "codex", "version": version, "commit": commit, "developmentBuild": commit is None,
+              "artifact": str(artifact), "sha256": digest, "bootstrapSha256": bootstrap_digest, "files": len(files)}
     with (output / "build.json").open("x", encoding="utf-8", newline="\n") as stream:
         stream.write(json.dumps(report, indent=2) + "\n")
     return report

@@ -1,21 +1,18 @@
-Harness for Codex v9.2 adds an installed Linux `harness` command, so project setup and everyday work no longer require typing skill names or helper-script paths.
+Harness for Codex v9.3 adds a downloadable Linux bootstrap and explicit runtime selection while retaining v9.0/v9.1/v9.2 project compatibility.
+
+- Download `install_harness.sh` using authenticated curl or the signed-in release page, then run `bash install_harness.sh --runtime codex`. GitHub CLI and manually unpacking a release archive are not required.
+- The bootstrap selects only numeric Codex version branches, fetches an immutable source commit into temporary tool storage, validates the tree, and invokes the safe installer. Linux requires Git, tar and Anaconda/Miniconda; the dedicated `harness` environment is created if absent.
+- Private access uses an existing Git credential provider, SSH key, or `GITHUB_TOKEN`/`GH_TOKEN`. `git config user.name` and `user.email` are author metadata, not authentication. The initial private curl download needs a real HTTPS credential too; an SSH-only setup uses the documented Git download route.
+- `harness --runtime codex ...` is supported. Claude integration is planned as a separate adapter/channel under the same command. `--runtime claude` explicitly exits before preparation or changes; this release does not implement Claude execution.
+- Codex archives are named `harness-codex-9.3-linux.tar.gz`. The standalone script, checksums and source-bound build metadata are attached. Project schemas, Codex storage and old metadata remain compatible.
+
+After installation:
 
 ```bash
-sha256sum --check SHA256SUMS
-tar -xzf harness-9.2-linux.tar.gz
-bash harness-9.2/install.sh
 export PATH="$HOME/.local/bin:$PATH"
-harness --version
-harness init --project /path/to/project --goal "Describe your project"
+harness init --project /path/to/project --goal "Describe your work"
 harness start --project /path/to/project
+harness update --check
 ```
 
-- `init` installs the generator and opens native interactive Codex with the appropriate skill selected. `start` opens a working session with the generated project harness selected, including explicit-skill projects.
-- `doctor`, `--help`, `--version` and installation dry-runs remain offline. `--install-only` installs without a model call.
-- `update --check` inspects numeric Codex version branches. Managed installations check once per day before interactive sessions and apply same-major forward updates by default. Choose `--auto-update check` or `off` during installation, or `--no-update-check` for one session. Major upgrades require explicit update.
-- Tool releases use separate user-local storage, file integrity receipts and atomic activation. Upstream operations never change project Git metadata or automatically regenerate project artifacts. Existing user files and edited managed files remain protected.
-- Existing v9.0/v9.1 artifacts and all project schemas remain compatible. The original installer and direct skill invocation remain supported.
-
-Anaconda or Miniconda and an authenticated Codex CLI are prerequisites. The installer prepares the dedicated `harness` Python environment; the archive is not a bundled model or Codex binary. Private-repository downloads and updates require existing GitHub access. Codex's model, sandbox, approval and hook-trust settings remain in effect.
-
-Release publication is gated on Linux and Windows validation, including previous-release upgrades, CLI tests, the pinned parser oracle and a real Linux archive/bootstrap/launcher check. CLI dispatch tests use a controlled fake Codex process; these checks do not establish live model quality, agent discovery success, token savings or a hard Git authorization gate.
+Codex CLI must be installed and authenticated separately. Native permission/model settings remain in effect. Publication is gated by Linux/Windows tests, previous artifact and CLI upgrades, the parser oracle, package installation and the real authenticated bootstrap. These checks do not prove live agent quality, token savings, or a hard Git authorization gate.

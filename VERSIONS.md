@@ -6,6 +6,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 
 | Branch | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
+| `codex/v9.3` | Harness for Codex v9.3 | Schema 3 | Schema 7 | Schema 2 | Downloadable private-repository bootstrap, reusable Git authentication and explicit runtime selection |
 | `codex/v9.2` | Harness for Codex v9.2 | Schema 3 | Schema 7 | Schema 2 | Standalone Linux CLI, project initialization and session launch, managed branch updates and release packaging |
 | `codex/v9.1` | Harness for Codex v9.1 | Schema 3 | Schema 7 | Schema 2 | Installer directory-mode preservation, compatible v9.0 updates, nonmandatory Git authorization advice |
 | `codex/v1` | Harness for Codex v1.0 | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
@@ -567,3 +568,13 @@ This additive release introduces the standalone `harness` command while retainin
 - Builds a deterministic Linux distribution archive with checksums and exercises installation, dispatch, update conflicts, previous-release compatibility and rollback independently of live model quality.
 - Existing directory modes already changed by v9.0 are not reconstructed: v9.2, like v9.1, preserves the current modes.
 - Claims no measured model improvement, automatic topology evolution, or hard Git approval enforcement.
+
+## Harness for Codex v9.3
+
+This additive release preserves v9.0/v9.1/v9.2 artifacts, schemas and existing Codex tool storage.
+
+- Adds a downloadable Linux `install_harness.sh` without requiring GitHub CLI or manual archive steps. It resolves a numeric Codex branch, fetches an immutable commit and delegates installation to the existing safe installer.
+- Reuses actual Git credential providers, SSH keys or transient environment tokens. Commit author name/email never grant repository access. Private bootstrap download still needs authentication.
+- Adds explicit `--runtime codex`. The future Claude mode is recognized but refused before changes until its adapter and isolated state contracts are implemented.
+- Labels new archives and release metadata with their runtime, while retaining the legacy Codex metadata interpretation.
+- Publishes the standalone bootstrap with checksums and exercises authentication failure, runtime isolation and old-CLI upgrade compatibility. No live model quality or token-saving claim is added.

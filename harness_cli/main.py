@@ -34,7 +34,9 @@ def default_data_root() -> Path:
 
 def build_parser(source_root: Path) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="harness", description="Install, configure and use a native Codex project harness.")
-    parser.add_argument("--version", "-V", action="version", version=f"Harness for Codex {version(source_root)}")
+    parser.add_argument("--version", "-V", action="store_true", help="Show the installed Harness version and exit.")
+    parser.add_argument("--runtime", choices=("codex", "claude"), default="codex",
+                        help="Runtime provider (default: codex; Claude installation is not implemented yet).")
     parser.add_argument("--no-update-check", action="store_true", help="Skip automatic upstream checks for this invocation.")
     commands = parser.add_subparsers(dest="command")
     register_project_commands(commands)
@@ -52,6 +54,9 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     update.add_argument("--branch", help="Select a specific codex/vN[.M] branch.")
     update.add_argument("--repository", help="Choose HTTPS or SSH authentication transport for the same repository.")
     update.add_argument("--timeout", type=float, default=20)
+    for command in commands.choices.values():
+        command.add_argument("--runtime", choices=("codex", "claude"), default=argparse.SUPPRESS,
+                             help="Runtime provider (Codex supported; Claude not implemented yet).")
     return parser
 
 
@@ -103,6 +108,14 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser(source_root)
     args = parser.parse_args(argv)
+    if args.runtime != "codex":
+        print("harness: Claude runtime installation is not implemented in this tool. "
+              "Use --runtime codex; Claude-native editions remain on the separate claude/* repository branches.",
+              file=sys.stderr)
+        return 2
+    if args.version:
+        print(f"Harness for Codex {version(source_root)}")
+        parser.exit(0)
     if args.command is None:
         parser.print_help()
         return 0

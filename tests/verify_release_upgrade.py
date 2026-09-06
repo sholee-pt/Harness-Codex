@@ -1,4 +1,4 @@
-"""Reproduce a real v7.6, v8.0, v8.1, v9.0, or v9.1 install -> v9.2 update.
+"""Reproduce a real v7.6, v8.0, v8.1, v9.0, v9.1, or v9.2 install -> v9.3 update.
 
 Run with the harness Conda Python. No network or live Codex is used.
 """
@@ -38,7 +38,7 @@ def worker(source, root, stage):
 
     draft = test_runtime_teamplay.DeterministicPlanBuilderTests()._draft('coordinated-cross-contract-plan.json')
     if stage == 'baseline':
-        assert harness_metadata.HARNESS_VERSION in {'7.6', '8.0', '8.1', '9.0', '9.1'}
+        assert harness_metadata.HARNESS_VERSION in {'7.6', '8.0', '8.1', '9.0', '9.1', '9.2'}
         shutil.copytree(source / 'tests/fixtures/coordinated-cross-contract', root, dirs_exist_ok=True)
         plan = harness_plan_builder.materialize_plan(draft, root=root)
         harness_apply.apply_application(harness_apply.build_application(root, plan))
@@ -46,7 +46,7 @@ def worker(source, root, stage):
         assert report['valid'], report['errors']
         (root.parent / (root.name + '-baseline-plan.json')).write_text(json.dumps(plan), encoding='utf-8')
         return {'generatorVersion': harness_metadata.HARNESS_VERSION, 'valid': report['valid'], 'instructionSizes': instruction_sizes(root), 'agentCount': len(plan['topology']['agents'])}
-    assert harness_metadata.HARNESS_VERSION == '9.2'
+    assert harness_metadata.HARNESS_VERSION == '9.3'
     before = snapshot(root)
     legacy = validate_harness.Validator(root).run()
     doctor = harness_doctor.diagnose(root)
@@ -62,12 +62,12 @@ def worker(source, root, stage):
         raise AssertionError('A modified installation must not be overwritten')
     original_manifest = json.loads((root / '.harness/manifest.json').read_text(encoding='utf-8'))
     original_version = original_manifest['generator']['version']
-    expected_status = 'valid' if original_version in {'9.0', '9.1'} else 'upgrade-required'
+    expected_status = 'valid' if original_version in {'9.0', '9.1', '9.2'} else 'upgrade-required'
     assert legacy['installationStatus'] == expected_status and legacy['integrityValid'], legacy
     assert doctor['installationStatus'] == expected_status, doctor
     previous_plan_accepted = None
     runtime_compatible = None
-    if original_version in {'9.0', '9.1'}:
+    if original_version in {'9.0', '9.1', '9.2'}:
         # The unchanged plan was produced by the actual old source subprocess.
         # The new advisory is optional, so its absence cannot invalidate it.
         import harness_git_policy

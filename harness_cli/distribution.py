@@ -34,8 +34,15 @@ MAX_FILE_BYTES = 16 * 1024 * 1024
 MAX_TREE_BYTES = 96 * 1024 * 1024
 METADATA = ".agents/skills/harness/scripts/harness_metadata.py"
 REQUIRED = frozenset({"harness.py", "install.py", "harness_cli/__init__.py", "harness_cli/main.py", "harness_cli/project.py", "harness_cli/distribution.py", ".agents/skills/harness/SKILL.md", METADATA})
-TOP_FILES = frozenset({"harness.py", "install.py", "install.sh", "environment.yml", "README.md", "LICENSE", "_release.json"})
+TOP_FILES = frozenset({"harness.py", "install.py", "install.sh", "install_harness.sh", "environment.yml", "README.md", "LICENSE", "_release.json"})
 OWNER = {"schema": 1, "tool": "sholee-pt/Harness"}
+TOKEN_HELPER = ('!f() { if test "$1" != get; then return; fi; p=; h=; r=; '
+                'while IFS="=" read -r k v; do case "$k" in '
+                'protocol) p="$v";; host) h="$v";; path) r="$v";; esac; done; '
+                'if test "$p" = https && test "$h" = github.com '
+                '&& test "$r" = sholee-pt/Harness.git; then '
+                'printf "username=x-access-token\\npassword=%s\\n" "$HARNESS_GITHUB_TOKEN"; '
+                'fi; }; f')
 
 
 class DistributionError(ValueError):
@@ -198,7 +205,7 @@ def _source_info(snapshot: dict[str, bytes]) -> tuple[str, str | None]:
         commit = None
         if "_release.json" in snapshot:
             release = json.loads(snapshot["_release.json"])
-            if not isinstance(release, dict) or release.get("version") != version:
+            if not isinstance(release, dict) or release.get("version") != version or release.get("runtime", "codex") != "codex":
                 raise ValueError("release metadata version mismatch")
             commit = release.get("commit")
             if commit is not None and (not isinstance(commit, str) or not COMMIT_RE.fullmatch(commit)):
@@ -207,7 +214,7 @@ def _source_info(snapshot: dict[str, bytes]) -> tuple[str, str | None]:
                 raise ValueError("release metadata branch mismatch")
         return version, commit
     except (ValueError, TypeError, SyntaxError, UnicodeError) as exc:
-        raise DistributionError("source version, release metadata, or Python syntax is invalid") from exc
+        raise DistributionError("source version, runtime, release metadata, or Python syntax is invalid") from exc
 
 
 def _launcher_source() -> str:
@@ -303,6 +310,8 @@ def installed_status(data_root) -> dict:
     if active.get("schema") != 1 or not isinstance(active.get("releaseId"), str) or not RELEASE_RE.fullmatch(active["releaseId"]):
         raise DistributionError("invalid active release metadata")
     _version(active.get("version"))
+    if active.get("runtime", "codex") != "codex":
+        raise DistributionError("this installation belongs to an unsupported runtime")
     _repository(active.get("repository"))
     if active.get("branch") is not None:
         _branch(active["branch"])
@@ -312,7 +321,9 @@ def installed_status(data_root) -> dict:
     receipt = _read_json(data_root / "receipts" / (active["releaseId"] + ".json"))
     snapshot = _snapshot(source, managed=True)
     hashes = _hashes(snapshot)
-    if receipt.get("schema") != 1 or receipt.get("treeHash") != active.get("treeHash") or receipt.get("files") != hashes or active.get("treeHash") != _tree_hash(hashes):
+    if (receipt.get("runtime", "codex") != "codex" or receipt.get("schema") != 1
+            or receipt.get("treeHash") != active.get("treeHash") or receipt.get("files") != hashes
+            or active.get("treeHash") != _tree_hash(hashes)):
         raise DistributionError("managed release contains local changes; refusing to overwrite them")
     version, declared_commit = _source_info(snapshot)
     expected_id = active["commit"] or "content-" + active["treeHash"]
@@ -338,13 +349,16 @@ def _activate(snapshot: dict[str, bytes], data_root: Path, active: dict) -> dict
     active["treeHash"] = _tree_hash(hashes)
     release_id = active.get("commit") or "content-" + active["treeHash"]
     active["releaseId"] = release_id
+    active["runtime"] = "codex"
     target = _path(data_root / "releases" / release_id)
     receipt = _path(data_root / "receipts" / (release_id + ".json"))
     created = False
-    receipt_value = {"schema": 1, "files": hashes, "treeHash": active["treeHash"]}
+    receipt_value = {"schema": 1, "runtime": "codex", "files": hashes, "treeHash": active["treeHash"]}
     try:
         if target.exists():
-            if not receipt.exists() or _read_json(receipt) != receipt_value or _hashes(_snapshot(target, managed=True)) != hashes:
+            existing_receipt = _read_json(receipt) if receipt.exists() else {}
+            existing_receipt.setdefault("runtime", "codex")
+            if existing_receipt != receipt_value or _hashes(_snapshot(target, managed=True)) != hashes:
                 raise DistributionError("existing release is unowned, changed, or inconsistent")
         else:
             if receipt.exists():
@@ -356,7 +370,7 @@ def _activate(snapshot: dict[str, bytes], data_root: Path, active: dict) -> dict
                     path = staged.joinpath(*PurePosixPath(name).parts)
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(data)
-                    path.chmod(0o755 if name == "install.sh" else 0o644)
+                    path.chmod(0o755 if name in {"install.sh", "install_harness.sh"} else 0o644)
                 os.replace(staged, target)
                 created = True
             _write_json(receipt, receipt_value)
@@ -477,10 +491,33 @@ def _git(arguments: list[str], *, timeout: int, git_executable: str = "git", all
     environment = dict(os.environ)
     environment["GIT_TERMINAL_PROMPT"] = "0"
     environment["GIT_OPTIONAL_LOCKS"] = "0"
-    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"):
-        environment.pop(key, None)
+    environment["GCM_INTERACTIVE"] = "Never"
+    # Match bootstrap isolation for every source-provenance and download call.
+    # Ordinary Git config files, HOME and SSH identity/command selection remain
+    # available; ambient repository and command-line config injections do not.
+    context_keys = {"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",
+                    "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+                    "GIT_NAMESPACE", "GIT_SHALLOW_FILE", "GIT_REPLACE_REF_BASE",
+                    "GIT_EXEC_PATH", "GIT_CONFIG", "GIT_TEMPLATE_DIR", "GIT_ASKPASS"}
+    for key in tuple(environment):
+        if key in context_keys or key.startswith(("GIT_CONFIG_", "GIT_TRACE", "GIT_REDIRECT_", "GIT_ATTR_")):
+            environment.pop(key, None)
+    authentication = []
+    # Only these fixed-repository HTTPS operations receive environment auth.
+    # The helper string contains no secret and ignores Git's store/erase actions.
+    if DEFAULT_REPOSITORY in arguments and ("ls-remote" in arguments or "fetch" in arguments):
+        token = environment.get("GITHUB_TOKEN") or environment.get("GH_TOKEN")
+        if token:
+            if any(ord(character) < 32 or ord(character) == 127 for character in token):
+                raise DistributionError("GitHub token contains unsupported control characters")
+            environment["HARNESS_GITHUB_TOKEN"] = token
+            for key in tuple(environment):
+                if key.startswith("GIT_TRACE") or key in {"GIT_CURL_VERBOSE", "GCM_TRACE", "GCM_TRACE_SECRETS"}:
+                    environment.pop(key, None)
+            authentication = ["-c", "credential.helper=", "-c", "credential.useHttpPath=true",
+                              "-c", "credential.helper=" + TOKEN_HELPER]
     try:
-        result = subprocess.run([git_executable, "-c", "protocol.file.allow=never", *arguments], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment, timeout=timeout, check=False)
+        result = subprocess.run([git_executable, "-c", "protocol.file.allow=never", *authentication, *arguments], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment, timeout=timeout, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise DistributionError("GitHub update check or download failed; check Git availability, authentication, and network access") from exc
     if result.returncode and not allow_failure:

@@ -114,6 +114,31 @@ class DistributionTests(unittest.TestCase):
         self.assertEqual(state["releaseId"], "content-" + state["treeHash"])
         self.assertEqual(state["auto_update"], "off")
 
+    def test_explicit_foreign_runtime_metadata_is_rejected_before_install(self):
+        metadata = self.source / "_release.json"
+        value = json.loads(metadata.read_text())
+        value["runtime"] = "claude"
+        metadata.write_text(json.dumps(value))
+        with self.assertRaisesRegex(dist.DistributionError, "runtime"):
+            self.install()
+        self.assertFalse(self.data.exists())
+        value["runtime"] = "codex"
+        metadata.write_text(json.dumps(value))
+        installed = self.install()
+        self.assertEqual(installed["runtime"], "codex")
+        receipt = json.loads((self.data / "receipts" / (A + ".json")).read_text())
+        self.assertEqual(receipt["runtime"], "codex")
+
+    def test_legacy_runtime_absence_in_active_and_receipt_stays_compatible(self):
+        first = self.install()
+        for path in (self.data / "active.json", self.data / "receipts" / (A + ".json")):
+            value = json.loads(path.read_text())
+            value.pop("runtime")
+            path.write_text(json.dumps(value))
+        self.assertEqual(dist.installed_status(self.data)["commit"], A)
+        self.assertEqual(self.install()["runtime"], "codex")
+        self.assertEqual(first["treeHash"], dist.installed_status(self.data)["treeHash"])
+
     def test_repeat_install_keeps_release_and_launcher(self):
         first = self.install()
         source_before = files(Path(first["release_root"]))
@@ -384,6 +409,94 @@ class DistributionTests(unittest.TestCase):
         self.assertNotIn("GIT_WORK_TREE", environment)
         self.assertNotIn("GIT_INDEX_FILE", environment)
         self.assertEqual(environment["GIT_TERMINAL_PROMPT"], "0")
+
+    def test_all_git_calls_strip_ambient_config_and_context_but_keep_ssh_and_home(self):
+        injected = {name: "injected" for name in (
+            "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_SHALLOW_FILE", "GIT_REPLACE_REF_BASE",
+            "GIT_EXEC_PATH", "GIT_CONFIG", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_PARAMETERS",
+            "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_TRACE", "GIT_TRACE2_EVENT",
+            "GIT_REDIRECT_STDERR", "GIT_TEMPLATE_DIR", "GIT_ATTR_NOSYSTEM", "GIT_ASKPASS")}
+        preserved = {"HOME": str(self.base / "user-home"), "GIT_SSH_COMMAND": "ssh -i selected-key",
+                     "GIT_SSH": "selected-ssh", "SSH_AUTH_SOCK": "selected-agent-socket"}
+        result = subprocess.CompletedProcess(["git"], 0, b"", b"")
+        for arguments in (["-C", "source", "rev-parse", "HEAD^{commit}"],
+                          ["-C", "source", "archive", "HEAD"],
+                          ["ls-remote", dist.DEFAULT_REPOSITORY],
+                          ["--git-dir", "download.git", "fetch", "--no-tags", dist.DEFAULT_REPOSITORY, B]):
+            with self.subTest(arguments=arguments), mock.patch.dict(os.environ, {**injected, **preserved, "GITHUB_TOKEN": "", "GH_TOKEN": ""}), mock.patch.object(dist.subprocess, "run", return_value=result) as run:
+                dist._git(arguments, timeout=1)
+                environment = run.call_args.kwargs["env"]
+                for name in injected:
+                    self.assertNotIn(name, environment)
+                for name, value in preserved.items():
+                    self.assertEqual(environment[name], value)
+                self.assertFalse(any("credential.helper=" in part for part in run.call_args.args[0]))
+                self.assertEqual(environment["GCM_INTERACTIVE"], "Never")
+
+    @unittest.skipUnless(shutil.which("git"), "Git required for native user config preservation")
+    def test_native_global_credential_and_ssh_settings_remain_readable(self):
+        home = self.base / "native-config-home"
+        home.mkdir()
+        (home / ".gitconfig").write_text('[credential]\n\thelper = preserved-native-helper\n[core]\n\tsshCommand = ssh -i preserved-key\n')
+        override = self.base / "injected-config"
+        override.write_text('[credential]\n\thelper = wrong-injected-helper\n')
+        before = files(home)
+        with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home), "GIT_CONFIG_GLOBAL": str(override),
+                                         "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.worktree",
+                                         "GIT_CONFIG_VALUE_0": str(self.base / "wrong-project")}):
+            helper = dist._git(["config", "--global", "--get", "credential.helper"], timeout=10)
+            ssh = dist._git(["config", "--global", "--get", "core.sshCommand"], timeout=10)
+        self.assertEqual(helper.stdout.strip(), b"preserved-native-helper")
+        self.assertEqual(ssh.stdout.strip(), b"ssh -i preserved-key")
+        self.assertEqual(before, files(home))
+
+    def test_https_token_is_environment_only_and_github_token_has_priority(self):
+        result = subprocess.CompletedProcess(["git"], 0, b"", b"")
+        selected = "header.payload-with.dots-and_hyphens"
+        with mock.patch.dict(os.environ, {"GITHUB_TOKEN": selected, "GH_TOKEN": "lower-priority", "GIT_TRACE_CURL": "/tmp/unsafe-trace", "GIT_TRACE_REDACT": "0"}), mock.patch.object(dist.subprocess, "run", return_value=result) as run:
+            dist._git(["ls-remote", "--heads", dist.DEFAULT_REPOSITORY, "refs/heads/codex/v*"], timeout=1)
+        argv = run.call_args.args[0]
+        environment = run.call_args.kwargs["env"]
+        self.assertNotIn(selected, " ".join(argv))
+        self.assertIn("credential.helper=", argv)
+        self.assertIn("credential.helper=" + dist.TOKEN_HELPER, argv)
+        self.assertIn("credential.useHttpPath=true", argv)
+        self.assertEqual(environment["HARNESS_GITHUB_TOKEN"], selected)
+        self.assertNotIn("GIT_TRACE_CURL", environment)
+        self.assertNotIn("GIT_TRACE_REDACT", environment)
+
+    def test_gh_token_fallback_and_no_override_for_native_auth_or_ssh(self):
+        result = subprocess.CompletedProcess(["git"], 0, b"", b"")
+        with mock.patch.dict(os.environ, {"GITHUB_TOKEN": "", "GH_TOKEN": "fallback.token"}), mock.patch.object(dist.subprocess, "run", return_value=result) as run:
+            dist._git(["ls-remote", dist.DEFAULT_REPOSITORY], timeout=1)
+            self.assertEqual(run.call_args.kwargs["env"]["HARNESS_GITHUB_TOKEN"], "fallback.token")
+            dist._git(["ls-remote", "git@github.com:sholee-pt/Harness.git"], timeout=1)
+            self.assertFalse(any("credential.helper=" in part for part in run.call_args.args[0]))
+            dist._git(["-C", "source", "rev-parse", "HEAD"], timeout=1)
+            self.assertFalse(any("credential.helper=" in part for part in run.call_args.args[0]))
+        with mock.patch.dict(os.environ, {"GITHUB_TOKEN": "", "GH_TOKEN": ""}), mock.patch.object(dist.subprocess, "run", return_value=result) as run:
+            dist._git(["ls-remote", dist.DEFAULT_REPOSITORY], timeout=1)
+            self.assertFalse(any("credential.helper=" in part for part in run.call_args.args[0]))
+
+    def test_control_characters_in_token_are_refused_without_subprocess(self):
+        for token in ("bad\ntoken", "bad\rtoken", "bad\ttoken", "bad\x7ftoken"):
+            with self.subTest(token=repr(token)), mock.patch.dict(os.environ, {"GITHUB_TOKEN": token}), mock.patch.object(dist.subprocess, "run") as run:
+                with self.assertRaisesRegex(dist.DistributionError, "control characters"):
+                    dist._git(["ls-remote", dist.DEFAULT_REPOSITORY], timeout=1)
+                run.assert_not_called()
+
+    @unittest.skipUnless(shutil.which("git"), "Git required for offline credential-helper protocol test")
+    def test_token_helper_answers_only_exact_https_repository_and_does_not_store(self):
+        environment = dict(os.environ, HARNESS_GITHUB_TOKEN="test.jwt-token.value", GIT_TERMINAL_PROMPT="0")
+        command = ["git", "-c", "credential.helper=", "-c", "credential.useHttpPath=true", "-c", "credential.helper=" + dist.TOKEN_HELPER, "credential", "fill"]
+        for protocol, host, path, expected in (("https", "github.com", "sholee-pt/Harness.git", True), ("https", "other.example", "sholee-pt/Harness.git", False), ("http", "github.com", "sholee-pt/Harness.git", False), ("https", "github.com", "another/project.git", False)):
+            with self.subTest(protocol=protocol, host=host, path=path):
+                result = subprocess.run(command, input=f"protocol={protocol}\nhost={host}\npath={path}\n\n", env=environment, capture_output=True, text=True)
+                self.assertEqual(result.returncode == 0, expected, result.stderr)
+                self.assertEqual("password=test.jwt-token.value" in result.stdout, expected)
+        # This helper intentionally implements no storage branch or token file.
+        self.assertIn('if test "$1" != get; then return;', dist.TOKEN_HELPER)
 
     def test_concurrent_install_lock_is_preserved(self):
         self.install()

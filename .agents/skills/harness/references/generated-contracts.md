@@ -1,8 +1,8 @@
 # Generated artifact contracts
 
-Harness for Codex v9.2 preserves Authoring Contract 3 drafts, Artifact Contract 2 plans, and Manifest Schema 7 installations from v9.0. The project-local workspace contract remains unchanged. Plan Schema 3, Transaction Schema 2, runtime-plan Schema 1, and Evaluation Schema 2 also remain unchanged.
+Harness for Codex v9.3 preserves Authoring Contract 3 drafts, Artifact Contract 2 plans, and Manifest Schema 7 installations from v9.0. The project-local workspace contract remains unchanged. Plan Schema 3, Transaction Schema 2, runtime-plan Schema 1, and Evaluation Schema 2 also remain unchanged.
 
-Apply validates the incoming plan and independently classifies the existing installation. Both v9.0 and v9.2 are explicitly compatible with Schema 7, `project-local` scope, Artifact Contract 2, and `not-managed` Git protection with no patterns. Recognized v7/v8 installs require a reviewed workspace upgrade; future version compatibility is never inferred from ordering or prefixes.
+Apply validates the incoming plan and independently classifies the existing installation. v9.0, v9.1, v9.2 and v9.3 are explicitly compatible with Schema 7, `project-local` scope, Artifact Contract 2, and `not-managed` Git protection with no patterns. Recognized v7/v8 installs require a reviewed workspace upgrade; future version compatibility is never inferred from ordering or prefixes.
 
 Git authorization advice is added during new materialization outside the required canonical blocks. Existing v9.0 plans and installations remain valid without it. Updating the installer or generator does not automatically update project artifacts or establish runtime authorization enforcement; see [git-authorization.md](git-authorization.md).
 
@@ -33,7 +33,7 @@ The validator and doctor report `installationStatus`, `valid`, `integrityValid`,
 
 | Status | Meaning | CLI exit |
 | --- | --- | --- |
-| `valid` | All checks pass for a compatible v9.0/v9.2 Schema 7 / project-local / Artifact Contract 2 installation | 0 |
+| `valid` | All checks pass for a compatible v9.0/v9.1/v9.2/v9.3 Schema 7 / project-local / Artifact Contract 2 installation | 0 |
 | `upgrade-required` | Recognized v7.0–v7.6 Schema 6 without an artifact marker, or v8.0/v8.1 Schema 6 with Artifact Contract 1, passes legacy integrity checks | 2 |
 | `invalid` | Corruption, mismatched hashes/evidence, pending transactions, unsupported combinations, or incomplete required contracts | 1 |
 
@@ -54,8 +54,8 @@ conda run -n harness python tests/frontmatter_differential.py --seed 20260905 --
 
 The report records Python/oracle versions, corpus/generator/input hashes, accepted/rejected counts, mismatches, and surrogate code points. Agreement is limited to the tested accepted subset; it does not establish complete YAML or Unicode compatibility. CI runs this oracle independently on Windows and Linux.
 
-For real upgrade reproduction, extract v7.6 commit `d91f0a5ae261d44c86f4082ba5098d55b7e5cc4c`, v8.0 commit `ed2972555562c736496e8d90463f52efabf05305`, v8.1 commit `2a920f9555df7270d8947b9e926654746aeb9247`, or v9.0 commit `a1e12dadb1805e23df4c283eaa7a613e6b1b1b91` to a baseline directory and run `conda run -n harness python tests/verify_release_upgrade.py --baseline BASELINE_SOURCE --output UPGRADE_REPORT.json` from v9.2. The old generator creates a real installation. Current tools verify read-only `upgrade-required` diagnosis for v7/v8 or `valid` compatibility for v9.0, clean update, repeated no-op, external-edit preservation, and static instruction-size deltas. Source trees must include their test fixtures; no remote is contacted.
+For real upgrade reproduction, extract v7.6 commit `d91f0a5ae261d44c86f4082ba5098d55b7e5cc4c`, v8.0 commit `ed2972555562c736496e8d90463f52efabf05305`, v8.1 commit `2a920f9555df7270d8947b9e926654746aeb9247`, or v9.0 commit `a1e12dadb1805e23df4c283eaa7a613e6b1b1b91` to a baseline directory and run `conda run -n harness python tests/verify_release_upgrade.py --baseline BASELINE_SOURCE --output UPGRADE_REPORT.json` from v9.3. The old generator creates a real installation. Current tools verify read-only `upgrade-required` diagnosis for v7/v8 or `valid` compatibility for v9.0, clean update, repeated no-op, external-edit preservation, and static instruction-size deltas. Source trees must include their test fixtures; no remote is contacted.
 
 Instruction characters and UTF-8 bytes are static measurements. Loaded context, token counters, repeated work, latency, and billing require separate execution observations with explicit coverage. An unchanged agent count proves neither unchanged cost nor token savings. This release adds no agents by default and claims no measured live efficiency improvement or scRAE benchmark result.
 
-For independent installer permission comparison, use `conda run -n harness python tests/verify_installer_permissions.py --baseline V90_SOURCE --candidate . --output PERMISSIONS_REPORT.json`. On POSIX this uses actual CLIs to reproduce the v9.0 directory-mode defect, verify the v9.2 ordinary update, and update an actual v9.0 generator installation with v9.2. Source hashes, fixture-only changes, dry-run/no-op preservation and user-file metadata are recorded. Windows explicitly skips this POSIX claim; it does not substitute mode bits for ACL verification. CI runs this comparison with the same pinned v9.0 source.
+For independent installer permission comparison, use `conda run -n harness python tests/verify_installer_permissions.py --baseline V90_SOURCE --candidate . --output PERMISSIONS_REPORT.json`. On POSIX this uses actual CLIs to reproduce the v9.0 directory-mode defect, verify the v9.3 ordinary update, and update an actual v9.0 generator installation with v9.3. Source hashes, fixture-only changes, dry-run/no-op preservation and user-file metadata are recorded. Windows explicitly skips this POSIX claim; it does not substitute mode bits for ACL verification. CI runs this comparison with the same pinned v9.0 source.

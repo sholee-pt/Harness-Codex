@@ -3,8 +3,24 @@
 set -euo pipefail
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  printf '%s\n' 'Usage: bash install.sh [--bin-dir PATH] [--data-dir PATH] [--branch codex/vN.M] [--repository URL] [--auto-update compatible|check|off]' 'Requires Anaconda or Miniconda. Creates the dedicated harness environment if absent.' 'Installs the harness command for the current user; no sudo or shell profile edits.'
+  printf '%s\n' 'Usage: bash install.sh [--runtime codex] [--bin-dir PATH] [--data-dir PATH] [--branch codex/vN.M] [--repository URL] [--auto-update compatible|check|off]' 'Requires Anaconda or Miniconda. Creates the dedicated harness environment if absent.' 'Installs the harness command for the current user; no sudo or shell profile edits.'
   exit 0
+fi
+runtime=codex
+runtime_value_pending=false
+for argument in "$@"; do
+  if [[ "$runtime_value_pending" == true ]]; then
+    runtime=$argument
+    runtime_value_pending=false
+  elif [[ "$argument" == --runtime ]]; then
+    runtime_value_pending=true
+  elif [[ "$argument" == --runtime=* ]]; then
+    runtime=${argument#*=}
+  fi
+done
+if [[ "$runtime_value_pending" == true || "$runtime" != codex ]]; then
+  printf '%s\n' 'Only the Codex runtime is supported. Claude integration is not implemented; no environment was prepared.' >&2
+  exit 1
 fi
 conda_command="${CONDA_EXE:-}"
 if [[ -z "$conda_command" ]]; then

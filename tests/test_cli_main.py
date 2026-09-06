@@ -21,6 +21,32 @@ from harness_cli import main as cli
 
 
 class CliRoutingTests(unittest.TestCase):
+    def test_runtime_defaults_to_codex_and_is_supported_before_or_after_commands(self):
+        parser = cli.build_parser(REPO)
+        for arguments in (["start"], ["--runtime", "codex", "start"], ["start", "--runtime", "codex"]):
+            self.assertEqual(parser.parse_args(arguments).runtime, "codex")
+        for command in ("init", "configure", "start", "doctor", "install", "update"):
+            self.assertEqual(parser.parse_args([command, "--runtime", "codex"]).runtime, "codex")
+
+    def test_claude_runtime_is_rejected_before_environment_network_or_writes(self):
+        for command in ("init", "configure", "start", "doctor", "install", "update"):
+            for arguments in (["--runtime", "claude", command], [command, "--runtime", "claude"]):
+                with self.subTest(arguments=arguments), redirect_stderr(io.StringIO()) as output:
+                    with mock.patch.object(cli, "_environment") as environment, mock.patch.object(cli, "_automatic_update") as automatic, mock.patch.object(cli, "run_project_command") as project, mock.patch.object(distribution, "install_tool") as install, mock.patch.object(distribution, "update_tool") as update:
+                        self.assertEqual(cli.main(arguments, source_root=REPO), 2)
+                        self.assertIn("not implemented", output.getvalue())
+                        for operation in (environment, automatic, project, install, update):
+                            operation.assert_not_called()
+
+    def test_unsupported_runtime_version_and_unknown_runtime_do_not_look_supported(self):
+        with redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()), mock.patch.object(cli, "_environment") as environment:
+            self.assertEqual(cli.main(["--runtime", "claude", "--version"], source_root=REPO), 2)
+            self.assertEqual(output.getvalue(), "")
+            with self.assertRaises(SystemExit) as failure:
+                cli.main(["--runtime", "unknown", "install"], source_root=REPO)
+            self.assertEqual(failure.exception.code, 2)
+            environment.assert_not_called()
+
     def test_help_and_version_do_not_check_environment_update_or_codex(self):
         for arguments in (["--help"], ["--version"], ["init", "--help"], ["update", "--help"]):
             with self.subTest(arguments=arguments), redirect_stdout(io.StringIO()) as output:
@@ -166,11 +192,12 @@ class InstalledEntryPointTests(unittest.TestCase):
             root = Path(temporary)
             data = root / "tool data"
             installed = distribution.install_tool(REPO, data, root / "command bin", python_executable=sys.executable, auto_update="off")
-            self.assertEqual(installed["version"], "9.2")
+            expected_version = cli.version(REPO)
+            self.assertEqual(installed["version"], expected_version)
             for option in ("--version", "--help"):
                 result = subprocess.run([sys.executable, "-B", str(data / "launcher.py"), option], cwd=root, capture_output=True, text=True, encoding="utf-8", timeout=20)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertIn("9.2" if option == "--version" else "init", result.stdout)
+                self.assertIn(expected_version if option == "--version" else "init", result.stdout)
             self.assertFalse((data / "last-check.json").exists())
 
 
