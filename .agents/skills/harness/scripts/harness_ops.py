@@ -114,7 +114,7 @@ def _find_harness_root(cwd: Path) -> Path | None:
             and generator.get("name") == "Harness"
             and generator.get("runtime") == "codex"
             and isinstance(workspace, dict)
-            and workspace.get("scope") == "local-only"
+            and workspace.get("scope") == "project-local"
         ):
             return None
         return candidate

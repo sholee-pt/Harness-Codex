@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 import subprocess
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -32,8 +33,8 @@ INVENTORY_IGNORED_DIRS = {
 
 # Root-boundary discovery must not reuse the file-inventory exclusions above.
 # Dependencies, vendor trees, and output directories can contain independent Git
-# roots and therefore remain visible to this scan. Only metadata directories are
-# excluded after their owning root has been classified.
+# roots and therefore remain visible to this scan. Git boundaries are descriptive;
+# their metadata and Harness's own installed tools/state are not project evidence.
 ROOT_SCAN_EXCLUDED_DIRS = {".git", ".hg", ".svn"}
 
 SENSITIVE_NAMES = {
@@ -157,11 +158,28 @@ def _is_artifact_directory(root: Path, current: Path, name: str) -> bool:
     return lowered in HARD_ARTIFACT_DIRS or (current == root and lowered in ROOT_ARTIFACT_DIRS)
 
 
+def _harness_exclusion_reason(root: Path, path: Path) -> str | None:
+    parts = tuple(part.casefold() for part in path.relative_to(root).parts)
+    if parts[-1:] == (".harness",):
+        return "harness-state"
+    if parts[-3:] == (".agents", "skills", "harness"):
+        return "harness-generator"
+    return None
+
+
+def _is_link_or_reparse(path: Path) -> bool:
+    metadata = path.lstat()
+    return stat.S_ISLNK(metadata.st_mode) or bool(
+        getattr(metadata, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    )
+
+
 def _classify_nested_repository(root: Path, relative: str, marker_type: str) -> str:
     if _git_marker_kind(root) != "none":
         try:
             completed = subprocess.run(
-                ["git", "-C", str(root), "ls-files", "--stage", "--", relative],
+                ["git", "-C", str(root), "ls-files", "--stage", "--", f":(literal){relative}"],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -235,16 +253,25 @@ def inspect_root_context(root: Path, *, max_directories: int = 5000) -> dict:
                     "kind": _classify_nested_repository(root, relative, marker_type),
                 }
             )
-            dirs[:] = []
-            continue
         kept: list[str] = []
         for directory in sorted(dirs):
-            if directory in ROOT_SCAN_EXCLUDED_DIRS:
+            path = current_path / directory
+            reason = _harness_exclusion_reason(root, path)
+            if directory.casefold() in ROOT_SCAN_EXCLUDED_DIRS:
+                reason = "version-control-metadata"
+            if reason is None:
+                try:
+                    if _is_link_or_reparse(path):
+                        reason = "filesystem-link"
+                except OSError as exc:
+                    record_error(exc)
+                    continue
+            if reason is not None:
                 excluded_by_policy.append(
                     {
-                        "path": posix_relative(current_path / directory, root),
+                        "path": posix_relative(path, root),
                         "status": "excluded-by-policy",
-                        "reason": "version-control-metadata",
+                        "reason": reason,
                     }
                 )
                 continue
@@ -261,9 +288,7 @@ def inspect_root_context(root: Path, *, max_directories: int = 5000) -> dict:
         scan_status = "truncated"
     else:
         scan_status = "scanned"
-    if scan_status != "scanned":
-        workspace_kind = "scan-incomplete"
-    elif contained_by_git:
+    if contained_by_git:
         workspace_kind = "git-contained-directory"
     elif marker == "directory":
         workspace_kind = "git-repository"
@@ -273,9 +298,6 @@ def inspect_root_context(root: Path, *, max_directories: int = 5000) -> dict:
         workspace_kind = "directory-workspace"
     else:
         workspace_kind = "plain-directory"
-    nested_root_conflict = marker != "none" and any(
-        item["kind"] != "submodule" for item in nested_repositories
-    )
     return {
         "schemaVersion": harness_metadata.ROOT_CONTEXT_SCHEMA_VERSION,
         "workspaceKind": workspace_kind,
@@ -291,43 +313,20 @@ def inspect_root_context(root: Path, *, max_directories: int = 5000) -> dict:
             "unreadableDirectories": sorted(set(scan_errors)),
         },
         "nestedRepositories": nested_repositories,
-        "rootSelectionRequired": scan_status != "scanned"
-        or contained_by_git
-        or nested_root_conflict,
+        "rootSelectionRequired": not root.is_dir(),
     }
 
 
-def require_unambiguous_root(root: Path) -> dict:
+def require_workspace_root(root: Path) -> dict:
+    """Keep the selected directory as the root, regardless of Git scan coverage."""
+    if any(part.casefold() == ".git" for part in root.absolute().parts):
+        raise ValueError("workspace root must not be inside Git metadata")
     root = root.resolve()
+    if any(part.casefold() == ".git" for part in root.parts):
+        raise ValueError("workspace root must not resolve inside Git metadata")
     if not root.is_dir():
         raise ValueError(f"workspace root is not a directory: {root}")
-    context = inspect_root_context(root)
-    scan_status = context["scanCompleteness"]["status"]
-    if scan_status == "truncated":
-        raise ValueError(
-            "workspace root scan exceeded its directory budget; select a narrower root"
-        )
-    if scan_status == "unknown":
-        raise ValueError(
-            "workspace root scan could not read every directory; select a readable root"
-        )
-    if context["workspaceKind"] == "git-contained-directory":
-        raise ValueError(
-            "selected workspace is inside a Git work tree but is not its root; "
-            f"select {context['containingGitRoot']} or a directory outside that work tree"
-        )
-    ambiguous = (
-        [item for item in context["nestedRepositories"] if item["kind"] != "submodule"]
-        if context["rootGitState"] in {"directory", "file"}
-        else []
-    )
-    if ambiguous:
-        candidates = ", ".join(item["path"] for item in ambiguous)
-        raise ValueError(
-            "Git workspace root is ambiguous because it contains nested independent repositories: "
-            f"{candidates}; select one Git root or use a non-Git directory workspace"
-        )
-    return context
+    return inspect_root_context(root)
 
 
 def _file_role(path: Path, parts: tuple[str, ...]) -> str:
@@ -347,9 +346,11 @@ def _file_role(path: Path, parts: tuple[str, ...]) -> str:
 
 
 def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = False) -> dict:
+    root_context = require_workspace_root(root)
     root = root.resolve()
-    root_context = inspect_root_context(root)
     nested_paths = {item["path"] for item in root_context["nestedRepositories"]}
+    repository_counts: Counter[str] = Counter()
+    repository_roles: defaultdict[str, Counter[str]] = defaultdict(Counter)
     extensions: Counter[str] = Counter()
     top_level_counts: Counter[str] = Counter()
     boundary_counts: defaultdict[str, int] = defaultdict(int)
@@ -360,6 +361,7 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
     tests: list[str] = []
     ci: list[str] = []
     excluded_artifact_directories: list[str] = []
+    excluded_by_policy: list[dict[str, str]] = []
     artifact_extensions: Counter[str] = Counter()
     artifact_top_level: Counter[str] = Counter()
     sensitive_skipped = 0
@@ -370,14 +372,25 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
 
     for current, dirs, files in os.walk(root, followlinks=False):
         current_path = Path(current)
-        current_relative = posix_relative(current_path, root) if current_path != root else "."
-        if current_relative in nested_paths:
-            dirs[:] = []
-            continue
-
         kept_dirs: list[str] = []
         for directory in sorted(dirs):
-            if directory in INVENTORY_IGNORED_DIRS:
+            path = current_path / directory
+            reason = _harness_exclusion_reason(root, path)
+            if reason is not None:
+                excluded_by_policy.append(
+                    {"path": posix_relative(path, root), "reason": reason}
+                )
+                continue
+            if directory.casefold() in INVENTORY_IGNORED_DIRS:
+                continue
+            try:
+                linked = _is_link_or_reparse(path)
+            except OSError:
+                continue
+            if linked:
+                excluded_by_policy.append(
+                    {"path": posix_relative(path, root), "reason": "filesystem-link"}
+                )
                 continue
             if not include_artifacts and _is_artifact_directory(root, current_path, directory):
                 excluded_artifact_directories.append(
@@ -388,7 +401,7 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
         dirs[:] = kept_dirs
 
         for filename in sorted(files):
-            if filename == ".git":
+            if filename.casefold() == ".git":
                 continue
             if file_count >= max_files:
                 truncated = True
@@ -398,7 +411,11 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
                 continue
 
             path = current_path / filename
-            if path.is_symlink():
+            try:
+                linked = _is_link_or_reparse(path)
+            except OSError:
+                continue
+            if linked:
                 continue
             rel = posix_relative(path, root)
             parts = Path(rel).parts
@@ -419,6 +436,11 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
             if len(parts) > 1 and not is_artifact:
                 boundary_counts[parts[0]] += 1
                 boundary_roles[parts[0]][role] += 1
+                for depth in range(1, len(parts)):
+                    ancestor = "/".join(parts[:depth])
+                    if ancestor in nested_paths:
+                        repository_counts[ancestor] += 1
+                        repository_roles[ancestor][role] += 1
 
             if filename in MANIFEST_NAMES:
                 manifests.append(rel)
@@ -426,7 +448,9 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
                 instructions.append(rel)
             if any(part.lower() in TEST_MARKERS for part in parts) or filename.lower().startswith("test_"):
                 tests.append(rel)
-            if rel.startswith(".github/workflows/") or filename in {".gitlab-ci.yml", "azure-pipelines.yml"}:
+            if any(
+                pair == (".github", "workflows") for pair in zip(parts, parts[1:])
+            ) or filename in {".gitlab-ci.yml", "azure-pipelines.yml"}:
                 ci.append(rel)
 
         if truncated:
@@ -450,17 +474,19 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
         for name, count in sorted(boundary_counts.items(), key=lambda item: (-item[1], item[0]))
         if not name.startswith(".")
     ]
-    if root_context["workspaceKind"] == "directory-workspace":
-        known_candidates = {item["path"] for item in candidate_boundaries}
+    if root_context["nestedRepositories"]:
+        known_candidates = {item["path"]: item for item in candidate_boundaries}
         for nested in root_context["nestedRepositories"]:
             if nested["path"] in known_candidates:
+                known_candidates[nested["path"]]["boundaryKind"] = nested["kind"]
                 continue
             candidate_boundaries.append(
                 {
                     "path": nested["path"],
-                    "fileCount": 0,
+                    "fileCount": repository_counts[nested["path"]],
                     "fileRoles": {
-                        role: 0 for role in FILE_ROLES if role != "research-artifact"
+                        role: repository_roles[nested["path"]].get(role, 0)
+                        for role in FILE_ROLES if role != "research-artifact"
                     },
                     "analysisPriority": "repository-boundary",
                     "boundaryKind": nested["kind"],
@@ -482,6 +508,7 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
         "fileRoleSummary": {role: file_roles.get(role, 0) for role in FILE_ROLES},
         "truncated": truncated,
         "sensitiveFilesSkipped": sensitive_skipped,
+        "excludedByPolicy": sorted(excluded_by_policy, key=lambda item: item["path"]),
         "extensions": dict(sorted(extensions.items(), key=lambda item: (-item[1], item[0]))),
         "topLevel": dict(sorted(top_level_counts.items())),
         "manifests": sorted(manifests),
@@ -526,13 +553,11 @@ def main() -> int:
     if not root.is_dir():
         parser.error(f"workspace root is not a directory: {root}")
 
-    print(
-        json.dumps(
-            build_inventory(root, args.max_files, include_artifacts=args.include_artifacts),
-            indent=2,
-            ensure_ascii=False,
-        )
-    )
+    try:
+        report = build_inventory(root, args.max_files, include_artifacts=args.include_artifacts)
+    except ValueError as exc:
+        parser.error(str(exc))
+    print(json.dumps(report, indent=2, ensure_ascii=False))
     return 0
 
 

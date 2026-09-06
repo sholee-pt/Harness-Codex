@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enforce Harness local-only workspace and local Git exclusion contracts."""
+"""Project-local ownership plus legacy/isolated-evaluation Git exclusion helpers."""
 
 from __future__ import annotations
 
@@ -10,10 +10,12 @@ from typing import Iterable
 import harness_state
 
 
-LOCAL_SCOPE = "local-only"
+LOCAL_SCOPE = "project-local"
+LEGACY_LOCAL_SCOPE = "local-only"
 BEGIN_MARKER = "# harness:local-only:begin"
 END_MARKER = "# harness:local-only:end"
 GIT_WORKSPACE_KINDS = {"git-repository", "git-worktree"}
+WORKSPACE_KINDS = GIT_WORKSPACE_KINDS | {"plain-directory", "directory-workspace", "git-contained-directory"}
 GITIGNORE_LITERAL_ESCAPES = frozenset("*?[]#! ")
 
 
@@ -130,45 +132,6 @@ def local_patterns(relatives: Iterable[str]) -> list[str]:
     return sorted({_normalize_pattern(value) for value in [*relatives, ".harness/"]})
 
 
-def validate_directory_workspace_writers(root_context: object, topology: object) -> None:
-    """Keep an outer directory workspace from writing across independent Git histories."""
-    if not isinstance(root_context, dict) or root_context.get("workspaceKind") != "directory-workspace":
-        return
-    if not isinstance(topology, dict):
-        return
-    nested_value = root_context.get("nestedRepositories", [])
-    nested_paths = [
-        item["path"]
-        for item in nested_value
-        if isinstance(item, dict)
-        and item.get("kind") in {"independent-repository", "linked-repository"}
-        and isinstance(item.get("path"), str)
-    ] if isinstance(nested_value, list) else []
-    for agent in topology.get("agents", []):
-        if not isinstance(agent, dict):
-            continue
-        for access in agent.get("fileAccess", []):
-            if not isinstance(access, dict) or access.get("mode") != "write":
-                continue
-            scope = access.get("scope")
-            if not isinstance(scope, str):
-                continue
-            base = scope[:-3] if scope.endswith("/**") else scope
-            crossed = [
-                nested
-                for nested in nested_paths
-                if scope == nested
-                or scope.startswith(f"{nested}/")
-                or (scope.endswith("/**") and (not base or nested == base or nested.startswith(f"{base}/")))
-            ]
-            if crossed:
-                raise WorkspaceError(
-                    f"agent {agent.get('name')!r} write scope {scope!r} crosses independent "
-                    f"directory-workspace Git boundaries: {', '.join(crossed)}; "
-                    "select one repository root for code-changing work"
-                )
-
-
 def _managed_block(patterns: list[str]) -> str:
     return "\n".join([BEGIN_MARKER, *patterns, END_MARKER])
 
@@ -261,67 +224,6 @@ def apply_local_protection(root: Path, protection: dict, relatives: Iterable[str
     return {"mode": "git-info-exclude", "action": protection.get("action")}
 
 
-def rollback_local_protection(root: Path, protection: dict) -> dict:
-    """Compensate a synchronous failed apply without overwriting external edits."""
-    if protection.get("mode") == "not-applicable" or protection.get("action") == "unchanged":
-        return {"mode": protection.get("mode"), "action": "unchanged"}
-    if protection.get("mode") != "git-info-exclude":
-        raise WorkspaceError("unsupported local-only protection rollback mode")
-    require_exclusive_info_exclude(root)
-    path = protection.get("path")
-    desired = protection.get("desiredText")
-    original = protection.get("originalText")
-    original_exists = protection.get("originalExists")
-    original_mode = protection.get("originalMode")
-    if (
-        not isinstance(path, Path)
-        or not isinstance(desired, str)
-        or not isinstance(original, str)
-        or not isinstance(original_exists, bool)
-        or (original_exists and not isinstance(original_mode, int))
-    ):
-        raise WorkspaceError("local-only protection rollback plan is incomplete")
-    if path.resolve() != _exclude_file(root):
-        raise WorkspaceError("local-only protection path changed before rollback")
-    if not path.is_file() or _read_text_exact(path) != desired:
-        raise WorkspaceError(
-            "local Git info/exclude changed after Harness wrote it; automatic rollback refused"
-        )
-    if original_exists:
-        harness_state.atomic_write_text(path, original, mode=original_mode)
-        return {"mode": "git-info-exclude", "action": "restored"}
-    path.unlink()
-    harness_state.sync_directory(path.parent)
-    return {"mode": "git-info-exclude", "action": "removed-created-file"}
-
-
-def inspect_local_protection(root: Path, workspace_kind: str) -> dict:
-    if workspace_kind not in GIT_WORKSPACE_KINDS:
-        return {"state": "not-applicable", "worktreeCount": 0, "patternCount": 0}
-    worktrees = registered_worktrees(root)
-    path = _exclude_file(root)
-    if not path.is_file():
-        return {"state": "absent", "worktreeCount": len(worktrees), "patternCount": 0}
-    text = _read_text_exact(path)
-    begin_count = text.count(BEGIN_MARKER)
-    end_count = text.count(END_MARKER)
-    if begin_count == 0 and end_count == 0:
-        return {"state": "absent", "worktreeCount": len(worktrees), "patternCount": 0}
-    if begin_count != 1 or end_count != 1:
-        return {"state": "malformed", "worktreeCount": len(worktrees), "patternCount": 0}
-    start = text.index(BEGIN_MARKER) + len(BEGIN_MARKER)
-    try:
-        end = text.index(END_MARKER, start)
-    except ValueError:
-        return {"state": "malformed", "worktreeCount": len(worktrees), "patternCount": 0}
-    patterns = [line for line in text[start:end].splitlines() if line]
-    return {
-        "state": "shared-ambiguous" if len(worktrees) != 1 else "present-unbound",
-        "worktreeCount": len(worktrees),
-        "patternCount": len(patterns),
-    }
-
-
 def validate_manifest_protection(root: Path, workspace: object, managed_paths: Iterable[str]) -> None:
     if not isinstance(workspace, dict) or set(workspace) != {
         "scope",
@@ -330,11 +232,17 @@ def validate_manifest_protection(root: Path, workspace: object, managed_paths: I
         "gitProtection",
     }:
         raise WorkspaceError("manifest workspace contract is incomplete")
-    if workspace.get("scope") != LOCAL_SCOPE:
-        raise WorkspaceError("manifest workspace scope must be local-only")
+    if workspace.get("scope") not in (LOCAL_SCOPE, LEGACY_LOCAL_SCOPE):
+        raise WorkspaceError("manifest workspace scope is unsupported")
+    if not isinstance(workspace.get("kind"), str) or workspace["kind"] not in WORKSPACE_KINDS:
+        raise WorkspaceError("manifest workspace kind is unsupported")
     protection = workspace.get("gitProtection")
     if not isinstance(protection, dict) or set(protection) != {"mode", "patterns"}:
         raise WorkspaceError("manifest gitProtection contract is incomplete")
+    if workspace.get("scope") == LOCAL_SCOPE:
+        if protection != {"mode": "not-managed", "patterns": []}:
+            raise WorkspaceError("project-local workspaces must use not-managed Git protection")
+        return
     managed_relatives = tuple(managed_paths)
     expected_patterns = local_patterns(managed_relatives)
     if workspace.get("kind") in GIT_WORKSPACE_KINDS:

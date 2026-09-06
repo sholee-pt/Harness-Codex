@@ -38,6 +38,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | `codex/v7.6` | Harness for Codex v7.6 | Schema 3 | Schema 6 | Schema 2 | Activation diagnostics, explicit usage coverage, and lighter direct-task guidance |
 | `codex/v8` | Harness for Codex v8.0 | Schema 3 | Schema 6 | Schema 2 | Authoring Contract 3, Artifact Contract 1, strict frontmatter, topology-bound agent contracts, explicit upgrade status |
 | `codex/v8.1` | Harness for Codex v8.1 | Schema 3 | Schema 6 | Schema 2 | Apply rejects unsupported existing artifact contracts while preserving supported v8.0 and legacy updates |
+| `codex/v9` | Harness for Codex v9.0 | Schema 3 | Schema 7 | Schema 2 | Project-local installer, user-selected folders independent of Git boundaries, Artifact Contract 2, no Git metadata writes |
 
 Only the latest Codex and latest Claude branches are retained. The default branch follows the latest verified release; earlier release history remains reachable through commits. Historical branch names in this table identify releases and are not a promise that those branches still exist.
 
@@ -528,3 +529,15 @@ This maintenance release enforces the existing installation's artifact compatibi
 ## Harness for Claude Code releases
 
 Harness for Claude Code editions are maintained independently on `claude/*` branches. Their version numbers identify Harness releases for that runtime, not Claude Code product versions. Release details remain on those branches so this document does not duplicate mutable Claude-specific state.
+
+## Harness for Codex v9.0
+
+Harness for Codex v9.0 replaces the local-only Git-exclusion contract with a project-local installation contract. Manifest Schema 7, Artifact Contract 2, Inventory Schema 5, and Root Context Schema 3 explicitly identify the changed behavior. Authoring Contract 3, Plan Schema 3, Transaction Schema 2, runtime and relay schemas, and Evaluation Schema 2 remain unchanged.
+
+- Adds `install.py --root TARGET [--dry-run]` to install the generator in the chosen folder's `.agents/skills/harness`, with a separate hash-based receipt, no-write dry-run, no-op repeats, protected user files, and folder-promotion rollback.
+- Accepts plain folders, Git-contained subfolders, main and linked worktrees, and folders holding multiple repositories. Known Git boundaries guide analysis without overriding the selected root or automatically prohibiting declared nested scopes.
+- Keeps generated project artifacts inside the selected root and rejects traversal and symlink/junction escapes. Existing ownership, hash, transaction, evidence, and canonical agent-contract checks remain required.
+- Records `project-local` scope and `not-managed` Git protection with no patterns. Installation and generation never change Git metadata or guarantee that outputs remain untracked or ignored. Existing user and legacy exclusion rules are preserved.
+- Classifies clean known v7/v8 Schema 6 installations as `upgrade-required`; malformed metadata, tampered files, and missing required v8 canonical contracts remain invalid. A reviewed generation plan performs the Schema 7 / Artifact Contract 2 upgrade. Schema 4/5 regeneration remains separate.
+- Verifies real installations made by pinned v7.6, v8.0, and v8.1 sources in Linux and Windows CI. The optional clone-based evaluator retains a separate Git-root isolation contract; this restriction does not apply to generation.
+- Claims no live model improvement, token reduction, or agent-discovery result from structural tests alone.

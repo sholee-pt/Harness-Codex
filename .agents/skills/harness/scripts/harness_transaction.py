@@ -48,7 +48,12 @@ def is_allowed_target(relative: str) -> bool:
     ):
         return False
     parts = path.parts
-    skill_output = len(parts) >= 4 and parts[:2] == (".agents", "skills")
+    if any(part.casefold() == ".git" for part in parts):
+        return False
+    skill_output = (
+        len(parts) >= 4 and parts[:2] == (".agents", "skills")
+        and parts[2].casefold() != "harness"
+    )
     agent_output = (
         len(parts) == 3
         and parts[:2] == (".codex", "agents")

@@ -21,7 +21,7 @@ Relationships may point only to an earlier work item in the same session. They m
 
 Run `harness_ops.py hooks-template` to print a user-level Codex `hooks.json` candidate. The command creates a file only when `--output` is supplied and refuses to replace an existing file. Review or trust new and modified hooks with Codex `/hooks`; Harness never bypasses hook trust.
 
-The handler accepts `UserPromptSubmit`, `SubagentStart`, `SubagentStop`, `Stop`, and `SessionEnd`. It searches upward from the hook working directory and records an event only when it finds a current Manifest Schema 6 local-only Harness workspace. All other directories are ignored. The handler is fail-open so an observability error cannot block the user's task.
+The handler accepts `UserPromptSubmit`, `SubagentStart`, `SubagentStop`, `Stop`, and `SessionEnd`. It searches upward from the hook working directory and records an event only when it finds a current Manifest Schema 7 project-local Harness workspace. All other directories are ignored. The handler is fail-open so an observability error cannot block the user's task.
 
 The hook returns an enum-only annotation reminder for each user turn. The annotation is evidence supplied by the running agent, not a trusted semantic oracle. Users may add a later user-reported annotation when acceptance or correction is actually known.
 

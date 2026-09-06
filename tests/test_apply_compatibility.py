@@ -3,19 +3,23 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 
-from test_generated_contracts import coordinated, legacy_installation, snapshot
+from test_generated_contracts import coordinated, legacy_installation, snapshot, write_and_reseal
+import harness_agent_contract
 from test_harness_tools import minimal_plan
 import test_runtime_teamplay as runtime_fixtures
 import harness_apply as apply
 import harness_doctor
 import harness_metadata as metadata
+import harness_state
 import validate_harness
 import validate_runtime_plan
 
@@ -54,24 +58,119 @@ def set_metadata(root, version, contract):
     return manifest
 
 
+def previous_workspace(root, manifest):
+    manifest['schemaVersion'] = 6
+    manifest['workspace']['scope'] = 'local-only'
+    manifest['workspace']['gitProtection'] = {'mode': 'not-applicable', 'patterns': []}
+    (root / '.harness/manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+    return manifest
+
+
 def preserved_state(root):
     # Includes Git info/exclude and every journal/staging file, plus empty dirs.
     return snapshot(root), sorted(p.relative_to(root).as_posix() for p in root.rglob('*') if p.is_dir())
 
 
 class ApplyCompatibilityTests(unittest.TestCase):
+    def test_old_schema_cannot_carry_unsupported_owned_paths_into_current_manifest(self):
+        for schema in (4, 5):
+            with self.subTest(schema=schema), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                plan = minimal_plan(root)
+                apply.apply_application(apply.build_application(root, plan))
+                path = root / '.harness/manifest.json'
+                manifest = json.loads(path.read_text(encoding='utf-8'))
+                manifest['schemaVersion'] = schema
+                unmanaged = root / 'legacy.txt'
+                unmanaged.write_text('legacy', encoding='utf-8')
+                manifest['managedFiles'].append({'path': 'legacy.txt', 'kind': 'file', 'mode': '0644', 'sha256': harness_state.digest_bytes(unmanaged.read_bytes())})
+                path.write_text(json.dumps(manifest), encoding='utf-8')
+                before = preserved_state(root)
+                with self.assertRaisesRegex(apply.PlanError, 'cannot enter project artifact ownership'):
+                    apply.build_application(root, plan)
+                self.assertEqual(preserved_state(root), before)
+
+    def test_output_links_cannot_redirect_writes_into_git_metadata(self):
+        for relative in ('.agents', '.harness'):
+            for late_change in (False, True):
+                with self.subTest(path=relative, late_change=late_change), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    metadata_root = root / '.git'
+                    metadata_root.mkdir()
+                    (metadata_root / 'config').write_text('fixture', encoding='utf-8')
+                    plan = minimal_plan(root)
+                    application = apply.build_application(root, plan) if late_change else None
+                    link = root / relative
+                    if os.name == 'nt':
+                        quote = lambda value: "'" + str(value).replace("'", "''") + "'"
+                        subprocess.run(['powershell', '-NoProfile', '-Command', f'New-Item -ItemType Junction -Path {quote(link)} -Target {quote(metadata_root)} | Out-Null'], check=True, capture_output=True)
+                    else:
+                        link.symlink_to(metadata_root, target_is_directory=True)
+                    try:
+                        before = snapshot(metadata_root)
+                        with self.assertRaises((apply.PlanError, harness_state.StateError)):
+                            if late_change:
+                                apply.apply_application(application)
+                            else:
+                                apply.build_application(root, plan)
+                        self.assertEqual(snapshot(metadata_root), before)
+                    finally:
+                        if os.name == 'nt':
+                            link.rmdir()
+                        else:
+                            link.unlink()
+
+    def test_malformed_workspace_metadata_is_invalid_and_never_repaired_by_apply(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = minimal_plan(root)
+            apply.apply_application(apply.build_application(root, plan))
+            path = root / '.harness/manifest.json'
+            original = path.read_text(encoding='utf-8')
+            for field in ('kind', 'scope', 'instructionMode'):
+                for value in (None, [], {}, 'unsupported-kind'):
+                    with self.subTest(field=field, value=value):
+                        manifest = json.loads(original)
+                        manifest['workspace'][field] = value
+                        path.write_text(json.dumps(manifest), encoding='utf-8')
+                        before = preserved_state(root)
+                        self.assertEqual(validate_harness.Validator(root).run()['installationStatus'], 'invalid')
+                        self.assertFalse(harness_doctor.diagnose(root)['valid'])
+                        with self.assertRaises(apply.PlanError):
+                            apply.build_application(root, plan)
+                        self.assertEqual(preserved_state(root), before)
+
+    def test_generator_and_nested_git_metadata_are_not_project_artifact_targets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in ('.agents/skills/harness/scripts/extra.py', '.agents/skills/extra/.git/config'):
+                plan = minimal_plan(root)
+                plan['artifacts'].append({'path': relative, 'content': 'x', 'mode': '0644'})
+                before = preserved_state(root)
+                with self.assertRaisesRegex(apply.PlanError, 'supported Codex Harness target'):
+                    apply.build_application(root, plan)
+                self.assertEqual(preserved_state(root), before)
+
     def test_known_artifact_versions_remain_valid_and_upgrade_without_rewriting_on_repeat(self):
-        for version in ('8.0', metadata.HARNESS_VERSION):
+        for version in ('8.0', '8.1', metadata.HARNESS_VERSION):
             with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 plan = coordinated(root)
                 apply.apply_application(apply.build_application(root, plan))
-                manifest = set_metadata(root, version, 1)
+                manifest = set_metadata(root, version, metadata.ARTIFACT_CONTRACT_VERSION if version == metadata.HARNESS_VERSION else 1)
+                if version != metadata.HARNESS_VERSION:
+                    manifest = previous_workspace(root, manifest)
                 before = preserved_state(root)
-                self.assertTrue(validate_harness.Validator(root).run()['valid'])
-                self.assertTrue(harness_doctor.diagnose(root)['valid'])
+                report = validate_harness.Validator(root).run()
+                self.assertEqual(report['installationStatus'], 'valid' if version == metadata.HARNESS_VERSION else 'upgrade-required')
+                self.assertTrue(report['integrityValid'])
+                self.assertEqual(harness_doctor.diagnose(root)['valid'], version == metadata.HARNESS_VERSION)
                 runtime = runtime_fixtures.valid_plan(root, manifest)
-                self.assertTrue(validate_runtime_plan.validate_runtime_plan(root, runtime)['valid'])
+                if version == metadata.HARNESS_VERSION:
+                    self.assertTrue(validate_runtime_plan.validate_runtime_plan(root, runtime)['valid'])
+                else:
+                    with self.assertRaises(validate_runtime_plan.RuntimePlanError):
+                        validate_runtime_plan.validate_runtime_plan(root, runtime)
                 application = apply.build_application(root, plan)
                 self.assertEqual(preserved_state(root), before)
                 applied = apply.apply_application(application)
@@ -139,12 +238,31 @@ class ApplyCompatibilityTests(unittest.TestCase):
                 apply.apply_application(application)
                 self.assertTrue(validate_harness.Validator(root).run()['valid'])
 
+    def test_previous_workspace_cannot_hide_missing_agent_contract_as_legacy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = coordinated(root)
+            apply.apply_application(apply.build_application(root, plan))
+            previous_workspace(root, set_metadata(root, '8.1', 1))
+            agent = plan['topology']['agents'][0]
+            path = agent['path']
+            text = (root / path).read_text(encoding='utf-8')
+            instructions = tomllib.loads(text)['developer_instructions']
+            instructions = instructions.replace(harness_agent_contract.render(agent, plan['topology']), '')
+            text = harness_agent_contract.replace_instructions(text, instructions)
+            write_and_reseal(root, path, text)
+            before = preserved_state(root)
+            self.assertEqual(validate_harness.Validator(root).run()['installationStatus'], 'invalid')
+            with self.assertRaisesRegex(apply.PlanError, 'agent contract'):
+                apply.build_application(root, plan)
+            self.assertEqual(preserved_state(root), before)
+
     def test_supported_previous_release_still_preserves_user_edits(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             plan = coordinated(root)
             apply.apply_application(apply.build_application(root, plan))
-            set_metadata(root, '8.0', 1)
+            previous_workspace(root, set_metadata(root, '8.0', 1))
             path = root / plan['topology']['agents'][0]['path']
             with path.open('a', encoding='utf-8') as handle:
                 handle.write('\n# User edit\n')

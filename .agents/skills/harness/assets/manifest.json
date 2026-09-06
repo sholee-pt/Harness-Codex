@@ -1,8 +1,8 @@
 {
-  "schemaVersion": 6,
+  "schemaVersion": 7,
   "generator": {
     "name": "Harness",
-    "version": "8.1",
+    "version": "9.0",
     "runtime": "codex"
   },
   "application": {
@@ -10,11 +10,11 @@
     "transactionSchemaVersion": 2
   },
   "workspace": {
-    "scope": "local-only",
+    "scope": "project-local",
     "kind": "plain-directory",
     "instructionMode": "managed-pointer",
     "gitProtection": {
-      "mode": "not-applicable",
+      "mode": "not-managed",
       "patterns": []
     }
   },
@@ -70,5 +70,5 @@
   },
   "capabilityPolicies": [],
   "managedFiles": [],
-  "artifactContractVersion": 1
+  "artifactContractVersion": 2
 }

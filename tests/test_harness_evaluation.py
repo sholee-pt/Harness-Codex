@@ -34,6 +34,7 @@ import harness_plan_builder  # noqa: E402
 import harness_patch_scope  # noqa: E402
 import harness_state  # noqa: E402
 import harness_workspace  # noqa: E402
+import harness_metadata
 import validate_harness  # noqa: E402
 
 
@@ -1022,7 +1023,7 @@ class ComparisonTests(unittest.TestCase):
             v64["runtime"]["harnessVersion"],
             schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS,
         )
-        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {"8.1"})
+        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {harness_metadata.HARNESS_VERSION})
         plan = self.comparison_plan()
         v60_comparison = compare.compare_runs(
             baseline=manual_record(repository_id, uuid_text(2), arm="baseline", verification="failed", harness_version="6.0"),
@@ -1541,6 +1542,12 @@ class PairedIsolationTests(unittest.TestCase):
         plan = harness_plan_builder.materialize_plan(draft, root=root)
         harness_apply.apply_application(harness_apply.build_application(root, plan))
         assert validate_harness.Validator(root).run()["valid"]
+        # Evaluation fixtures explicitly opt into a clean, untracked overlay.
+        # Normal project generation no longer changes any Git metadata.
+        manifest = json.loads((root / ".harness/manifest.json").read_text(encoding="utf-8"))
+        paths = [item["path"] for item in manifest["managedFiles"]]
+        protection = harness_workspace.plan_local_protection(root, "git-repository", paths)
+        harness_workspace.apply_local_protection(root, protection, paths)
         return root, commit
 
     def test_runtime_environment_uses_an_isolated_user_home(self) -> None:
@@ -1762,7 +1769,7 @@ class PairedIsolationTests(unittest.TestCase):
             )
 
             (source / ".harness" / "manifest.json").unlink()
-            with self.assertRaisesRegex(types.EvaluationError, "valid local-only"):
+            with self.assertRaisesRegex(types.EvaluationError, "valid project-local"):
                 harness_eval.command_paired_run(args)
 
     def test_snapshot_classifies_manifest_referenced_ignored_evidence(self) -> None:

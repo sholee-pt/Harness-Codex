@@ -18,6 +18,7 @@ import harness_metadata
 import harness_teamplay
 import harness_agent_contract
 import harness_frontmatter
+import harness_topology
 
 
 PROJECT_PLACEHOLDER = "{{HARNESS_PROJECT_CHANGE_DISCIPLINE_V1}}"
@@ -112,7 +113,7 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
     )
     if root is not None:
         try:
-            inventory.require_unambiguous_root(root)
+            inventory.require_workspace_root(root)
         except ValueError as exc:
             raise PlanBuilderError(str(exc)) from exc
     plan.pop("authoringContractVersion")
@@ -121,6 +122,12 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
     plan["artifactContractVersion"] = harness_metadata.ARTIFACT_CONTRACT_VERSION
     topology = _require_object(plan.get("topology"), "topology")
     _normalize_capability_policies(plan)
+    if root is not None:
+        try:
+            harness_topology.validate_contract(topology, plan.get("capabilityPolicies"))
+            harness_topology.validate_scope_paths(root, topology)
+        except harness_topology.TopologyError as exc:
+            raise PlanBuilderError(str(exc)) from exc
     agent_paths, writer_paths = _agent_paths(topology)
     project_path = ".agents/skills/project-harness/SKILL.md"
     expected_paths = agent_paths | {project_path}

@@ -48,6 +48,12 @@ def fixture_manifest() -> dict:
             "transactionSchemaVersion": harness_metadata.TRANSACTION_SCHEMA_VERSION,
         },
         "instructionFile": "AGENTS.md",
+        "workspace": {
+            "scope": "project-local",
+            "kind": "plain-directory",
+            "instructionMode": "managed-pointer",
+            "gitProtection": {"mode": "not-managed", "patterns": []},
+        },
         "project": {
             "summary": "Runtime teamplay fixture",
             "evidence": [{"path": "README.md", "sha256": "0" * 64, "claim": "Fixture."}],
@@ -648,8 +654,8 @@ class CompatibilityTests(RuntimeFixtureTestCase):
     def test_generation_plan_schema_remains_3(self) -> None:
         self.assertEqual(harness_metadata.PLAN_SCHEMA_VERSION, 3)
 
-    def test_manifest_schema_is_6_for_local_only_workspace_state(self) -> None:
-        self.assertEqual(harness_metadata.MANIFEST_SCHEMA_VERSION, 6)
+    def test_manifest_schema_is_7_for_project_local_workspace_state(self) -> None:
+        self.assertEqual(harness_metadata.MANIFEST_SCHEMA_VERSION, 7)
 
     def test_transaction_schema_remains_2(self) -> None:
         self.assertEqual(harness_metadata.TRANSACTION_SCHEMA_VERSION, 2)
@@ -821,15 +827,15 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
         ):
             harness_plan_builder.materialize_plan(draft)
 
-    def test_builder_rejects_nested_repository_inside_git_root(self) -> None:
+    def test_builder_preserves_selected_root_with_nested_repositories(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / ".git").mkdir()
             (root / "nested" / ".git").mkdir(parents=True)
-            with self.assertRaisesRegex(
-                harness_plan_builder.PlanBuilderError, "Git workspace root is ambiguous"
-            ):
-                harness_plan_builder.materialize_plan(self._draft(), root=root)
+            before = sorted(path.relative_to(root).as_posix() for path in root.rglob("*"))
+            plan = harness_plan_builder.materialize_plan(self._draft(), root=root)
+            self.assertEqual(plan["artifactContractVersion"], harness_metadata.ARTIFACT_CONTRACT_VERSION)
+            self.assertEqual(sorted(path.relative_to(root).as_posix() for path in root.rglob("*")), before)
 
     def test_duplicate_agent_teamplay_placeholder_is_rejected(self) -> None:
         draft = self._draft("coordinated-cross-contract-plan.json")

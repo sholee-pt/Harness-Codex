@@ -1,8 +1,8 @@
 # Generated artifact contracts
 
-Harness for Codex v8.0 requires Authoring Contract 3 drafts and Artifact Contract 1 plans and installations. Plan Schema 3 and Manifest Schema 6 describe the outer data structure; their unchanged numbers do not imply backward compatibility. The new mandatory agent block makes this a major release. Transaction Schema 2, runtime-plan Schema 1, and Evaluation Schema 2 are unchanged.
+Harness for Codex v9.0 requires Authoring Contract 3 drafts, Artifact Contract 2 plans, and Manifest Schema 7 installations. The selected project-local workspace contract replaces the prior local-only Git exclusion contract and requires a major release. Plan Schema 3, Transaction Schema 2, runtime-plan Schema 1, and Evaluation Schema 2 remain unchanged.
 
-Harness for Codex v8.1 retains those contracts and checks the existing installation at the apply boundary as well as the incoming plan. The explicitly supported v8.0 and v8.1 releases share Artifact Contract 1. A v8.0 installation can remain valid under v8.1 without being relabeled by a read-only diagnostic. Unsupported future releases are not accepted by inferring compatibility from a version prefix or ordering.
+Apply validates the incoming plan and independently classifies the existing installation. Current v9.0 requires Schema 7, `project-local` scope, Artifact Contract 2, and `not-managed` Git protection with no patterns. Recognized earlier installs require a reviewed upgrade; future version compatibility is never inferred from ordering or prefixes.
 
 ## Agent instructions
 
@@ -31,13 +31,13 @@ The validator and doctor report `installationStatus`, `valid`, `integrityValid`,
 
 | Status | Meaning | CLI exit |
 | --- | --- | --- |
-| `valid` | All checks pass for a supported v8.0 or v8.1 installation with Artifact Contract 1 | 0 |
-| `upgrade-required` | A recognized v7.0–v7.6 Manifest Schema 6 installation passes integrity and applicable legacy checks but lacks the new artifact contract | 2 |
-| `invalid` | Malformed content, mismatched hashes/evidence, pending transactions, unsupported metadata, or incomplete Artifact Contract 1 | 1 |
+| `valid` | All checks pass for a v9.0 Schema 7 / project-local / Artifact Contract 2 installation | 0 |
+| `upgrade-required` | Recognized v7.0–v7.6 Schema 6 without an artifact marker, or v8.0/v8.1 Schema 6 with Artifact Contract 1, passes legacy integrity checks | 2 |
+| `invalid` | Corruption, mismatched hashes/evidence, pending transactions, unsupported combinations, or incomplete required contracts | 1 |
 
-An upgrade requirement never suppresses an integrity error. A supported v8 manifest without its artifact marker or required agent block is invalid. Validation and doctor are read-only, never relabel a v7 installation as compatible with Artifact Contract 1, and never repair files. Runtime-plan validation requires a current compatible artifact contract. Schema 1–5 installations still follow the existing guarded state-migration workflow first; this status classification does not bypass it.
+An upgrade requirement never suppresses an integrity error. A v8 installation still requires Artifact Contract 1 and its canonical agent blocks; neither is waived because a workspace upgrade is pending. Validation and doctor never relabel legacy files or repair them. Runtime plans require current compatible installation state. Schema 1–5 installations follow the separate guarded state-migration and reviewed-regeneration workflow.
 
-Normal apply independently checks an existing Schema 6 manifest with the same compatibility classifier. It accepts supported current contracts or recognized unversioned v7 legacy provenance, then continues normal ownership/hash checks. Unknown generator versions, missing or invalid current markers (including boolean or float values), and inconsistent legacy/versioned combinations fail before local Git exclusion changes, transaction staging, or managed-file writes. Dry-run and apply report the normal apply error exit code 2. No implicit downgrade or metadata repair is provided. Schema 4/5 regeneration remains a separate pre-existing path; do not apply the Schema 6 classifier indiscriminately to historical formats.
+Normal apply independently checks Schema 6/7 manifests with the same compatibility classifier before transaction staging or managed-file writes. Known legacy provenance may proceed through ownership/hash checks; unknown versions, inconsistent schema/scope/contract combinations, missing markers, booleans, and float markers fail. Dry-run and apply use normal error exit code 2. No implicit downgrade or version-field repair is supported; Schema 4/5 regeneration remains separate.
 
 To upgrade a clean installation, rescan evidence, prepare an Authoring Contract 3 draft with current placeholders, materialize, inspect a clean dry-run, apply through the normal hash-checked transaction, and validate again. Do not change only the generator version or artifact marker. Preserve user edits and resolve ownership conflicts explicitly. A second application of the same plan must be a byte- and modification-time-preserving no-op.
 
@@ -52,6 +52,6 @@ conda run -n harness python tests/frontmatter_differential.py --seed 20260905 --
 
 The report records Python/oracle versions, corpus/generator/input hashes, accepted/rejected counts, mismatches, and surrogate code points. Agreement is limited to the tested accepted subset; it does not establish complete YAML or Unicode compatibility. CI runs this oracle independently on Windows and Linux.
 
-For real upgrade reproduction, extract v7.6 commit `d91f0a5ae261d44c86f4082ba5098d55b7e5cc4c` or v8.0 commit `ed2972555562c736496e8d90463f52efabf05305` to a separate baseline source directory and run `conda run -n harness python tests/verify_release_upgrade.py --baseline BASELINE_SOURCE --output UPGRADE_REPORT.json` from the v8.1 source tree. This uses the old generator to create installations in disposable directories, then checks read-only diagnosis, a clean upgrade, a repeated no-op, preservation of external edits, and static instruction-size deltas. A v7.6 installation initially requires upgrade; a clean v8.0 installation remains valid. The source trees must include their test fixtures; the script does not contact Git remotes.
+For real upgrade reproduction, extract v7.6 commit `d91f0a5ae261d44c86f4082ba5098d55b7e5cc4c`, v8.0 commit `ed2972555562c736496e8d90463f52efabf05305`, or v8.1 commit `2a920f9555df7270d8947b9e926654746aeb9247` to a baseline directory and run `conda run -n harness python tests/verify_release_upgrade.py --baseline BASELINE_SOURCE --output UPGRADE_REPORT.json` from v9.0. The old generator creates a real installation, then current tools verify read-only `upgrade-required` diagnosis, clean upgrade, repeated no-op, external-edit preservation, and static instruction-size deltas. Source trees must include their test fixtures; no remote is contacted.
 
 Instruction characters and UTF-8 bytes are static measurements. Loaded context, token counters, repeated work, latency, and billing require separate execution observations with explicit coverage. An unchanged agent count proves neither unchanged cost nor token savings. This release adds no agents by default and claims no measured live efficiency improvement or scRAE benchmark result.

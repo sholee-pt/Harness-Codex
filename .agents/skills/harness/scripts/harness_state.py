@@ -129,7 +129,19 @@ def resolve_inside(root: Path, relative: str, *, must_exist: bool = False) -> Pa
     ):
         raise StateError(f"managed path must be a normalized relative path: {relative}")
     resolved_root = root.resolve()
-    candidate = resolved_root.joinpath(*candidate_rel.parts).resolve()
+    candidate = resolved_root
+    for part in candidate_rel.parts:
+        candidate = candidate / part
+        try:
+            metadata = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(metadata.st_mode) or (
+            getattr(metadata, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        ):
+            raise StateError(f"managed path uses a symlink or reparse point: {relative}")
+    candidate = candidate.resolve()
     if candidate == resolved_root or resolved_root not in candidate.parents:
         raise StateError(f"managed path escapes workspace root: {relative}")
     if must_exist and not candidate.is_file():
@@ -155,7 +167,7 @@ def portable_path_key(relative: str) -> tuple[str, ...]:
 def validate_evidence_relative(relative: str) -> tuple[str, ...]:
     """Reject control metadata before an evidence path is resolved or read."""
     key = portable_path_key(relative)
-    if key and key[0] in {".git", ".harness"}:
+    if key and (".git" in key or key[0] == ".harness"):
         raise StateError(
             f"evidence path uses a reserved control namespace: {relative}"
         )
@@ -292,7 +304,7 @@ def content_for_entry(path: Path, kind: str) -> bytes:
 
 
 def load_manifest(root: Path) -> tuple[Path, dict | None]:
-    path = root / ".harness" / "manifest.json"
+    path = resolve_inside(root, ".harness/manifest.json")
     if not path.exists():
         return path, None
     try:
@@ -473,6 +485,7 @@ def migrate_manifest(root: Path) -> dict:
         UPGRADE_SOURCE_SCHEMA_VERSION,
         LOCAL_ONLY_UPGRADE_SOURCE_SCHEMA_VERSION,
         CURRENT_SCHEMA_VERSION,
+        harness_metadata.PREVIOUS_MANIFEST_SCHEMA_VERSION,
     }:
         return manifest
     if version not in {1, 2, 3}:

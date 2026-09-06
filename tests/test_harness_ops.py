@@ -30,7 +30,7 @@ class OperationsEvidenceTests(unittest.TestCase):
                         "version": harness_metadata.HARNESS_VERSION,
                         "runtime": "codex",
                     },
-                    "workspace": {"kind": "plain-directory", "scope": "local-only"},
+                    "workspace": {"kind": "plain-directory", "scope": "project-local"},
                 }
             )
             + "\n",

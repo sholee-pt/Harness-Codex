@@ -1,12 +1,12 @@
-name: Harness for Codex v8.1 checks
+name: Harness for Codex v9.0 checks
 
 on:
   push:
     branches:
-      - codex/v8.1
+      - codex/v9
   pull_request:
     branches:
-      - codex/v8.1
+      - codex/v9
   workflow_dispatch:
 
 permissions:
@@ -34,7 +34,11 @@ jobs:
 
       - name: Compile the runtime tools
         shell: bash -el {0}
-        run: conda run -n harness python -m compileall -q .agents/skills/harness/scripts tests
+        run: conda run -n harness python -m compileall -q install.py .agents/skills/harness/scripts tests
+
+      - name: Dry-run project-local installation
+        shell: bash -el {0}
+        run: conda run -n harness python install.py --root "${RUNNER_TEMP}" --dry-run
 
       - name: Run unit tests
         shell: bash -el {0}
@@ -46,15 +50,17 @@ jobs:
           conda run -n harness python -m pip install -r tests/requirements-validation.txt
           conda run -n harness python tests/frontmatter_differential.py --seed 20260905 --count 11000 --output "${RUNNER_TEMP}/frontmatter-report.json"
 
-      - name: Cross-check real v7.6 and v8.0 installation upgrades
+      - name: Cross-check real v7.6, v8.0, and v8.1 installation upgrades
         shell: bash -el {0}
         run: |
           baseline_root="$(mktemp -d)"
-          mkdir -p "${baseline_root}/v76" "${baseline_root}/v80"
+          mkdir -p "${baseline_root}/v76" "${baseline_root}/v80" "${baseline_root}/v81"
           git archive d91f0a5ae261d44c86f4082ba5098d55b7e5cc4c | tar -x -C "${baseline_root}/v76"
           git archive ed2972555562c736496e8d90463f52efabf05305 | tar -x -C "${baseline_root}/v80"
+          git archive 2a920f9555df7270d8947b9e926654746aeb9247 | tar -x -C "${baseline_root}/v81"
           conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v76" --output "${RUNNER_TEMP}/upgrade-v76.json"
           conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v80" --output "${RUNNER_TEMP}/upgrade-v80.json"
+          conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v81" --output "${RUNNER_TEMP}/upgrade-v81.json"
 
       - name: Run runtime-plan, receipt, relay, and operations fixtures
         shell: bash -el {0}
@@ -94,6 +100,8 @@ jobs:
           conda run -n harness python .agents/skills/harness/scripts/harness_plan_builder.py --root "${RUNNER_TEMP}/harness-eval-project" --input .agents/skills/harness/references/minimal-draft-plan.json --output "${RUNNER_TEMP}/harness-eval-plan.json"
           conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root "${RUNNER_TEMP}/harness-eval-project" --plan "${RUNNER_TEMP}/harness-eval-plan.json"
           conda run -n harness python .agents/skills/harness/scripts/harness_doctor.py --root "${RUNNER_TEMP}/harness-eval-project"
+          # This fixture chooses an explicit exclusion policy; generation never writes it.
+          printf '%s\n' '/.agents/' '/.codex/' '/.harness/' '/AGENTS.md' >> "${RUNNER_TEMP}/harness-eval-project/.git/info/exclude"
           mkdir -p "${RUNNER_TEMP}/harness-codex-home"
           conda run -n harness python .agents/skills/harness/scripts/harness_eval.py paired-run --root "${RUNNER_TEMP}/harness-eval-project" --task-file tests/fixtures/evaluation/task.txt --comparison-plan tests/fixtures/evaluation/comparison-plan.json --verification tests/fixtures/evaluation/verification-profile.json --codex-home "${RUNNER_TEMP}/harness-codex-home" --repetitions 2 --order counterbalanced --seed 730 --dry-run --validate-materialization
 

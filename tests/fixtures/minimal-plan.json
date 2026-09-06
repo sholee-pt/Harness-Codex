@@ -135,5 +135,5 @@
   "instruction": {
     "managedBlock": "<!-- harness:begin -->\n## Project Harness\n\nUse the `$project-harness` skill for repository-wide coordinated work.\n<!-- harness:end -->"
   },
-  "artifactContractVersion": 1
+  "artifactContractVersion": 2
 }

@@ -9,9 +9,9 @@ Read this reference after artifacts have been generated or updated.
 - Manifest paths stay inside the selected workspace and all topology references resolve.
 - The root instruction file has at most one complete managed block.
 - Managed-pointer mode points to the root instruction file Codex will actually load (`AGENTS.override.md` before `AGENTS.md`); explicit-skill mode has no managed pointer and preserves the user's instruction file.
-- Manifest Schema 6 records local-only scope, the current workspace kind, instruction activation, and exact local Git exclusion patterns.
+- Manifest Schema 7 records project-local scope, selected workspace kind, instruction activation, and `not-managed` Git protection with empty patterns.
 - Managed hashes match after generation.
-- Manifest Schema 6 declares journaled application with Transaction Schema 2 and local-only workspace state.
+- Manifest Schema 7 declares journaled application with Transaction Schema 2; generation never modifies Git metadata.
 - Every evidence object resolves to the recorded repository file hash, and optional line ranges remain valid.
 - Material boundaries have topology-wide unique decision-area identifiers, persistence evidence, verifiable contracts, and material separation benefits.
 - Persistent topology classification agrees with post-merge boundary structure and recurring coordination evidence.
@@ -30,14 +30,14 @@ Read this reference after artifacts have been generated or updated.
 - A clean plan dry-run reports the same create, update, or unchanged actions that the actual apply performs.
 - A runtime plan is bound to the exact current manifest and canonical topology, references only allowed persistent agents or explicitly provisional participants, and does not modify either file.
 - Coordinated runtime plans have finite communication and reassignment budgets, evidence-backed challenges, stopping conditions, capability fallback, isolated writers, and ephemeral retention by default.
-- Draft plans materialize every deterministic change-discipline, teamplay, and topology-derived agent contract exactly once before apply checks the Schema 3 plan and Artifact Contract 1.
+- Draft plans materialize every deterministic change-discipline, teamplay, and topology-derived agent contract exactly once before apply checks the Schema 3 plan and Artifact Contract 2.
 - Runtime receipts reject empty receivers, duplicate spawns, role/parent/session-source mismatch, unknown receivers, missing agent states, unsupported CLI parser versions, malformed or unknown critical events, and exhausted or inconsistent fixed wait budgets.
 - Relay receipts bind reviews to input packet hashes, invalidate stale reviews, and account for exactly the affected agents without changing Coordination Packet Schema 1.
-- Builder, apply, and installed-state validation reject an outer root containing unacknowledged independent or linked Git repositories. Registered submodules remain visible but do not make the parent root ambiguous by themselves.
-- Authoring Contract 3 drafts materialize to Schema 3 plans with Artifact Contract 1 and cannot reach apply with the draft-only version field intact.
+- Builder, apply, and installed-state validation accept selected Git-contained folders, nested independent repositories, and linked worktrees while rejecting paths outside the selected root.
+- Authoring Contract 3 drafts materialize to Schema 3 plans with Artifact Contract 2 and cannot reach apply with the draft-only version field intact.
 - Skill metadata uses the shared strict string parser, and decoded agent instructions match the topology-derived block; arbitrary prose is not semantically verified.
-- Clean recognized v7 installations report `upgrade-required`, while corruption and incomplete current contracts remain `invalid`; see [generated-contracts.md](generated-contracts.md).
-- Git local-only protection is valid only with exactly one registered worktree; its literal encoded patterns match the manifest and an unbound Harness marker without a manifest is rejected.
+- Clean recognized v7 and v8 installations report `upgrade-required`; corruption and incomplete current or required legacy contracts remain `invalid`.
+- Current Git protection is `not-managed` with no patterns, regardless of workspace layout. Existing Git metadata and prior exclusion markers remain unchanged.
 
 ## Behavioral scenarios
 
@@ -51,8 +51,8 @@ Test the applicable cases, using an isolated temporary repository when possible:
 6. A user-modified managed file is preserved and reported.
 7. A second run over unchanged inputs performs no file write or replacement.
 8. Missing tools, post-freeze mutation, and non-retryable failures are surfaced.
-9. An existing user-owned or tracked `AGENTS.override.md` remains byte-identical and activation falls back to explicit `$project-harness`; an already Harness-managed untracked override may receive an updated block.
-10. A Git workspace remains clean after generating untracked Harness files because every managed path is present in the local `info/exclude` block.
+9. Existing user-owned root instructions remain byte-identical and activate explicit `$project-harness`; a clean Harness-owned pointer block may be updated independently of tracking.
+10. Generating inside a Git workspace leaves Git metadata unchanged and does not promise clean status or automatic exclusion.
 11. A plain directory workspace needs no Git executable or remote and a non-Git directory workspace may preserve nested repositories as boundaries.
 12. A modified managed file makes both dry-run and apply refuse all writes.
 13. A mid-apply failure restores updated files and removes files created by that transaction.
@@ -82,11 +82,12 @@ Test the applicable cases, using an isolated temporary repository when possible:
 37. A missing or unlisted canonical receiver handle, wait on an unknown handle, exhausted wait budget, agent-reported-only result, or verified terminal/binding contradiction cannot be reported as observed completion. Missing optional public or local evidence lowers evidence strength without stopping a valid bounded handle wait.
 38. Runtime Receipt Schema 2 marks an unregistered profile/CLI pair as unsupported and malformed or unknown structures as degraded; absence alone is not a conflict. An exact profile contradiction, verified binding mismatch, or incompatible terminal outcome fails closed, while raw prompts, messages, paths, IDs, handles, task names, and credentials never enter a receipt.
 39. A review bound to an older packet hash is stale after revision, and rerun accounting rejects both missing affected agents and unrelated reruns.
-40. Adding a second registered worktree makes both the main and linked worktree reject shared `info/exclude` application; installed-state validation also fails if a sibling appears after installation.
-41. Generated paths containing Git ignore metacharacters exclude only their literal target, while C0, CR, LF, NUL, and DEL path characters are rejected before protection or project writes.
-42. A transaction precondition failure or a fully rolled-back project apply restores the exact original exclusion file when Harness's just-written destination remains unchanged.
-43. An external edit to the exclusion file prevents compensating restoration and reports explicit recovery state instead of overwriting that edit.
-44. A Harness exclusion marker without a manifest is detected as unbound state and is neither adopted nor removed automatically.
+40. Main and linked worktrees both support generation without modifying their shared Git metadata.
+41. Portable path checks reject traversal, case aliases, controls, and symlink or junction escapes before writes.
+42. A transaction failure restores project files according to the journal contract while Git metadata remains unchanged.
+43. An external edit to a managed file blocks apply and preserves the edit.
+44. A legacy Harness exclusion marker without a manifest is preserved and does not block generation.
+45. Project generator install is a dry-run-safe copy with a separate receipt, safe updates, unchanged-content no-op, user-file preservation, and failed-promotion rollback.
 
 ## Completion gate
 

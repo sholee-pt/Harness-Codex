@@ -15,6 +15,7 @@ import harness_teamplay
 import harness_topology
 import harness_transaction
 import harness_workspace
+import validate_harness
 import harness_change_discipline
 import harness_frontmatter
 import harness_agent_contract
@@ -222,22 +223,14 @@ def validate_artifacts(root: Path, plan: dict) -> tuple[dict[str, str], dict[str
     return artifacts, modes
 
 
-def validate_directory_workspace_writers(root_context: dict, topology: dict) -> None:
-    try:
-        harness_workspace.validate_directory_workspace_writers(root_context, topology)
-    except harness_workspace.WorkspaceError as exc:
-        raise PlanError(str(exc)) from exc
-
-
 def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> tuple[dict, list[str]]:
     topology = require_object(plan.get("topology"), "topology")
     capability_policies = plan.get("capabilityPolicies")
     try:
         warnings = harness_topology.validate_contract(topology, capability_policies)
+        harness_topology.validate_scope_paths(root, topology)
     except harness_topology.TopologyError as exc:
         raise PlanError(str(exc)) from exc
-
-    validate_directory_workspace_writers(inventory.inspect_root_context(root), topology)
 
     for label, evidence in harness_topology.iter_evidence(topology):
         validate_evidence(root, evidence, label)
@@ -414,17 +407,18 @@ def existing_manifest_state(root: Path) -> tuple[dict | None, dict[str, dict]]:
     if manifest is None:
         return None, {}
     harness_state.validate_runtime(manifest)
-    if manifest.get("schemaVersion") not in {
+    if type(manifest.get("schemaVersion")) is not int or manifest.get("schemaVersion") not in {
         harness_state.UPGRADE_SOURCE_SCHEMA_VERSION,
         harness_state.LOCAL_ONLY_UPGRADE_SOURCE_SCHEMA_VERSION,
         harness_state.CURRENT_SCHEMA_VERSION,
+        harness_metadata.PREVIOUS_MANIFEST_SCHEMA_VERSION,
     }:
         raise PlanError(
             f"existing manifest must be schemaVersion {harness_state.UPGRADE_SOURCE_SCHEMA_VERSION} "
             f", {harness_state.LOCAL_ONLY_UPGRADE_SOURCE_SCHEMA_VERSION}, or "
-            f"{harness_state.CURRENT_SCHEMA_VERSION} before a schema 6 upgrade"
+            f"6, or {harness_state.CURRENT_SCHEMA_VERSION} before a project-local upgrade"
         )
-    if manifest.get("schemaVersion") == harness_state.CURRENT_SCHEMA_VERSION:
+    if manifest.get("schemaVersion") in {harness_metadata.PREVIOUS_MANIFEST_SCHEMA_VERSION, harness_state.CURRENT_SCHEMA_VERSION}:
         try:
             # A valid incoming plan does not authorize replacing an unsupported
             # installed contract. Known legacy installations still use the
@@ -453,10 +447,29 @@ def existing_manifest_state(root: Path) -> tuple[dict | None, dict[str, dict]]:
         relative = entry.get("path")
         if not isinstance(relative, str) or relative in by_path:
             raise PlanError(f"invalid or duplicate existing managed path: {relative!r}")
+        if not harness_transaction.is_allowed_target(relative):
+            raise PlanError(f"existing managed path cannot enter project artifact ownership: {relative!r}; apply refused")
         by_path[relative] = entry
         state = harness_state.entry_status(root, entry)
         if state.get("state") != "unchanged":
             raise PlanError(f"managed file {relative!r} is {state.get('state')}; apply refused")
+    if manifest.get("schemaVersion") in {
+        harness_metadata.PREVIOUS_MANIFEST_SCHEMA_VERSION, harness_state.CURRENT_SCHEMA_VERSION
+    }:
+        # Re-analysis may intentionally replace stale evidence. Installed contracts,
+        # however, must remain intact before a reviewed replacement is accepted.
+        validator = validate_harness.Validator(root)
+        validator.manifest = manifest
+        validator.validate_manifest_shape()
+        validator.validate_topology()
+        validator.validate_managed_files()
+        validator.validate_root_pointer()
+        try:
+            harness_workspace.validate_manifest_protection(root, manifest.get("workspace"), by_path)
+        except harness_workspace.WorkspaceError as exc:
+            validator.error(str(exc))
+        if validator.errors:
+            raise PlanError("existing installation contract is invalid; apply refused: " + "; ".join(validator.errors))
     return manifest, by_path
 
 
@@ -485,9 +498,9 @@ def classify_file(
 
 def build_application(root: Path, plan: dict) -> dict:
     if type(plan.get("artifactContractVersion")) is not int or plan.get("artifactContractVersion") != harness_metadata.ARTIFACT_CONTRACT_VERSION:
-        raise PlanError("plan requires artifactContractVersion 1; rebuild a reviewed Authoring Contract 3 draft")
+        raise PlanError("plan requires artifactContractVersion 2; rebuild a reviewed Authoring Contract 3 draft")
     try:
-        root_context = inventory.require_unambiguous_root(root)
+        root_context = inventory.require_workspace_root(root)
     except ValueError as exc:
         raise PlanError(str(exc)) from exc
     harness_transaction.ensure_no_pending_transaction(root)
@@ -498,19 +511,6 @@ def build_application(root: Path, plan: dict) -> dict:
     capability_policies = require_list(plan.get("capabilityPolicies"), "capabilityPolicies")
     managed_block = validate_instruction(plan)
     manifest, old_managed = existing_manifest_state(root)
-    if manifest is None:
-        try:
-            protection_state = harness_workspace.inspect_local_protection(
-                root, root_context["workspaceKind"]
-            )
-        except harness_workspace.WorkspaceError as exc:
-            raise PlanError(str(exc)) from exc
-        if protection_state["state"] not in {"absent", "not-applicable"}:
-            raise PlanError(
-                "local Git contains a Harness protection block without a manifest; "
-                f"state={protection_state['state']}; inspect and remove it explicitly before retrying"
-            )
-
     try:
         instruction_relative = harness_state.active_instruction_relative(root)
     except harness_state.StateError as exc:
@@ -602,21 +602,13 @@ def build_application(root: Path, plan: dict) -> dict:
     for relative in removal_candidates:
         desired_entries[relative] = old_managed[relative]
 
-    protected_paths = sorted(desired_entries)
-    try:
-        local_protection = harness_workspace.plan_local_protection(
-            root, root_context["workspaceKind"], protected_paths
-        )
-    except harness_workspace.WorkspaceError as exc:
-        raise PlanError(str(exc)) from exc
-
     workspace_manifest = {
         "scope": harness_workspace.LOCAL_SCOPE,
         "kind": root_context["workspaceKind"],
         "instructionMode": instruction_mode,
         "gitProtection": {
-            "mode": local_protection["mode"],
-            "patterns": local_protection["patterns"],
+            "mode": "not-managed",
+            "patterns": [],
         },
     }
 
@@ -665,8 +657,6 @@ def build_application(root: Path, plan: dict) -> dict:
         ),
         "instructionPath": instruction_path,
         "instructionText": merged_instruction,
-        "localProtection": local_protection,
-        "protectedPaths": protected_paths,
         "manifestPath": manifest_path,
         "manifestText": manifest_text,
         "originalHashes": original_hashes,
@@ -680,12 +670,6 @@ def build_application(root: Path, plan: dict) -> dict:
             "removalCandidates": removal_candidates,
             "warnings": topology_warnings,
             "workspace": workspace_manifest,
-            "localProtection": {
-                "mode": local_protection["mode"],
-                "action": local_protection["action"],
-                "patterns": local_protection["patterns"],
-                "worktreeCount": local_protection["worktreeCount"],
-            },
             "activation": (
                 "managed-pointer"
                 if instruction_mode == "managed-pointer"
@@ -756,45 +740,18 @@ def apply_application(application: dict) -> dict:
     action_by_path = application_actions(application)
     desired_modes = application_modes(application)
     root = application["manifestPath"].parents[1]
-    try:
-        protection_result = harness_workspace.apply_local_protection(
-            root, application["localProtection"], application["protectedPaths"]
-        )
-    except harness_workspace.WorkspaceError as exc:
-        raise PlanError(str(exc)) from exc
-    journal: dict | None = None
-    try:
-        journal = harness_transaction.prepare_transaction(
-            root,
-            application_outputs(application),
-            action_by_path,
-            application["originalHashes"],
-            application["originalModes"],
-            desired_modes,
-            application["managedPreconditions"],
-        )
-        if journal is None:
-            return {"state": "unchanged", "writes": 0, "cleaned": True}
-        return harness_transaction.apply_transaction(root, journal)
-    except Exception as apply_error:
-        protection_changed = protection_result.get("action") not in {None, "unchanged"}
-        manifest_was_already_current = (
-            action_by_path.get(".harness/manifest.json") == "unchanged"
-        )
-        transaction_committed = journal is not None and journal.get("state") == "committed"
-        if protection_changed and not manifest_was_already_current and not transaction_committed:
-            try:
-                pending = harness_state.transaction_status(root)
-                if pending is None:
-                    harness_workspace.rollback_local_protection(
-                        root, application["localProtection"]
-                    )
-            except (OSError, UnicodeError, harness_state.StateError, harness_workspace.WorkspaceError) as rollback_error:
-                raise PlanError(
-                    "project apply failed and local Git protection could not be restored safely; "
-                    f"original error: {apply_error}; protection recovery error: {rollback_error}"
-                ) from apply_error
-        raise
+    journal = harness_transaction.prepare_transaction(
+        root,
+        application_outputs(application),
+        action_by_path,
+        application["originalHashes"],
+        application["originalModes"],
+        desired_modes,
+        application["managedPreconditions"],
+    )
+    if journal is None:
+        return {"state": "unchanged", "writes": 0, "cleaned": True}
+    return harness_transaction.apply_transaction(root, journal)
 
 
 def main() -> int:

@@ -58,6 +58,9 @@ def legacy_installation(root, plan):
         write_and_reseal(root, agent["path"], contract.replace_instructions(text, instructions))
     path = root / ".harness/manifest.json"
     manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["schemaVersion"] = metadata.PREVIOUS_MANIFEST_SCHEMA_VERSION
+    manifest["workspace"]["scope"] = "local-only"
+    manifest["workspace"]["gitProtection"] = {"mode": "not-applicable", "patterns": []}
     manifest.pop("artifactContractVersion")
     manifest["generator"]["version"] = "7.6"
     path.write_text(json.dumps(manifest), encoding="utf-8")
@@ -275,7 +278,7 @@ class UpgradeTests(unittest.TestCase):
             self.assertEqual(snapshot(root), before)
 
     def test_missing_or_invalid_current_contract_metadata_is_an_error(self):
-        for value in (None, True, 2, "1"):
+        for value in (None, True, 1, "2"):
             with self.subTest(value=value), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 apply.apply_application(apply.build_application(root, minimal_plan(root)))
@@ -298,6 +301,9 @@ class UpgradeTests(unittest.TestCase):
             manifest = json.loads(path.read_text())
             manifest["generator"]["version"] = metadata.HARNESS_VERSION
             manifest["artifactContractVersion"] = metadata.ARTIFACT_CONTRACT_VERSION
+            manifest["schemaVersion"] = metadata.MANIFEST_SCHEMA_VERSION
+            manifest["workspace"]["scope"] = "project-local"
+            manifest["workspace"]["gitProtection"] = {"mode": "not-managed", "patterns": []}
             path.write_text(json.dumps(manifest))
             self.assertEqual(validate_harness.Validator(root).run()["installationStatus"], "invalid")
 

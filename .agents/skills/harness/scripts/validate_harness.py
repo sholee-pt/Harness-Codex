@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable
 
 import harness_state
+import harness_transaction
 import harness_teamplay
 import harness_topology
 import harness_workspace
@@ -103,7 +104,7 @@ class Validator:
     def validate_manifest_shape(self) -> None:
         if not self.manifest:
             return
-        if self.manifest.get("schemaVersion") != harness_state.CURRENT_SCHEMA_VERSION:
+        if self.manifest.get("schemaVersion") not in (harness_metadata.PREVIOUS_MANIFEST_SCHEMA_VERSION, harness_state.CURRENT_SCHEMA_VERSION):
             self.error(f"schemaVersion must be {harness_state.CURRENT_SCHEMA_VERSION}")
         if "taskExecution" in self.manifest or "taskExecutionClass" in self.manifest:
             self.error("runtime task execution state must not be stored in the project manifest")
@@ -123,9 +124,10 @@ class Validator:
         if not isinstance(generator, dict) or not all(generator.get(key) for key in ("name", "version", "runtime")):
             self.error("generator must contain name, version, and runtime")
         try:
-            self.legacy_artifacts = harness_metadata.artifact_contract_state(self.manifest) == "legacy"
-            if self.legacy_artifacts:
-                self.upgrade_requirements.append("Review an Authoring Contract 3 draft and apply Artifact Contract 1 through the guarded update workflow.")
+            contract_state = harness_metadata.artifact_contract_state(self.manifest)
+            self.legacy_artifacts = contract_state == "legacy"
+            if contract_state != "current":
+                self.upgrade_requirements.append("Review an Authoring Contract 3 draft and apply Artifact Contract 2 and the project-local workspace contract through the guarded update workflow.")
         except ValueError as exc:
             self.error(str(exc))
         application = self.manifest.get("application")
@@ -142,9 +144,9 @@ class Validator:
         if not isinstance(workspace, dict):
             self.error("workspace must be an object")
         else:
-            if workspace.get("scope") != harness_workspace.LOCAL_SCOPE:
-                self.error("workspace.scope must be local-only")
-            if workspace.get("instructionMode") not in {"managed-pointer", "explicit-skill"}:
+            if workspace.get("scope") not in (harness_workspace.LOCAL_SCOPE, harness_workspace.LEGACY_LOCAL_SCOPE):
+                self.error("workspace.scope is unsupported")
+            if workspace.get("instructionMode") not in ("managed-pointer", "explicit-skill"):
                 self.error("workspace.instructionMode is invalid")
         project = self.manifest.get("project")
         if not isinstance(project, dict) or not isinstance(project.get("summary"), str) or not project.get("summary", "").strip():
@@ -373,15 +375,10 @@ class Validator:
             warnings = harness_topology.validate_contract(
                 topology, self.manifest.get("capabilityPolicies")
             )
+            harness_topology.validate_scope_paths(self.root, topology)
             for warning in warnings:
                 self.warning(warning)
         except harness_topology.TopologyError as exc:
-            self.error(str(exc))
-        try:
-            harness_workspace.validate_directory_workspace_writers(
-                inventory.inspect_root_context(self.root), topology
-            )
-        except harness_workspace.WorkspaceError as exc:
             self.error(str(exc))
         skill_value = topology.get("skills", [])
         agent_value = topology.get("agents", [])
@@ -445,6 +442,8 @@ class Validator:
                 self.error("managedFiles entries must be objects")
                 continue
             relative = entry.get("path")
+            if not harness_transaction.is_allowed_target(relative):
+                self.error(f"managed path is outside project artifact ownership: {relative!r}")
             if relative in managed_paths:
                 self.error(f"duplicate managed path: {relative}")
             elif isinstance(relative, str):
@@ -536,12 +535,12 @@ class Validator:
                 if token in text:
                     self.error(f"obsolete runtime token {token!r} found in {relative}")
 
-    def validate_local_only_workspace(self) -> None:
-        context = inventory.require_unambiguous_root(self.root)
+    def validate_workspace(self) -> None:
+        context = inventory.require_workspace_root(self.root)
         workspace = self.manifest.get("workspace")
         if not isinstance(workspace, dict):
             return
-        if workspace.get("kind") != context.get("workspaceKind"):
+        if workspace.get("scope") == harness_workspace.LEGACY_LOCAL_SCOPE and workspace.get("kind") != context.get("workspaceKind"):
             self.error(
                 f"workspace kind changed from {workspace.get('kind')!r} "
                 f"to {context.get('workspaceKind')!r}; re-analyze before updating"
@@ -576,13 +575,13 @@ class Validator:
 
         def validate_root_context() -> None:
             try:
-                inventory.require_unambiguous_root(self.root)
+                inventory.require_workspace_root(self.root)
             except ValueError as exc:
                 self.error(str(exc))
 
         self.run_layer(
             "rootContext",
-            "The selected workspace root is complete and respects local Git boundaries.",
+            "The selected project folder exists; Git boundaries are observational.",
             validate_root_context,
         )
         self.run_layer(
@@ -593,13 +592,13 @@ class Validator:
         if self.manifest:
             def validate_local_only() -> None:
                 try:
-                    self.validate_local_only_workspace()
+                    self.validate_workspace()
                 except (ValueError, harness_workspace.WorkspaceError) as exc:
                     self.error(str(exc))
 
             self.run_layer(
-                "localOnlyProtection",
-                "Generated files remain local and local Git workspaces exclude every managed path.",
+                "workspaceOwnership",
+                "Workspace ownership matches its versioned contract; current generation does not manage Git metadata.",
                 validate_local_only,
             )
             self.run_layer(
@@ -623,35 +622,7 @@ class Validator:
                 self.validate_forbidden_tokens,
             )
         else:
-            protection_purpose = (
-                "Generated files remain local and local Git workspaces exclude every managed path."
-            )
-            try:
-                context = inventory.inspect_root_context(self.root)
-                inspection = harness_workspace.inspect_local_protection(
-                    self.root, context.get("workspaceKind")
-                )
-                if inspection["state"] in {
-                    "present-unbound",
-                    "shared-ambiguous",
-                    "malformed",
-                }:
-                    self.error(
-                        "local Git contains a Harness protection block without a manifest; "
-                        f"state={inspection['state']}; explicit inspection and cleanup are required"
-                    )
-                    self.validation_layers["localOnlyProtection"] = {
-                        "status": "failed",
-                        "proves": protection_purpose,
-                    }
-                else:
-                    self.mark_blocked("localOnlyProtection", protection_purpose)
-            except (OSError, UnicodeError, harness_workspace.WorkspaceError) as exc:
-                self.error(str(exc))
-                self.validation_layers["localOnlyProtection"] = {
-                    "status": "failed",
-                    "proves": protection_purpose,
-                }
+            self.mark_blocked("workspaceOwnership", "The manifest identifies project-local ownership.")
             self.mark_blocked(
                 "evidenceFreshness",
                 "All declared evidence paths, hashes, and optional line ranges still match.",

@@ -1,6 +1,6 @@
 # Generation Plan Format
 
-Create one UTF-8 JSON draft with `authoringContractVersion: 3`, materialize its deterministic contracts, and pass the resulting plan to `scripts/harness_apply.py`. Harness for Codex v8.1 retains Plan Schema 3 but requires `artifactContractVersion: 1`. The builder removes the authoring-only revision and emits the artifact revision. Read [generated-contracts.md](generated-contracts.md): outer schema stability does not imply artifact compatibility.
+Create one UTF-8 JSON draft with `authoringContractVersion: 3`, materialize its deterministic contracts, and pass the resulting plan to `scripts/harness_apply.py`. Harness for Codex v9.0 retains Plan Schema 3 but requires `artifactContractVersion: 2`. The builder removes the authoring-only revision and emits the artifact revision. Read [generated-contracts.md](generated-contracts.md): outer schema stability does not imply artifact compatibility.
 
 Read [topology-contract.md](topology-contract.md) before filling the topology. Use the installed [minimal draft-plan example](minimal-draft-plan.json) as the packaging-safe starting point, then materialize its placeholders with `scripts/harness_plan_builder.py`.
 
@@ -169,7 +169,7 @@ conda run -n harness python <harness-skill-root>/scripts/harness_plan_builder.py
   --output PLAN.json
 ```
 
-The builder requires authoring contract 3 and every target exactly once, rejects an incomplete or unsupported workspace root, emits a Schema 3 object without the authoring-only field, and leaves the apply validator responsible for the complete plan, evidence, ownership, and canonical exact-once checks. Apply repeats the root check so bypassing the builder cannot apply a plan to a Git-contained directory, an incompletely scanned root, or a Git root with an unregistered nested repository.
+The builder requires authoring contract 3 and every target exactly once, validates selected-root path safety, emits a Schema 3 object with Artifact Contract 2, and leaves complete evidence, ownership, and canonical exact-once validation to apply. Git-contained roots, nested repositories, linked worktrees, and bounded scan uncertainty do not force a different root. Both builder and apply reject paths that escape the selected folder.
 
 - Generated skill frontmatter follows the strict string-only subset in [generated-contracts.md](generated-contracts.md). Use the shared renderer for quoting; collections, duplicate keys, coercible plain types, and surrogate escapes fail.
 - Include every generated dedicated file in `artifacts`, including supporting references, scripts, and assets.
@@ -180,9 +180,9 @@ The builder requires authoring contract 3 and every target exactly once, rejects
 - Missing, escaped, stale, or invalid evidence is rejected before a dry-run action map is created.
 - Evidence paths may not also be planned outputs.
 - If an agent lists a skill dependency, mention that skill in its generated `developer_instructions`.
-- Do not include `.harness/manifest.json`; the apply script derives Manifest Schema 6.
-- Do not specify the root instruction path. Harness selects the active path but writes a pointer only when that path is absent or already Harness-managed and untracked. Existing user-owned or tracked instructions are preserved and Manifest Schema 6 records `explicit-skill` activation.
-- Do not specify Git or GitHub state in the plan. Local-only protection and workspace classification are derived deterministically at apply time and recorded in Manifest Schema 6.
+- Do not include `.harness/manifest.json`; the apply script derives Manifest Schema 7.
+- Do not specify the root instruction path. Harness selects the active path and writes a pointer only when the path is absent or its block is already Harness-managed. Existing user-owned instructions are preserved and Manifest Schema 7 records `explicit-skill` activation.
+- Do not specify Git or GitHub state in the plan. Manifest Schema 7 records the selected workspace context and `not-managed` Git protection; generation does not edit Git metadata.
 - Do not include `taskExecution`, `taskExecutionClass`, the current task's selected agent list, or runtime-only quality decisions.
 - Keep the plan in a temporary location. It is a proposal, not managed project state.
 

@@ -332,5 +332,5 @@
   "instruction": {
     "managedBlock": "<!-- harness:begin -->\n## Project Harness\n\nUse the `$project-harness` skill for recurring API and storage contract synchronization.\n<!-- harness:end -->"
   },
-  "artifactContractVersion": 1
+  "artifactContractVersion": 2
 }

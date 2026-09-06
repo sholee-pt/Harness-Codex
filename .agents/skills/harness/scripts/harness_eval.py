@@ -1384,7 +1384,7 @@ def _capture_project_context(
 
 
 def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str, Any]:
-    """Capture one verified local-only installation without persisting raw content."""
+    """Capture an untracked installation in a clean Git root for isolated evaluation."""
     try:
         worktree_count = harness_workspace.require_exclusive_info_exclude(root)
     except harness_workspace.WorkspaceError as exc:
@@ -1393,7 +1393,7 @@ def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str,
     if not report["valid"]:
         detail = "; ".join(report["errors"][:5]) or "installed validation failed"
         raise types.EvaluationError(
-            "paired-run requires a valid local-only Harness installation: " + detail
+            "paired-run requires a valid project-local Harness installation: " + detail
         )
     raw_manifest_path = root / ".harness" / "manifest.json"
     if raw_manifest_path.is_symlink():
@@ -1418,7 +1418,7 @@ def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str,
         or workspace.get("scope") != harness_workspace.LOCAL_SCOPE
         or workspace.get("kind") not in harness_workspace.GIT_WORKSPACE_KINDS
     ):
-        raise types.EvaluationError("paired-run requires a local-only Git Harness installation")
+        raise types.EvaluationError("paired-run requires a project-local Harness installation at a Git root")
     entries = manifest.get("managedFiles")
     if not isinstance(entries, list) or not all(isinstance(entry, dict) for entry in entries):
         raise types.EvaluationError("paired-run manifest managedFiles must be objects")
@@ -1444,6 +1444,8 @@ def _capture_local_harness_snapshot(root: Path, source_commit: str) -> dict[str,
             label="paired Harness and evidence paths",
         )
         harness_workspace.validate_manifest_protection(root, workspace, managed_paths)
+        if harness_workspace.tracked_paths(root, [*managed_paths, ".harness"]):
+            raise types.EvaluationError("paired-run requires untracked Harness targets to isolate its baseline")
         tracked_evidence = set(harness_workspace.tracked_paths(root, evidence_paths))
     except (harness_state.StateError, harness_workspace.WorkspaceError) as exc:
         raise types.EvaluationError(str(exc)) from exc
@@ -1922,11 +1924,6 @@ def _materialize_paired_arms(
         protection = harness_workspace.plan_local_protection(
             treatment_root, "git-repository", snapshot["managedPaths"]
         )
-        expected_patterns = snapshot["treatmentManifest"]["workspace"]["gitProtection"]["patterns"]
-        if protection["patterns"] != expected_patterns:
-            raise types.EvaluationError(
-                "paired-run treatment protection does not match the source manifest"
-            )
         harness_workspace.apply_local_protection(
             treatment_root, protection, snapshot["managedPaths"]
         )

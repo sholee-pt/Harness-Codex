@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v8.1, a local-only workspace harness generator with strict shared frontmatter validation, topology-derived agent contracts, explicit artifact compatibility, read-only activation diagnostics, explicit usage coverage, lighter direct-task guidance, opt-in operations evidence, custom-agent load-aware paired evaluation, single-worktree Git protection, Manifest Schema 6 workspace state, and deterministic runtime contracts.
+- This branch contains Harness for Codex v9.0, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add deployment, marketplace publishing, telemetry, or external service dependencies.
 - Keep evaluation default-off, user-local, and isolated from generation/apply failure handling.
@@ -14,9 +14,9 @@
 - Treat `.agents/skills/harness/SKILL.md` as the concise router.
 - Put conditional design guidance in `references/`, deterministic helpers in `scripts/`, and output templates in `assets/`.
 - Generate agents and project skills only when workspace evidence justifies them.
-- Accept plain directories and non-Git directory workspaces. Never assume a Git work tree has a GitHub remote.
+- Accept plain directories, Git-contained folders, linked worktrees, and multi-repository workspaces. Respect the selected root; Git boundaries are analysis context, not a root-selection gate.
 - Never inspect or mutate Git remotes, credentials, branches, commits, pushes, pull requests, or deployments during generation.
-- In local Git roots, preserve tracked targets and user-owned instructions and keep generated paths local through the marker-owned info/exclude contract.
+- Do not modify Git metadata during generator installation or project generation. Preserve user-owned instructions and files through explicit ownership and hash checks. Generated files are not automatically ignored or untracked.
 - Preserve user-owned content and test idempotent updates.
 - Keep current-task roles, plans, messages, adapter selection, and retention out of the persistent manifest.
 

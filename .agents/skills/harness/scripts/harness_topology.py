@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 import re
-from pathlib import PurePosixPath
+import stat
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Iterable, Iterator
 
 import harness_teamplay
@@ -134,11 +135,64 @@ def normalize_scope(value: object, label: str) -> tuple[str, bool]:
     path = PurePosixPath(base)
     if (
         path.is_absolute()
+        or PureWindowsPath(base).drive
         or path.as_posix() != base
         or any(part in {".", ".."} for part in path.parts)
     ):
         raise TopologyError(f"{label} must be a normalized POSIX-relative path")
+    if any(part.casefold() == ".git" for part in path.parts):
+        raise TopologyError(f"{label} must not target Git metadata")
     return base, is_prefix
+
+
+def validate_scope_paths(root: Path, topology: dict) -> None:
+    """Check declared scope bases without following links or scanning descendants.
+
+    Structural topology validation precedes this filesystem check. Missing scope
+    targets are allowed so a reviewed task can create new files and directories.
+    """
+    scopes: list[tuple[str, object]] = []
+    for index, boundary in enumerate(topology.get("boundaries", [])):
+        for field in ("readScopes", "writeScopes"):
+            scopes.extend(
+                (f"topology.boundaries[{index}].{field}[{scope_index}]", scope)
+                for scope_index, scope in enumerate(boundary.get(field, []))
+            )
+    for index, agent in enumerate(topology.get("agents", [])):
+        scopes.extend(
+            (f"topology.agents[{index}].fileAccess[{access_index}].scope", access.get("scope"))
+            for access_index, access in enumerate(agent.get("fileAccess", []))
+        )
+    scopes.extend(
+        (f"topology.handoffs[{index}].scope", handoff.get("scope"))
+        for index, handoff in enumerate(topology.get("handoffs", []))
+    )
+    resolved_root = root.resolve()
+    for label, scope in scopes:
+        base, is_prefix = normalize_scope(scope, label)
+        parts = PurePosixPath(base).parts
+        candidate = resolved_root
+        for index, part in enumerate(parts):
+            candidate = candidate / part
+            try:
+                metadata = candidate.lstat()
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                raise TopologyError(f"cannot inspect {label}: {base}") from exc
+            if stat.S_ISLNK(metadata.st_mode) or (
+                getattr(metadata, "st_file_attributes", 0)
+                & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+            ):
+                raise TopologyError(f"{label} uses a symlink or reparse point: {base}")
+            if (index < len(parts) - 1 or is_prefix) and not stat.S_ISDIR(metadata.st_mode):
+                raise TopologyError(f"{label} has a non-directory scope ancestor or prefix: {base}")
+        try:
+            resolved = candidate.resolve()
+        except (OSError, RuntimeError) as exc:
+            raise TopologyError(f"cannot resolve {label}: {base}") from exc
+        if resolved == resolved_root or resolved_root not in resolved.parents:
+            raise TopologyError(f"{label} escapes the selected workspace: {base}")
 
 
 def scopes_overlap(first: str, second: str) -> bool:
@@ -474,6 +528,8 @@ def _validate_components(
         label = f"topology.skills[{index}]"
         skill = require_object(item, label)
         name = skill.get("name")
+        if isinstance(name, str) and name.casefold() == "harness":
+            raise TopologyError("skill name 'harness' is reserved for the project-local generator")
         if name == "project-harness":
             if skill.get("scope") != "project":
                 raise TopologyError("project-harness must use project scope")
