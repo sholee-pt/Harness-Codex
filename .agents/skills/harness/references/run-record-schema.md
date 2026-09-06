@@ -55,7 +55,7 @@ The `paired-run` command requires and validates the comparison plan before eithe
 
 For `paired-run`, the primary outcome is supplied before arm execution. Standalone plan binding alone cannot prove this timing. Cost improvements cannot override a correctness regression.
 
-v9.1 also accepts `input-tokens`, `cached-input-tokens`, and `reasoning-output-tokens` alongside `output-tokens`. Each selects one existing measurement and never constructs a sum. A counter's direction must be selected for the experiment; cached input is not inherently a lower-is-better metric. Existing plans remain valid. Missing counters remain unavailable and existing completeness and correctness gates still apply.
+v9.2 also accepts `input-tokens`, `cached-input-tokens`, and `reasoning-output-tokens` alongside `output-tokens`. Each selects one existing measurement and never constructs a sum. A counter's direction must be selected for the experiment; cached input is not inherently a lower-is-better metric. Existing plans remain valid. Missing counters remain unavailable and existing completeness and correctness gates still apply.
 
 The CLI `view` adds a presentation-only `usageSummary`; it is not part of Run, Observation, Comparison, or Derived View fingerprint schemas. It does not expand the capture's known usage scope or authorize configuration attribution.
 

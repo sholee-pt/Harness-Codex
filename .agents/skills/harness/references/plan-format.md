@@ -1,6 +1,6 @@
 # Generation Plan Format
 
-Create one UTF-8 JSON draft with `authoringContractVersion: 3`, materialize its deterministic contracts, and pass the resulting plan to `scripts/harness_apply.py`. Harness for Codex v9.1 retains Plan Schema 3 but requires `artifactContractVersion: 2`. The builder removes the authoring-only revision and emits the artifact revision. Read [generated-contracts.md](generated-contracts.md): outer schema stability does not imply artifact compatibility.
+Create one UTF-8 JSON draft with `authoringContractVersion: 3`, materialize its deterministic contracts, and pass the resulting plan to `scripts/harness_apply.py`. Harness for Codex v9.2 retains Plan Schema 3 but requires `artifactContractVersion: 2`. The builder removes the authoring-only revision and emits the artifact revision. Read [generated-contracts.md](generated-contracts.md): outer schema stability does not imply artifact compatibility.
 
 Read [topology-contract.md](topology-contract.md) before filling the topology. Use the installed [minimal draft-plan example](minimal-draft-plan.json) as the packaging-safe starting point, then materialize its placeholders with `scripts/harness_plan_builder.py`.
 

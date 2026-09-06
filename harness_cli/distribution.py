@@ -1,0 +1,656 @@
+"""Owned, immutable CLI releases and explicit GitHub source updates.
+
+This module only touches its user-local tool installation. Project installation
+and project Git repositories are deliberately outside its API.
+"""
+
+from __future__ import annotations
+
+import ast
+from contextlib import contextmanager
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import shlex
+import shutil
+import stat
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+
+
+DEFAULT_REPOSITORY = "https://github.com/sholee-pt/Harness.git"
+REPOSITORIES = frozenset({DEFAULT_REPOSITORY, "git@github.com:sholee-pt/Harness.git", "ssh://git@github.com/sholee-pt/Harness.git"})
+BRANCH_RE = re.compile(r"codex/v(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*))?\Z")
+VERSION_RE = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
+COMMIT_RE = re.compile(r"[0-9a-f]{40}\Z")
+RELEASE_RE = re.compile(r"(?:[0-9a-f]{40}|content-[0-9a-f]{64})\Z")
+MAX_FILES = 10000
+MAX_FILE_BYTES = 16 * 1024 * 1024
+MAX_TREE_BYTES = 96 * 1024 * 1024
+METADATA = ".agents/skills/harness/scripts/harness_metadata.py"
+REQUIRED = frozenset({"harness.py", "install.py", "harness_cli/__init__.py", "harness_cli/main.py", "harness_cli/project.py", "harness_cli/distribution.py", ".agents/skills/harness/SKILL.md", METADATA})
+TOP_FILES = frozenset({"harness.py", "install.py", "install.sh", "environment.yml", "README.md", "LICENSE", "_release.json"})
+OWNER = {"schema": 1, "tool": "sholee-pt/Harness"}
+
+
+class DistributionError(ValueError):
+    """The requested managed installation cannot be changed safely."""
+
+
+def _linked(path: Path) -> bool:
+    info = path.lstat()
+    return stat.S_ISLNK(info.st_mode) or bool(getattr(info, "st_file_attributes", 0) & 0x400)
+
+
+def _path(value) -> Path:
+    path = Path(os.path.abspath(os.path.expanduser(os.fspath(value))))
+    for ancestor in reversed((path, *path.parents)):
+        if os.path.lexists(ancestor) and _linked(ancestor):
+            raise DistributionError("symlinks and filesystem reparse points are not supported")
+    return path
+
+
+def _storage_path(value) -> Path:
+    path = _path(value)
+    if any(part.rstrip(" .").casefold() == ".git" for part in path.parts):
+        raise DistributionError("tool storage and launchers must not be inside Git metadata")
+    return path
+
+
+def _relative(value: str) -> str:
+    path = PurePosixPath(value)
+    if not value or path.is_absolute() or "\\" in value or any(p in {"", ".", ".."} for p in value.split("/")):
+        raise DistributionError("unsafe source path")
+    if any(any(c in part for c in ':<>"|?*') or part.endswith((".", " ")) for part in path.parts):
+        raise DistributionError("nonportable source path")
+    if any(part.lower().split(".")[0] in {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))} for part in path.parts):
+        raise DistributionError("reserved source path")
+    return path.as_posix()
+
+
+def _runtime(name: str) -> bool:
+    return name in TOP_FILES or name.startswith("harness_cli/") or name.startswith(".agents/skills/harness/")
+
+
+def _version(value: str) -> tuple[int, int]:
+    match = VERSION_RE.fullmatch(value) if isinstance(value, str) else None
+    if not match:
+        raise DistributionError("invalid Harness release version")
+    return int(match[1]), int(match[2])
+
+
+def _branch(value: str) -> tuple[int, int]:
+    match = BRANCH_RE.fullmatch(value) if isinstance(value, str) else None
+    if not match:
+        raise DistributionError("branch must be codex/vN or codex/vN.M")
+    return int(match[1]), int(match[2] or 0)
+
+
+def _repository(value: str) -> str:
+    if value not in REPOSITORIES:
+        raise DistributionError("source must be the sholee-pt/Harness GitHub repository using HTTPS or SSH")
+    return value
+
+
+def _read_json(path: Path) -> dict:
+    _path(path)
+    try:
+        if path.stat().st_size > 4 * 1024 * 1024:
+            raise DistributionError("managed metadata is too large")
+        result = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise DistributionError("managed metadata is missing or invalid") from exc
+    if not isinstance(result, dict):
+        raise DistributionError("managed metadata must be an object")
+    return result
+
+
+def _write_json(path: Path, value: dict) -> None:
+    _path(path)
+    fd, temporary = tempfile.mkstemp(prefix=".write-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
+            json.dump(value, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.lexists(temporary):
+            os.unlink(temporary)
+
+
+def _snapshot(root: Path, *, managed=False) -> dict[str, bytes]:
+    root = _path(root)
+    if not root.is_dir():
+        raise DistributionError("source must be a directory")
+    result = {}
+    total = 0
+    folded = set()
+    for directory, dirs, files in os.walk(root, followlinks=False):
+        directory_path = Path(directory)
+        relative_dir = directory_path.relative_to(root).as_posix()
+        kept = []
+        for name in dirs:
+            relative = name if relative_dir == "." else f"{relative_dir}/{name}"
+            if name in {".git", "__pycache__"}:
+                if managed:
+                    raise DistributionError("managed release contains unexpected Git metadata or bytecode caches")
+                continue
+            if relative in {"harness_cli", ".agents", ".agents/skills", ".agents/skills/harness"} or _runtime(relative + "/"):
+                _path(directory_path / name)
+                kept.append(name)
+            elif managed:
+                raise DistributionError("managed release contains unexpected directories")
+        dirs[:] = kept
+        for name in files:
+            relative = name if relative_dir == "." else f"{relative_dir}/{name}"
+            if name.endswith((".pyc", ".pyo")):
+                if managed:
+                    raise DistributionError("managed release contains unexpected bytecode caches")
+                continue
+            if not _runtime(relative):
+                if managed:
+                    raise DistributionError("managed release contains unexpected files")
+                continue
+            relative = _relative(relative)
+            path = _path(directory_path / name)
+            info = path.stat()
+            if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_FILE_BYTES:
+                raise DistributionError("unsupported or oversized runtime source file")
+            if relative.casefold() in folded:
+                raise DistributionError("source contains case-colliding paths")
+            folded.add(relative.casefold())
+            data = path.read_bytes()
+            total += len(data)
+            if len(data) > MAX_FILE_BYTES or total > MAX_TREE_BYTES or len(result) >= MAX_FILES:
+                raise DistributionError("runtime source exceeds installation limits")
+            result[relative] = data
+    return result
+
+
+def _hashes(snapshot: dict[str, bytes]) -> dict[str, str]:
+    return {name: hashlib.sha256(data).hexdigest() for name, data in sorted(snapshot.items())}
+
+
+def _tree_hash(hashes: dict[str, str]) -> str:
+    return hashlib.sha256(json.dumps(hashes, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _source_info(snapshot: dict[str, bytes]) -> tuple[str, str | None]:
+    if not REQUIRED.issubset(snapshot):
+        raise DistributionError("source is missing required CLI or generator files")
+    try:
+        syntax = ast.parse(snapshot[METADATA].decode("utf-8-sig"))
+        versions = [ast.literal_eval(node.value) for node in syntax.body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "HARNESS_VERSION" for target in node.targets)]
+        if len(versions) != 1:
+            raise ValueError("version declaration")
+        version = versions[0]
+        _version(version)
+        for name, data in snapshot.items():
+            if name.endswith(".py"):
+                compile(data, name, "exec")
+        commit = None
+        if "_release.json" in snapshot:
+            release = json.loads(snapshot["_release.json"])
+            if not isinstance(release, dict) or release.get("version") != version:
+                raise ValueError("release metadata version mismatch")
+            commit = release.get("commit")
+            if commit is not None and (not isinstance(commit, str) or not COMMIT_RE.fullmatch(commit)):
+                raise ValueError("release metadata commit")
+            if release.get("branch") is not None and _branch(release["branch"]) != _version(version):
+                raise ValueError("release metadata branch mismatch")
+        return version, commit
+    except (ValueError, TypeError, SyntaxError, UnicodeError) as exc:
+        raise DistributionError("source version, release metadata, or Python syntax is invalid") from exc
+
+
+def _launcher_source() -> str:
+    # This loader stays independent of the source it checks before execution.
+    return '''"""Owned Harness CLI launcher; generated by Harness install."""
+import hashlib, json, os, pathlib, re, runpy, stat, sys
+
+def fail():
+    raise SystemExit("Harness managed installation is invalid or modified; repair it explicitly.")
+
+def safe(path):
+    for item in (path, *path.parents):
+        if os.path.lexists(item):
+            info = item.lstat()
+            if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+                fail()
+    return path
+
+try:
+    base = safe(pathlib.Path(os.path.abspath(__file__)).parent)
+    active = json.loads(safe(base / "active.json").read_text(encoding="utf-8"))
+    release_id = active["releaseId"]
+    if not isinstance(release_id, str) or not re.fullmatch(r"(?:[0-9a-f]{40}|content-[0-9a-f]{64})", release_id):
+        fail()
+    source = safe(base / "releases" / release_id)
+    receipt = json.loads(safe(base / "receipts" / (release_id + ".json")).read_text(encoding="utf-8"))
+    hashes = {}
+    for directory, dirs, files in os.walk(source, followlinks=False):
+        for name in dirs:
+            safe(pathlib.Path(directory) / name)
+        for name in files:
+            path = safe(pathlib.Path(directory) / name)
+            if not path.is_file():
+                fail()
+            hashes[path.relative_to(source).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = hashlib.sha256(json.dumps(hashes, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    if hashes != receipt["files"] or digest != active["treeHash"]:
+        fail()
+except (OSError, ValueError, KeyError, TypeError):
+    fail()
+os.environ["HARNESS_TOOL_HOME"] = str(base)
+prefix = pathlib.Path(sys.prefix)
+if (prefix / "conda-meta" / "history").is_file() and prefix.name == "harness":
+    os.environ["CONDA_PREFIX"] = str(prefix)
+    os.environ["CONDA_DEFAULT_ENV"] = "harness"
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(source))
+sys.argv[0] = str(source / "harness.py")
+runpy.run_path(sys.argv[0], run_name="__main__")
+'''
+
+
+def _launchers(data_root: Path, bin_dir: Path, python: str) -> dict[Path, bytes]:
+    result = {data_root / "launcher.py": _launcher_source().encode("utf-8")}
+    result[bin_dir / "harness"] = ("#!/bin/sh\nexec " + shlex.quote(python) + " -B " + shlex.quote(str(data_root / "launcher.py")) + ' "$@"\n').encode()
+    if os.name == "nt":
+        if any(c in python + str(data_root) for c in '%!\r\n"'):
+            raise DistributionError("Windows launcher paths contain unsupported shell characters")
+        result[bin_dir / "harness.cmd"] = (f'@echo off\r\n"{python}" -B "{data_root / "launcher.py"}" %*\r\n').encode()
+    return result
+
+
+def _owned_root(data_root: Path) -> None:
+    _path(data_root)
+    if not data_root.is_dir() or _read_json(data_root / ".harness-tool.json") != OWNER:
+        raise DistributionError("tool directory is not an owned Harness installation")
+    for name in ("releases", "receipts"):
+        path = _path(data_root / name)
+        if not path.is_dir():
+            raise DistributionError("managed installation directories are missing")
+
+
+@contextmanager
+def _lock(data_root: Path):
+    lock = _path(data_root / ".install.lock")
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as exc:
+        raise DistributionError("another installation is active, or its lock needs manual recovery") from exc
+    try:
+        with os.fdopen(fd, "w") as stream:
+            stream.write(str(os.getpid()))
+        yield
+    finally:
+        lock.unlink()
+
+
+def installed_status(data_root) -> dict:
+    """Read and verify the active source, receipt, and launchers without writes."""
+    data_root = _storage_path(data_root)
+    _owned_root(data_root)
+    active = _read_json(data_root / "active.json")
+    if active.get("schema") != 1 or not isinstance(active.get("releaseId"), str) or not RELEASE_RE.fullmatch(active["releaseId"]):
+        raise DistributionError("invalid active release metadata")
+    _version(active.get("version"))
+    _repository(active.get("repository"))
+    if active.get("branch") is not None:
+        _branch(active["branch"])
+    if active.get("commit") is not None and (not isinstance(active["commit"], str) or not COMMIT_RE.fullmatch(active["commit"])):
+        raise DistributionError("invalid active source commit")
+    source = _path(data_root / "releases" / active["releaseId"])
+    receipt = _read_json(data_root / "receipts" / (active["releaseId"] + ".json"))
+    snapshot = _snapshot(source, managed=True)
+    hashes = _hashes(snapshot)
+    if receipt.get("schema") != 1 or receipt.get("treeHash") != active.get("treeHash") or receipt.get("files") != hashes or active.get("treeHash") != _tree_hash(hashes):
+        raise DistributionError("managed release contains local changes; refusing to overwrite them")
+    version, declared_commit = _source_info(snapshot)
+    expected_id = active["commit"] or "content-" + active["treeHash"]
+    if version != active["version"] or (declared_commit is not None and declared_commit != active["commit"]) or active["releaseId"] != expected_id:
+        raise DistributionError("active source version or provenance mismatch")
+    if not isinstance(active.get("python"), str) or not isinstance(active.get("binDir"), str):
+        raise DistributionError("invalid launcher metadata")
+    launcher_hashes = active.get("launchers")
+    expected_paths = {str(path) for path in _launchers(data_root, _storage_path(active["binDir"]), active["python"])}
+    if not isinstance(launcher_hashes, dict) or set(launcher_hashes) != expected_paths:
+        raise DistributionError("invalid launcher ownership metadata")
+    for path, expected in launcher_hashes.items():
+        candidate = _path(path)
+        if not candidate.is_file() or hashlib.sha256(candidate.read_bytes()).hexdigest() != expected:
+            raise DistributionError("managed launcher was changed; refusing to overwrite it")
+    if active.get("auto_update") not in {"compatible", "check", "off"}:
+        raise DistributionError("invalid automatic update policy")
+    return {**active, "dataRoot": str(data_root), "sourceRoot": str(source), "releasePath": str(source), "release_root": str(source)}
+
+
+def _activate(snapshot: dict[str, bytes], data_root: Path, active: dict) -> dict:
+    hashes = _hashes(snapshot)
+    active["treeHash"] = _tree_hash(hashes)
+    release_id = active.get("commit") or "content-" + active["treeHash"]
+    active["releaseId"] = release_id
+    target = _path(data_root / "releases" / release_id)
+    receipt = _path(data_root / "receipts" / (release_id + ".json"))
+    created = False
+    receipt_value = {"schema": 1, "files": hashes, "treeHash": active["treeHash"]}
+    try:
+        if target.exists():
+            if not receipt.exists() or _read_json(receipt) != receipt_value or _hashes(_snapshot(target, managed=True)) != hashes:
+                raise DistributionError("existing release is unowned, changed, or inconsistent")
+        else:
+            if receipt.exists():
+                raise DistributionError("orphaned release receipt requires manual recovery")
+            with tempfile.TemporaryDirectory(prefix=".release-", dir=data_root / "releases") as temporary:
+                staged = Path(temporary) / "source"
+                staged.mkdir()
+                for name, data in snapshot.items():
+                    path = staged.joinpath(*PurePosixPath(name).parts)
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(data)
+                    path.chmod(0o755 if name == "install.sh" else 0o644)
+                os.replace(staged, target)
+                created = True
+            _write_json(receipt, receipt_value)
+        _write_json(data_root / "active.json", active)
+    except BaseException:
+        if created:
+            # Roll back only this attempt's unchanged files, and only before its
+            # pointer commit. Never remove an earlier release or concurrent edit.
+            try:
+                pointer = data_root / "active.json"
+                committed = pointer.exists() and _read_json(pointer).get("releaseId") == release_id
+                expected_dirs = {str(parent) for name in snapshot for parent in PurePosixPath(name).parents if str(parent) != "."}
+                actual_dirs = {path.relative_to(target).as_posix() for path in target.rglob("*") if path.is_dir()}
+                if (not committed and _path(target).parent == _path(data_root / "releases")
+                        and _hashes(_snapshot(target, managed=True)) == hashes and actual_dirs == expected_dirs):
+                    shutil.rmtree(target)
+                    if receipt.exists() and _read_json(receipt) == receipt_value:
+                        receipt.unlink()
+            except (OSError, DistributionError):
+                pass  # Preserve questionable data for explicit recovery.
+        raise
+    return installed_status(data_root)
+
+
+def install_tool(source_root, data_root, bin_dir, python_executable=sys.executable, branch=None, repository=DEFAULT_REPOSITORY, auto_update="compatible") -> dict:
+    """Install a trusted local source tree into user-owned immutable releases."""
+    source_root, data_root, bin_dir = _path(source_root), _storage_path(data_root), _storage_path(bin_dir)
+    repository = _repository(repository)
+    if auto_update not in {"compatible", "check", "off"}:
+        raise DistributionError("automatic updates must be compatible, check, or off")
+    if branch is not None:
+        _branch(branch)
+    managed_source = None
+    if source_root == data_root or source_root in data_root.parents or data_root in source_root.parents:
+        if data_root in source_root.parents:
+            managed_source = installed_status(data_root)
+        if managed_source is None or source_root != Path(managed_source["sourceRoot"]):
+            raise DistributionError("source and installation directories must not overlap")
+    if bin_dir == data_root or bin_dir in data_root.parents or data_root in bin_dir.parents:
+        raise DistributionError("bin and tool directories must not overlap")
+    # Conda commonly exposes bin/python as a symlink to its real interpreter.
+    python = str(Path(python_executable).expanduser().resolve())
+    if not Path(python).is_file():
+        raise DistributionError("Python executable is missing")
+    snapshot = _snapshot(source_root)
+    version, commit = _source_info(snapshot)
+    if managed_source is not None:
+        commit = managed_source["commit"]
+    if commit is None and (source_root / ".git").exists():
+        commit = _checkout_commit(source_root, snapshot)
+    if branch is not None and _branch(branch) != _version(version):
+        raise DistributionError("source version does not match pinned branch")
+    launchers = _launchers(data_root, bin_dir, python)
+    existing = None
+    if data_root.exists() and any(data_root.iterdir()):
+        existing = installed_status(data_root)
+        if existing["python"] != python or existing["binDir"] != str(bin_dir):
+            raise DistributionError("existing installation uses different interpreter or bin directory")
+        if _version(version) < _version(existing["version"]):
+            raise DistributionError("installation would downgrade the current version")
+        if version == existing["version"] and _tree_hash(_hashes(snapshot)) != existing["treeHash"]:
+            raise DistributionError("same-version replacement needs a verified remote update")
+    else:
+        for path in launchers:
+            if os.path.lexists(path):
+                raise DistributionError("launcher path is already user-owned; refusing to replace it")
+    created_root = not data_root.exists()
+    created_files = {}
+    created_dirs = []
+    data_root.mkdir(parents=True, exist_ok=True)
+    try:
+        with _lock(data_root):
+            if existing:
+                installed_status(data_root)
+            else:
+                if any(path.name != ".install.lock" for path in data_root.iterdir()):
+                    raise DistributionError("installation directory changed during setup")
+                marker = data_root / ".harness-tool.json"
+                _write_json(marker, OWNER)
+                created_files[marker] = marker.read_bytes()
+                for name in ("releases", "receipts"):
+                    directory = data_root / name
+                    directory.mkdir()
+                    created_dirs.append(directory)
+                if not bin_dir.exists():
+                    bin_dir.mkdir(parents=True)
+                    created_dirs.append(bin_dir)
+                for path, data in launchers.items():
+                    with path.open("xb") as stream:
+                        created_files[path] = data
+                        stream.write(data)
+                    path.chmod(0o755 if path.name == "harness" else 0o644)
+            active = {"schema": 1, "version": version, "commit": commit, "python": python, "binDir": str(bin_dir), "repository": repository, "branch": branch, "auto_update": auto_update,
+                      "launchers": existing["launchers"] if existing else {str(path): hashlib.sha256(data).hexdigest() for path, data in launchers.items()}}
+            return _activate(snapshot, data_root, active)
+    except BaseException:
+        if not existing and not (data_root / "active.json").exists():
+            for path, expected in reversed(tuple(created_files.items())):
+                try:
+                    if _path(path).is_file() and path.read_bytes() == expected:
+                        path.unlink()
+                except (OSError, DistributionError):
+                    pass
+            for directory in reversed(created_dirs):
+                try:
+                    _path(directory).rmdir()  # Only an empty, unchanged directory.
+                except (OSError, DistributionError):
+                    pass
+            if created_root:
+                try:
+                    _path(data_root).rmdir()
+                except (OSError, DistributionError):
+                    pass
+        raise
+
+
+def _git(arguments: list[str], *, timeout: int, git_executable: str = "git", allow_failure=False) -> subprocess.CompletedProcess:
+    environment = dict(os.environ)
+    environment["GIT_TERMINAL_PROMPT"] = "0"
+    environment["GIT_OPTIONAL_LOCKS"] = "0"
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"):
+        environment.pop(key, None)
+    try:
+        result = subprocess.run([git_executable, "-c", "protocol.file.allow=never", *arguments], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment, timeout=timeout, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise DistributionError("GitHub update check or download failed; check Git availability, authentication, and network access") from exc
+    if result.returncode and not allow_failure:
+        # Git errors can include authenticated URLs or credential-helper output.
+        raise DistributionError("GitHub source operation failed; check existing GitHub authentication and network access")
+    return result
+
+
+def _checkout_commit(source_root: Path, snapshot: dict[str, bytes]) -> str | None:
+    """Use checkout provenance only when the runtime exactly equals its HEAD."""
+    try:
+        commit = _git(["-C", str(source_root), "rev-parse", "HEAD^{commit}"], timeout=10).stdout.decode("ascii").strip()
+        if not COMMIT_RE.fullmatch(commit):
+            return None
+        with tempfile.TemporaryDirectory(prefix="harness-provenance-") as temporary:
+            archive = Path(temporary) / "source.tar"
+            _git(["-C", str(source_root), "archive", "--format=tar", "--output=" + str(archive), commit], timeout=10)
+            extracted = Path(temporary) / "runtime"
+            extracted.mkdir()
+            _extract_archive(archive, extracted)
+            return commit if _snapshot(extracted) == snapshot else None
+    except (DistributionError, OSError, UnicodeError):
+        return None
+
+
+def check_update(data_root, *, branch=None, repository=None, timeout=20, git_executable="git") -> dict:
+    """Query branch heads. No cache, project, release, or pointer is modified."""
+    active = installed_status(data_root)
+    repository = _repository(repository if repository is not None else active["repository"])
+    selected = branch if branch is not None else active["branch"]
+    if selected is not None:
+        _branch(selected)
+    result = _git(["ls-remote", "--heads", repository, "refs/heads/" + (selected or "codex/v*")], timeout=timeout, git_executable=git_executable)
+    heads = {}
+    try:
+        for line in result.stdout.decode("utf-8").splitlines():
+            parts = line.split()
+            if len(parts) != 2 or not parts[1].startswith("refs/heads/"):
+                continue
+            name = parts[1][11:]
+            if BRANCH_RE.fullmatch(name) and COMMIT_RE.fullmatch(parts[0]) and (selected is None or name == selected):
+                if name in heads and heads[name] != parts[0]:
+                    raise DistributionError("remote returned conflicting branch heads")
+                heads[name] = parts[0]
+    except UnicodeError as exc:
+        raise DistributionError("remote branch response is invalid") from exc
+    if not heads:
+        raise DistributionError("no supported Codex release branch was found")
+    selected = max(heads, key=lambda name: (_branch(name), name))
+    available = ".".join(map(str, _branch(selected)))
+    downgrade = _version(available) < _version(active["version"])
+    changed = heads[selected] != active["commit"] or available != active["version"]
+    return {"status": "downgrade-refused" if downgrade else "update-available" if changed else "up-to-date", "updateAvailable": changed and not downgrade,
+            "currentVersion": active["version"], "currentCommit": active["commit"], "availableVersion": available,
+            "availableCommit": heads[selected], "branch": selected, "repository": repository,
+            "majorUpgrade": _version(available)[0] > _version(active["version"])[0]}
+
+
+def _extract_archive(archive: Path, target: Path) -> None:
+    """Extract a bounded Git archive, rejecting unsafe entries before writing."""
+    if archive.stat().st_size > MAX_TREE_BYTES * 2:
+        raise DistributionError("downloaded archive is too large")
+    try:
+        with tarfile.open(archive, mode="r:") as bundle:
+            members = bundle.getmembers()
+            total = 0
+            names = set()
+            if len(members) > MAX_FILES * 2:
+                raise DistributionError("downloaded archive contains too many entries")
+            for member in members:
+                name = _relative(member.name.rstrip("/") if member.isdir() else member.name)
+                if name.casefold() in names:
+                    raise DistributionError("downloaded archive contains duplicate paths")
+                names.add(name.casefold())
+                if not member.isdir() and not member.isfile():
+                    raise DistributionError("downloaded archive contains links or special files")
+                if member.size < 0 or member.size > MAX_FILE_BYTES:
+                    raise DistributionError("downloaded archive member exceeds limits")
+                total += member.size
+                if total > MAX_TREE_BYTES:
+                    raise DistributionError("downloaded archive exceeds limits")
+            for member in members:
+                name = member.name.rstrip("/")
+                if member.isdir() or not _runtime(name):
+                    continue
+                path = target.joinpath(*PurePosixPath(name).parts)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                stream = bundle.extractfile(member)
+                if stream is None:
+                    raise DistributionError("downloaded archive file is unreadable")
+                with stream, path.open("xb") as output:
+                    shutil.copyfileobj(stream, output)
+    except (tarfile.TarError, OSError) as exc:
+        raise DistributionError("downloaded archive is invalid") from exc
+
+
+def update_tool(data_root, *, branch=None, repository=None, timeout=120, git_executable="git", expected_major=None) -> dict:
+    """Download a resolved commit, validate it, then atomically switch releases."""
+    data_root = _storage_path(data_root)
+    active = installed_status(data_root)
+    with _lock(data_root):
+        active = installed_status(data_root)
+        check = check_update(data_root, branch=branch, repository=repository, timeout=min(timeout, 20), git_executable=git_executable)
+        if expected_major is not None and (type(expected_major) is not int or _version(check["availableVersion"])[0] != expected_major):
+            raise DistributionError("automatic update cannot cross a major version; run harness update explicitly")
+        if check["status"] == "downgrade-refused":
+            raise DistributionError("remote branch would downgrade the installed version")
+        if not check["updateAvailable"]:
+            # A branch/transport selection is an explicit tracking preference,
+            # including when that branch already points to the installed code.
+            if ((branch is not None and branch != active["branch"])
+                    or check["repository"] != active["repository"]):
+                saved = {key: value for key, value in active.items() if key not in {"dataRoot", "sourceRoot", "releasePath", "release_root"}}
+                saved["repository"] = check["repository"]
+                if branch is not None:
+                    saved["branch"] = branch
+                _write_json(data_root / "active.json", saved)
+                active = installed_status(data_root)
+            return {**check, "updated": False, "installation": active}
+        if active["commit"] is None and check["availableVersion"] == active["version"]:
+            raise DistributionError("same-version update requires recorded commit provenance; install a release package or select a newer release")
+        with tempfile.TemporaryDirectory(prefix=".download-", dir=data_root) as temporary:
+            temporary = Path(temporary)
+            git_root = temporary / "source.git"
+            _git(["init", "--bare", str(git_root)], timeout=timeout, git_executable=git_executable)
+            _git(["--git-dir", str(git_root), "fetch", "--no-tags", check["repository"], check["availableCommit"]], timeout=timeout, git_executable=git_executable)
+            resolved = _git(["--git-dir", str(git_root), "rev-parse", "FETCH_HEAD^{commit}"], timeout=timeout, git_executable=git_executable).stdout.decode("ascii", errors="replace").strip()
+            if resolved != check["availableCommit"]:
+                raise DistributionError("download did not resolve to the selected immutable commit")
+            if active["commit"]:
+                ancestry = _git(["--git-dir", str(git_root), "merge-base", "--is-ancestor", active["commit"], resolved], timeout=timeout, git_executable=git_executable, allow_failure=True)
+                if ancestry.returncode:
+                    raise DistributionError("remote history is not a verified forward update; refusing rollback or rewritten history")
+            archive = temporary / "source.tar"
+            _git(["--git-dir", str(git_root), "archive", "--format=tar", "--output=" + str(archive), resolved], timeout=timeout, git_executable=git_executable)
+            extracted = temporary / "runtime"
+            extracted.mkdir()
+            _extract_archive(archive, extracted)
+            snapshot = _snapshot(extracted)
+            version, commit = _source_info(snapshot)
+            if version != check["availableVersion"] or (commit is not None and commit != resolved):
+                raise DistributionError("downloaded source version or commit disagrees with the selected branch")
+            # Verify again after download; retain any local edits made meanwhile.
+            current = installed_status(data_root)
+            if current["releaseId"] != active["releaseId"]:
+                raise DistributionError("active installation changed during download")
+            new_active = {key: value for key, value in active.items() if key not in {"dataRoot", "sourceRoot", "releasePath", "release_root"}}
+            new_active.update(version=version, commit=resolved, repository=check["repository"])
+            if branch is not None:
+                new_active["branch"] = branch
+            installation = _activate(snapshot, data_root, new_active)
+        return {**check, "status": "updated", "updated": True, "installation": installation}
+
+
+def mark_check(data_root, *, now=None) -> None:
+    """Record an automatic check attempt, including offline failures, for its TTL."""
+    data_root = _storage_path(data_root)
+    _owned_root(data_root)
+    _write_json(data_root / "last-check.json", {"schema": 1, "attemptedAt": time.time() if now is None else now})
+
+
+def check_due(data_root, ttl_seconds=86400, *, now=None) -> bool:
+    data_root = _storage_path(data_root)
+    _owned_root(data_root)
+    path = data_root / "last-check.json"
+    if not path.exists():
+        return True
+    record = _read_json(path)
+    timestamp = record.get("attemptedAt")
+    if record.get("schema") != 1 or isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)):
+        raise DistributionError("invalid update check timestamp")
+    current = time.time() if now is None else now
+    return timestamp > current or current - timestamp >= ttl_seconds

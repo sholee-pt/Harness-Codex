@@ -1,11 +1,12 @@
 # Harness Version History
 
-Harness releases are maintained as runtime-specific branches. Names such as `codex/v5.1` mean **Harness for Codex v5.1**; they do not identify the Codex product or model version. Displayed release and generator versions use two components (`N.M`). A major Harness version changes a generation contract, state format, ownership model, or required workflow. A minor Harness version contains backward-compatible corrections and validation improvements.
+Harness releases are maintained as runtime-specific branches. Names such as `codex/v5.1` mean **Harness for Codex v5.1**; they do not identify the Codex product or model version. Displayed release and generator versions use two components (`N.M`). A major Harness version changes a generation contract, state format, ownership model, or required workflow. A minor Harness version contains backward-compatible features, corrections and validation improvements.
 
 ## Harness for Codex releases
 
 | Branch | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
+| `codex/v9.2` | Harness for Codex v9.2 | Schema 3 | Schema 7 | Schema 2 | Standalone Linux CLI, project initialization and session launch, managed branch updates and release packaging |
 | `codex/v9.1` | Harness for Codex v9.1 | Schema 3 | Schema 7 | Schema 2 | Installer directory-mode preservation, compatible v9.0 updates, nonmandatory Git authorization advice |
 | `codex/v1` | Harness for Codex v1.0 | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
 | `codex/v2` | Harness for Codex v2.0 | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
@@ -554,3 +555,15 @@ This maintenance release preserves the v9.0 project-local contract, Manifest Sch
 - Separates requested source edits from commit, push and destructive Git authorization. Scoped existing approvals remain usable; a generator-maintenance convention does not grant permission in other projects. This release does not intercept commands or APIs or claim a hard runtime approval gate.
 - Extends pinned real-source CI to compatible v9.0 installation updates alongside v7.6/v8.0/v8.1 upgrades. Keeps v9.0 evaluation records readable descriptively; concrete attribution remains bound to the current release's eligible evidence.
 - Does not claim Windows ACL/extended-attribute preservation, automatic approval discovery, live agent execution, model improvement, or measured token savings.
+
+## Harness for Codex v9.2
+
+This additive release introduces the standalone `harness` command while retaining v9.0/v9.1 project-artifact compatibility and all existing schemas. The original installer and skill workflow remain supported.
+
+- Adds Linux user-local installation, `--version`, `--help`, `init`, `start`, `configure`, `doctor`, and branch-aware `update`.
+- Initiates native interactive Codex with the appropriate skill selected internally; existing user instructions and executor permissions remain in effect.
+- Keeps tool releases in owned user-local storage with integrity receipts and atomic activation. Upstream version checks and downloads never mutate project Git metadata.
+- Checks for updates between sessions, applies compatible updates according to the chosen policy, and supports offline operation and explicit major-version updates.
+- Builds a deterministic Linux distribution archive with checksums and exercises installation, dispatch, update conflicts, previous-release compatibility and rollback independently of live model quality.
+- Existing directory modes already changed by v9.0 are not reconstructed: v9.2, like v9.1, preserves the current modes.
+- Claims no measured model improvement, automatic topology evolution, or hard Git approval enforcement.

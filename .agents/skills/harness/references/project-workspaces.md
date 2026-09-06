@@ -1,6 +1,6 @@
 # Selected Project Folders
 
-Read this reference before analyzing or applying a project harness. v9.1 uses a project-local contract without automatic Git exclusion.
+Read this reference before analyzing or applying a project harness. v9.2 uses a project-local contract without automatic Git exclusion.
 
 ## Workspace classification
 
@@ -22,7 +22,7 @@ Run the source checkout's `conda run -n harness python install.py --root TARGET 
 
 Calling `$harness` creates or updates the separate project router, justified agents and skills, and `.harness/manifest.json` inside the selected root. Calling `$project-harness` uses those artifacts for project work. An explicit home-folder root supports user-level generator installation; home installation is not required.
 
-v9.1 installer updates preserve the existing generator folder's POSIX mode and modification time, plus retained subdirectory modes. Newly copied directories use source modes; a fresh generator root uses the source root's mode. Contents are prepared before restrictive directory modes are applied. A changed destination root during preparation is refused. Windows ACLs, extended ACLs, ownership and extended attributes are outside this mode-preservation claim. Use the new source checkout's `install.py` for the installer fix; generator installation and project-artifact updates are separate operations.
+v9.2 installer updates preserve the existing generator folder's POSIX mode and modification time, plus retained subdirectory modes. Newly copied directories use source modes; a fresh generator root uses the source root's mode. Contents are prepared before restrictive directory modes are applied. A changed destination root during preparation is refused. Windows ACLs, extended ACLs, ownership and extended attributes are outside this mode-preservation claim. Use the new source checkout's `install.py` for the installer fix; generator installation and project-artifact updates are separate operations.
 
 Git-tracked project files remain editable within a requested task. Commit, push and destructive Git actions follow the user's scoped authorization; see [git-authorization.md](git-authorization.md). Static scope validation and generated advice are not command or API interception.
 

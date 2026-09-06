@@ -2,9 +2,9 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v9.1, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
+- This branch contains Harness for Codex v9.2, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
-- Do not add deployment, marketplace publishing, telemetry, or external service dependencies.
+- Do not add telemetry or marketplace dependencies. The separately authorized CLI distribution layer may check/fetch this repository and publish verified GitHub release assets; project generation never performs those operations.
 - Keep evaluation default-off, user-local, and isolated from generation/apply failure handling.
 - Keep operations evidence opt-in, enum-only, user-local, and outside generated project artifacts. Never retain raw prompts, responses, transcripts, agent names, or absolute paths.
 - Preserve the proprietary license and independently authored implementation.
@@ -37,3 +37,9 @@
 - Displayed Harness and generator versions use two components (`N.M`); major `.0` release branches may retain the shorter `codex/vN` form.
 - Later commits use `[Feat]`, `[Fix]`, `[Docs]`, `[Refactor]`, `[Test]`, or `[Chore]`.
 - Do not commit, push, merge, or rewrite history unless the user has authorized it. An explicit implementation request from this repository owner includes commit and push. Keep the latest verified release as the default branch and retain only the latest Codex and latest Claude release branches, as authorized by the owner. This repository-maintenance convention does not authorize remote operations during generated-project configuration.
+
+## CLI distribution
+
+- Keep the Linux command and updater separate from native project generation. Upstream fetches use only tool-owned storage and never inspect project remotes or reset project Git state.
+- Preserve native Codex model, sandbox, permission, and hook-trust settings. CLI convenience is not an approval bypass or an independent agent engine.
+- Keep help, version, doctor, and dry-run offline. Updates occur between sessions and preserve edits in managed installations.

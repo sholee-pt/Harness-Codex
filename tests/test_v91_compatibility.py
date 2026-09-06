@@ -1,4 +1,4 @@
-"""Keep v9.0 artifacts valid when the v9.1 Git advisory is absent.
+"""Keep v9.0/v9.1 artifacts valid in v9.2 when the optional Git advisory is absent.
 
 These are synthetic contract-equivalent old plans assembled from unchanged
 contract blocks. verify_release_upgrade.py separately tests actual old sources.
@@ -66,7 +66,7 @@ class PreviousReleaseCompatibilityTests(unittest.TestCase):
         return report
 
     def test_previous_and_current_manifests_accept_unadvised_artifacts_across_apis(self):
-        for version in ('9.0', '9.1'):
+        for version in ('9.0', '9.1', '9.2'):
             with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 plan = previous_plan(root)
@@ -81,7 +81,7 @@ class PreviousReleaseCompatibilityTests(unittest.TestCase):
                 application = apply.build_application(root, plan)
                 self.assertEqual(preserved_state(root), before)
                 result = apply.apply_application(application)
-                self.assertEqual(result['writes'], 1 if version == '9.0' else 0)
+                self.assertEqual(result['writes'], 0 if version == harness_metadata.HARNESS_VERSION else 1)
                 updated = preserved_state(root)
                 self.assertEqual(apply.apply_application(apply.build_application(root, plan))['writes'], 0)
                 self.assertEqual(preserved_state(root), updated)
@@ -112,7 +112,7 @@ class PreviousReleaseCompatibilityTests(unittest.TestCase):
                 args = ['--root', root, '--plan', plan_path]
                 self.assertTrue(self.invoke('harness_apply.py', [*args, '--dry-run'], root)['valid'])
                 self.assertEqual(self.invoke('harness_apply.py', args, root, readonly=False)['transaction']['writes'], 1)
-                self.assertEqual(json.loads((root / '.harness/manifest.json').read_text(encoding='utf-8'))['generator']['version'], '9.1')
+                self.assertEqual(json.loads((root / '.harness/manifest.json').read_text(encoding='utf-8'))['generator']['version'], harness_metadata.HARNESS_VERSION)
                 self.assertEqual(self.invoke('harness_apply.py', args, root)['transaction']['writes'], 0)
 
     def test_compatibility_does_not_overwrite_modified_previous_agent(self):
@@ -137,12 +137,12 @@ class PreviousReleaseCompatibilityTests(unittest.TestCase):
                 self.assertFalse(report['valid'])
 
     def test_compatibility_is_explicit_not_a_future_v9_version_range(self):
-        self.assertEqual(harness_metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS, {'9.0', '9.1'})
+        self.assertEqual(harness_metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS, {'9.0', '9.1', '9.2'})
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             plan = previous_plan(root)
             apply.apply_application(apply.build_application(root, plan))
-            set_metadata(root, '9.2', 2)
+            set_metadata(root, '9.3', 2)
             before = preserved_state(root)
             self.assertEqual(validate_harness.Validator(root).run()['installationStatus'], 'invalid')
             with self.assertRaisesRegex(apply.PlanError, 'compatibility'):
