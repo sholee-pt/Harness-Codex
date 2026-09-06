@@ -621,6 +621,88 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(len(runs), 8)
             self.assertEqual(len({item["runId"] for item in runs}), 8)
 
+    @unittest.skipUnless(os.name == "nt", "Windows realpath uses Win32 missing-path errors")
+    def test_register_repository_survives_parent_creation_during_windows_resolution(self) -> None:
+        import ntpath
+
+        native_final_path = ntpath._getfinalpathname
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            repository = parent / "repo"
+            repository.mkdir()
+            state = parent / "state"
+            evaluation_store = store_module.EvaluationStore(
+                state, ids=types.SequenceUuidProvider([uuid.UUID(int=1)])
+            )
+            repositories = state / "repositories"
+            target = repositories / uuid_text(1)
+
+            def create_parent_after_missing_lookup(path):
+                try:
+                    return native_final_path(path)
+                except OSError as exc:
+                    if (
+                        ntpath.normcase(str(path)) == ntpath.normcase(str(target))
+                        and exc.winerror == 3
+                    ):
+                        # Reproduce another process creating only the parent:
+                        # later target lookups now fail with WinError 2, so
+                        # non-strict realpath can retain a \\?\ prefix.
+                        repositories.mkdir(parents=True, exist_ok=True)
+                    raise
+
+            with mock.patch.object(
+                ntpath, "_getfinalpathname", side_effect=create_parent_after_missing_lookup
+            ):
+                repository_id = evaluation_store.register_repository(repository)
+            self.assertEqual(repository_id, uuid_text(1))
+            self.assertEqual(evaluation_store.repository_root(repository_id), target.resolve())
+            self.assertTrue((target / "runs" / "pending").is_dir())
+
+    def assert_repository_parent_link_is_rejected(self, *, outside: bool) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            state = parent / "state"
+            state.mkdir()
+            repository = parent / "repo"
+            repository.mkdir()
+            target = parent / "outside" if outside else state / "other"
+            target.mkdir()
+            sentinel = target / "sentinel.txt"
+            sentinel.write_bytes(b"existing contents\n")
+            before = (sentinel.read_bytes(), sentinel.stat().st_mtime_ns)
+            link = state / "repositories"
+            if os.name == "nt":
+                quote = lambda value: "'" + str(value).replace("'", "''") + "'"
+                subprocess.run(
+                    [
+                        "powershell", "-NoProfile", "-Command",
+                        f"New-Item -ItemType Junction -Path {quote(link)} -Target {quote(target)} | Out-Null",
+                    ],
+                    check=True, capture_output=True,
+                )
+            else:
+                link.symlink_to(target, target_is_directory=True)
+            try:
+                evaluation_store = store_module.EvaluationStore(
+                    state, ids=types.SequenceUuidProvider([uuid.UUID(int=1)])
+                )
+                with self.assertRaisesRegex(store_module.StoreError, "symlink or reparse point"):
+                    evaluation_store.register_repository(repository)
+                self.assertEqual(list(target.iterdir()), [sentinel])
+                self.assertEqual((sentinel.read_bytes(), sentinel.stat().st_mtime_ns), before)
+            finally:
+                if os.name == "nt":
+                    link.rmdir()
+                else:
+                    link.unlink()
+
+    def test_repository_parent_link_outside_state_is_rejected(self) -> None:
+        self.assert_repository_parent_link_is_rejected(outside=True)
+
+    def test_repository_parent_link_inside_state_is_rejected(self) -> None:
+        self.assert_repository_parent_link_is_rejected(outside=False)
+
     def test_repository_pseudonyms_are_scoped_and_registry_is_private(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)

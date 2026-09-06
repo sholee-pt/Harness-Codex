@@ -534,6 +534,8 @@ Harness for Claude Code editions are maintained independently on `claude/*` bran
 
 Harness for Codex v9.0 replaces the local-only Git-exclusion contract with a project-local installation contract. Manifest Schema 7, Artifact Contract 2, Inventory Schema 5, and Root Context Schema 3 explicitly identify the changed behavior. Authoring Contract 3, Plan Schema 3, Transaction Schema 2, runtime and relay schemas, and Evaluation Schema 2 remain unchanged.
 
+- Stabilizes concurrent evaluation-store initialization on Windows by creating its shared repository parent before UUID path resolution, and rejects state-directory symlink/junction redirection through the common path guard. Deterministic Windows race and inside/outside state-link regressions cover the CI finding.
+
 - Adds `install.py --root TARGET [--dry-run]` to install the generator in the chosen folder's `.agents/skills/harness`, with a separate hash-based receipt, no-write dry-run, no-op repeats, protected user files, and folder-promotion rollback.
 - Accepts plain folders, Git-contained subfolders, main and linked worktrees, and folders holding multiple repositories. Known Git boundaries guide analysis without overriding the selected root or automatically prohibiting declared nested scopes.
 - Keeps generated project artifacts inside the selected root and rejects traversal and symlink/junction escapes. Existing ownership, hash, transaction, evidence, and canonical agent-contract checks remain required.

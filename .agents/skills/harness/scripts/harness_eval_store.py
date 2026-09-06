@@ -137,6 +137,10 @@ class EvaluationStore:
         if os.name != "nt":
             os.chmod(self.root, 0o700)
         self.registry_path.parent.mkdir(parents=True, exist_ok=True)
+        # Establish the shared parent before any UUID path is resolved. On
+        # Windows a concurrently-created parent can change realpath's missing
+        # path error from 3 to 2 and leave only one result with a \\?\ prefix.
+        (self.root / "repositories").mkdir(parents=True, exist_ok=True)
 
     def _load_or_create_secret(self) -> bytes:
         self._initialize_root()
@@ -219,11 +223,10 @@ class EvaluationStore:
 
     def repository_root(self, repository_id: str) -> Path:
         self._validate_repository_id(repository_id)
-        root = (self.root / "repositories" / repository_id).resolve()
-        expected_parent = (self.root / "repositories").resolve()
-        if root.parent != expected_parent:
-            raise StoreError("repository state path escaped the reserved state root")
-        return root
+        try:
+            return harness_state.resolve_inside(self.root, f"repositories/{repository_id}")
+        except harness_state.StateError as exc:
+            raise StoreError(f"repository state path escaped the reserved state root: {exc}") from exc
 
     def _ensure_repository_dirs(self, repository_id: str) -> Path:
         root = self.repository_root(repository_id)
