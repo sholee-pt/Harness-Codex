@@ -27,12 +27,12 @@ class BootstrapOfflineTests(unittest.TestCase):
             base = Path(directory)
             environment = os.environ.copy()
             environment.update({"PATH": str(base), "TMPDIR": str(base / "must-not-be-created")})
-            for name in ("GITHUB_TOKEN", "GH_TOKEN"):
+            for name in ("GITHUB_TOKEN", "GH_TOKEN", "BASH_ENV", "ENV"):
                 environment.pop(name, None)
             if token is not None:
                 environment["GITHUB_TOKEN"] = token
             result = subprocess.run([BASH, str(BOOTSTRAP), *arguments], env=environment,
-                                    capture_output=True, text=True, encoding="utf-8")
+                                    capture_output=True, text=True, encoding="utf-8", timeout=20)
             self.assertEqual(list(base.iterdir()), [])
             return result
 
@@ -70,10 +70,12 @@ class BootstrapOfflineTests(unittest.TestCase):
             fake_conda.chmod(0o755)
             environment = {**os.environ, "CONDA_EXE": fake_conda.as_posix(),
                            "HARNESS_TEST_CONDA_MARKER": marker.as_posix()}
+            for name in ("BASH_ENV", "ENV"):
+                environment.pop(name, None)
             for arguments in (("--runtime", "claude"), ("--runtime=claude",)):
                 with self.subTest(arguments=arguments):
                     result = subprocess.run([BASH, str(REPO_ROOT / "install.sh"), *arguments],
-                                            env=environment, capture_output=True, text=True, encoding="utf-8")
+                                            env=environment, capture_output=True, text=True, encoding="utf-8", timeout=20)
                     self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                     self.assertIn("Claude integration is not implemented", result.stderr)
                     self.assertFalse(marker.exists())

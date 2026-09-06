@@ -43,8 +43,9 @@ jobs:
         run: conda run -n harness python install.py --root "${RUNNER_TEMP}" --dry-run
 
       - name: Run unit tests
+        timeout-minutes: 15
         shell: bash -el {0}
-        run: conda run -n harness python -m unittest discover -s tests -v
+        run: conda run --no-capture-output -n harness python -u -m unittest discover -s tests -v
 
       - name: Verify the pinned frontmatter oracle
         shell: bash -el {0}
