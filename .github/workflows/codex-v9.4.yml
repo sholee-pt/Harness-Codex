@@ -1,14 +1,14 @@
-name: Harness for Codex v9.3 checks
+name: Harness for Codex v9.4 checks
 
 on:
   push:
     branches:
-      - codex/v9.3
+      - codex/v9.4
     tags:
-      - codex-v9.3
+      - codex-v9.4
   pull_request:
     branches:
-      - codex/v9.3
+      - codex/v9.4
   workflow_dispatch:
 
 permissions:
@@ -53,17 +53,20 @@ jobs:
           conda run -n harness python -m pip install -r tests/requirements-validation.txt
           conda run -n harness python tests/frontmatter_differential.py --seed 20260905 --count 11000 --output "${RUNNER_TEMP}/frontmatter-report.json"
 
-      - name: Cross-check real v7.6, v8.0, v8.1, and compatible v9.0/v9.1/v9.2 installation updates
+      - name: Cross-check real v7.6, v8.0, v8.1, and compatible v9.0/v9.1/v9.2/v9.3 installation updates
         shell: bash -el {0}
         run: |
           baseline_root="$(mktemp -d)"
-          mkdir -p "${baseline_root}/v76" "${baseline_root}/v80" "${baseline_root}/v81" "${baseline_root}/v90" "${baseline_root}/v91" "${baseline_root}/v92"
+          mkdir -p "${baseline_root}/v76" "${baseline_root}/v80" "${baseline_root}/v81" "${baseline_root}/v90" "${baseline_root}/v91" "${baseline_root}/v92" "${baseline_root}/v93"
           git archive d91f0a5ae261d44c86f4082ba5098d55b7e5cc4c | tar -x -C "${baseline_root}/v76"
           git archive ed2972555562c736496e8d90463f52efabf05305 | tar -x -C "${baseline_root}/v80"
           git archive 2a920f9555df7270d8947b9e926654746aeb9247 | tar -x -C "${baseline_root}/v81"
           git archive a1e12dadb1805e23df4c283eaa7a613e6b1b1b91 | tar -x -C "${baseline_root}/v90"
           git archive 0d1e2bd885cd9ee4432918a19ec9839339af70e8 | tar -x -C "${baseline_root}/v91"
           git archive 72e5cd82975aac838011d991a3e2e6da349ef4de | tar -x -C "${baseline_root}/v92"
+          git archive fa9892cfaa4741edb2e843a4e890f246c5cf1fe3 | tar -x -C "${baseline_root}/v93"
+          conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v93" --output "${RUNNER_TEMP}/upgrade-v93.json"
+          conda run -n harness python tests/verify_cli_upgrade.py --baseline "${baseline_root}/v93" --output "${RUNNER_TEMP}/cli-upgrade-v93.json"
           conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v92" --output "${RUNNER_TEMP}/upgrade-v92.json"
           conda run -n harness python tests/verify_cli_upgrade.py --baseline "${baseline_root}/v92" --output "${RUNNER_TEMP}/cli-upgrade-v92.json"
           conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v91" --output "${RUNNER_TEMP}/upgrade-v91.json"
@@ -124,7 +127,7 @@ jobs:
       - name: Verify the real Linux bootstrap and installed command
         if: runner.os == 'Linux'
         shell: bash -el {0}
-        run: conda run -n harness python tests/verify_cli_distribution.py --archive "${RUNNER_TEMP}/harness-dist/harness-codex-9.3-linux.tar.gz"
+        run: conda run -n harness python tests/verify_cli_distribution.py --archive "${RUNNER_TEMP}/harness-dist/harness-codex-9.4-linux.tar.gz"
 
       - name: Download and run the authenticated standalone bootstrap
         if: runner.os == 'Linux' && github.event_name == 'push'
@@ -136,9 +139,9 @@ jobs:
           printf 'Authorization: Bearer %s\n' "$GITHUB_TOKEN" |
             curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --header @- --header 'Accept: application/vnd.github.raw+json' "https://api.github.com/repos/sholee-pt/Harness/contents/install_harness.sh?ref=${GITHUB_SHA}" --output "${RUNNER_TEMP}/bootstrap-check/install_harness.sh"
           cmp install_harness.sh "${RUNNER_TEMP}/bootstrap-check/install_harness.sh"
-          bash "${RUNNER_TEMP}/bootstrap-check/install_harness.sh" --runtime codex --branch codex/v9.3 --data-dir "${RUNNER_TEMP}/bootstrap-check/tool data" --bin-dir "${RUNNER_TEMP}/bootstrap-check/tool bin" --auto-update off
-          "${RUNNER_TEMP}/bootstrap-check/tool bin/harness" --runtime codex --version
-          conda run -n harness python -B -c 'import json, os, pathlib; state=json.loads((pathlib.Path(os.environ["RUNNER_TEMP"])/"bootstrap-check/tool data/active.json").read_text()); assert state["commit"]==os.environ["GITHUB_SHA"], state; assert state["version"]=="9.3"; print("Authenticated bootstrap installed the exact verified source commit.")'
+          bash "${RUNNER_TEMP}/bootstrap-check/install_harness.sh" --agent codex --branch codex/v9.4 --data-dir "${RUNNER_TEMP}/bootstrap-check/tool data" --bin-dir "${RUNNER_TEMP}/bootstrap-check/tool bin" --auto-update off
+          "${RUNNER_TEMP}/bootstrap-check/tool bin/harness" --agent codex --version
+          conda run -n harness python -B -c 'import json, os, pathlib; state=json.loads((pathlib.Path(os.environ["RUNNER_TEMP"])/"bootstrap-check/tool data/active.json").read_text()); assert state["commit"]==os.environ["GITHUB_SHA"], state; assert state["version"]=="9.4"; print("Authenticated bootstrap installed the exact verified source commit.")'
 
       - name: Verify the checkout remains clean
         shell: bash -el {0}
@@ -169,5 +172,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "codex-v9.3"
-          gh release create "$GITHUB_REF_NAME" "${RUNNER_TEMP}/harness-dist/harness-codex-9.3-linux.tar.gz" "${RUNNER_TEMP}/harness-dist/SHA256SUMS" "${RUNNER_TEMP}/harness-dist/build.json" "${RUNNER_TEMP}/harness-dist/install_harness.sh" --verify-tag --title "Harness for Codex v9.3" --notes-file RELEASE_NOTES.md --latest
+          test "$GITHUB_REF_NAME" = "codex-v9.4"
+          gh release create "$GITHUB_REF_NAME" "${RUNNER_TEMP}/harness-dist/harness-codex-9.4-linux.tar.gz" "${RUNNER_TEMP}/harness-dist/SHA256SUMS" "${RUNNER_TEMP}/harness-dist/build.json" "${RUNNER_TEMP}/harness-dist/install_harness.sh" --verify-tag --title "Harness for Codex v9.4" --notes-file RELEASE_NOTES.md --latest

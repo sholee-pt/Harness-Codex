@@ -8,7 +8,7 @@ IFS=$' \t\n'
 usage() {
   printf '%s\n' \
     'Usage: bash install_harness.sh [OPTIONS]' \
-    '  --runtime codex|claude       Codex is supported; Claude is not yet supported.' \
+    '  --agent codex|claude         Codex is supported; Claude is not yet supported.' \
     '  --branch codex/vN[.M]        Pin a branch; otherwise select the latest Codex version.' \
     '  --repository URL            Harness HTTPS or SSH transport; default tries HTTPS, then SSH.' \
     '  --bin-dir PATH              Forward to the user-local tool installer.' \
@@ -26,14 +26,21 @@ fail() { printf 'Harness bootstrap: %s\n' "$*" >&2; exit 1; }
 need_value() { [[ $# -ge 2 && -n "$2" ]] || fail "Missing value for $1."; }
 
 runtime=codex
+selected_runtime=''
+select_runtime() {
+  [[ -n "$1" ]] || fail 'Missing value for --agent.'
+  [[ -z "$selected_runtime" || "$selected_runtime" == "$1" ]] || fail 'Conflicting --agent/--runtime selections; choose one agent provider.'
+  selected_runtime=$1
+  runtime=$1
+}
 branch=''
 repository=''
 forward=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --help|-h) usage; exit 0 ;;
-    --runtime) need_value "$@"; runtime=$2; shift 2 ;;
-    --runtime=*) runtime=${1#*=}; shift ;;
+    --agent|--runtime) need_value "$@"; select_runtime "$2"; shift 2 ;;
+    --agent=*|--runtime=*) select_runtime "${1#*=}"; shift ;;
     --branch) need_value "$@"; branch=$2; shift 2 ;;
     --branch=*) branch=${1#*=}; shift ;;
     --repository) need_value "$@"; repository=$2; shift 2 ;;
@@ -50,7 +57,7 @@ done
 case "$runtime" in
   codex) ;;
   claude) fail 'Claude support is not implemented in this installer. The existing claude/v2 branch uses its separate legacy skill installation.' ;;
-  *) fail 'Runtime must be codex or claude; currently only Codex is supported.' ;;
+  *) fail 'Agent must be codex or claude; currently only Codex is supported.' ;;
 esac
 branch_pattern='^codex/v(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))?$'
 [[ -z "$branch" || "$branch" =~ $branch_pattern ]] || fail 'Branch must be codex/vN or codex/vN.M.'

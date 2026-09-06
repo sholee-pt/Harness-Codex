@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 from . import distribution
-from .project import register_project_commands, run_project_command
+from .project import preflight_project_command, register_project_commands, run_project_command
 
 
 def version(source_root: Path) -> str:
@@ -32,11 +32,33 @@ def default_data_root() -> Path:
     return Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share"))) / "harness-cli"
 
 
+class _AgentParser(argparse.ArgumentParser):
+    def parse_args(self, args=None, namespace=None):
+        parsed = super().parse_args(args, namespace)
+        choices = []
+        for name in ("_root_agent_choices", "_command_agent_choices"):
+            choices.extend(getattr(parsed, name, []))
+            if hasattr(parsed, name):
+                delattr(parsed, name)
+        if len(set(choices)) > 1:
+            self.error("Conflicting --agent/--runtime selections; choose one agent provider.")
+        # Keep the internal provider field compatible with v9.3 callers.
+        parsed.runtime = choices[0] if choices else "codex"
+        return parsed
+
+
+def _agent_options(parser, *, destination: str) -> None:
+    parser.add_argument("--agent", dest=destination, action="append", choices=("codex", "claude"),
+                        default=argparse.SUPPRESS,
+                        help="Agent provider (default: codex; Claude integration is not implemented yet).")
+    parser.add_argument("--runtime", dest=destination, action="append", choices=("codex", "claude"),
+                        default=argparse.SUPPRESS, help=argparse.SUPPRESS)
+
+
 def build_parser(source_root: Path) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="harness", description="Install, configure and use a native Codex project harness.")
+    parser = _AgentParser(prog="harness", description="Install, configure and use a native Codex project harness.")
     parser.add_argument("--version", "-V", action="store_true", help="Show the installed Harness version and exit.")
-    parser.add_argument("--runtime", choices=("codex", "claude"), default="codex",
-                        help="Runtime provider (default: codex; Claude installation is not implemented yet).")
+    _agent_options(parser, destination="_root_agent_choices")
     parser.add_argument("--no-update-check", action="store_true", help="Skip automatic upstream checks for this invocation.")
     commands = parser.add_subparsers(dest="command")
     register_project_commands(commands)
@@ -55,8 +77,7 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     update.add_argument("--repository", help="Choose HTTPS or SSH authentication transport for the same repository.")
     update.add_argument("--timeout", type=float, default=20)
     for command in commands.choices.values():
-        command.add_argument("--runtime", choices=("codex", "claude"), default=argparse.SUPPRESS,
-                             help="Runtime provider (Codex supported; Claude not implemented yet).")
+        _agent_options(command, destination="_command_agent_choices")
     return parser
 
 
@@ -71,7 +92,7 @@ def _environment() -> None:
 
 def _automatic_update(args, source_root: Path, argv: list[str]) -> int | None:
     if (args.command not in {"init", "start", "configure"} or getattr(args, "dry_run", False)
-            or getattr(args, "install_only", False) or args.no_update_check
+            or getattr(args, "install_only", False) or getattr(args, "_existing_init_noop", False) or args.no_update_check
             or os.environ.get("HARNESS_NO_UPDATE_CHECK") == "1"
             or not os.environ.get("HARNESS_TOOL_HOME")
             or not sys.stdin.isatty() or not sys.stdout.isatty()):
@@ -109,8 +130,8 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
     parser = build_parser(source_root)
     args = parser.parse_args(argv)
     if args.runtime != "codex":
-        print("harness: Claude runtime installation is not implemented in this tool. "
-              "Use --runtime codex; Claude-native editions remain on the separate claude/* repository branches.",
+        print("harness: Claude integration is not implemented in this tool. "
+              "Use --agent codex; Claude-native editions remain on the separate claude/* repository branches.",
               file=sys.stderr)
         return 2
     if args.version:
@@ -135,8 +156,9 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
             result = action(args.data_dir, branch=args.branch, repository=args.repository, timeout=args.timeout)
             print(json.dumps(result, indent=2))
             if not args.check:
-                print("Tool update complete. Existing project artifacts are unchanged; use harness init --project PATH to update and review a project.")
+                print("Tool update complete. Use harness init --project PATH --install-only to update the project generator, then harness configure --project PATH for a reviewed project update.")
             return 0
+        preflight_project_command(args, source_root=source_root)
         updated = _automatic_update(args, source_root, argv)
         if updated is not None:
             return updated

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import ExitStack, contextmanager, redirect_stderr, redirect_stdout
+import argparse
 import io
 import os
 from pathlib import Path
@@ -21,22 +22,52 @@ from harness_cli import main as cli
 
 
 class CliRoutingTests(unittest.TestCase):
-    def test_runtime_defaults_to_codex_and_is_supported_before_or_after_commands(self):
-        parser = cli.build_parser(REPO)
-        for arguments in (["start"], ["--runtime", "codex", "start"], ["start", "--runtime", "codex"]):
-            self.assertEqual(parser.parse_args(arguments).runtime, "codex")
-        for command in ("init", "configure", "start", "doctor", "install", "update"):
-            self.assertEqual(parser.parse_args([command, "--runtime", "codex"]).runtime, "codex")
+    def command_names(self):
+        return next(action.choices for action in cli.build_parser(REPO)._actions
+                    if isinstance(action, argparse._SubParsersAction))
 
-    def test_claude_runtime_is_rejected_before_environment_network_or_writes(self):
-        for command in ("init", "configure", "start", "doctor", "install", "update"):
-            for arguments in (["--runtime", "claude", command], [command, "--runtime", "claude"]):
-                with self.subTest(arguments=arguments), redirect_stderr(io.StringIO()) as output:
-                    with mock.patch.object(cli, "_environment") as environment, mock.patch.object(cli, "_automatic_update") as automatic, mock.patch.object(cli, "run_project_command") as project, mock.patch.object(distribution, "install_tool") as install, mock.patch.object(distribution, "update_tool") as update:
-                        self.assertEqual(cli.main(arguments, source_root=REPO), 2)
-                        self.assertIn("not implemented", output.getvalue())
-                        for operation in (environment, automatic, project, install, update):
-                            operation.assert_not_called()
+    def test_agent_defaults_to_codex_with_hidden_runtime_alias_before_or_after_commands(self):
+        parser = cli.build_parser(REPO)
+        self.assertEqual(parser.parse_args(["start"]).runtime, "codex")
+        for flag in ("--agent", "--runtime"):
+            for command in self.command_names():
+                for arguments in ([flag, "codex", command], [command, flag, "codex"], [command, flag + "=codex"]):
+                    self.assertEqual(parser.parse_args(arguments).runtime, "codex")
+
+    def test_claude_agent_and_alias_are_rejected_before_environment_network_or_writes(self):
+        for flag in ("--agent", "--runtime"):
+            for command in self.command_names():
+                for arguments in ([flag, "claude", command], [command, flag, "claude"]):
+                    with self.subTest(arguments=arguments), redirect_stderr(io.StringIO()) as output:
+                        with mock.patch.object(cli, "_environment") as environment, mock.patch.object(cli, "_automatic_update") as automatic, mock.patch.object(cli, "run_project_command") as project, mock.patch.object(distribution, "install_tool") as install, mock.patch.object(distribution, "update_tool") as update, mock.patch.object(cli, "preflight_project_command") as preflight:
+                            self.assertEqual(cli.main(arguments, source_root=REPO), 2)
+                            self.assertIn("not implemented", output.getvalue())
+                            for operation in (environment, automatic, project, install, update, preflight):
+                                operation.assert_not_called()
+
+    def test_conflicting_agent_and_runtime_selections_are_rejected_before_work(self):
+        for arguments in (["--agent", "claude", "start", "--runtime", "codex"],
+                          ["--runtime", "codex", "start", "--agent", "claude"],
+                          ["start", "--agent", "claude", "--agent", "codex"],
+                          ["--runtime=claude", "--agent=codex", "install"]):
+            with self.subTest(arguments=arguments), redirect_stderr(io.StringIO()) as output:
+                with mock.patch.object(cli, "_environment") as environment:
+                    with self.assertRaises(SystemExit) as failure:
+                        cli.main(arguments, source_root=REPO)
+                    self.assertEqual(failure.exception.code, 2)
+                    self.assertIn("Conflicting", output.getvalue())
+                    environment.assert_not_called()
+        parsed = cli.build_parser(REPO).parse_args(["--runtime", "codex", "start", "--agent", "codex"])
+        self.assertEqual(parsed.runtime, "codex")
+
+    def test_help_advertises_agent_and_hides_runtime_alias(self):
+        for arguments in (["--help"], *([command, "--help"] for command in self.command_names())):
+            with self.subTest(arguments=arguments), redirect_stdout(io.StringIO()) as output:
+                with self.assertRaises(SystemExit) as exit_status:
+                    cli.main(arguments, source_root=REPO)
+                self.assertEqual(exit_status.exception.code, 0)
+                self.assertIn("--agent", output.getvalue())
+                self.assertNotIn("--runtime", output.getvalue())
 
     def test_unsupported_runtime_version_and_unknown_runtime_do_not_look_supported(self):
         with redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()), mock.patch.object(cli, "_environment") as environment:
@@ -84,8 +115,14 @@ class CliRoutingTests(unittest.TestCase):
             update.assert_not_called()
 
     def test_project_exit_status_is_preserved(self):
-        with mock.patch.object(cli, "_environment"), mock.patch.object(cli, "_automatic_update", return_value=None), mock.patch.object(cli, "run_project_command", return_value=37):
+        with mock.patch.object(cli, "_environment"), mock.patch.object(cli, "preflight_project_command"), mock.patch.object(cli, "_automatic_update", return_value=None), mock.patch.object(cli, "run_project_command", return_value=37):
             self.assertEqual(cli.main(["start", "--no-update-check"], source_root=REPO), 37)
+
+    def test_invalid_project_preflight_precedes_auto_update(self):
+        with redirect_stderr(io.StringIO()), mock.patch.object(cli, "_environment"), mock.patch.object(cli, "preflight_project_command", side_effect=ValueError("invalid goal file")), mock.patch.object(cli, "_automatic_update") as update, mock.patch.object(cli, "run_project_command") as project:
+            self.assertEqual(cli.main(["init"], source_root=REPO), 1)
+            update.assert_not_called()
+            project.assert_not_called()
 
     def test_interruption_returns_conventional_status(self):
         with redirect_stderr(io.StringIO()), mock.patch.object(cli, "_environment", side_effect=KeyboardInterrupt):
@@ -116,7 +153,9 @@ class AutomaticUpdateTests(unittest.TestCase):
         return SimpleNamespace(**{"command": "start", "dry_run": False, "install_only": False, "no_update_check": False, **overrides})
 
     def test_dry_run_install_only_doctor_and_opt_out_never_touch_update_state(self):
-        for overrides in ({"command": "init", "dry_run": True}, {"command": "init", "install_only": True}, {"command": "doctor"}, {"no_update_check": True}):
+        for overrides in ({"command": "init", "dry_run": True}, {"command": "init", "install_only": True},
+                          {"command": "init", "_existing_init_noop": True}, {"command": "doctor"},
+                          {"command": "reset"}, {"command": "remove"}, {"command": "status"}, {"no_update_check": True}):
             with self.subTest(overrides=overrides), self.fixtures() as mocks:
                 self.assertIsNone(cli._automatic_update(self.arguments(**overrides), REPO, ["start"]))
                 mocks.state.assert_not_called()

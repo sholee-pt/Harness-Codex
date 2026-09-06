@@ -1,4 +1,4 @@
-"""Run the real v9.2 tool installer/updater against v9.3 using local Git transport.
+"""Run real v9.2/v9.3 tool installers/updaters against v9.4 using local Git transport.
 
 Only the fixed upstream URL is replaced for this test. Git branch discovery,
 fetch, ancestry, archives, old installation code, and the new launcher are real.
@@ -42,10 +42,11 @@ def old_project(baseline, root, runtime_path):
     import harness_apply
     import harness_metadata
     import harness_plan_builder
+    import harness_transaction
     import test_runtime_teamplay
     import shutil
 
-    assert harness_metadata.HARNESS_VERSION == "9.2"
+    assert harness_metadata.HARNESS_VERSION in {"9.2", "9.3"}
     shutil.copytree(baseline / "tests/fixtures/coordinated-cross-contract", root)
     draft = test_runtime_teamplay.DeterministicPlanBuilderTests()._draft("coordinated-cross-contract-plan.json")
     plan = harness_plan_builder.materialize_plan(draft, root=root)
@@ -53,7 +54,33 @@ def old_project(baseline, root, runtime_path):
     manifest = json.loads((root / ".harness/manifest.json").read_text(encoding="utf-8"))
     runtime = test_runtime_teamplay.valid_plan(root, manifest)
     runtime_path.write_text(json.dumps(runtime), encoding="utf-8")
-    return {"generatorVersion": manifest["generator"]["version"], "runtimePlanCreated": True}
+    # The new CLI removal journal reserves the existing blocker path without
+    # claiming to implement the old generation transaction's Schema 2.
+    journal = root / ".harness/transaction.json"
+    removal_root = root / ".harness/removals"
+    backup_root = removal_root / ("a" * 32)
+    backup_root.mkdir(parents=True)
+    backup = backup_root / "original.bin"
+    backup.write_bytes(b"old recovery must preserve this removal backup")
+    journal.write_text(json.dumps({"operation": "remove", "removalSchemaVersion": 1,
+                                   "runtime": "codex", "id": "a" * 32,
+                                   "state": "preparing", "operations": []}), encoding="utf-8")
+    before = state(root)
+    for action in (lambda: harness_apply.build_application(root, plan),
+                   lambda: harness_transaction.recover_transaction(root)):
+        try:
+            action()
+        except harness_transaction.TransactionError:
+            pass
+        else:
+            raise AssertionError("Old apply/recovery must refuse an independent CLI removal journal")
+        assert state(root) == before, "Old apply/recovery changed removal journal, backups, or project files"
+    journal.unlink()
+    backup.unlink()
+    backup_root.rmdir()
+    removal_root.rmdir()
+    return {"generatorVersion": manifest["generator"]["version"], "runtimePlanCreated": True,
+            "oldApplyAndRecoveryRefuseRemovalJournalWithoutWrites": True}
 
 
 def verify(baseline):
@@ -63,10 +90,13 @@ def verify(baseline):
     spec.loader.exec_module(old)
     old_snapshot = old._snapshot(baseline)
     new_snapshot = current._snapshot(REPO)
-    assert old._source_info(old_snapshot)[0] == "9.2"
-    assert current._source_info(new_snapshot)[0] == "9.3"
+    baseline_version = old._source_info(old_snapshot)[0]
+    candidate_version = current._source_info(new_snapshot)[0]
+    assert baseline_version in {"9.2", "9.3"}
+    assert candidate_version == "9.4"
     assert "install_harness.sh" in new_snapshot, "The candidate must include the optional bootstrap to test its omission."
-    assert not old._runtime("install_harness.sh")
+    bootstrap_omitted = baseline_version == "9.2"
+    assert old._runtime("install_harness.sh") == (not bootstrap_omitted)
     baseline_before = state(baseline)
     environment = os.environ.copy()
     for name in ("GITHUB_TOKEN", "GH_TOKEN", "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",
@@ -93,24 +123,26 @@ def verify(baseline):
                 path.write_bytes(content)
 
         populate(old_snapshot)
-        git("init", "--quiet", "--initial-branch=codex/v9.2")
+        git("init", "--quiet", "--initial-branch=codex/v" + baseline_version)
         git("config", "core.autocrlf", "false")
         git("add", "--all")
-        git("-c", "user.name=Harness fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "Real v9.2 runtime")
+        git("-c", "user.name=Harness fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Real v" + baseline_version + " runtime")
         previous_commit = git("rev-parse", "HEAD").strip()
         with mock.patch.dict(os.environ, environment, clear=True):
             installed = old.install_tool(upstream, data, binary, python_executable=sys.executable, auto_update="off")
         assert installed["commit"] == previous_commit
         old_release_before = state(Path(installed["sourceRoot"]))
-        run([sys.executable, "-B", __file__, "--baseline", baseline, "--project-worker", project, "--runtime", runtime_path], environment=environment)
+        project_report = json.loads(run([sys.executable, "-B", __file__, "--baseline", baseline, "--project-worker", project, "--runtime", runtime_path], environment=environment))
+        assert project_report["generatorVersion"] == baseline_version
+        assert project_report["oldApplyAndRecoveryRefuseRemovalJournalWithoutWrites"]
         (project / "user-notes.txt").write_bytes(b"Preserve the user's own work.\r\n")
         run(["git", "init", "--quiet", project], environment=environment)
         project_before = state(project)
 
-        git("checkout", "--quiet", "-b", "codex/v9.3")
+        git("checkout", "--quiet", "-b", "codex/v" + candidate_version)
         populate(new_snapshot, old_snapshot)
         git("add", "--all")
-        git("-c", "user.name=Harness fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "Real v9.3 runtime")
+        git("-c", "user.name=Harness fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Real v" + candidate_version + " runtime")
         next_commit = git("rev-parse", "HEAD").strip()
         real_git = old._git
         calls = []
@@ -129,25 +161,36 @@ def verify(baseline):
         assert updated["updated"] and updated["installation"]["commit"] == next_commit
         active = current.installed_status(data)
         active_root = Path(active["sourceRoot"])
-        assert active["version"] == "9.3"
-        assert not (active_root / "install_harness.sh").exists(), "The old updater must exercise its original root-file allowlist"
+        assert active["version"] == candidate_version
+        assert (active_root / "install_harness.sh").exists() == (not bootstrap_omitted), "The old updater must exercise its original root-file allowlist"
         assert state(Path(installed["sourceRoot"])) == old_release_before
         launcher = data / "launcher.py"
         version = run([sys.executable, "-B", launcher, "--version"], cwd=project, environment=environment).strip()
-        assert version == "Harness for Codex 9.3", version
+        assert version == "Harness for Codex " + candidate_version, version
+        for option in ("--agent", "--runtime"):
+            selected = run([sys.executable, "-B", launcher, option, "codex", "--version"], cwd=project, environment=environment).strip()
+            assert selected == version, "The new agent option and legacy runtime alias must both work after upgrade"
         doctor = json.loads(run([sys.executable, "-B", launcher, "doctor", "--project", project], environment=environment))
         assert doctor["valid"] and doctor["installationStatus"] == "valid", doctor
+        status = json.loads(run([sys.executable, "-B", launcher, "status", "--project", project], environment=environment))
+        assert status["state"] == "configured" and status["harnessPresent"], status
+        removal_output = run([sys.executable, "-B", launcher, "remove", "--project", project], environment=environment)
+        removal, _ = json.JSONDecoder().raw_decode(removal_output)
+        assert removal["valid"] and removal["dryRun"] and removal["writes"] == 0 and removal["actions"], removal
         runtime = json.loads(run([sys.executable, "-B", active_root / ".agents/skills/harness/scripts/validate_runtime_plan.py",
                                   "--root", project, "--plan", runtime_path], environment=environment))
         assert runtime["valid"], runtime
         assert state(project) == project_before, "Tool update or validation changed project files/Git metadata"
         assert state(baseline) == baseline_before, "Original baseline source was modified"
         assert any("fetch" in command and command[-1] == next_commit for command in calls)
-        return {"status": "passed", "baselineVersion": "9.2", "candidateVersion": "9.3",
+        return {"status": "passed", "baselineVersion": baseline_version, "candidateVersion": candidate_version,
                 "baselineRuntimeTreeSha256": old._tree_hash(old._hashes(old_snapshot)),
                 "candidateRuntimeTreeSha256": current._tree_hash(current._hashes(new_snapshot)),
                 "oldInstallerAndUpdaterExecuted": True, "realLocalGitFetchAndAncestry": True,
-                "newLauncherVersion": version, "optionalBootstrapOmittedByOldUpdater": True,
+                "newLauncherVersion": version, "optionalBootstrapOmittedByOldUpdater": bootstrap_omitted,
+                "newAgentOptionAndLegacyRuntimeAliasAccepted": True,
+                "oldApplyAndRecoveryRefuseRemovalJournalWithoutWrites": True,
+                "newInstalledStatusAndRemovalPreviewAcceptPreviousProject": True,
                 "previousProjectAccepted": True, "previousRuntimePlanAccepted": True,
                 "oldReleasePreserved": True, "projectFilesAndGitMetadataUnchanged": True,
                 "originalBaselineUnchanged": True, "networkUsed": False, "liveCodexInvoked": False}

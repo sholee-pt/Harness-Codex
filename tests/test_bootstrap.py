@@ -40,11 +40,41 @@ class BootstrapOfflineTests(unittest.TestCase):
         result = self.run_offline("--help")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Git author name/email do not authenticate", result.stdout)
+        self.assertIn("--agent", result.stdout)
+        self.assertNotIn("--runtime", result.stdout)
 
     def test_claude_is_rejected_before_network_temp_or_conda(self):
-        result = self.run_offline("--runtime", "claude")
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("Claude support is not implemented", result.stderr)
+        for arguments in (("--agent", "claude"), ("--agent=claude",),
+                          ("--runtime", "claude"), ("--runtime=claude",)):
+            with self.subTest(arguments=arguments):
+                result = self.run_offline(*arguments)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("Claude support is not implemented", result.stderr)
+
+    def test_agent_and_hidden_alias_conflicts_are_rejected_before_prerequisites(self):
+        for arguments in (("--agent", "claude", "--runtime", "codex"),
+                          ("--runtime=codex", "--agent=claude"),
+                          ("--agent=claude", "--agent=codex")):
+            with self.subTest(arguments=arguments):
+                result = self.run_offline(*arguments)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("Conflicting", result.stderr)
+
+    def test_codex_agent_and_legacy_alias_pass_option_validation(self):
+        for arguments in (("--agent", "codex"), ("--agent=codex",),
+                          ("--runtime", "codex"), ("--runtime=codex",),
+                          ("--runtime", "codex", "--agent", "codex")):
+            with self.subTest(arguments=arguments):
+                result = self.run_offline(*arguments, "--auto-update", "invalid")
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("Automatic update policy must be", result.stderr)
+
+    def test_unknown_or_empty_agent_is_rejected_before_prerequisites(self):
+        for arguments in (("--agent", "unknown"), ("--runtime=unknown",), ("--agent",), ("--agent=",)):
+            with self.subTest(arguments=arguments):
+                result = self.run_offline(*arguments)
+                self.assertEqual(result.returncode, 1)
+                self.assertNotIn("Required command is missing", result.stderr)
 
     def test_foreign_repository_and_invalid_branch_are_rejected_early(self):
         for args in (("--repository", "https://example.invalid/other/repo.git"),
@@ -72,13 +102,28 @@ class BootstrapOfflineTests(unittest.TestCase):
                            "HARNESS_TEST_CONDA_MARKER": marker.as_posix()}
             for name in ("BASH_ENV", "ENV"):
                 environment.pop(name, None)
-            for arguments in (("--runtime", "claude"), ("--runtime=claude",)):
+            for arguments in (("--agent", "claude"), ("--agent=claude",),
+                              ("--runtime", "claude"), ("--runtime=claude",)):
                 with self.subTest(arguments=arguments):
                     result = subprocess.run([BASH, str(REPO_ROOT / "install.sh"), *arguments],
                                             env=environment, capture_output=True, text=True, encoding="utf-8", timeout=20)
                     self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                     self.assertIn("Claude integration is not implemented", result.stderr)
                     self.assertFalse(marker.exists())
+            for arguments in (("--agent", "claude", "--runtime", "codex"),
+                              ("--runtime=codex", "--agent=claude"),
+                              ("--agent=claude", "--agent=codex")):
+                result = subprocess.run([BASH, str(REPO_ROOT / "install.sh"), *arguments],
+                                        env=environment, capture_output=True, text=True, encoding="utf-8", timeout=20)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("Conflicting", result.stderr)
+                self.assertFalse(marker.exists())
+            help_result = subprocess.run([BASH, str(REPO_ROOT / "install.sh"), "--help"],
+                                         env=environment, capture_output=True, text=True, encoding="utf-8", timeout=20)
+            self.assertEqual(help_result.returncode, 0)
+            self.assertIn("--agent", help_result.stdout)
+            self.assertNotIn("--runtime", help_result.stdout)
+            self.assertFalse(marker.exists())
 
 
 FAKE_GIT = r'''import json, os, pathlib, subprocess, sys
@@ -247,7 +292,7 @@ class BootstrapIntegrationTests(unittest.TestCase):
         return result
 
     def test_latest_numeric_codex_revision_installs_actual_cli_with_provenance(self):
-        result = self.run_bootstrap("--auto-update", "off")
+        result = self.run_bootstrap("--agent", "codex", "--runtime", "codex", "--auto-update", "off")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         active = json.loads((self.data / "active.json").read_text(encoding="utf-8"))
         self.assertEqual(active["version"], "9.10")

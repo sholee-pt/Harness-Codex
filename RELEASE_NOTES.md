@@ -1,18 +1,17 @@
-Harness for Codex v9.3 adds a downloadable Linux bootstrap and explicit runtime selection while retaining v9.0/v9.1/v9.2 project compatibility.
+Harness for Codex v9.4 adds project-description files and explicit project lifecycle commands.
 
-- Download `install_harness.sh` using authenticated curl or the signed-in release page, then run `bash install_harness.sh --runtime codex`. GitHub CLI and manually unpacking a release archive are not required.
-- The bootstrap selects only numeric Codex version branches, fetches an immutable source commit into temporary tool storage, validates the tree, and invokes the safe installer. Linux requires Git, tar and Anaconda/Miniconda; the dedicated `harness` environment is created if absent.
-- Private access uses an existing Git credential provider, SSH key, or `GITHUB_TOKEN`/`GH_TOKEN`. `git config user.name` and `user.email` are author metadata, not authentication. The initial private curl download needs a real HTTPS credential too; an SSH-only setup uses the documented Git download route.
-- `harness --runtime codex ...` is supported. Claude integration is planned as a separate adapter/channel under the same command. `--runtime claude` explicitly exits before preparation or changes; this release does not implement Claude execution.
-- Codex archives are named `harness-codex-9.3-linux.tar.gz`. The standalone script, checksums and source-bound build metadata are attached. Project schemas, Codex storage and old metadata remain compatible.
-
-After installation:
+- Supply a Markdown brief with `harness init --project PATH --goal-file brief.md`. `--goal` remains available for short text; both describe the project for source-grounded analysis, not the initial task of `start`.
+- Use `--agent codex` as the provider selector. `--runtime` remains a hidden compatibility alias, with conflicting choices rejected. Claude integration is not implemented.
+- Plain `init` reports an existing project harness without launching Codex. Use `configure`, an explicit goal on `init`, or `reset` when changes are intended.
+- `harness status --project PATH` reports generator and generated-harness state separately.
+- `remove` and `reset` preview by default; add `--yes` to apply. Removal preserves user files, checks managed hashes, and offers journaled recovery through `remove --recover`. `--include-generator` also removes unchanged installer-owned files.
+- Existing v9.0–v9.3 generated projects remain compatible. The CLI removal journal has its own operation/version and is not a generator Schema 2 transaction.
 
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
-harness init --project /path/to/project --goal "Describe your work"
-harness start --project /path/to/project
-harness update --check
+harness init --agent codex --project /path/to/project --goal-file /path/to/project-brief.md
+harness start --agent codex --project /path/to/project
+harness status --project /path/to/project
+harness reset --project /path/to/project --goal-file /path/to/project-brief.md --yes
 ```
 
-Codex CLI must be installed and authenticated separately. Native permission/model settings remain in effect. Publication is gated by Linux/Windows tests, previous artifact and CLI upgrades, the parser oracle, package installation and the real authenticated bootstrap. These checks do not prove live agent quality, token savings, or a hard Git authorization gate.
+Private authenticated bootstrap installation remains available through `install_harness.sh`; Git, tar and Conda are prerequisites, and Codex CLI requires its own installation/authentication. Linux/Windows tests, real old-version upgrades and bootstrap checks gate publication. Installation checks do not establish live agent quality or token savings.

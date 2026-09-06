@@ -6,6 +6,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 
 | Branch | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
+| `codex/v9.4` | Harness for Codex v9.4 | Schema 3 | Schema 7 | Schema 2 | Markdown briefs, --agent option, existing-state notices and guarded removal/reset/recovery |
 | `codex/v9.3` | Harness for Codex v9.3 | Schema 3 | Schema 7 | Schema 2 | Downloadable private-repository bootstrap, reusable Git authentication and explicit runtime selection |
 | `codex/v9.2` | Harness for Codex v9.2 | Schema 3 | Schema 7 | Schema 2 | Standalone Linux CLI, project initialization and session launch, managed branch updates and release packaging |
 | `codex/v9.1` | Harness for Codex v9.1 | Schema 3 | Schema 7 | Schema 2 | Installer directory-mode preservation, compatible v9.0 updates, nonmandatory Git authorization advice |
@@ -578,3 +579,15 @@ This additive release preserves v9.0/v9.1/v9.2 artifacts, schemas and existing C
 - Adds explicit `--runtime codex`. The future Claude mode is recognized but refused before changes until its adapter and isolated state contracts are implemented.
 - Labels new archives and release metadata with their runtime, while retaining the legacy Codex metadata interpretation.
 - Publishes the standalone bootstrap with checksums and exercises authentication failure, runtime isolation and old-CLI upgrade compatibility. No live model quality or token-saving claim is added.
+
+
+## Harness for Codex v9.4
+
+v9.4 adds CLI conveniences without changing Manifest Schema 7, Artifact Contract 2 or the generator's Transaction Schema 2. Valid v9.0–v9.4 generated installations remain compatible.
+
+- `init`, `configure` and `reset` accept mutually exclusive project text (`--goal`) or an explicitly selected Markdown brief (`--goal-file`). Briefs are bounded UTF-8 reference material; paths, encodings and prompt transport are checked before mutations.
+- `--agent` becomes the public provider selector. The hidden `--runtime` alias remains accepted; conflicting choices fail. Claude execution remains unimplemented.
+- Plain `init` reports an existing generated harness without restarting configuration. Explicit goals still allow reviewed updates, while `--install-only` updates only the generator.
+- `status` distinguishes generator installation from generated project state. `remove` and `reset` preview by default; `--yes` applies ownership-checked removal, and `--include-generator` extends removal to unchanged installer-owned payloads.
+- CLI removal uses its own `removalSchemaVersion: 1` journal identified by `operation: remove` at the reserved transaction path. It is not labelled as a Schema 2 apply transaction. Existing generators reject it; `harness remove --recover` provides guarded recovery. Normal project schemas, user files, Git state and optional user-level records remain separate.
+- No live agent-quality or token-saving claim is made by these CLI changes.
