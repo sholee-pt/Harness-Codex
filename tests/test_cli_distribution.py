@@ -54,6 +54,26 @@ def archive(source_root, archive_path, extra=()):
                 bundle.addfile(entry)
 
 
+def isolated_credential_environment(root):
+    """Protocol tests must not discover workstation/runner auth or shell hooks."""
+    environment = {key: os.environ[key] for key in
+                   ("PATH", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP")
+                   if key in os.environ}
+    home = root / "credential-test-home"
+    home.mkdir(exist_ok=True)
+    environment.update({"HOME": str(home), "USERPROFILE": str(home), "XDG_CONFIG_HOME": str(home),
+                        "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_SYSTEM": os.devnull,
+                        "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CEILING_DIRECTORIES": str(root.parent),
+                        "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "Never",
+                        "HARNESS_GITHUB_TOKEN": "test.jwt-token.value"})
+    return environment
+
+
+def credential_fill_command():
+    return ["git", "-c", "credential.helper=", "-c", "credential.useHttpPath=true",
+            "-c", "credential.helper=" + dist.TOKEN_HELPER, "credential", "fill"]
+
+
 class DistributionTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -488,15 +508,48 @@ class DistributionTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("git"), "Git required for offline credential-helper protocol test")
     def test_token_helper_answers_only_exact_https_repository_and_does_not_store(self):
-        environment = dict(os.environ, HARNESS_GITHUB_TOKEN="test.jwt-token.value", GIT_TERMINAL_PROMPT="0")
-        command = ["git", "-c", "credential.helper=", "-c", "credential.useHttpPath=true", "-c", "credential.helper=" + dist.TOKEN_HELPER, "credential", "fill"]
+        environment = isolated_credential_environment(self.base)
+        command = credential_fill_command()
         for protocol, host, path, expected in (("https", "github.com", "sholee-pt/Harness.git", True), ("https", "other.example", "sholee-pt/Harness.git", False), ("http", "github.com", "sholee-pt/Harness.git", False), ("https", "github.com", "another/project.git", False)):
             with self.subTest(protocol=protocol, host=host, path=path):
-                result = subprocess.run(command, input=f"protocol={protocol}\nhost={host}\npath={path}\n\n", env=environment, capture_output=True, text=True)
+                result = subprocess.run(command, input=f"protocol={protocol}\nhost={host}\npath={path}\n\n",
+                                        cwd=self.base, env=environment, capture_output=True, text=True, timeout=20)
                 self.assertEqual(result.returncode == 0, expected, result.stderr)
                 self.assertEqual("password=test.jwt-token.value" in result.stdout, expected)
         # This helper intentionally implements no storage branch or token file.
         self.assertIn('if test "$1" != get; then return;', dist.TOKEN_HELPER)
+
+    @unittest.skipUnless(shutil.which("git"), "Git required for askpass isolation regression")
+    def test_token_protocol_fixture_cannot_inherit_external_askpass_or_config(self):
+        marker = self.base / "askpass-called.txt"
+        askpass = self.base / "sentinel-askpass.sh"
+        askpass.write_text('#!/bin/sh\nprintf "called\\n" >> "$HARNESS_TEST_ASKPASS_LOG"\nprintf "foreign-fallback\\n"\n',
+                           encoding="utf-8", newline="\n")
+        askpass.chmod(0o755)
+        config = self.base / "external.gitconfig"
+        config.write_text('[core]\n\taskPass = "' + askpass.as_posix() + '"\n', encoding="utf-8")
+        input_text = "protocol=https\nhost=other.example\npath=another/project.git\n\n"
+        hostile = {"GIT_ASKPASS": str(askpass), "SSH_ASKPASS": str(askpass),
+                   "GIT_CONFIG_GLOBAL": str(config), "GIT_CONFIG_COUNT": "1",
+                   "GIT_CONFIG_KEY_0": "core.askPass", "GIT_CONFIG_VALUE_0": str(askpass),
+                   "HARNESS_TEST_ASKPASS_LOG": marker.as_posix(), "BASH_ENV": str(askpass)}
+        # Demonstrate the original failure mechanism without opening a GUI or
+        # waiting for input: an external askpass can satisfy a refused host.
+        control_env = isolated_credential_environment(self.base)
+        control_env.update({key: value for key, value in hostile.items() if key != "BASH_ENV"})
+        control = subprocess.run(credential_fill_command(), input=input_text, cwd=self.base,
+                                 env=control_env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(control.returncode, 0, control.stderr)
+        self.assertTrue(marker.exists())
+        self.assertIn("password=foreign-fallback", control.stdout)
+        marker.unlink()
+        with mock.patch.dict(os.environ, hostile):
+            isolated = isolated_credential_environment(self.base)
+            checked = subprocess.run(credential_fill_command(), input=input_text, cwd=self.base,
+                                     env=isolated, capture_output=True, text=True, timeout=20)
+        self.assertNotEqual(checked.returncode, 0)
+        self.assertNotIn("password=", checked.stdout)
+        self.assertFalse(marker.exists())
 
     def test_concurrent_install_lock_is_preserved(self):
         self.install()
