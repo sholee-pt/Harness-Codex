@@ -108,7 +108,7 @@ conda run -n harness python <harness-skill-root>/scripts/validate_runtime_plan.p
   --plan RUNTIME_PLAN.json
 ```
 
-The command is no-write. A valid result proves source binding, references, task graph, scopes, communication budgets, fallback declaration, and retention shape. It does not prove that a native collaboration adapter exists or ran. Harness for Codex v9.0 keeps this schema unchanged and places its fixed liveness budget—three waits and 300000 total milliseconds per agent—in the runtime observation policy rather than adding optional Schema 1 fields.
+The command is no-write. A valid result proves source binding, references, task graph, scopes, communication budgets, fallback declaration, and retention shape. It does not prove that a native collaboration adapter exists or ran. Harness for Codex v9.1 keeps this schema unchanged and places its fixed liveness budget—three waits and 300000 total milliseconds per agent—in the runtime observation policy rather than adding optional Schema 1 fields.
 
 After each delegated task, validate the returned parent-facing packet against the same plan:
 
@@ -125,4 +125,4 @@ This second command is also no-write. It proves packet shape, task ownership, ev
 
 The validator resolves the repository root, rejects symbolic links at its `.harness` control directory or manifest, hashes the exact manifest bytes it parsed, and rejects a manifest that changes before validation finishes. Scope paths are normalized POSIX-relative paths and are compared case-insensitively for portable overlap checks.
 
-This is not a hostile concurrent-filesystem sandbox. v9.0 does not claim POSIX `openat`/`dir_fd` confinement, automated subagent-worktree/source-commit binding, or race-free protection against an attacker replacing arbitrary ancestors during validation. Use isolated trusted local workspaces, default to a single writer, and revalidate after any source or topology change.
+This is not a hostile concurrent-filesystem sandbox. v9.1 does not claim POSIX `openat`/`dir_fd` confinement, automated subagent-worktree/source-commit binding, or race-free protection against an attacker replacing arbitrary ancestors during validation. Use isolated trusted local workspaces, default to a single writer, and revalidate after any source or topology change.

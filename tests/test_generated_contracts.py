@@ -16,6 +16,7 @@ sys.path.insert(0, str(SCRIPTS))
 import harness_agent_contract as contract
 import harness_apply as apply
 import harness_frontmatter as frontmatter
+import harness_git_policy as git_policy
 import harness_metadata as metadata
 import harness_plan_builder as builder
 import harness_state as state
@@ -64,6 +65,43 @@ def legacy_installation(root, plan):
     manifest.pop("artifactContractVersion")
     manifest["generator"]["version"] = "7.6"
     path.write_text(json.dumps(manifest), encoding="utf-8")
+
+
+class GitAdviceMaterializationTests(unittest.TestCase):
+    def test_advice_reaches_decoded_agent_instructions_without_changing_other_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copytree(ROOT / "tests/fixtures/coordinated-cross-contract", root, dirs_exist_ok=True)
+            draft = runtime_fixtures.DeterministicPlanBuilderTests()._draft("coordinated-cross-contract-plan.json")
+            original = {a["path"]: tomllib.loads(a["content"]) for a in draft["artifacts"] if a["path"].endswith(".toml")}
+            plan = builder.materialize_plan(draft, root=root)
+            for artifact in plan["artifacts"]:
+                if artifact["path"] in original:
+                    actual = tomllib.loads(artifact["content"])
+                    self.assertEqual(actual["developer_instructions"].count(git_policy.GUIDANCE), 1)
+                    self.assertEqual({k: v for k, v in actual.items() if k != "developer_instructions"},
+                                     {k: v for k, v in original[artifact["path"]].items() if k != "developer_instructions"})
+                elif artifact["path"] == ".agents/skills/project-harness/SKILL.md":
+                    self.assertEqual(artifact["content"].count(git_policy.GUIDANCE), 1)
+            apply.build_application(root, plan)
+
+    def test_materialized_crlf_advice_is_not_duplicated_on_rematerialization(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = coordinated(root)
+            draft = copy.deepcopy(plan)
+            draft["authoringContractVersion"] = metadata.AUTHORING_CONTRACT_VERSION
+            for artifact in draft["artifacts"]:
+                if artifact["path"].endswith(".toml"):
+                    instructions = tomllib.loads(artifact["content"])["developer_instructions"]
+                    artifact["content"] = contract.replace_instructions(artifact["content"], instructions.replace("\n", "\r\n"))
+                else:
+                    artifact["content"] = artifact["content"].replace("\n", "\r\n")
+            expected = copy.deepcopy(draft)
+            expected.pop("authoringContractVersion")
+            actual = builder.materialize_plan(draft, root=root)
+            self.assertEqual(actual, expected)
+            apply.build_application(root, actual)
 
 
 class FrontmatterTests(unittest.TestCase):

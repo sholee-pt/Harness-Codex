@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 import tempfile
@@ -22,9 +23,14 @@ SPEC.loader.exec_module(installer)
 
 def state(root):
     return {
-        path.relative_to(root).as_posix(): (None if path.is_dir() else path.read_bytes(), path.stat().st_mtime_ns)
+        path.relative_to(root).as_posix(): (None if path.is_dir() else path.read_bytes(), path.stat().st_mtime_ns, stat.S_IMODE(path.stat().st_mode))
         for path in root.rglob("*")
     }
+
+
+def directory_metadata(path):
+    info = path.stat()
+    return stat.S_IMODE(info.st_mode), info.st_mtime_ns
 
 
 class ProjectInstallTests(unittest.TestCase):
@@ -237,6 +243,142 @@ class ProjectInstallTests(unittest.TestCase):
             with self.assertRaisesRegex(installer.InstallError, "changed during preparation"):
                 self.install()
         self.assertEqual((self.target / "SKILL.md").read_text(), "concurrent user edit")
+        self.assertEqual(sorted(path.name for path in self.target.parent.iterdir()), ["harness"])
+
+    def test_destination_root_mtime_change_during_staging_is_preserved_and_refused(self):
+        self.install()
+        (self.source / "SKILL.md").write_text("updated")
+        before = state(self.target)
+        original_populate = installer.populate
+        changed_mtime = self.target.stat().st_mtime_ns - 2_000_000_000
+
+        def concurrent_edit(folder, entries):
+            original_populate(folder, entries)
+            os.utime(self.target, ns=(changed_mtime, changed_mtime))
+
+        with mock.patch.object(installer, "populate", side_effect=concurrent_edit):
+            with self.assertRaisesRegex(installer.InstallError, "changed during preparation"):
+                self.install()
+        self.assertEqual(state(self.target), before)
+        self.assertEqual(self.target.stat().st_mtime_ns, changed_mtime)
+        self.assertEqual(sorted(path.name for path in self.target.parent.iterdir()), ["harness"])
+
+    @unittest.skipUnless(os.name == "posix", "requires POSIX directory permission semantics")
+    def test_directory_modes_survive_initial_install_update_and_repeat(self):
+        os.chmod(self.source, 0o751)
+        os.chmod(self.source / "references", 0o500)
+        os.chmod(self.source / "scripts", 0o750)
+        source_root_metadata = directory_metadata(self.source)
+        self.install()
+        self.assertEqual(directory_metadata(self.target), source_root_metadata)
+        self.assertEqual(stat.S_IMODE((self.target / "references").stat().st_mode), 0o500)
+        self.assertEqual(stat.S_IMODE((self.target / "scripts").stat().st_mode), 0o750)
+        private = self.target / "private"
+        private.mkdir()
+        (private / "empty").mkdir()
+        (private / "note.txt").write_text("user-owned private file")
+        os.chmod(private / "empty", 0o500)
+        os.chmod(private, 0o500)
+        os.chmod(self.target / "assets", 0o710)
+        os.chmod(self.target, 0o750)
+        preserved_root = directory_metadata(self.target)
+        preserved = state(self.target)
+        (self.source / "SKILL.md").write_text("updated")
+        new_directory = self.source / "assets/new"
+        new_directory.mkdir()
+        (new_directory / "nested").mkdir()
+        (new_directory / "nested/new.txt").write_text("new asset")
+        os.chmod(new_directory / "nested", 0o500)
+        os.chmod(new_directory, 0o550)
+        before = state(self.target)
+        self.install(dry_run=True)
+        self.assertEqual(state(self.target), before)
+        self.assertEqual(directory_metadata(self.target), preserved_root)
+        report = self.install()
+        self.assertEqual(report["mode"], "update")
+        self.assertEqual(report["warnings"], [])
+        self.assertEqual(directory_metadata(self.target), preserved_root)
+        for name in ("private", "private/empty", "private/note.txt", "references", "assets", "scripts"):
+            self.assertEqual(state(self.target)[name], preserved[name], name)
+        self.assertEqual(stat.S_IMODE((self.target / "assets/new").stat().st_mode), 0o550)
+        self.assertEqual(stat.S_IMODE((self.target / "assets/new/nested").stat().st_mode), 0o500)
+        self.assertEqual((self.target / "assets/new/nested/new.txt").read_text(), "new asset")
+        after = state(self.target)
+        repeated = self.install()
+        self.assertEqual((repeated["writes"], repeated["removes"], repeated["directoriesCreated"]), (0, 0, 0))
+        self.assertEqual(state(self.target), after)
+        self.assertEqual(directory_metadata(self.target), preserved_root)
+        self.assertEqual(sorted(path.name for path in self.target.parent.iterdir()), ["harness"])
+
+    @unittest.skipUnless(os.name == "posix", "requires POSIX directory permission semantics")
+    def test_new_empty_directory_is_installed_without_changing_existing_directory_modes(self):
+        self.install()
+        os.chmod(self.target / "references", 0o500)
+        existing_root = directory_metadata(self.target)
+        before = state(self.target)
+        new_directory = self.source / "references/empty"
+        new_directory.mkdir()
+        os.chmod(new_directory, 0o500)
+        planned = self.install(dry_run=True)
+        self.assertEqual(planned["writes"], 0)
+        self.assertEqual(planned["directoriesCreated"], 1)
+        self.assertEqual(state(self.target), before)
+        applied = self.install()
+        self.assertEqual(applied["mode"], "update")
+        self.assertEqual(applied["warnings"], [])
+        self.assertTrue((self.target / "references/empty").is_dir())
+        self.assertEqual(stat.S_IMODE((self.target / "references/empty").stat().st_mode), 0o500)
+        self.assertEqual(stat.S_IMODE((self.target / "references").stat().st_mode), 0o500)
+        self.assertEqual(directory_metadata(self.target), existing_root)
+        after = state(self.target)
+        repeated = self.install()
+        self.assertEqual((repeated["mode"], repeated["writes"], repeated["directoriesCreated"]), ("unchanged", 0, 0))
+        self.assertEqual(state(self.target), after)
+
+    @unittest.skipUnless(os.name == "posix", "requires POSIX directory permission semantics")
+    def test_destination_root_mode_change_during_staging_is_preserved_and_refused(self):
+        self.install()
+        os.chmod(self.target, 0o755)
+        before = state(self.target)
+        original_root_mtime = self.target.stat().st_mtime_ns
+        (self.source / "SKILL.md").write_text("updated")
+        original_populate = installer.populate
+
+        def concurrent_edit(folder, entries):
+            original_populate(folder, entries)
+            os.chmod(self.target, 0o700)
+
+        with mock.patch.object(installer, "populate", side_effect=concurrent_edit):
+            with self.assertRaisesRegex(installer.InstallError, "changed during preparation"):
+                self.install()
+        self.assertEqual(directory_metadata(self.target), (0o700, original_root_mtime))
+        self.assertEqual(state(self.target), before)
+        self.assertEqual(sorted(path.name for path in self.target.parent.iterdir()), ["harness"])
+
+    @unittest.skipUnless(os.name == "posix", "requires POSIX directory permission semantics")
+    def test_failed_update_with_restrictive_modes_restores_root_and_nested_directories(self):
+        self.install()
+        private = self.target / "private"
+        private.mkdir()
+        (private / "note.txt").write_text("preserve user content")
+        os.chmod(private, 0o500)
+        os.chmod(self.target / "assets", 0o500)
+        os.chmod(self.target, 0o550)
+        (self.source / "SKILL.md").write_text("updated")
+        before_root = directory_metadata(self.target)
+        before = state(self.target)
+        original_replace = os.replace
+
+        def fail_promotion(source, destination):
+            if Path(source).name.startswith(".harness-install-stage-"):
+                raise OSError("injected promotion failure")
+            return original_replace(source, destination)
+
+        with mock.patch.object(installer.os, "replace", side_effect=fail_promotion):
+            with self.assertRaisesRegex(OSError, "injected promotion failure"):
+                self.install()
+        self.assertEqual(state(self.target), before)
+        self.assertEqual(directory_metadata(self.target), before_root)
         self.assertEqual(sorted(path.name for path in self.target.parent.iterdir()), ["harness"])
 
     def test_real_cli_copies_current_source_and_reports_errors_as_json(self):

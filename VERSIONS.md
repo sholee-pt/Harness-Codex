@@ -6,6 +6,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 
 | Branch | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
+| `codex/v9.1` | Harness for Codex v9.1 | Schema 3 | Schema 7 | Schema 2 | Installer directory-mode preservation, compatible v9.0 updates, nonmandatory Git authorization advice |
 | `codex/v1` | Harness for Codex v1.0 | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
 | `codex/v2` | Harness for Codex v2.0 | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | `codex/v2.1` | Harness for Codex v2.1 | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
@@ -543,3 +544,13 @@ Harness for Codex v9.0 replaces the local-only Git-exclusion contract with a pro
 - Classifies clean known v7/v8 Schema 6 installations as `upgrade-required`; malformed metadata, tampered files, and missing required v8 canonical contracts remain invalid. A reviewed generation plan performs the Schema 7 / Artifact Contract 2 upgrade. Schema 4/5 regeneration remains separate.
 - Verifies real installations made by pinned v7.6, v8.0, and v8.1 sources in Linux and Windows CI. The optional clone-based evaluator retains a separate Git-root isolation contract; this restriction does not apply to generation.
 - Claims no live model improvement, token reduction, or agent-discovery result from structural tests alone.
+
+## Harness for Codex v9.1
+
+This maintenance release preserves the v9.0 project-local contract, Manifest Schema 7, Artifact Contract 2, Authoring Contract 3, Plan Schema 3 and all runtime/evaluation schemas. Valid v9.0 installations remain compatible; changing the latest version does not implicitly remove v9.0 from the supported installation set.
+
+- Preserves POSIX directory modes during generator installation and update, including the existing destination root, retained user directories and source modes for newly copied directories. Captures destination-root metadata to refuse changes made while staging. No-op behavior and folder-promotion rollback remain protected.
+- Adds Git authorization advice to newly materialized project routers and all generated agents while preserving other TOML settings. Existing valid plans and installations do not require this advice, and receive it only through a reviewed, hash-checked update.
+- Separates requested source edits from commit, push and destructive Git authorization. Scoped existing approvals remain usable; a generator-maintenance convention does not grant permission in other projects. This release does not intercept commands or APIs or claim a hard runtime approval gate.
+- Extends pinned real-source CI to compatible v9.0 installation updates alongside v7.6/v8.0/v8.1 upgrades. Keeps v9.0 evaluation records readable descriptively; concrete attribution remains bound to the current release's eligible evidence.
+- Does not claim Windows ACL/extended-attribute preservation, automatic approval discovery, live agent execution, model improvement, or measured token savings.

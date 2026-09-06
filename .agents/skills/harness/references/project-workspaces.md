@@ -1,6 +1,6 @@
 # Selected Project Folders
 
-Read this reference before analyzing or applying a project harness. v9.0 uses a project-local contract without automatic Git exclusion.
+Read this reference before analyzing or applying a project harness. v9.1 uses a project-local contract without automatic Git exclusion.
 
 ## Workspace classification
 
@@ -21,6 +21,10 @@ Harness does not add ignore rules or require a single registered worktree. Gener
 Run the source checkout's `conda run -n harness python install.py --root TARGET --dry-run`, then the same command without `--dry-run`. The root must already exist. The generator is installed inside `TARGET/.agents/skills/harness`; its `.harness-install.json` receipt owns only that generator's files. Nonempty unmanaged destinations and modified managed files are refused. Updates preserve other files and use a staged directory with backup restoration on a failed rename. The installer does not modify the project's `.harness/manifest.json`.
 
 Calling `$harness` creates or updates the separate project router, justified agents and skills, and `.harness/manifest.json` inside the selected root. Calling `$project-harness` uses those artifacts for project work. An explicit home-folder root supports user-level generator installation; home installation is not required.
+
+v9.1 installer updates preserve the existing generator folder's POSIX mode and modification time, plus retained subdirectory modes. Newly copied directories use source modes; a fresh generator root uses the source root's mode. Contents are prepared before restrictive directory modes are applied. A changed destination root during preparation is refused. Windows ACLs, extended ACLs, ownership and extended attributes are outside this mode-preservation claim. Use the new source checkout's `install.py` for the installer fix; generator installation and project-artifact updates are separate operations.
+
+Git-tracked project files remain editable within a requested task. Commit, push and destructive Git actions follow the user's scoped authorization; see [git-authorization.md](git-authorization.md). Static scope validation and generated advice are not command or API interception.
 
 ## Existing project instructions
 

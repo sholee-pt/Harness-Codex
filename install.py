@@ -39,6 +39,27 @@ class Entry:
     mtime_ns: int
 
 
+@dataclass(frozen=True)
+class DirectoryState:
+    mode: int
+    mtime_ns: int
+    ctime_ns: int
+    device: int
+    inode: int
+
+
+def directory_state(folder: Path) -> DirectoryState | None:
+    checked_path(folder)
+    try:
+        info = folder.lstat()
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISDIR(info.st_mode):
+        raise InstallError(f"destination is not a directory: {folder}")
+    return DirectoryState(stat.S_IMODE(info.st_mode), info.st_mtime_ns,
+                          info.st_ctime_ns, info.st_dev, info.st_ino)
+
+
 def checked_path(path: Path) -> Path:
     """Check before resolving so symlink and Windows junction hops stay visible."""
     path = Path(os.path.abspath(path.expanduser()))
@@ -156,24 +177,45 @@ def populate(folder: Path, entries: dict[str, Entry]) -> None:
     for name, entry in sorted(entries.items(), key=lambda pair: (len(PurePosixPath(pair[0]).parts), pair[0])):
         path = folder / name
         if entry.data is None:
-            path.mkdir(parents=True, exist_ok=True)
+            # Final restrictive modes are applied after all children are written.
+            path.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if os.name == "posix":
+                os.chmod(path, 0o700)
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(entry.data)
             os.chmod(path, entry.mode)
             os.utime(path, ns=(entry.mtime_ns, entry.mtime_ns))
-    for name, entry in sorted(entries.items(), reverse=True):
+    for name, entry in sorted(entries.items(), key=lambda pair: len(PurePosixPath(pair[0]).parts), reverse=True):
         if entry.data is None:
             os.utime(folder / name, ns=(entry.mtime_ns, entry.mtime_ns))
+            if os.name == "posix":
+                os.chmod(folder / name, entry.mode)
 
 
-def replace_folder(destination: Path, old: dict[str, Entry], new: dict[str, Entry]) -> list[str]:
+def remove_prepared_tree(folder: Path) -> None:
+    """Remove only an installer-created staging tree or a committed backup."""
+    if os.name == "posix":
+        def make_removable(path: Path) -> None:
+            checked_path(path)
+            info = path.lstat()
+            if stat.S_ISDIR(info.st_mode):
+                os.chmod(path, stat.S_IMODE(info.st_mode) | 0o700)
+                for child in path.iterdir():
+                    make_removable(child)
+        # No target directory is passed here before a successful promotion.
+        make_removable(folder)
+    shutil.rmtree(folder)
+
+
+def replace_folder(destination: Path, old: dict[str, Entry], new: dict[str, Entry],
+                   old_root: DirectoryState | None, desired_root: DirectoryState) -> list[str]:
     """Rollback rename failures; leave an explicit backup if cleanup is unavailable."""
     parents: list[Path] = []
     staging: Path | None = None
     backup: Path | None = None
     warnings: list[str] = []
-    existed = destination.exists()
+    existed = old_root is not None
     try:
         for parent in reversed(destination.parent.parents):
             checked_path(parent)
@@ -187,9 +229,15 @@ def replace_folder(destination: Path, old: dict[str, Entry], new: dict[str, Entr
             parents.append(parent)
         checked_path(destination.parent)
         staging = Path(tempfile.mkdtemp(prefix=".harness-install-stage-", dir=destination.parent))
+        if os.name == "posix":
+            os.chmod(staging, 0o700)
         populate(staging, new)
+        os.utime(staging, ns=(desired_root.mtime_ns, desired_root.mtime_ns))
+        if os.name == "posix":
+            os.chmod(staging, desired_root.mode)
         checked_path(destination)
-        if destination.exists() != existed or snapshot(destination) != old:
+        if (directory_state(destination) != old_root or snapshot(destination) != old
+                or directory_state(destination) != old_root):
             raise InstallError("destination changed during preparation; install refused")
         if existed:
             backup = destination.parent / (".harness-install-backup-" + secrets.token_hex(12))
@@ -209,13 +257,13 @@ def replace_folder(destination: Path, old: dict[str, Entry], new: dict[str, Entr
             raise
         if backup is not None:
             try:
-                shutil.rmtree(backup)
+                remove_prepared_tree(backup)
                 backup = None
             except OSError:
                 warnings.append(f"installation completed; remove retained backup after review: {backup}")
     finally:
         if staging is not None and staging.exists():
-            shutil.rmtree(staging)
+            remove_prepared_tree(staging)
         for parent in reversed(parents):
             try:
                 parent.rmdir()
@@ -231,6 +279,9 @@ def install(root: Path, *, dry_run: bool = False, source: Path | None = None) ->
     if not root.is_dir():
         raise InstallError("--root must name an existing directory")
     source = checked_path(source or Path(__file__).absolute().parent / ".agents/skills/harness")
+    source_root = directory_state(source)
+    if source_root is None:
+        raise InstallError("source must be an existing directory")
     incoming = snapshot(source, source=True)
     if incoming.get("SKILL.md") is None or incoming["SKILL.md"].data is None:
         raise InstallError("source SKILL.md must be a regular file")
@@ -240,13 +291,17 @@ def install(root: Path, *, dry_run: bool = False, source: Path | None = None) ->
     version = source_version(incoming)
     destination = checked_path(root / ".agents/skills/harness")
     report = {"valid": True, "generatorVersion": version, "destination": str(destination), "dryRun": dry_run,
-              "writes": 0, "removes": 0, "mode": "unchanged", "gitMetadataTouched": False, "warnings": []}
+              "writes": 0, "removes": 0, "directoriesCreated": 0,
+              "mode": "unchanged", "gitMetadataTouched": False, "warnings": []}
     if source == destination:
         report["mode"] = "self"
         return report
     if source in destination.parents or destination in source.parents:
         raise InstallError("source and destination must not contain one another")
+    old_root = directory_state(destination)
     old = snapshot(destination)
+    if directory_state(destination) != old_root:
+        raise InstallError("destination changed during preparation; install refused")
     managed = read_receipt(old)
     desired = dict(old)
     for name in managed:
@@ -269,11 +324,12 @@ def install(root: Path, *, dry_run: bool = False, source: Path | None = None) ->
     desired[RECEIPT] = old[RECEIPT] if RECEIPT in old and old[RECEIPT].data == receipt_data else Entry(receipt_data, 0o644, time.time_ns())
     report["writes"] = sum(entry.data is not None and (name not in old or old[name].data != entry.data) for name, entry in desired.items())
     report["removes"] = sum(name not in desired for name in managed)
-    if not report["writes"] and not report["removes"]:
+    report["directoriesCreated"] = sum(entry.data is None and name not in old for name, entry in desired.items())
+    if not report["writes"] and not report["removes"] and not report["directoriesCreated"]:
         return report
     report["mode"] = "update" if managed else "install"
     if not dry_run:
-        report["warnings"] = replace_folder(destination, old, desired)
+        report["warnings"] = replace_folder(destination, old, desired, old_root, old_root or source_root)
     return report
 
 

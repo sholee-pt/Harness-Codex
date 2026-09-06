@@ -1,4 +1,4 @@
-"""Reproduce a real v7.6, v8.0, or v8.1 install -> v9.0 update using two source trees.
+"""Reproduce a real v7.6, v8.0, v8.1, or v9.0 install -> v9.1 update.
 
 Run with the harness Conda Python. No network or live Codex is used.
 """
@@ -29,23 +29,27 @@ def instruction_sizes(root):
 def worker(source, root, stage):
     sys.path[:0] = [str(source / '.agents/skills/harness/scripts'), str(source / 'tests')]
     import harness_apply
+    import harness_doctor
     import harness_metadata
     import harness_plan_builder
     import validate_harness
     import test_runtime_teamplay
+    import validate_runtime_plan
 
     draft = test_runtime_teamplay.DeterministicPlanBuilderTests()._draft('coordinated-cross-contract-plan.json')
     if stage == 'baseline':
-        assert harness_metadata.HARNESS_VERSION in {'7.6', '8.0', '8.1'}
+        assert harness_metadata.HARNESS_VERSION in {'7.6', '8.0', '8.1', '9.0'}
         shutil.copytree(source / 'tests/fixtures/coordinated-cross-contract', root, dirs_exist_ok=True)
         plan = harness_plan_builder.materialize_plan(draft, root=root)
         harness_apply.apply_application(harness_apply.build_application(root, plan))
         report = validate_harness.Validator(root).run()
         assert report['valid'], report['errors']
+        (root.parent / (root.name + '-baseline-plan.json')).write_text(json.dumps(plan), encoding='utf-8')
         return {'generatorVersion': harness_metadata.HARNESS_VERSION, 'valid': report['valid'], 'instructionSizes': instruction_sizes(root), 'agentCount': len(plan['topology']['agents'])}
-    assert harness_metadata.HARNESS_VERSION == '9.0'
+    assert harness_metadata.HARNESS_VERSION == '9.1'
     before = snapshot(root)
     legacy = validate_harness.Validator(root).run()
+    doctor = harness_doctor.diagnose(root)
     assert snapshot(root) == before
     plan = harness_plan_builder.materialize_plan(draft, root=root)
     if stage == 'dirty':
@@ -56,18 +60,38 @@ def worker(source, root, stage):
             assert snapshot(root) == before
             return {'installationStatus': legacy['installationStatus'], 'updateRefused': True, 'externalEditPreserved': True}
         raise AssertionError('A modified installation must not be overwritten')
-    original_version = json.loads((root / '.harness/manifest.json').read_text(encoding='utf-8'))['generator']['version']
-    expected_status = 'upgrade-required'
+    original_manifest = json.loads((root / '.harness/manifest.json').read_text(encoding='utf-8'))
+    original_version = original_manifest['generator']['version']
+    expected_status = 'valid' if original_version == '9.0' else 'upgrade-required'
     assert legacy['installationStatus'] == expected_status and legacy['integrityValid'], legacy
+    assert doctor['installationStatus'] == expected_status, doctor
+    previous_plan_accepted = None
+    runtime_compatible = None
+    if original_version == '9.0':
+        # The unchanged plan was produced by the actual old source subprocess.
+        # The new advisory is optional, so its absence cannot invalidate it.
+        import harness_git_policy
+        previous_plan = json.loads((root.parent / (root.name + '-baseline-plan.json')).read_text(encoding='utf-8'))
+        for artifact in previous_plan['artifacts']:
+            content = artifact['content']
+            if artifact['path'].endswith('.toml'):
+                content = tomllib.loads(content)['developer_instructions']
+            assert harness_git_policy.GUIDANCE not in content
+        previous_plan_accepted = harness_apply.build_application(root, previous_plan)['report']['valid']
+        assert previous_plan_accepted and snapshot(root) == before
+        runtime = test_runtime_teamplay.valid_plan(root, original_manifest)
+        runtime_compatible = validate_runtime_plan.validate_runtime_plan(root, runtime)['valid']
+        assert runtime_compatible and snapshot(root) == before
     application = harness_apply.build_application(root, plan)
     assert application['report']['valid'] and snapshot(root) == before
     applied = harness_apply.apply_application(application)
     report = validate_harness.Validator(root).run()
     assert report['valid'], report['errors']
+    assert json.loads((root / '.harness/manifest.json').read_text(encoding='utf-8'))['generator']['version'] == '9.1'
     updated = snapshot(root)
     repeated = harness_apply.apply_application(harness_apply.build_application(root, plan))
     assert repeated['writes'] == 0 and snapshot(root) == updated
-    return {'before': legacy['installationStatus'], 'after': report['installationStatus'], 'dryRunReadOnly': True, 'writes': applied['writes'], 'repeatWrites': repeated['writes'], 'noOpBytesAndMtimesPreserved': True, 'instructionSizes': instruction_sizes(root), 'agentCount': len(plan['topology']['agents'])}
+    return {'beforeGeneratorVersion': original_version, 'before': legacy['installationStatus'], 'doctorBefore': doctor['installationStatus'], 'after': report['installationStatus'], 'previousPlanWithoutAdvisoryAccepted': previous_plan_accepted, 'previousRuntimePlanCompatible': runtime_compatible, 'dryRunReadOnly': True, 'writes': applied['writes'], 'repeatWrites': repeated['writes'], 'noOpBytesAndMtimesPreserved': True, 'instructionSizes': instruction_sizes(root), 'agentCount': len(plan['topology']['agents'])}
 
 
 def main():

@@ -18,6 +18,7 @@ import harness_metadata
 import harness_teamplay
 import harness_agent_contract
 import harness_frontmatter
+import harness_git_policy
 import harness_topology
 
 
@@ -175,13 +176,14 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
                 artifact["content"], harness_teamplay.PROJECT_BLOCK, path
             )
             # Advisory routing refinement, not a new required artifact contract.
-            # The canonical v2 runtime block itself is unchanged in v8.
+            # The canonical v2 runtime block itself remains unchanged.
             if harness_teamplay.DIRECT_EXECUTION_GUIDANCE not in artifact["content"]:
                 artifact["content"] = artifact["content"].replace(
                     harness_teamplay.PROJECT_BLOCK,
                     harness_teamplay.DIRECT_EXECUTION_GUIDANCE + "\n\n" + harness_teamplay.PROJECT_BLOCK,
                     1,
                 )
+            artifact["content"] = harness_git_policy.append_guidance(artifact["content"])
         elif path in agent_paths:
             try:
                 original_instructions = tomllib.loads(content).get("developer_instructions")
@@ -210,6 +212,7 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
             harness_teamplay.require_exactly_once(
                 instructions, harness_teamplay.AGENT_BLOCK, path
             )
+            instructions = harness_git_policy.append_guidance(instructions)
             try:
                 if instructions != original_instructions:
                     artifact["content"] = harness_agent_contract.replace_instructions(content, instructions)
