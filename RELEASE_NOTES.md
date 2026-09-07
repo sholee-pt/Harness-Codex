@@ -1,16 +1,20 @@
-Harness for Codex v9.5 fixes installation completeness checks and process environment inheritance, and adds deadlines to bootstrap Git operations.
+Harness for Codex v9.6 improves project guidance and diagnostic clarity while preserving the v9.0–v9.5 project contracts.
 
-- Incomplete v9.4+ sources missing `lifecycle.py`, or v9.5+ sources missing `environment.py`, are refused before installation state or release output is created. Real v9.2/v9.3/v9.4 installation and upgrade paths remain supported.
-- Harness uses its dedicated Conda Python while Codex inherits the calling terminal's PATH and Conda labels. Activate your project environment before starting Harness. Diagnostic helpers receive a separate Harness environment.
-- Existing v9.2–v9.4 launchers need a guarded, offline migration. After updating, run the commands below. If an interactive command repairs its launcher and asks you to repeat it, run it again from the same terminal; the affected invocation does not launch Codex.
-- Bootstrap `--timeout SECONDS` limits each Git query/fetch independently (default 120; integer 1–600). It terminates the process group, escalates after two seconds, removes temporary files and preserves the existing installation. Initial curl, Conda and total installation time are not covered. Linux requires GNU coreutils `timeout` and `sleep` in addition to Bash, Git, tar and Conda.
-- Manifest Schema 7, Artifact Contract 2 and all generated-project schemas remain unchanged. Valid v9.0–v9.5 projects remain compatible; updating the CLI does not regenerate project files.
+- Model, training and benchmark projects can use a conditional analysis reference covering input/split identity, preprocessing fit population, checkpoints, evaluation comparability, run completion and execution paths. Only relevant procedures are generated; no fixed ML agent team or additional mandatory workflow is introduced.
+- Validation, doctor and status separate managed-artifact checks, source-evidence checks, untested runtime loading and unmeasured task quality. Ordinary source-content drift recommends re-reading with `start`; missing references require a reviewed `configure`. Managed edits or other contract errors retain the existing blocking behavior. No source hash is silently refreshed.
+- Evaluator/topology help no longer displays a stale v8.1 release label. The CLI and doctor continue to expose the version from common metadata.
+- A one-reviewer packet example clarifies active participants, parent integration and bounded completion. Native smoke and independent generation-evaluation protocols distinguish automatic discovery from manually transferred instructions and downstream task use from fresh authoring quality.
+- Authoring Contract 3, Plan Schema 3, Manifest Schema 7 and Artifact Contract 2 remain unchanged. Existing valid v9.0–v9.5 artifacts remain accepted, and a CLI update does not regenerate projects. Linux bootstrap timeouts and guarded legacy-launcher migration from v9.5 remain in place.
 
 ```bash
 harness update
+# Needed only for legacy v9.2–v9.4 launchers; already repaired launchers are unchanged.
 harness update --repair-launcher
-# Activate the project's existing environment in this terminal, if needed.
 harness start --project /path/to/project
 ```
 
-Linux/Windows tests, pinned real-source upgrade checks, process-environment probes, Linux timeout regressions and an authenticated GitHub bootstrap check gate publication. Environment probes use an inert Codex substitute; they do not establish native skill/agent discovery, agent performance, task-time reduction or token savings, and are not a verification of authentication on another user's server. Claude integration remains unimplemented.
+To adopt new generator guidance in an existing project, update the installed generator with `harness init --project PATH --install-only`, then request a reviewed update with `harness configure --project PATH`. Project configuration remains separate from tool updates.
+
+Linux/Windows regression checks and pinned real-source upgrades gate publication. A documented native smoke procedure is not a claim that every runtime or user server passed it. Live results and limitations must be reported separately from structural checks. No general generation-quality improvement, model performance gain or token saving is claimed. Claude integration remains unimplemented.
+
+Local Windows checks with Codex CLI 0.153.4 observed project-router loading, one direct file change and a bounded interactive `harness start` session. A separate custom-reviewer probe did not complete delegation: its requested source paths exceeded the fixture reviewer's access scope, and that session reported no native custom-role selection interface. Neither a successful native reviewer run nor a complete interactive first-time `init` is established by these checks. One independent generation pass on a small synthetic model project produced relevant skills without adding agents; this is a limited smoke result, not a comparative quality benchmark.

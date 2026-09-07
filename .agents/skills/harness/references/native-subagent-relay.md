@@ -54,6 +54,36 @@ The v6.5 adapter names remain readable in ephemeral plans, but they do not estab
 
 A challenge contains exactly `targetAgent`, `claim`, `evidenceRefs`, and `requestedAction`. A complete packet requires every declared task output, at least one verification entry, and no incomplete work. A partial, blocked, or failed packet must describe incomplete work.
 
+### One reviewer reporting to the parent
+
+`affectedAgents` names active runtime participants affected by the finding, not every persistent agent whose source area is mentioned. If the task selects only `experiment_reviewer`, a finding about the evidence needed for that review can identify that reviewer. Name an inactive implementation owner in the claim as context, without adding it to participants or implying it executed. The parent remains responsible for follow-up work. Do not point at the reviewer merely to satisfy the validator when the claim concerns an unrelated task.
+
+For a runtime task `compare-runs` owned by `experiment_reviewer`, with declared output `comparison-review` and verification `input-provenance-check`, a complete read-only return can be:
+
+```json
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "taskId": "compare-runs",
+  "participant": "experiment_reviewer",
+  "summary": "Completed the requested comparability review; ranking is not supported.",
+  "findings": [{
+    "claim": "This review cannot establish a common split from the supplied run metadata; the parent must obtain the missing identities before ranking results.",
+    "evidenceRefs": ["runs/summary.csv", "runs/metadata.json"],
+    "severity": "medium",
+    "affectedAgents": ["experiment_reviewer"]
+  }],
+  "challenges": [],
+  "artifacts": ["comparison-review"],
+  "changedPaths": [],
+  "verification": ["input-provenance-check"],
+  "incompleteWork": [],
+  "unresolvedRisks": ["A model ranking still requires comparable split and evaluator identities."]
+}
+```
+
+Here `complete` means the bounded review is complete, not that an experiment finished or a model improved. Use `partial` with `incompleteWork` if the requested review itself could not be completed. Empty findings are valid when no material finding exists; an individual finding still requires at least one truthful active affected participant. One review pass does not establish repeated coordination or automatic native discovery.
+
 Validate a returned packet without writing repository state:
 
 ```shell

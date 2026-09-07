@@ -1,4 +1,4 @@
-"""Run real v9.2/v9.3/v9.4 tool installers/updaters against v9.5 using local Git transport.
+"""Run real v9.2/v9.3/v9.4/v9.5 tool installers/updaters against v9.6 using local Git transport.
 
 Only the fixed upstream URL is replaced for this test. Git branch discovery,
 fetch, ancestry, archives, old installation code, and the new launcher are real.
@@ -46,7 +46,7 @@ def old_project(baseline, root, runtime_path):
     import test_runtime_teamplay
     import shutil
 
-    assert harness_metadata.HARNESS_VERSION in {"9.2", "9.3", "9.4"}
+    assert harness_metadata.HARNESS_VERSION in {"9.2", "9.3", "9.4", "9.5"}
     shutil.copytree(baseline / "tests/fixtures/coordinated-cross-contract", root)
     draft = test_runtime_teamplay.DeterministicPlanBuilderTests()._draft("coordinated-cross-contract-plan.json")
     plan = harness_plan_builder.materialize_plan(draft, root=root)
@@ -92,8 +92,8 @@ def verify(baseline):
     new_snapshot = current._snapshot(REPO)
     baseline_version = old._source_info(old_snapshot)[0]
     candidate_version = current._source_info(new_snapshot)[0]
-    assert baseline_version in {"9.2", "9.3", "9.4"}
-    assert candidate_version == "9.5"
+    assert baseline_version in {"9.2", "9.3", "9.4", "9.5"}
+    assert candidate_version == "9.6"
     assert "install_harness.sh" in new_snapshot, "The candidate must include the optional bootstrap to test its omission."
     bootstrap_omitted = baseline_version == "9.2"
     assert old._runtime("install_harness.sh") == (not bootstrap_omitted)
@@ -168,7 +168,9 @@ def verify(baseline):
         legacy_launcher_before = launcher.read_bytes()
         legacy_tool_before = state(data)
         legacy_status = current.launcher_status(data)
-        assert legacy_status["state"] == "legacy" and not legacy_status["callerEnvironmentPreserved"], legacy_status
+        migration_required = baseline_version in {"9.2", "9.3", "9.4"}
+        assert legacy_status["state"] == ("legacy" if migration_required else "current"), legacy_status
+        assert legacy_status["callerEnvironmentPreserved"] is not migration_required, legacy_status
         version = run([sys.executable, "-B", launcher, "--version"], cwd=project, environment=environment).strip()
         assert version == "Harness for Codex " + candidate_version, version
         for option in ("--agent", "--runtime"):
@@ -187,8 +189,12 @@ def verify(baseline):
         assert state(data) == legacy_tool_before, "Read-only commands implicitly migrated the legacy launcher"
         repair_output = run([sys.executable, "-B", launcher, "update", "--repair-launcher"], environment=environment)
         repair, _ = json.JSONDecoder().raw_decode(repair_output)
-        assert repair["state"] == "repaired" and repair["repaired"], repair
-        assert launcher.read_bytes() != legacy_launcher_before
+        if migration_required:
+            assert repair["state"] == "repaired" and repair["repaired"], repair
+            assert launcher.read_bytes() != legacy_launcher_before
+        else:
+            assert repair["state"] == "unchanged" and repair["writes"] == 0, repair
+            assert launcher.read_bytes() == legacy_launcher_before
         assert current.launcher_status(data)["callerEnvironmentPreserved"]
         repaired_tool = state(data)
         repeat_output = run([sys.executable, "-B", launcher, "update", "--repair-launcher"], environment=environment)
@@ -211,7 +217,9 @@ def verify(baseline):
                 "oldApplyAndRecoveryRefuseRemovalJournalWithoutWrites": True,
                 "newInstalledStatusAndRemovalPreviewAcceptPreviousProject": True,
                 "resetPreviewAcceptedWithoutWrites": True, "legacyReadOnlyCommandsDoNotMigrate": True,
-                "offlineLauncherMigrationAndNoopRepeat": True,
+                "legacyLauncherMigrationRequired": migration_required,
+                "offlineLauncherMigrationAndNoopRepeat": migration_required,
+                "offlineLauncherRepairCheckAndNoopRepeat": True,
                 "previousProjectAccepted": True, "previousRuntimePlanAccepted": True,
                 "oldReleasePreserved": True, "projectFilesAndGitMetadataUnchanged": True,
                 "originalBaselineUnchanged": True, "networkUsed": False, "liveCodexInvoked": False}

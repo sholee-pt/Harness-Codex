@@ -676,10 +676,27 @@ class Validator:
             "upgradeRequirements": self.upgrade_requirements,
             "activation": activation,
             "validationLayers": self.validation_layers,
+            "summary": validation_summary(self.validation_layers),
             "externalCapabilities": external_capabilities,
             "errors": self.errors,
             "warnings": self.warnings,
         }
+
+
+def validation_summary(layers: dict) -> dict:
+    """Describe separate evidence dimensions without changing validation gates."""
+    managed = layers.get("managedOwnership", {}).get("status", "not-tested")
+    evidence = layers.get("evidenceFreshness", {}).get("status", "not-tested")
+    if managed == "failed":
+        message = "Managed-file ownership or content checks failed. Preserve the files and review the detailed errors before updating."
+    elif managed == "passed" and evidence == "failed":
+        message = "Managed files match their recorded ownership; source evidence needs review. Other validation layers still determine whether work can proceed."
+    elif managed == "passed" and evidence == "passed":
+        message = "Managed files and source evidence match. This does not establish runtime loading or task quality."
+    else:
+        message = "Managed-file or source-evidence checks are incomplete. Resolve the detailed findings before relying on the installation."
+    return {"managedArtifacts": managed, "sourceEvidence": evidence,
+            "runtimeLoading": "not-tested", "taskQuality": "not-measured", "message": message}
 
 
 def activation_report(manifest: dict, *, valid: bool) -> dict:

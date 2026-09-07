@@ -33,6 +33,8 @@ Build the smallest useful Codex-native harness for the current local workspace. 
 
 Read [project-analysis.md](references/project-analysis.md). Identify responsibilities, execution environments, data and contract boundaries, high-risk quality boundaries, and recurring workflows. Record file-level evidence for each conclusion. Use the read-only `harness_state.py evidence` command to capture normalized paths and SHA-256 values, then add a specific claim and optional line range.
 
+When actual model, training, experiment, or benchmark code is relevant, read [model-workflows.md](references/model-workflows.md). Select only evidenced contracts for the generated project procedures; this does not prescribe extra agents or apply to unrelated projects.
+
 Normalize candidates into material boundaries with topology-wide unique `decisionAreaIds`, workspace evidence, persistence, contracts, verification, and separation benefits. Physical size, directory count, language, and framework names do not determine topology. A workspace with zero or one material boundary and no recurring coordination remains `minimal`, regardless of file count.
 
 ## Phase 2 — Design the topology

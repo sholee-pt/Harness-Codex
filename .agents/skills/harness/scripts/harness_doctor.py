@@ -45,6 +45,7 @@ def diagnose(root: Path) -> dict:
         },
         "activation": validation["activation"],
         "validationLayers": validation["validationLayers"],
+        "summary": validation["summary"],
         "externalCapabilities": validation["externalCapabilities"],
         "errors": errors,
         "warnings": validation["warnings"],

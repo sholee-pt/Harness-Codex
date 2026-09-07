@@ -10,11 +10,15 @@ Use this optional check after structural validation when the generated harness m
 
 ## Discovery
 
+Preserve the Codex version, source/guidance revision, launch method and actual selected workspace with the isolated test evidence. A fresh `codex exec` session can test native loading and bounded work, but does not by itself test the interactive `harness init/start` terminal path. Keep those results separate. Use the installed native runtime and existing authorized authentication; do not replace it with a fake command and label the outcome live.
+
 1. Ask Codex to identify the active project harness without changing files.
 2. Read `activation.mode` from `validate_harness.py` or `harness_doctor.py --root REPOSITORY`. For `managed-pointer`, confirm that the active `AGENTS.md` or `AGENTS.override.md` selects `$project-harness` in a fresh task. For `explicit-skill`, invoke `$project-harness` explicitly and confirm that the workspace's generated skill is selected; no managed root pointer is required. Do not modify user-owned instructions to pass this check.
 3. Confirm that every reported custom agent and project skill exists in the generated topology.
 
 ## Delegation
+
+First exercise one small direct task with an independently checkable result. Do not name an agent in that request; observe whether the harness avoids unnecessary delegation. For the specialist test, distinguish a natural task that selects an agent from an explicit request naming the agent. Reading a TOML file into a generic child establishes instruction transfer, not native custom-agent discovery. Do not inject the generated role list or expected result into a discovery-only prompt.
 
 1. Choose one bounded read-only task that clearly matches a generated specialist agent. If no specialist was justified, record delegation as not applicable.
 2. Ask Codex to execute the task through the project harness.
@@ -34,6 +38,8 @@ Use this optional check after structural validation when the generated harness m
 7. If a packet is revised, validate a separate relay receipt: every review echoes its input packet hash, stale reviews are excluded from integration, and exactly the affected agents are rerun.
 
 Use read-only subagents and at most one writer unless the runtime visibly establishes separate writer worktrees and non-overlapping scopes. A declared worktree field is not sufficient.
+
+Compare before/after source and generated-file snapshots. Keep all test outputs in a selected disposable project/evidence directory, bound the number and duration of attempts, and stop on an unavailable runtime or authentication failure with the unobserved stages marked `not-tested`. A setup failure is not a successful discovery test. Do not weaken sandbox, approval or hook-trust settings to obtain a pass.
 
 ## Result
 

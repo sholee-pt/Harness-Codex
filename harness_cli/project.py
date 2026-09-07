@@ -345,6 +345,8 @@ def project_status(source_root: Path, root: Path, installer) -> dict:
         return result
     if result["harnessPresent"]:
         code, report = _report(source_root, root)
+        if "summary" in report:
+            result["summary"] = report["summary"]
         if code == 0 and report["valid"]:
             result["state"] = "configured"
         elif report.get("installationStatus") == "upgrade-required" and report.get("integrityValid"):
@@ -364,10 +366,18 @@ def project_status(source_root: Path, root: Path, installer) -> dict:
             result["state"] = "generator-only"
     if result["generator"] == "invalid-or-unowned":
         result["state"] = "invalid"
-    result["nextCommand"] = ("harness start --project PATH" if result["state"] == "configured"
+    can_reread = (result["state"] == "stale-evidence"
+                  and _only_stale_evidence(report, root=root, source_root=source_root))
+    result["nextCommand"] = ("harness start --project PATH" if result["state"] == "configured" or can_reread
                              else "harness configure --project PATH" if result["state"] in {"generator-only", "stale-evidence", "upgrade-required"}
                              else "harness init --project PATH" if result["state"] == "absent"
                              else "harness doctor --project PATH")
+    if result["state"] == "stale-evidence":
+        result["guidance"] = (
+            "Start can re-read changed source without regenerating the harness. Review configuration only if responsibilities or verification risks changed."
+            if can_reread else
+            "Some source references require a configuration review before start. Preserve the current harness and inspect the detailed findings."
+        )
     return result
 
 

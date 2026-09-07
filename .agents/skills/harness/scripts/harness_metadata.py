@@ -5,12 +5,12 @@ from __future__ import annotations
 
 
 RUNTIME = "codex"
-HARNESS_VERSION = "9.5"
+HARNESS_VERSION = "9.6"
 AUTHORING_CONTRACT_VERSION = 3
 ARTIFACT_CONTRACT_VERSION = 2
 # Installation compatibility follows the artifact contract, not release equality.
 # Only explicitly supported releases may enter the normal update path.
-ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS = frozenset({"9.0", "9.1", "9.2", "9.3", "9.4", HARNESS_VERSION})
+ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS = frozenset({"9.0", "9.1", "9.2", "9.3", "9.4", "9.5", HARNESS_VERSION})
 PREVIOUS_ARTIFACT_GENERATOR_VERSIONS = frozenset({"8.0", "8.1"})
 INVENTORY_SCHEMA_VERSION = 5
 ROOT_CONTEXT_SCHEMA_VERSION = 3
@@ -25,7 +25,7 @@ OPERATIONS_EVENT_SCHEMA_VERSION = 1
 READABLE_EVALUATION_VERSIONS = frozenset(
     {
         "6.0", "6.1", "6.2", "6.3", "6.4", "6.5", "6.6", "6.7", "6.8", "6.9",
-        "6.10", "7.0", "7.1", "7.2", "7.3", "7.4", "7.5", "7.6", "8.0", "8.1", "9.0", "9.1", "9.2", "9.3", "9.4", HARNESS_VERSION,
+        "6.10", "7.0", "7.1", "7.2", "7.3", "7.4", "7.5", "7.6", "8.0", "8.1", "9.0", "9.1", "9.2", "9.3", "9.4", "9.5", HARNESS_VERSION,
     }
 )
 ATTRIBUTION_ELIGIBLE_EVALUATION_VERSIONS = frozenset({HARNESS_VERSION})
