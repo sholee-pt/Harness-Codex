@@ -496,7 +496,18 @@ class BootstrapIntegrationTests(unittest.TestCase):
         self.environment.pop("HARNESS_TEST_STALL_PHASE")
         retry = self.run_bootstrap("--auto-update", "off")
         self.assertEqual(retry.returncode, 0, retry.stdout + retry.stderr)
-        self.assertEqual(snapshot(), before)
+        after_retry = snapshot()
+        self.assertEqual(set(after_retry), set(before))
+        for path, original in before.items():
+            with self.subTest(retry_path=path):
+                # The successful source installer atomically rewrites its active
+                # metadata even when unchanged. Only that file's mtime may move;
+                # its bytes/mode and every release, receipt and launcher stay equal.
+                # The failed transfer above still requires the full exact snapshot.
+                if path == ("data", "active.json"):
+                    self.assertEqual(after_retry[path][:2], original[:2])
+                else:
+                    self.assertEqual(after_retry[path], original)
 
     @unittest.skipUnless(sys.platform.startswith("linux"), "Linux process-group and /proc assertions")
     def test_https_lookup_timeout_can_fall_back_to_ssh(self):

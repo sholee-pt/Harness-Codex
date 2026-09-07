@@ -83,7 +83,12 @@ class LegacyLauncherGateTests(unittest.TestCase):
     def test_legacy_launch_requires_repair_and_a_fresh_preserved_invocation(self):
         arguments = ["start", "--project", str(self.project)]
         project_before = snapshot(self.project)
-        with mock.patch.dict(os.environ, self.caller, clear=True), \
+        # The installed launcher starts Python with -B. This in-process probe
+        # must match that setting even when unittest itself runs without -B;
+        # otherwise preflight's import of the copied install.py creates a .pyc
+        # inside the immutable release before the launcher gate can inspect it.
+        with mock.patch.object(sys, "dont_write_bytecode", True), \
+                mock.patch.dict(os.environ, self.caller, clear=True), \
                 redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as errors, \
                 mock.patch.object(cli, "_automatic_update", return_value=None) as automatic, \
                 mock.patch.object(cli, "run_project_command", return_value=23) as dispatch:
