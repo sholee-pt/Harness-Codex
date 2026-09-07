@@ -1,4 +1,4 @@
-"""Run real v9.2/v9.3 tool installers/updaters against v9.4 using local Git transport.
+"""Run real v9.2/v9.3/v9.4 tool installers/updaters against v9.5 using local Git transport.
 
 Only the fixed upstream URL is replaced for this test. Git branch discovery,
 fetch, ancestry, archives, old installation code, and the new launcher are real.
@@ -46,7 +46,7 @@ def old_project(baseline, root, runtime_path):
     import test_runtime_teamplay
     import shutil
 
-    assert harness_metadata.HARNESS_VERSION in {"9.2", "9.3"}
+    assert harness_metadata.HARNESS_VERSION in {"9.2", "9.3", "9.4"}
     shutil.copytree(baseline / "tests/fixtures/coordinated-cross-contract", root)
     draft = test_runtime_teamplay.DeterministicPlanBuilderTests()._draft("coordinated-cross-contract-plan.json")
     plan = harness_plan_builder.materialize_plan(draft, root=root)
@@ -92,8 +92,8 @@ def verify(baseline):
     new_snapshot = current._snapshot(REPO)
     baseline_version = old._source_info(old_snapshot)[0]
     candidate_version = current._source_info(new_snapshot)[0]
-    assert baseline_version in {"9.2", "9.3"}
-    assert candidate_version == "9.4"
+    assert baseline_version in {"9.2", "9.3", "9.4"}
+    assert candidate_version == "9.5"
     assert "install_harness.sh" in new_snapshot, "The candidate must include the optional bootstrap to test its omission."
     bootstrap_omitted = baseline_version == "9.2"
     assert old._runtime("install_harness.sh") == (not bootstrap_omitted)
@@ -165,6 +165,10 @@ def verify(baseline):
         assert (active_root / "install_harness.sh").exists() == (not bootstrap_omitted), "The old updater must exercise its original root-file allowlist"
         assert state(Path(installed["sourceRoot"])) == old_release_before
         launcher = data / "launcher.py"
+        legacy_launcher_before = launcher.read_bytes()
+        legacy_tool_before = state(data)
+        legacy_status = current.launcher_status(data)
+        assert legacy_status["state"] == "legacy" and not legacy_status["callerEnvironmentPreserved"], legacy_status
         version = run([sys.executable, "-B", launcher, "--version"], cwd=project, environment=environment).strip()
         assert version == "Harness for Codex " + candidate_version, version
         for option in ("--agent", "--runtime"):
@@ -177,6 +181,21 @@ def verify(baseline):
         removal_output = run([sys.executable, "-B", launcher, "remove", "--project", project], environment=environment)
         removal, _ = json.JSONDecoder().raw_decode(removal_output)
         assert removal["valid"] and removal["dryRun"] and removal["writes"] == 0 and removal["actions"], removal
+        reset_output = run([sys.executable, "-B", launcher, "reset", "--project", project, "--dry-run"], environment=environment)
+        reset, _ = json.JSONDecoder().raw_decode(reset_output)
+        assert reset["operation"] == "reset" and reset["dryRun"] and reset["removal"]["valid"], reset
+        assert state(data) == legacy_tool_before, "Read-only commands implicitly migrated the legacy launcher"
+        repair_output = run([sys.executable, "-B", launcher, "update", "--repair-launcher"], environment=environment)
+        repair, _ = json.JSONDecoder().raw_decode(repair_output)
+        assert repair["state"] == "repaired" and repair["repaired"], repair
+        assert launcher.read_bytes() != legacy_launcher_before
+        assert current.launcher_status(data)["callerEnvironmentPreserved"]
+        repaired_tool = state(data)
+        repeat_output = run([sys.executable, "-B", launcher, "update", "--repair-launcher"], environment=environment)
+        repeat, _ = json.JSONDecoder().raw_decode(repeat_output)
+        assert repeat["state"] == "unchanged" and repeat["writes"] == 0, repeat
+        assert state(data) == repaired_tool, "Repeated launcher migration was not a no-op"
+        assert state(Path(installed["sourceRoot"])) == old_release_before
         runtime = json.loads(run([sys.executable, "-B", active_root / ".agents/skills/harness/scripts/validate_runtime_plan.py",
                                   "--root", project, "--plan", runtime_path], environment=environment))
         assert runtime["valid"], runtime
@@ -191,6 +210,8 @@ def verify(baseline):
                 "newAgentOptionAndLegacyRuntimeAliasAccepted": True,
                 "oldApplyAndRecoveryRefuseRemovalJournalWithoutWrites": True,
                 "newInstalledStatusAndRemovalPreviewAcceptPreviousProject": True,
+                "resetPreviewAcceptedWithoutWrites": True, "legacyReadOnlyCommandsDoNotMigrate": True,
+                "offlineLauncherMigrationAndNoopRepeat": True,
                 "previousProjectAccepted": True, "previousRuntimePlanAccepted": True,
                 "oldReleasePreserved": True, "projectFilesAndGitMetadataUnchanged": True,
                 "originalBaselineUnchanged": True, "networkUsed": False, "liveCodexInvoked": False}

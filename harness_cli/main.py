@@ -9,7 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from . import distribution
+from . import distribution, environment
 from .project import preflight_project_command, register_project_commands, run_project_command
 
 
@@ -72,6 +72,7 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     install.add_argument("--auto-update", choices=("compatible", "check", "off"), default="compatible")
     update = commands.add_parser("update", help="Check or install an upstream tool release without changing project files.")
     update.add_argument("--check", action="store_true", help="Only inspect upstream versions; write nothing.")
+    update.add_argument("--repair-launcher", action="store_true", help="Repair an owned legacy launcher or interrupted migration offline, then exit.")
     update.add_argument("--data-dir", type=Path, default=default_data_root())
     update.add_argument("--branch", help="Select a specific codex/vN[.M] branch.")
     update.add_argument("--repository", help="Choose HTTPS or SSH authentication transport for the same repository.")
@@ -82,12 +83,37 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
 
 
 def _environment() -> None:
-    # The launcher uses the real dedicated interpreter, not a spoofed Conda label.
-    prefix = Path(sys.prefix)
-    if prefix.name != "harness" or not (prefix / "conda-meta/history").is_file():
-        raise ValueError("Run Harness in its dedicated Conda environment. Use bash install.sh, or conda run -n harness python harness.py ...")
-    os.environ["CONDA_PREFIX"] = str(prefix)
-    os.environ["CONDA_DEFAULT_ENV"] = "harness"
+    environment.validate_interpreter()
+
+
+def _launcher_environment_gate(args, source_root: Path) -> int | None:
+    if not os.environ.get("HARNESS_TOOL_HOME"):
+        return None
+    data_root = default_data_root()
+    status = distribution.launcher_status(data_root)
+    if Path(status["sourceRoot"]).resolve() != source_root.resolve():
+        if source_root.resolve().is_relative_to((data_root / "releases").resolve()):
+            raise ValueError("The active Harness release changed after this command started. "
+                             "Repeat the installed harness command from the same parent terminal; Codex was not started.")
+        return None
+    args._launcher_environment_status = status
+    launches_codex = (args.command in {"init", "configure", "start", "reset"}
+                      and not getattr(args, "dry_run", False) and not getattr(args, "install_only", False)
+                      and not getattr(args, "_existing_init_noop", False)
+                      and (args.command != "reset" or getattr(args, "yes", False)))
+    if not launches_codex:
+        return None
+    if status["state"] != "current":
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            raise ValueError("The legacy launcher needs offline repair. Run harness update --repair-launcher, then repeat this command from the same parent terminal.")
+        distribution.repair_launcher(data_root)
+        print("Harness launcher repaired. The legacy invocation already changed its own environment; Codex was not started. "
+              "Repeat this command from the same parent terminal to preserve your project environment.", file=sys.stderr)
+        return 1
+    if os.environ.get(environment.LAUNCHER_MARKER) != environment.PRESERVED_ENVIRONMENT:
+        raise ValueError("This invocation cannot establish preserved caller environment after a legacy launcher/update. "
+                         "Run the installed harness command again from the same parent terminal; Codex was not started.")
+    return None
 
 
 def _automatic_update(args, source_root: Path, argv: list[str]) -> int | None:
@@ -150,6 +176,12 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
             print(f"Add {args.bin_dir.expanduser().absolute()} to PATH, then run harness --version.")
             return 0
         if args.command == "update":
+            if args.repair_launcher:
+                if args.check or args.branch is not None or args.repository is not None:
+                    raise ValueError("--repair-launcher is offline and cannot be combined with --check, --branch, or --repository.")
+                print(json.dumps(distribution.repair_launcher(args.data_dir), indent=2))
+                print("Repeat project commands from the same parent terminal so they inherit its original environment.")
+                return 0
             if args.timeout <= 0 or args.timeout > 600:
                 raise ValueError("--timeout must be greater than zero and at most 600 seconds.")
             action = distribution.check_update if args.check else distribution.update_tool
@@ -159,6 +191,9 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
                 print("Tool update complete. Use harness init --project PATH --install-only to update the project generator, then harness configure --project PATH for a reviewed project update.")
             return 0
         preflight_project_command(args, source_root=source_root)
+        launcher_result = _launcher_environment_gate(args, source_root)
+        if launcher_result is not None:
+            return launcher_result
         updated = _automatic_update(args, source_root, argv)
         if updated is not None:
             return updated

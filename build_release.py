@@ -14,6 +14,8 @@ import stat
 import subprocess
 import tarfile
 
+from harness_cli.distribution import _source_info
+
 ROOT_FILES = ("harness.py", "install.py", "install.sh", "install_harness.sh", "environment.yml", "README.md", "LICENSE")
 ROOT_DIRS = ("harness_cli", ".agents/skills/harness")
 
@@ -87,6 +89,9 @@ def build(root: Path, output: Path, *, allow_dirty: bool = False) -> dict:
             if not allow_dirty:
                 raise ValueError("Release payload does not match the source commit")
             commit = None
+    # Completeness is independent of hashes and syntax of files that happen to
+    # exist. Reject missing version-specific runtime modules before output writes.
+    _source_info(files)
     files["_release.json"] = (json.dumps({"runtime": "codex", "version": version, "commit": commit, "branch": f"codex/v{version}"}, sort_keys=True, indent=2) + "\n").encode()
     files["CONTENTS.sha256"] = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in sorted(files.items())).encode()
     output.mkdir(parents=True, exist_ok=True)

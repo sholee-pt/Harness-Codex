@@ -27,7 +27,9 @@ def files(root):
 
 def source(root, version="9.2", commit=A):
     root.mkdir(parents=True, exist_ok=True)
-    for name in dist.REQUIRED:
+    required = dist.REQUIRED.union(*(files for minimum, files in dist.VERSION_REQUIRED
+                                     if dist._version(version) >= minimum))
+    for name in required:
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("pass\n" if name.endswith(".py") else "Harness\n", encoding="utf-8")

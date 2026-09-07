@@ -13,6 +13,8 @@ import stat
 import subprocess
 import sys
 
+from .environment import codex_environment, helper_environment
+
 
 class ProjectError(ValueError):
     """A project command cannot proceed with the supplied prerequisites."""
@@ -195,7 +197,8 @@ def _report(source_root: Path, root: Path, *, doctor: bool = False) -> tuple[int
         raise ProjectError(f"The Harness installation is missing {helper.name}; reinstall the tool.")
     arguments = [sys.executable, "-B", str(helper)]
     arguments += ["--root", str(root)] if doctor else [str(root)]
-    completed = subprocess.run(arguments, capture_output=True, text=True, encoding="utf-8", check=False)
+    completed = subprocess.run(arguments, capture_output=True, text=True, encoding="utf-8", check=False,
+                               env=helper_environment())
     try:
         report = json.loads(completed.stdout)
     except (ValueError, TypeError) as exc:
@@ -408,7 +411,7 @@ def _launch(command: list[str], root: Path, prompt: str) -> int:
     _validate_prompt_transport(root, prompt, command)
     print("Opening interactive Codex with the project harness instructions. Exit Codex to return to Harness.", flush=True)
     try:
-        result = subprocess.run([*command, "--cd", str(root), prompt], cwd=root, check=False)
+        result = subprocess.run([*command, "--cd", str(root), prompt], cwd=root, check=False, env=codex_environment())
     except KeyboardInterrupt:
         return 130
     except OSError as exc:
@@ -444,11 +447,15 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
         source = source_root / ".agents/skills/harness"
         if args.command == "status":
             report = project_status(source_root, root, installer)
+            if hasattr(args, "_launcher_environment_status"):
+                report["cliLauncher"] = args._launcher_environment_status
             print(json.dumps(report, indent=2, ensure_ascii=False))
             return 1 if report["state"] in {"invalid", "unowned-artifacts", "removal-pending", "transaction-pending",
                                             "orphaned-removal-workspace", "orphaned-transaction-workspace"} else 0
         if args.command == "doctor":
             status, report = _report(source_root, root, doctor=True)
+            if hasattr(args, "_launcher_environment_status"):
+                report["cliLauncher"] = args._launcher_environment_status
             print(json.dumps(report, indent=2, ensure_ascii=False))
             return status
         if args.command == "init":

@@ -7,9 +7,11 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 
@@ -41,7 +43,27 @@ class BootstrapOfflineTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Git author name/email do not authenticate", result.stdout)
         self.assertIn("--agent", result.stdout)
+        self.assertIn("--timeout", result.stdout)
+        self.assertIn("not the initial script download or Conda/source installation", result.stdout)
         self.assertNotIn("--runtime", result.stdout)
+
+    def test_invalid_timeout_is_rejected_before_prerequisites(self):
+        for value in ("", "0", "-1", "601", "01", "1.5", "nan", "2s", "9" * 100):
+            with self.subTest(value=value):
+                result = self.run_offline("--timeout=" + value)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("--timeout must be an integer", result.stderr)
+                self.assertNotIn("Required command is missing", result.stderr)
+        missing = self.run_offline("--timeout")
+        self.assertEqual(missing.returncode, 1)
+        self.assertIn("Missing value", missing.stderr)
+
+    def test_timeout_boundaries_reach_offline_option_validation(self):
+        for arguments in (("--timeout", "1"), ("--timeout=600",)):
+            with self.subTest(arguments=arguments):
+                result = self.run_offline(*arguments, "--auto-update", "invalid")
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("Automatic update policy must be", result.stderr)
 
     def test_claude_is_rejected_before_network_temp_or_conda(self):
         for arguments in (("--agent", "claude"), ("--agent=claude",),
@@ -126,7 +148,7 @@ class BootstrapOfflineTests(unittest.TestCase):
             self.assertFalse(marker.exists())
 
 
-FAKE_GIT = r'''import json, os, pathlib, subprocess, sys
+FAKE_GIT = r'''import json, os, pathlib, signal, subprocess, sys, time
 args = sys.argv[1:]
 commands = {"ls-remote", "init", "fetch", "rev-parse", "ls-tree", "update-ref", "read-tree", "archive", "status"}
 command = next((value for value in args if value in commands), "other")
@@ -152,6 +174,28 @@ if network and https in args and helper.endswith("askpass.sh"):
                    "credentialStoreDisabled": "credential.helper=" in args})
 with pathlib.Path(os.environ["HARNESS_TEST_GIT_LOG"]).open("a", encoding="utf-8") as stream:
     stream.write(json.dumps(record) + "\n")
+if command == os.environ.get("HARNESS_TEST_STALL_PHASE") and (
+        os.environ.get("HARNESS_TEST_STALL_HTTPS_ONLY") != "1" or https in args):
+    # Three actual processes share timeout's process group. Even when the Git
+    # parent obeys TERM, its child and grandchild deliberately ignore it.
+    parent_ignores = os.environ.get("HARNESS_TEST_PARENT_IGNORES_TERM", "1") == "1"
+    signal.signal(signal.SIGTERM, signal.SIG_IGN if parent_ignores else signal.SIG_DFL)
+    role = "git-parent"
+    child = os.fork()
+    if child == 0:
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        role = "helper-child"
+        if os.fork() == 0:
+            role = "helper-grandchild"
+    entry = {"pid": os.getpid(), "pgid": os.getpgrp(), "role": role}
+    with pathlib.Path(os.environ["HARNESS_TEST_STALL_LOG"]).open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(entry) + "\n")
+    # A transport failure must never reveal credential-bearing stderr.
+    print("fixture transport detail " + (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN", "")), file=sys.stderr, flush=True)
+    while True:
+        time.sleep(1)
+if command == "ls-remote" and os.environ.get("HARNESS_TEST_EXIT_RESERVED"):
+    raise SystemExit(int(os.environ["HARNESS_TEST_EXIT_RESERVED"]))
 if network and os.environ.get("HARNESS_TEST_AUTH_FAIL") == "1":
     print("fixture authentication failure", file=sys.stderr)
     raise SystemExit(128)
@@ -182,11 +226,13 @@ raise SystemExit(subprocess.run([os.environ["HARNESS_TEST_REAL_GIT"], *mapped], 
 '''
 
 
-FAKE_CONDA = r'''import json, os, pathlib, subprocess, sys
+FAKE_CONDA = r'''import json, os, pathlib, subprocess, sys, time
 args = sys.argv[1:]
 with pathlib.Path(os.environ["HARNESS_TEST_CONDA_LOG"]).open("a", encoding="utf-8") as stream:
     stream.write(json.dumps(args) + "\n")
 if args == ["env", "list", "--json"]:
+    if os.environ.get("HARNESS_TEST_SLOW_CONDA") == "1":
+        time.sleep(2)
     print(json.dumps({"envs": [sys.prefix]}))
     raise SystemExit(0)
 if args[:6] == ["run", "--no-capture-output", "-n", "harness", "python", "-B"]:
@@ -195,8 +241,8 @@ raise SystemExit("Unexpected Conda operation in bootstrap fixture")
 '''
 
 
-@unittest.skipUnless(os.name == "posix" and BASH and shutil.which("git") and shutil.which("tar"),
-                     "Linux bootstrap integration requires POSIX Bash/Git/tar")
+@unittest.skipUnless(os.name == "posix" and BASH and shutil.which("git") and shutil.which("tar") and shutil.which("timeout"),
+                     "Linux bootstrap integration requires POSIX Bash/Git/tar/GNU timeout")
 class BootstrapIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -255,6 +301,8 @@ class BootstrapIntegrationTests(unittest.TestCase):
         self.bin_dir = self.directory / "tool bin"
         self.git_log = self.directory / "git.jsonl"
         self.conda_log = self.directory / "conda.jsonl"
+        self.stall_log = self.directory / "stalled-processes.jsonl"
+        self.addCleanup(self.stop_stalled_processes)
         self.environment = os.environ.copy()
         for name in tuple(self.environment):
             if name.startswith("GIT_") or name in {"GITHUB_TOKEN", "GH_TOKEN", "HARNESS_TOOL_HOME", "HARNESS_NO_UPDATE_CHECK"}:
@@ -273,18 +321,57 @@ class BootstrapIntegrationTests(unittest.TestCase):
             "HARNESS_TEST_SOURCE": str(self.source), "HARNESS_TEST_REAL_GIT": self.real_git,
             "HARNESS_TEST_GIT_LOG": str(self.git_log), "HARNESS_TEST_CONDA_LOG": str(self.conda_log),
             "HARNESS_TEST_LATEST_SHA": self.commits["9.10"],
+            "HARNESS_TEST_STALL_LOG": str(self.stall_log),
         })
 
     def records(self):
         return [json.loads(line) for line in self.git_log.read_text(encoding="utf-8").splitlines()] if self.git_log.exists() else []
 
-    def run_bootstrap(self, *arguments, trace=False):
+    def stalled_processes(self):
+        return [json.loads(line) for line in self.stall_log.read_text(encoding="utf-8").splitlines()] if self.stall_log.exists() else []
+
+    def stop_stalled_processes(self):
+        # Test failure cleanup only: operate on the process groups recorded by
+        # our disposable transport fixture, never on the test runner's group.
+        for item in self.stalled_processes():
+            try:
+                if item["pgid"] != os.getpgrp() and os.getpgid(item["pid"]) == item["pgid"]:
+                    os.killpg(item["pgid"], signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+    def assert_stalled_processes_stopped(self):
+        processes = self.stalled_processes()
+        self.assertEqual({item["role"] for item in processes}, {"git-parent", "helper-child", "helper-grandchild"})
+        running = []
+        for item in processes:
+            stat_file = Path(f'/proc/{item["pid"]}/stat')
+            try:
+                state = stat_file.read_text().rsplit(")", 1)[1].split()[0]
+            except FileNotFoundError:
+                continue
+            if state != "Z":  # An already dead process can await init's reaper.
+                running.append(item)
+        self.assertEqual(running, [], "A timed-out transport descendant is still running")
+
+    def run_bootstrap(self, *arguments, trace=False, outer_timeout=90):
         before = {str(path.relative_to(self.project)): (path.read_bytes(), path.stat().st_mtime_ns)
                   for path in self.project.rglob("*") if path.is_file()}
-        result = subprocess.run([BASH, *(["-x"] if trace else []), str(BOOTSTRAP),
-                                 "--data-dir", str(self.data), "--bin-dir", str(self.bin_dir), *arguments],
-                                cwd=self.project, env=self.environment, capture_output=True, text=True,
-                                encoding="utf-8", timeout=90)
+        command = [BASH, *(["-x"] if trace else []), str(BOOTSTRAP),
+                   "--data-dir", str(self.data), "--bin-dir", str(self.bin_dir), *arguments]
+        with subprocess.Popen(command, cwd=self.project, env=self.environment, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, text=True, encoding="utf-8", start_new_session=True) as process:
+            try:
+                stdout, stderr = process.communicate(timeout=outer_timeout)
+            except subprocess.TimeoutExpired:
+                self.stop_stalled_processes()
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.communicate(timeout=5)
+                self.fail("Outer test deadline expired; bootstrap did not return its own timeout result")
+            result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
         self.assertEqual(list(self.scratch.iterdir()), [])
         after = {str(path.relative_to(self.project)): (path.read_bytes(), path.stat().st_mtime_ns)
                  for path in self.project.rglob("*") if path.is_file()}
@@ -368,6 +455,78 @@ class BootstrapIntegrationTests(unittest.TestCase):
         self.assertEqual(list(self.data.iterdir()), [sentinel])
         self.assertEqual(sentinel.stat().st_mtime_ns, original)
         self.assertFalse(self.conda_log.exists())
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux process-group and /proc assertions")
+    def test_native_lookup_timeout_kills_descendants_and_allows_retry(self):
+        self.check_native_timeout("ls-remote", parent_ignores=True)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux process-group and /proc assertions")
+    def test_native_fetch_timeout_kills_descendants_and_allows_retry(self):
+        self.check_native_timeout("fetch", parent_ignores=True)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux process-group and /proc assertions")
+    def test_native_timeout_kills_helpers_when_git_parent_exits_on_term(self):
+        self.check_native_timeout("fetch", parent_ignores=False)
+
+    def check_native_timeout(self, phase, *, parent_ignores):
+        installed = self.run_bootstrap("--auto-update", "off")
+        self.assertEqual(installed.returncode, 0, installed.stdout + installed.stderr)
+        def snapshot():
+            return {(label, path.relative_to(root).as_posix()): (path.read_bytes(), path.stat().st_mode, path.stat().st_mtime_ns)
+                    for label, root in (("bin", self.bin_dir), ("data", self.data))
+                    for path in root.rglob("*") if path.is_file()}
+        before = snapshot()
+        conda_before = self.conda_log.read_bytes()
+        token = "github_pat.timeout-fixture.secret"
+        self.environment.update({"HARNESS_TEST_STALL_PHASE": phase, "GITHUB_TOKEN": token,
+                                 "HARNESS_TEST_PARENT_IGNORES_TERM": "1" if parent_ignores else "0"})
+        started = time.monotonic()
+        result = self.run_bootstrap("--repository", "https://github.com/sholee-pt/Harness.git",
+                                    "--timeout", "1", trace=True, outer_timeout=15)
+        elapsed = time.monotonic() - started
+        self.assertEqual(result.returncode, 124, result.stdout + result.stderr)
+        self.assertIn("Git " + phase, result.stderr)
+        self.assertIn("timed out after 1 seconds", result.stderr)
+        self.assertIn("No tool installation was changed", result.stderr)
+        self.assertLess(elapsed, 12, "Self-imposed 1s deadline and 2s kill grace should precede the 15s test watchdog")
+        self.assert_stalled_processes_stopped()
+        self.assertEqual(snapshot(), before)
+        self.assertEqual(self.conda_log.read_bytes(), conda_before)
+        self.assertNotIn(token, result.stdout + result.stderr + self.git_log.read_text(encoding="utf-8"))
+        self.environment.pop("HARNESS_TEST_STALL_PHASE")
+        retry = self.run_bootstrap("--auto-update", "off")
+        self.assertEqual(retry.returncode, 0, retry.stdout + retry.stderr)
+        self.assertEqual(snapshot(), before)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux process-group and /proc assertions")
+    def test_https_lookup_timeout_can_fall_back_to_ssh(self):
+        self.environment.update({"HARNESS_TEST_STALL_PHASE": "ls-remote", "HARNESS_TEST_STALL_HTTPS_ONLY": "1"})
+        result = self.run_bootstrap("--timeout", "1", outer_timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Git ls-remote (HTTPS) timed out", result.stderr)
+        self.assert_stalled_processes_stopped()
+        active = json.loads((self.data / "active.json").read_text(encoding="utf-8"))
+        self.assertEqual(active["repository"], "git@github.com:sholee-pt/Harness.git")
+
+    def test_transport_exit_codes_cannot_impersonate_deadline(self):
+        # A caller's exported errexit must not bypass the wrapper's status map.
+        self.environment["SHELLOPTS"] = "errexit"
+        for code in (124, 137):
+            with self.subTest(code=code):
+                self.environment["HARNESS_TEST_EXIT_RESERVED"] = str(code)
+                result = self.run_bootstrap("--repository", "https://github.com/sholee-pt/Harness.git")
+                self.assertEqual(result.returncode, 1)
+                self.assertNotIn("timed out", result.stderr)
+                self.assertFalse(self.conda_log.exists())
+
+    def test_git_deadline_does_not_limit_or_forward_to_conda_installation(self):
+        self.environment["HARNESS_TEST_SLOW_CONDA"] = "1"
+        result = self.run_bootstrap("--timeout", "1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue((self.data / "active.json").is_file())
+        calls = [json.loads(line) for line in self.conda_log.read_text(encoding="utf-8").splitlines()]
+        self.assertTrue(calls)
+        self.assertTrue(all("--timeout" not in argument for call in calls for argument in call))
 
     def test_fetched_commit_mismatch_is_rejected_before_installer(self):
         self.environment["HARNESS_TEST_FETCH_MISMATCH"] = "1"

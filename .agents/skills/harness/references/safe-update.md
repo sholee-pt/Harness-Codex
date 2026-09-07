@@ -9,7 +9,7 @@ Read this reference before modifying a repository that already contains harness 
 - **User-owned:** not listed in the manifest; never overwrite it.
 - **Managed pointer block:** only text between `<!-- harness:begin -->` and `<!-- harness:end -->` is owned by Harness.
 - **Tracked target:** Git tracking is independent of Harness ownership. A clean managed file may be updated, while a user-owned file stays protected regardless of tracking.
-- **Legacy exclusion block:** an earlier Harness marker in Git metadata remains outside v9.4 ownership and is preserved without blocking generation.
+- **Legacy exclusion block:** an earlier Harness marker in Git metadata remains outside v9.5 ownership and is preserved without blocking generation.
 
 An existing dedicated target path without a valid matching manifest entry is user-owned, even if its name resembles a generated artifact.
 
@@ -28,6 +28,6 @@ An existing dedicated target path without a valid matching manifest entry is use
 
 Do not automatically delete obsolete managed files. List them as removal candidates and require explicit authorization. Never use a recursive delete against a repository root.
 
-Project apply keeps its journaled recovery contract. No Git exclusion write or compensating Git restoration occurs in v9.4; existing exclusion content remains unchanged even when project apply fails.
+Project apply keeps its journaled recovery contract. No Git exclusion write or compensating Git restoration occurs in v9.5; existing exclusion content remains unchanged even when project apply fails.
 
 The legacy `record` command is initialization-only and refuses to replace an existing managed baseline. If the manifest, journal, or backup is malformed or belongs to another runtime, stop automatic updates and report the discrepancy. Do not manually delete a recovery journal unless every target and backup has been inspected.

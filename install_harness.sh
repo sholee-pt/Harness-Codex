@@ -11,12 +11,15 @@ usage() {
     '  --agent codex|claude         Codex is supported; Claude is not yet supported.' \
     '  --branch codex/vN[.M]        Pin a branch; otherwise select the latest Codex version.' \
     '  --repository URL            Harness HTTPS or SSH transport; default tries HTTPS, then SSH.' \
+    '  --timeout SECONDS           Each Git lookup/fetch: 1..600 seconds, default 120; 2-second kill grace.' \
     '  --bin-dir PATH              Forward to the user-local tool installer.' \
     '  --data-dir PATH             Forward to the user-local tool installer.' \
     '  --auto-update POLICY        compatible (default), check, or off.' \
     '  --help                      Show this help without network or filesystem changes.' \
     '' \
-    'Requires Bash, Git, tar, and Anaconda/Miniconda. The source installer prepares the harness environment.' \
+    'Requires Bash, Git, tar, GNU coreutils timeout, and Anaconda/Miniconda.' \
+    'The timeout covers Git branch lookup and fetch, not the initial script download or Conda/source installation.' \
+    'The source installer prepares the harness environment.' \
     'For this private repository, use existing Git credentials, GITHUB_TOKEN/GH_TOKEN, or a configured SSH key.' \
     'Git author name/email do not authenticate downloads. This script never changes Git credentials or project files.' \
     'OpenSSH key/agent settings are preserved; passphrase prompts are disabled. Custom SSH wrappers must be noninteractive.'
@@ -35,6 +38,7 @@ select_runtime() {
 }
 branch=''
 repository=''
+transfer_timeout=120
 forward=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -45,6 +49,8 @@ while [[ $# -gt 0 ]]; do
     --branch=*) branch=${1#*=}; shift ;;
     --repository) need_value "$@"; repository=$2; shift 2 ;;
     --repository=*) repository=${1#*=}; shift ;;
+    --timeout) need_value "$@"; transfer_timeout=$2; shift 2 ;;
+    --timeout=*) transfer_timeout=${1#*=}; shift ;;
     --bin-dir|--data-dir|--auto-update)
       need_value "$@"; forward+=("$1" "$2"); shift 2 ;;
     --bin-dir=*|--data-dir=*|--auto-update=*)
@@ -54,6 +60,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+[[ "$transfer_timeout" =~ ^[1-9][0-9]{0,2}$ && "$transfer_timeout" -le 600 ]] || fail '--timeout must be an integer from 1 to 600 seconds.'
 case "$runtime" in
   codex) ;;
   claude) fail 'Claude support is not implemented in this installer. The existing claude/v2 branch uses its separate legacy skill installation.' ;;
@@ -80,9 +87,12 @@ if [[ -n ${GITHUB_TOKEN:-} || -n ${GH_TOKEN:-} ]]; then
   unset token_value
   token_available=true
 fi
-for prerequisite in git tar mktemp chmod rm mkdir cat bash; do
+for prerequisite in git tar mktemp chmod rm mkdir cat bash timeout sleep; do
   command -v "$prerequisite" >/dev/null 2>&1 || fail "Required command is missing: $prerequisite."
 done
+timeout_version=$(LC_ALL=C command timeout --version 2>/dev/null) || fail 'GNU coreutils timeout is required.'
+[[ "$timeout_version" == *'GNU coreutils'* ]] || fail 'GNU coreutils timeout is required.'
+unset timeout_version
 
 # Only this uniquely created temporary directory is recursively cleaned.
 scratch_parent=${TMPDIR:-/tmp}
@@ -118,6 +128,28 @@ ASKPASS
 chmod 700 "$temporary/askpass.sh"
 mkdir "$temporary/empty-template"
 
+# GNU timeout owns a separate process group (never use --foreground here).
+# Keep its direct child alive after TERM even if Git exits first: otherwise the
+# timeout monitor can exit before its kill-after deadline, leaving a helper that
+# ignores TERM alive. The monitor then KILLs this wrapper and its process group.
+# This file has no credentials, and no timeout covers the source installer.
+cat > "$temporary/transfer.sh" <<'TRANSFER'
+#!/usr/bin/env bash
+set +x
+set -uo pipefail
+set +m
+trap 'while :; do command sleep 1; done' TERM
+command "$@" &
+if wait "$!"; then
+  exit 0
+else
+  status=$?
+fi
+# Reserve timeout's two deadline statuses for the monitor itself.
+case "$status" in 124|137) exit 1 ;; esac
+exit "$status"
+TRANSFER
+
 git_run() {
   local transport=$1
   shift
@@ -140,7 +172,11 @@ git_run() {
       export GIT_ASKPASS="$temporary/askpass.sh"
       auth=(-c credential.helper= -c credential.username=x-access-token -c credential.useHttpPath=true)
     fi
-    command git -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null \
+    deadline=()
+    if [[ "$1" == ls-remote || ( "$1" == -C && "${3:-}" == fetch ) ]]; then
+      deadline=(timeout --signal=TERM --kill-after=2s "${transfer_timeout}s" bash "$temporary/transfer.sh")
+    fi
+    command "${deadline[@]}" git -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null \
       -c core.autocrlf=false -c protocol.ext.allow=never -c protocol.file.allow=never \
       -c http.followRedirects=false "${auth[@]}" "$@"
   )
@@ -180,18 +216,42 @@ select_head() {
 transports=("$repository")
 [[ -n "$repository" ]] || transports=("$https_repository" "$ssh_repository")
 selected_branch='' selected_commit='' selected_repository=''
+lookup_timed_out=false
 for transport in "${transports[@]}"; do
-  if heads=$(git_run "$transport" ls-remote --heads "$transport" "refs/heads/${branch:-codex/v*}" 2>/dev/null) && select_head "$heads"; then
-    selected_repository=$transport
-    break
+  if heads=$(git_run "$transport" ls-remote --heads "$transport" "refs/heads/${branch:-codex/v*}" 2>/dev/null); then
+    if select_head "$heads"; then
+      selected_repository=$transport
+      break
+    fi
+  else
+    status=$?
+    if [[ $status == 124 || $status == 137 ]]; then
+      lookup_timed_out=true
+      transport_name=SSH
+      [[ "$transport" != "$https_repository" ]] || transport_name=HTTPS
+      printf 'Harness bootstrap: Git ls-remote (%s) timed out after %s seconds (up to 2 additional seconds for termination).\n' "$transport_name" "$transfer_timeout" >&2
+    fi
   fi
 done
+if [[ -z "$selected_repository" && "$lookup_timed_out" == true ]]; then
+  printf '%s\n' 'Harness bootstrap: Branch lookup could not finish within the transfer deadline. No tool installation was changed; check connectivity and retry, or increase --timeout.' >&2
+  exit 124
+fi
 [[ -n "$selected_repository" ]] || fail 'Cannot read a supported Codex branch. This private repository requires an authorized Git credential helper, GITHUB_TOKEN/GH_TOKEN with repository access, or a configured GitHub SSH key. Git author name/email are not authentication. No tool installation was changed.'
 unset heads
 
 source_root="$temporary/source"
 git_run "$selected_repository" init --quiet --template="$temporary/empty-template" "$source_root" >/dev/null 2>&1 || fail 'Could not prepare an isolated download directory.'
-git_run "$selected_repository" -C "$source_root" fetch --quiet --depth=1 --no-tags "$selected_repository" "$selected_commit" >/dev/null 2>&1 || fail 'The selected revision could not be downloaded. Check repository access and rerun; no tool installation was changed.'
+if git_run "$selected_repository" -C "$source_root" fetch --quiet --depth=1 --no-tags "$selected_repository" "$selected_commit" >/dev/null 2>&1; then
+  :
+else
+  status=$?
+  if [[ $status == 124 || $status == 137 ]]; then
+    printf 'Harness bootstrap: Git fetch timed out after %s seconds (up to 2 additional seconds for termination). No tool installation was changed; check connectivity and retry, or increase --timeout.\n' "$transfer_timeout" >&2
+    exit 124
+  fi
+  fail 'The selected revision could not be downloaded. Check repository access and rerun; no tool installation was changed.'
+fi
 fetched=$(git_run "$selected_repository" -C "$source_root" rev-parse --verify 'FETCH_HEAD^{commit}' 2>/dev/null) || fail 'The download did not resolve to a commit.'
 [[ "$fetched" == "$selected_commit" ]] || fail 'The downloaded revision differs from the selected branch revision.'
 

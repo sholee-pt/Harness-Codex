@@ -6,6 +6,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 
 | Branch | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
+| `codex/v9.5` | Harness for Codex v9.5 | Schema 3 | Schema 7 | Schema 2 | Versioned source completeness, caller-environment preservation, guarded launcher migration and bootstrap Git timeouts |
 | `codex/v9.4` | Harness for Codex v9.4 | Schema 3 | Schema 7 | Schema 2 | Markdown briefs, --agent option, existing-state notices and guarded removal/reset/recovery |
 | `codex/v9.3` | Harness for Codex v9.3 | Schema 3 | Schema 7 | Schema 2 | Downloadable private-repository bootstrap, reusable Git authentication and explicit runtime selection |
 | `codex/v9.2` | Harness for Codex v9.2 | Schema 3 | Schema 7 | Schema 2 | Standalone Linux CLI, project initialization and session launch, managed branch updates and release packaging |
@@ -591,3 +592,14 @@ v9.4 adds CLI conveniences without changing Manifest Schema 7, Artifact Contract
 - `status` distinguishes generator installation from generated project state. `remove` and `reset` preview by default; `--yes` applies ownership-checked removal, and `--include-generator` extends removal to unchanged installer-owned payloads.
 - CLI removal uses its own `removalSchemaVersion: 1` journal identified by `operation: remove` at the reserved transaction path. It is not labelled as a Schema 2 apply transaction. Existing generators reject it; `harness remove --recover` provides guarded recovery. Normal project schemas, user files, Git state and optional user-level records remain separate.
 - No live agent-quality or token-saving claim is made by these CLI changes.
+
+## Harness for Codex v9.5
+
+This maintenance release preserves the generated-project schemas and accepts valid v9.0–v9.5 Artifact Contract 2 installations. Tool-source completeness and launcher migration are separate from project compatibility.
+
+- Installer and release builder reject missing version-required modules before creating installation state or release output. v9.4+ requires `lifecycle.py`; v9.5+ also requires `environment.py`. Actual v9.2/v9.3 source installation and updater compatibility remain covered.
+- The dedicated Harness interpreter no longer rewrites the caller's PATH or Conda labels. Native Codex inherits the caller environment; deterministic diagnostic helpers receive a separately prepared Harness environment. Process probes compare labels, PATH and the Python executable without running a model or training task.
+- Adds offline `update --repair-launcher` with ownership checks, interrupted-migration recovery and no-op repeats. Interactive calls through legacy v9.2–v9.4 launchers stop for repair and a fresh invocation before Codex can inherit an already changed environment. Read-only commands do not migrate state.
+- Bootstrap Git branch queries and fetches have independent configurable deadlines (default 120 seconds, range 1–600), process-group TERM/KILL cleanup and an explicit timeout result. Initial curl, Conda and total installation time are outside this deadline. Existing installations remain intact after failed download.
+- Adds incomplete-source, removal/reset preview, legacy-upgrade, real child-process environment and Linux timeout regressions. Cross-platform checks and authenticated GitHub bootstrap verification remain publication gates; their execution results are distinct from observations on another user's server.
+- Adds no agent roles, topology redesign, project telemetry, model-quality claim or measured token-saving claim.
