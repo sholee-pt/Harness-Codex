@@ -23,6 +23,8 @@ import tarfile
 import tempfile
 import time
 
+from .paths import checked_path, is_link as _linked
+
 
 DEFAULT_REPOSITORY = "https://github.com/sholee-pt/Harness.git"
 REPOSITORIES = frozenset({DEFAULT_REPOSITORY, "git@github.com:sholee-pt/Harness.git", "ssh://git@github.com/sholee-pt/Harness.git"})
@@ -61,17 +63,8 @@ class DistributionError(ValueError):
     """The requested managed installation cannot be changed safely."""
 
 
-def _linked(path: Path) -> bool:
-    info = path.lstat()
-    return stat.S_ISLNK(info.st_mode) or bool(getattr(info, "st_file_attributes", 0) & 0x400)
-
-
 def _path(value) -> Path:
-    path = Path(os.path.abspath(os.path.expanduser(os.fspath(value))))
-    for ancestor in reversed((path, *path.parents)):
-        if os.path.lexists(ancestor) and _linked(ancestor):
-            raise DistributionError("symlinks and filesystem reparse points are not supported")
-    return path
+    return checked_path(value, error_type=DistributionError)
 
 
 def _storage_path(value) -> Path:
@@ -201,6 +194,25 @@ def _tree_hash(hashes: dict[str, str]) -> str:
     return hashlib.sha256(json.dumps(hashes, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def _cli_imports(name: str, tree: ast.AST) -> set[str]:
+    """Read first-party module dependencies without executing downloaded source."""
+    package = name.removesuffix(".py").split("/")[:-1]
+    modules = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            prefix = package[:len(package) - node.level + 1] if node.level else []
+            parts = prefix + (node.module.split(".") if node.module else [])
+            module = ".".join(parts)
+            if module == "harness_cli":
+                modules.update(module + "." + alias.name for alias in node.names if alias.name != "*")
+            else:
+                modules.add(module)
+    return {module.replace(".", "/") for module in modules
+            if module == "harness_cli" or module.startswith("harness_cli.")}
+
+
 def _source_info(snapshot: dict[str, bytes]) -> tuple[str, str | None]:
     if not REQUIRED.issubset(snapshot):
         raise DistributionError("source is missing required CLI or generator files")
@@ -211,9 +223,15 @@ def _source_info(snapshot: dict[str, bytes]) -> tuple[str, str | None]:
             raise ValueError("version declaration")
         version = versions[0]
         version_number = _version(version)
+        imports = set()
         for name, data in snapshot.items():
             if name.endswith(".py"):
-                compile(data, name, "exec")
+                if name in {"harness.py", "install.py"} or name.startswith("harness_cli/"):
+                    tree = ast.parse(data, name)
+                    imports.update(_cli_imports(name, tree))
+                    compile(tree, name, "exec")
+                else:
+                    compile(data, name, "exec")
         commit = None
         if "_release.json" in snapshot:
             release = json.loads(snapshot["_release.json"])
@@ -230,6 +248,13 @@ def _source_info(snapshot: dict[str, bytes]) -> tuple[str, str | None]:
     missing = sorted(required.difference(snapshot))
     if missing:
         raise DistributionError(f"source is missing required files for Harness {version}: {', '.join(missing)}")
+    # Refactors within a release may add modules. Check their actual imports so
+    # complete earlier layouts remain valid while missing new dependencies fail
+    # before installation state or launchers are created.
+    missing_imports = sorted(module + ".py" for module in imports
+                             if module + ".py" not in snapshot and module + "/__init__.py" not in snapshot)
+    if missing_imports:
+        raise DistributionError("source is missing imported CLI modules: " + ", ".join(missing_imports))
     return version, commit
 
 

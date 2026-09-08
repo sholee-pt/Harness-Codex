@@ -16,7 +16,7 @@ import zipfile
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
-import build_release
+from tools import build_release
 
 
 class ReleaseBuildTests(unittest.TestCase):

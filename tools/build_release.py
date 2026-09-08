@@ -7,15 +7,19 @@ import gzip
 import hashlib
 import io
 import json
-import os
 import re
 from pathlib import Path
 import stat
 import subprocess
+import sys
 import tarfile
 import zipfile
 
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from harness_cli.distribution import _source_info
+from harness_cli.paths import checked_path as _checked_path
 
 BOOTSTRAPS = ("install_harness_codex.sh", "install_harness_codex.ps1")
 ROOT_FILES = ("harness.py", "install.py", "environment.yml", "README.md", "LICENSE",
@@ -25,14 +29,7 @@ ROOT_DIRS = ("harness_cli", ".agents/skills/harness")
 
 
 def checked_path(value: Path) -> Path:
-    path = Path(os.path.abspath(value.expanduser()))
-    for ancestor in (*reversed(path.parents), path):
-        if not os.path.lexists(ancestor):
-            continue
-        info = ancestor.lstat()
-        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
-            raise ValueError("Build paths must not contain symlinks or reparse points")
-    return path
+    return _checked_path(value.expanduser(), message="Build paths must not contain symlinks or reparse points")
 
 
 def release_version(root: Path) -> str:
@@ -149,7 +146,7 @@ def main() -> int:
     parser.add_argument("--allow-dirty", action="store_true")
     args = parser.parse_args()
     try:
-        print(json.dumps(build(Path(__file__).resolve().parent, args.output, allow_dirty=args.allow_dirty), indent=2))
+        print(json.dumps(build(Path(__file__).resolve().parents[1], args.output, allow_dirty=args.allow_dirty), indent=2))
         return 0
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         parser.exit(1, f"build: {exc}\n")

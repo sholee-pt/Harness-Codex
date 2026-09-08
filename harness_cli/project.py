@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -14,6 +13,7 @@ import subprocess
 import sys
 
 from .environment import codex_environment, helper_environment
+from .project_installer import load_installer
 
 
 class ProjectError(ValueError):
@@ -131,7 +131,7 @@ def _validate_prompt_transport(root: Path, prompt: str, command: list[str] | Non
 
 def preflight_project_command(args, *, source_root: Path) -> None:
     """Validate user input before automatic tool updates or project writes."""
-    installer = _installer(source_root)
+    installer = load_installer(source_root)
     root = _project_path(args.project, installer)
     if args.command not in {"remove", "status", "doctor"}:
         _assert_no_transaction(root, installer)
@@ -144,19 +144,6 @@ def preflight_project_command(args, *, source_root: Path) -> None:
                                 and os.path.lexists(root / ".harness/manifest.json")
                                 and not getattr(args, "goal", None) and getattr(args, "goal_file", None) is None)
     args._project_preflight_complete = True
-
-
-def _installer(source_root: Path):
-    path = source_root / "install.py"
-    name = "_harness_cli_project_installer"
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise ProjectError("The Harness installation is missing install.py; reinstall the tool.")
-    module = importlib.util.module_from_spec(spec)
-    # dataclass resolves its defining module during import.
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def _project_path(value: Path, installer) -> Path:
@@ -234,7 +221,7 @@ def _reviewable_missing_reference(root: Path, label: str, relative: str, *, sour
             return False
         # The trusted validator already checked portable/reserved path rules.
         # Recheck lexical links before allowing the configuration session to start.
-        candidate = _installer(source_root).checked_path(root / relative)
+        candidate = load_installer(source_root).checked_path(root / relative)
         return not candidate.exists()
     except (OSError, ValueError, KeyError, IndexError, TypeError):
         return False
@@ -283,7 +270,7 @@ def _only_stale_evidence(report: dict, *, configuration: bool = False,
 
 
 def _check_existing(source_root: Path, root: Path, *, required: bool = False) -> bool:
-    _assert_no_transaction(root, _installer(source_root))
+    _assert_no_transaction(root, load_installer(source_root))
     manifest = root / ".harness/manifest.json"
     if not manifest.exists() and not manifest.is_symlink() and not required:
         return False
@@ -452,7 +439,7 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
     """Execute one registered project command; return an ordinary process status."""
     try:
         source_root = Path(source_root).absolute()
-        installer = _installer(source_root)
+        installer = load_installer(source_root)
         root = _project_path(args.project, installer)
         if not getattr(args, "_project_preflight_complete", False):
             preflight_project_command(args, source_root=source_root)

@@ -11,7 +11,7 @@ import unittest
 from unittest import mock
 
 from harness_cli import distribution as dist
-import build_release
+from tools import build_release
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -56,6 +56,27 @@ def contract_source(root, version):
 
 
 class SourceContractTests(unittest.TestCase):
+    def test_refactored_source_requires_actual_imported_modules_before_writes(self):
+        for name in ("project_installer.py", "paths.py"):
+            with self.subTest(module=name):
+                source = write_source(self.base / name, dist._snapshot(REPO))
+                (source / "harness_cli" / name).unlink()
+                self.assert_rejected_before_writes(source, name.replace(".", r"\."))
+
+    def test_absolute_and_relative_transitive_imports_are_checked_without_execution(self):
+        imports = ("from .helper import probe", "from . import helper",
+                   "import harness_cli.helper", "from harness_cli import helper")
+        for index, statement in enumerate(imports):
+            with self.subTest(statement=statement):
+                source = contract_source(self.base / f"imports-{index}", "9.8")
+                (source / "harness_cli/main.py").write_text(statement + "\n", encoding="utf-8")
+                (source / "harness_cli/helper.py").write_text("from .missing import probe\n", encoding="utf-8")
+                self.assert_rejected_before_writes(source, r"harness_cli/missing\.py")
+                (source / "harness_cli/missing.py").write_text("raise RuntimeError('Must never execute during validation')\n", encoding="utf-8")
+                before = snapshot(source)
+                self.assertEqual(dist._source_info(dist._snapshot(source))[0], "9.8")
+                self.assertEqual(snapshot(source), before)
+
     def test_v98_requires_windows_path_before_install_creates_state(self):
         source = contract_source(self.base / 'source', '9.8')
         (source / 'harness_cli/windows_path.py').unlink()

@@ -12,7 +12,6 @@ from dataclasses import dataclass
 import errno
 import hashlib
 import importlib
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -20,6 +19,8 @@ import re
 import stat
 import sys
 import uuid
+
+from .project_installer import load_installer
 
 
 JOURNAL = ".harness/transaction.json"
@@ -45,12 +46,7 @@ class FileState:
 
 def _helpers(source_root: Path):
     source_root = Path(source_root).absolute()
-    specification = importlib.util.spec_from_file_location("_harness_lifecycle_installer", source_root / "install.py")
-    if specification is None or specification.loader is None:
-        raise LifecycleError("The source installer is unavailable.")
-    installer = importlib.util.module_from_spec(specification)
-    sys.modules[specification.name] = installer
-    specification.loader.exec_module(installer)
+    installer = load_installer(source_root)
     scripts = installer.checked_path(source_root / ".agents/skills/harness/scripts")
     sys.path.insert(0, str(scripts))
     try:

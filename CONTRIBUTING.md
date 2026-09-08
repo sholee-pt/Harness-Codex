@@ -35,8 +35,11 @@ Keep each commit focused and use an imperative, descriptive subject.
 | --- | --- |
 | `installers/install_harness_codex.sh` / `.ps1` | Download and verify release assets; published as standalone Linux/Windows installers |
 | `installers/install.sh` / `.ps1` | Prepare Conda and install from a checkout or verified archive |
-| `install.py` | Project-local generator installation, ownership and rollback; also an entry point required by existing CLI updaters |
+| `harness.py` / `install.py` | Small CLI/project-installer entry points whose root paths remain compatible with existing installations |
+| `harness_cli/project_installer.py` | Project-local generator installation, ownership, rollback and source-bound installer loading |
+| `harness_cli/paths.py` | Low-level CLI path checks shared by distribution, PATH registration and release builds |
 | `harness_cli/` | CLI commands, managed tool storage, updates, lifecycle and environment handling |
+| `tools/build_release.py` | Developer/CI build tooling; excluded from installed runtime payloads |
 | `.agents/skills/harness/` | Generator instructions, contracts, helpers and templates |
 | `tests/test_*.py` | Unit/regression tests discovered by unittest |
 | `tests/integration/` | Explicit release, installation, upgrade and parser-oracle checks |
@@ -48,6 +51,8 @@ The builder maps the two source installers back to `install.sh` and `install.ps1
 
 Previous-version tests are compatibility requirements, not disposable release logs. Artifact compatibility cases live in `test_apply_compatibility.py`; the integration checks also execute immutable old source revisions. Removing a feature may remove tests exclusive to that feature, but moving or combining suites must preserve all other scenarios.
 
+CLI source validation checks both version-specific requirements and declared first-party module imports without executing candidate code. This preserves complete historical layouts while rejecting missing modules introduced by refactors. Project and lifecycle commands share the installer loader, which binds to the selected source directory and does not write bytecode into immutable releases. Project-installer ownership/rollback checks remain separate from CLI storage rules.
+
 ## Running checks
 
 Use the dedicated `harness` Conda environment for every Python command:
@@ -55,7 +60,7 @@ Use the dedicated `harness` Conda environment for every Python command:
 ```bash
 conda run -n harness python install.py --root TARGET_PROJECT --dry-run
 conda run -n harness python -B -m unittest discover -s tests -v
-conda run -n harness python build_release.py --output /tmp/harness-dist
+conda run -n harness python tools/build_release.py --output /tmp/harness-dist
 ```
 
 Build output must be outside the repository. Only local development builds may use `--allow-dirty`.

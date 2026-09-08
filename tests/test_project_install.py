@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import stat
 import subprocess
 import sys
@@ -15,10 +15,8 @@ from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("project_installer", REPO_ROOT / "install.py")
-installer = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = installer
-SPEC.loader.exec_module(installer)
+sys.path.insert(0, str(REPO_ROOT))
+from harness_cli import project_installer as installer
 
 
 def state(root):
@@ -34,6 +32,47 @@ def directory_metadata(path):
 
 
 class ProjectInstallTests(unittest.TestCase):
+    def test_legacy_entrypoint_from_copied_source_is_readonly_without_python_flags(self):
+        release = self.base / "copied release"
+        (release / "harness_cli").mkdir(parents=True)
+        for name in ("install.py", "harness_cli/__init__.py", "harness_cli/project_installer.py"):
+            shutil.copyfile(REPO_ROOT / name, release / name)
+        shutil.copytree(self.source, release / ".agents/skills/harness")
+        environment = os.environ.copy()
+        environment.pop("PYTHONDONTWRITEBYTECODE", None)
+        before = state(self.base)
+        process = subprocess.run([sys.executable, str(release / "install.py"), "--root", str(self.root), "--dry-run"],
+                                 cwd=self.base, env=environment, capture_output=True, text=True, timeout=30)
+        self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
+        report = json.loads(process.stdout)
+        self.assertTrue(report["valid"] and report["dryRun"])
+        self.assertEqual(report["generatorVersion"], "8.1")
+        self.assertEqual(state(self.base), before)
+
+    def test_release_loader_uses_selected_source_and_default_generator_path(self):
+        for label in ("first", "second", "first"):
+            release = self.base / label
+            if not release.exists():
+                (release / "harness_cli").mkdir(parents=True)
+                text = (REPO_ROOT / "harness_cli/project_installer.py").read_text(encoding="utf-8")
+                (release / "harness_cli/project_installer.py").write_text(text + f'\nRELEASE_SENTINEL = "{label}"\n', encoding="utf-8")
+                shutil.copytree(self.source, release / ".agents/skills/harness")
+            before = state(self.base)
+            selected = installer.load_installer(release)
+            self.addCleanup(sys.modules.pop, selected.__name__, None)
+            self.assertEqual(selected.RELEASE_SENTINEL, label)
+            self.assertEqual(Path(selected.__file__).parent.parent, release)
+            result = selected.install(self.root, dry_run=True)
+            self.assertEqual(result["generatorVersion"], "8.1")
+            self.assertTrue(result["valid"])
+            self.assertEqual(state(self.base), before)
+
+    def test_missing_selected_installer_never_falls_back_to_loaded_release(self):
+        before = state(self.base)
+        with self.assertRaises(FileNotFoundError):
+            installer.load_installer(self.base / "missing release")
+        self.assertEqual(state(self.base), before)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

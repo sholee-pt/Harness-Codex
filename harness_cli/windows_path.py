@@ -5,7 +5,7 @@ import ntpath
 import os
 from pathlib import Path
 
-from .distribution import _path
+from .paths import checked_path as _path
 
 
 def _normalized(value: str) -> str:

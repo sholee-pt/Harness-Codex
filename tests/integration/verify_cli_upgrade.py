@@ -91,6 +91,7 @@ def verify(baseline):
     old_snapshot = old._snapshot(baseline)
     new_snapshot = current._snapshot(REPO)
     baseline_version = old._source_info(old_snapshot)[0]
+    assert current._source_info(old_snapshot)[0] == baseline_version, "Complete historical module layouts must remain readable"
     candidate_version = current._source_info(new_snapshot)[0]
     assert baseline_version in {"9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8"}
     assert candidate_version == "9.8"

@@ -6,7 +6,7 @@ from pathlib import Path
 import shlex
 import stat
 
-from .distribution import _path
+from .paths import checked_path as _path
 
 START = '# >>> harness-codex PATH >>>'
 END = '# <<< harness-codex PATH <<<'

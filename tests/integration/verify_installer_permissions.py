@@ -79,6 +79,7 @@ def source_binding(source: Path) -> dict:
         else:
             entries[component] = {"sha256": sha256(base.read_bytes()), "mode": f"{stat.S_IMODE(base.stat().st_mode):04o}"}
     return {"version": version(source), "installerSha256": sha256((source / "install.py").read_bytes()),
+            "installerImplementationSha256": sha256((source / "harness_cli/project_installer.py").read_bytes()) if (source / "harness_cli/project_installer.py").is_file() else None,
             "payloadTreeSha256": tree_digest(entries), "sourcePath": str(source),
             "generatorRootMode": f"{stat.S_IMODE((source / SKILL).stat().st_mode):04o}"}
 
@@ -86,6 +87,10 @@ def source_binding(source: Path) -> dict:
 def copy_source(source: Path, destination: Path) -> Path:
     destination.mkdir()
     shutil.copy2(source / "install.py", destination / "install.py")
+    if (source / "harness_cli/project_installer.py").is_file():
+        (destination / "harness_cli").mkdir()
+        for name in ("__init__.py", "project_installer.py"):
+            shutil.copy2(source / "harness_cli" / name, destination / "harness_cli" / name)
     (destination / SKILL).mkdir(parents=True)
     for name in COMPONENTS:
         incoming, target = source / SKILL / name, destination / SKILL / name

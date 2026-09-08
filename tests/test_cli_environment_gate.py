@@ -85,7 +85,7 @@ class LegacyLauncherGateTests(unittest.TestCase):
         project_before = snapshot(self.project)
         # The installed launcher starts Python with -B. This in-process probe
         # must match that setting even when unittest itself runs without -B;
-        # otherwise preflight's import of the copied install.py creates a .pyc
+        # otherwise imports from the copied release may create a .pyc
         # inside the immutable release before the launcher gate can inspect it.
         with mock.patch.object(sys, "dont_write_bytecode", True), \
                 mock.patch.dict(os.environ, self.caller, clear=True), \

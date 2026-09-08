@@ -5,7 +5,7 @@ import sys
 
 sys.dont_write_bytecode = True
 if sys.version_info < (3, 11):
-    raise SystemExit("Harness requires Python 3.11 or later. Run bash install.sh to prepare its environment.")
+    raise SystemExit("Harness requires Python 3.11 or later. Use the platform installer from installers/ in a checkout or the archive root to prepare its environment.")
 
 from harness_cli.main import main
 
