@@ -27,6 +27,7 @@ class ReleaseBuildTests(unittest.TestCase):
         self.root = self.base / "release source"
         self.root.mkdir()
         for name in build_release.ROOT_FILES:
+            (self.root / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(REPO_ROOT / name, self.root / name)
         for name in build_release.ROOT_DIRS:
             shutil.copytree(REPO_ROOT / name, self.root / name,
@@ -57,7 +58,7 @@ class ReleaseBuildTests(unittest.TestCase):
                 self.assertNotIn("..", Path(member.name).parts)
                 relative = member.name[len(prefix):]
                 self.assertNotIn(relative, files)
-                self.assertEqual(member.mode, 0o755 if relative in {"harness.py", "install.sh", "install_harness.sh", "install_harness_codex.sh"} else 0o644)
+                self.assertEqual(member.mode, 0o755 if relative in {"harness.py", "install.sh"} else 0o644)
                 files[relative] = archive.extractfile(member).read()
         return files
 
@@ -78,8 +79,8 @@ class ReleaseBuildTests(unittest.TestCase):
                          f"{report['sha256']}  {artifact.name}\n{report['bootstrapSha256']}  install_harness_codex.sh\n"
                          f"{report['windowsSha256']}  harness-codex-{self.version}-windows.zip\n"
                          f"{report['windowsBootstrapSha256']}  install_harness_codex.ps1\n")
-        self.assertEqual((self.output / "install_harness_codex.sh").read_bytes(), (self.root / "install_harness_codex.sh").read_bytes())
-        self.assertEqual(report["bootstrapSha256"], hashlib.sha256((self.output / "install_harness_codex.sh").read_bytes()).hexdigest())
+        self.assertEqual((self.output / "install_harness_codex.sh").read_bytes(), (self.root / "installers/install_harness_codex.sh").read_bytes())
+        self.assertEqual(report["bootstrapSha256"], hashlib.sha256((self.root / "installers/install_harness_codex.sh").read_bytes()).hexdigest())
         files = self.contents(artifact)
         windows = Path(report['windowsArtifact'])
         self.assertEqual(report['windowsSha256'], hashlib.sha256(windows.read_bytes()).hexdigest())
@@ -91,14 +92,17 @@ class ReleaseBuildTests(unittest.TestCase):
                 windows_files[entry.filename.split('/', 1)[1]] = archive.read(entry)
         self.assertEqual(windows_files, files)
         bootstrap = self.output / 'install_harness_codex.ps1'
-        self.assertEqual(bootstrap.read_bytes(), (self.root / bootstrap.name).read_bytes())
+        self.assertEqual(bootstrap.read_bytes(), (self.root / "installers" / bootstrap.name).read_bytes())
         self.assertEqual(report['windowsBootstrapSha256'], hashlib.sha256(bootstrap.read_bytes()).hexdigest())
         metadata = json.loads(files["_release.json"])
         self.assertEqual(metadata, {"runtime": "codex", "version": self.version, "commit": self.commit,
                                     "branch": f"codex/v{self.version}"})
         expected = {}
         for name in build_release.ROOT_FILES:
-            expected[name] = (self.root / name).read_bytes()
+            if Path(name).name not in {"install_harness_codex.sh", "install_harness_codex.ps1"}:
+                expected[Path(name).name] = (self.root / name).read_bytes()
+        for name in ("install_harness.sh", "install_harness_codex.sh", "install_harness_codex.ps1"):
+            self.assertNotIn(name, files, "Download-only installers do not belong in runtime archives")
         for name in build_release.ROOT_DIRS:
             for path in (self.root / name).rglob("*"):
                 if path.is_file():

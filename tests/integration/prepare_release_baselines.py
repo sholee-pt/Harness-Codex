@@ -5,8 +5,9 @@ from pathlib import Path, PurePosixPath
 import subprocess
 import tarfile
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 BASELINES = {
+    'v98': 'e3c8fc5676686215573befdd65570219dc26f7b1',
     'v97': 'd5dba32bc1576e0e4e64624cf87986a03a35fa39',
     'v76': 'd91f0a5ae261d44c86f4082ba5098d55b7e5cc4c',
     'v80': 'ed2972555562c736496e8d90463f52efabf05305',

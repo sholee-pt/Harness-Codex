@@ -2,6 +2,9 @@
 # Install an unpacked Codex release with an isolated interpreter and Bash PATH registration.
 set -euo pipefail
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+if [[ ! -f "$source_dir/harness.py" ]]; then
+  source_dir="$(cd -- "$source_dir/.." && pwd -P)"
+fi
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   printf '%s\n' 'Usage: bash install.sh [--agent codex] [--bin-dir PATH] [--data-dir PATH] [--branch codex/vN.M] [--repository URL] [--auto-update compatible|check|off] [--no-modify-path]' 'Reuses Conda or installs checksum-pinned Miniforge on Linux. Prepares the dedicated harness environment.' 'Installs harness-codex without sudo; registers PATH in ~/.bashrc unless --no-modify-path is supplied.'
   exit 0

@@ -4,12 +4,13 @@ import io
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tarfile
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / 'install_harness_codex.sh'
+SCRIPT = ROOT / 'installers/install_harness_codex.sh'
 
 
 @unittest.skipUnless(os.name == 'posix', 'Public installer uses Linux shell tools')
@@ -91,3 +92,49 @@ esac
             self.assertNotEqual(self.invoke(*options).returncode, 0)
         self.assertEqual(list(self.root.iterdir()), before)
 
+
+BASH = (shutil.which("bash") if os.name != "nt" else
+        next((str(path) for path in (Path("C:/Program Files/Git/bin/bash.exe"),)
+              if path.is_file()), None))
+
+
+@unittest.skipUnless(BASH, "Bash is unavailable")
+class SourceInstallerTests(unittest.TestCase):
+    def test_unpacked_source_installer_rejects_claude_before_conda(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            marker = base / "conda-was-called"
+            fake_conda = base / "fake-conda"
+            fake_conda.write_text('#!/usr/bin/env bash\nprintf called > "$HARNESS_TEST_CONDA_MARKER"\nexit 23\n',
+                                  encoding="utf-8")
+            fake_conda.chmod(0o755)
+            environment = {**os.environ, "CONDA_EXE": fake_conda.as_posix(),
+                           "HARNESS_TEST_CONDA_MARKER": marker.as_posix()}
+            for name in ("BASH_ENV", "ENV"):
+                environment.pop(name, None)
+            for arguments in (("--agent", "claude"), ("--agent=claude",),
+                              ("--runtime", "claude"), ("--runtime=claude",)):
+                with self.subTest(arguments=arguments):
+                    result = subprocess.run([BASH, str(ROOT / "installers/install.sh"), *arguments],
+                                            env=environment, capture_output=True, text=True, encoding="utf-8", timeout=20)
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                    self.assertIn("Claude integration is not implemented", result.stderr)
+                    self.assertFalse(marker.exists())
+            for arguments in (("--agent", "claude", "--runtime", "codex"),
+                              ("--runtime=codex", "--agent=claude"),
+                              ("--agent=claude", "--agent=codex")):
+                result = subprocess.run([BASH, str(ROOT / "installers/install.sh"), *arguments],
+                                        env=environment, capture_output=True, text=True, encoding="utf-8", timeout=20)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("Conflicting", result.stderr)
+                self.assertFalse(marker.exists())
+            help_result = subprocess.run([BASH, str(ROOT / "installers/install.sh"), "--help"],
+                                         env=environment, capture_output=True, text=True, encoding="utf-8", timeout=20)
+            self.assertEqual(help_result.returncode, 0)
+            self.assertIn("--agent", help_result.stdout)
+            self.assertNotIn("--runtime", help_result.stdout)
+            self.assertFalse(marker.exists())
+
+
+if __name__ == "__main__":
+    unittest.main()

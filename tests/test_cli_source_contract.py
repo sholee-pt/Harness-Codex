@@ -177,6 +177,9 @@ class SourceContractTests(unittest.TestCase):
 
     def test_development_release_build_rejects_missing_lifecycle_without_output(self):
         source = write_source(self.base / "build source", dist._snapshot(REPO))
+        (source / "installers").mkdir()
+        for path in (REPO / "installers").iterdir():
+            (source / "installers" / path.name).write_bytes(path.read_bytes())
         (source / "harness_cli/lifecycle.py").unlink()
         output = self.base / "build output"
         before = snapshot(self.base)

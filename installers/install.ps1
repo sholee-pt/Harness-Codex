@@ -19,6 +19,10 @@ if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitProcess -or $env:PRO
     throw 'This installer requires Windows x64 and a 64-bit PowerShell process.'
 }
 if ($CondaExe -and $CondaHome) { throw 'Choose -CondaExe or -CondaHome, not both.' }
+if ($SourceRoot -and -not (Test-Path -LiteralPath (Join-Path $SourceRoot 'harness.py') -PathType Leaf) -and
+    (Split-Path -Leaf $SourceRoot) -eq 'installers') {
+    $SourceRoot = Split-Path -Parent $SourceRoot
+}
 if (-not $SourceRoot -or -not (Test-Path -LiteralPath (Join-Path $SourceRoot 'harness.py') -PathType Leaf)) {
     throw 'Run install.ps1 from a complete Harness source archive.'
 }

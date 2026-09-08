@@ -18,7 +18,7 @@ import tempfile
 from unittest import mock
 
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 from harness_cli import distribution as current
 
@@ -46,7 +46,7 @@ def old_project(baseline, root, runtime_path):
     import test_runtime_teamplay
     import shutil
 
-    assert harness_metadata.HARNESS_VERSION in {"9.2", "9.3", "9.4", "9.5", "9.6", "9.7"}
+    assert harness_metadata.HARNESS_VERSION in {"9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8"}
     shutil.copytree(baseline / "tests/fixtures/coordinated-cross-contract", root)
     draft = test_runtime_teamplay.DeterministicPlanBuilderTests()._draft("coordinated-cross-contract-plan.json")
     plan = harness_plan_builder.materialize_plan(draft, root=root)
@@ -92,11 +92,11 @@ def verify(baseline):
     new_snapshot = current._snapshot(REPO)
     baseline_version = old._source_info(old_snapshot)[0]
     candidate_version = current._source_info(new_snapshot)[0]
-    assert baseline_version in {"9.2", "9.3", "9.4", "9.5", "9.6", "9.7"}
+    assert baseline_version in {"9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8"}
     assert candidate_version == "9.8"
-    assert "install_harness.sh" in new_snapshot, "The candidate must include the optional bootstrap to test its omission."
-    bootstrap_omitted = baseline_version == "9.2"
-    assert old._runtime("install_harness.sh") == (not bootstrap_omitted)
+    optional_installers = {"install.sh", "install.ps1", "install_harness.sh", "install_harness_codex.sh", "install_harness_codex.ps1"}
+    retired_installers = optional_installers & (old_snapshot.keys() - new_snapshot.keys())
+    assert "install_harness.sh" not in new_snapshot
     baseline_before = state(baseline)
     environment = os.environ.copy()
     for name in ("GITHUB_TOKEN", "GH_TOKEN", "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",
@@ -139,7 +139,8 @@ def verify(baseline):
         run(["git", "init", "--quiet", project], environment=environment)
         project_before = state(project)
 
-        git("checkout", "--quiet", "-b", "codex/v" + candidate_version)
+        if baseline_version != candidate_version:
+            git("checkout", "--quiet", "-b", "codex/v" + candidate_version)
         populate(new_snapshot, old_snapshot)
         git("add", "--all")
         git("-c", "user.name=Harness fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Real v" + candidate_version + " runtime")
@@ -162,7 +163,8 @@ def verify(baseline):
         active = current.installed_status(data)
         active_root = Path(active["sourceRoot"])
         assert active["version"] == candidate_version
-        assert (active_root / "install_harness.sh").exists() == (not bootstrap_omitted), "The old updater must exercise its original root-file allowlist"
+        for name in retired_installers:
+            assert not (active_root / name).exists(), "Retired optional installer leaked into the new runtime"
         assert state(Path(installed["sourceRoot"])) == old_release_before
         launcher = data / "launcher.py"
         legacy_launcher_before = launcher.read_bytes()
@@ -212,7 +214,7 @@ def verify(baseline):
                 "baselineRuntimeTreeSha256": old._tree_hash(old._hashes(old_snapshot)),
                 "candidateRuntimeTreeSha256": current._tree_hash(current._hashes(new_snapshot)),
                 "oldInstallerAndUpdaterExecuted": True, "realLocalGitFetchAndAncestry": True,
-                "newLauncherVersion": version, "optionalBootstrapOmittedByOldUpdater": bootstrap_omitted,
+                "newLauncherVersion": version, "retiredOptionalInstallersRemoved": sorted(retired_installers),
                 "newAgentOptionAndLegacyRuntimeAliasAccepted": True,
                 "oldApplyAndRecoveryRefuseRemovalJournalWithoutWrites": True,
                 "newInstalledStatusAndRemovalPreviewAcceptPreviousProject": True,

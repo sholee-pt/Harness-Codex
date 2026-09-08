@@ -17,7 +17,10 @@ import zipfile
 
 from harness_cli.distribution import _source_info
 
-ROOT_FILES = ("harness.py", "install.py", "install.sh", "install_harness.sh", "install_harness_codex.sh", "install.ps1", "install_harness_codex.ps1", "environment.yml", "README.md", "LICENSE")
+BOOTSTRAPS = ("install_harness_codex.sh", "install_harness_codex.ps1")
+ROOT_FILES = ("harness.py", "install.py", "environment.yml", "README.md", "LICENSE",
+              "installers/install.sh", "installers/install.ps1",
+              *("installers/" + name for name in BOOTSTRAPS))
 ROOT_DIRS = ("harness_cli", ".agents/skills/harness")
 
 
@@ -90,6 +93,11 @@ def build(root: Path, output: Path, *, allow_dirty: bool = False) -> dict:
             if not allow_dirty:
                 raise ValueError("Release payload does not match the source commit")
             commit = None
+    # Keep source identity checks above in repository coordinates. The unpacked
+    # entry points retain their public paths; downloaders are standalone assets,
+    # not dependencies to copy into every installed tool release.
+    bootstraps = {name: files.pop("installers/" + name) for name in BOOTSTRAPS}
+    files = {name.removeprefix("installers/"): data for name, data in files.items()}
     # Completeness is independent of hashes and syntax of files that happen to
     # exist. Reject missing version-specific runtime modules before output writes.
     _source_info(files)
@@ -102,7 +110,7 @@ def build(root: Path, output: Path, *, allow_dirty: bool = False) -> dict:
         for name, data in sorted(files.items()):
             info = tarfile.TarInfo(f"harness-codex-{version}/{name}")
             info.size = len(data)
-            info.mode = 0o755 if name in {"install.sh", "install_harness.sh", "install_harness_codex.sh", "harness.py"} else 0o644
+            info.mode = 0o755 if name in {"install.sh", "harness.py"} else 0o644
             info.mtime = 0
             archive.addfile(info, io.BytesIO(data))
     with artifact.open("xb") as stream:
@@ -111,9 +119,9 @@ def build(root: Path, output: Path, *, allow_dirty: bool = False) -> dict:
     digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
     bootstrap = output / "install_harness_codex.sh"
     with bootstrap.open("xb") as stream:
-        stream.write(files["install_harness_codex.sh"])
+        stream.write(bootstraps["install_harness_codex.sh"])
     bootstrap.chmod(0o755)
-    bootstrap_digest = hashlib.sha256(files["install_harness_codex.sh"]).hexdigest()
+    bootstrap_digest = hashlib.sha256(bootstraps["install_harness_codex.sh"]).hexdigest()
     windows = output / f"harness-codex-{version}-windows.zip"
     with zipfile.ZipFile(windows, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for name, data in sorted(files.items()):
@@ -123,7 +131,7 @@ def build(root: Path, output: Path, *, allow_dirty: bool = False) -> dict:
             archive.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
     windows_digest = hashlib.sha256(windows.read_bytes()).hexdigest()
     windows_bootstrap = output / "install_harness_codex.ps1"
-    windows_bootstrap.write_bytes(files[windows_bootstrap.name])
+    windows_bootstrap.write_bytes(bootstraps[windows_bootstrap.name])
     windows_bootstrap_digest = hashlib.sha256(windows_bootstrap.read_bytes()).hexdigest()
     with (output / "SHA256SUMS").open("x", encoding="utf-8", newline="\n") as stream:
         stream.write(f"{digest}  {artifact.name}\n{bootstrap_digest}  {bootstrap.name}\n{windows_digest}  {windows.name}\n{windows_bootstrap_digest}  {windows_bootstrap.name}\n")

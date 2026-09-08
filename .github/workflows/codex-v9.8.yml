@@ -51,31 +51,20 @@ jobs:
         shell: bash -el {0}
         run: |
           conda run -n harness python -m pip install -r tests/requirements-validation.txt
-          conda run -n harness python tests/frontmatter_differential.py --seed 20260905 --count 11000 --output "${RUNNER_TEMP}/frontmatter-report.json"
+          conda run -n harness python tests/integration/frontmatter_differential.py --seed 20260905 --count 11000 --output "${RUNNER_TEMP}/frontmatter-report.json"
 
-      - name: Cross-check real v7.6 through v9.7 installation updates
+      - name: Cross-check real v7.6 through published v9.8 installation updates
         shell: bash -el {0}
         run: |
           baseline_root="${RUNNER_TEMP}/harness-baselines"
-          conda run -n harness python tests/prepare_release_baselines.py --output "${baseline_root}"
-          conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v97" --output "${RUNNER_TEMP}/upgrade-v97.json"
-          conda run -n harness python tests/verify_cli_upgrade.py --baseline "${baseline_root}/v97" --output "${RUNNER_TEMP}/cli-upgrade-v97.json"
-          conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v96" --output "${RUNNER_TEMP}/upgrade-v96.json"
-          conda run -n harness python tests/verify_cli_upgrade.py --baseline "${baseline_root}/v96" --output "${RUNNER_TEMP}/cli-upgrade-v96.json"
-          conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v95" --output "${RUNNER_TEMP}/upgrade-v95.json"
-          conda run -n harness python tests/verify_cli_upgrade.py --baseline "${baseline_root}/v95" --output "${RUNNER_TEMP}/cli-upgrade-v95.json"
-          conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v94" --output "${RUNNER_TEMP}/upgrade-v94.json"
-          conda run -n harness python tests/verify_cli_upgrade.py --baseline "${baseline_root}/v94" --output "${RUNNER_TEMP}/cli-upgrade-v94.json"
-          conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v93" --output "${RUNNER_TEMP}/upgrade-v93.json"
-          conda run -n harness python tests/verify_cli_upgrade.py --baseline "${baseline_root}/v93" --output "${RUNNER_TEMP}/cli-upgrade-v93.json"
-          conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v92" --output "${RUNNER_TEMP}/upgrade-v92.json"
-          conda run -n harness python tests/verify_cli_upgrade.py --baseline "${baseline_root}/v92" --output "${RUNNER_TEMP}/cli-upgrade-v92.json"
-          conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v91" --output "${RUNNER_TEMP}/upgrade-v91.json"
-          conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v76" --output "${RUNNER_TEMP}/upgrade-v76.json"
-          conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v80" --output "${RUNNER_TEMP}/upgrade-v80.json"
-          conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v81" --output "${RUNNER_TEMP}/upgrade-v81.json"
-          conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v90" --output "${RUNNER_TEMP}/upgrade-v90.json"
-          conda run -n harness python tests/verify_installer_permissions.py --baseline "${baseline_root}/v90" --candidate . --output "${RUNNER_TEMP}/installer-permissions.json"
+          conda run -n harness python tests/integration/prepare_release_baselines.py --output "${baseline_root}"
+          for baseline in v76 v80 v81 v90 v91 v92 v93 v94 v95 v96 v97 v98; do
+            conda run -n harness python tests/integration/verify_release_upgrade.py --baseline "${baseline_root}/${baseline}" --output "${RUNNER_TEMP}/upgrade-${baseline}.json"
+          done
+          for baseline in v92 v93 v94 v95 v96 v97 v98; do
+            conda run -n harness python tests/integration/verify_cli_upgrade.py --baseline "${baseline_root}/${baseline}" --output "${RUNNER_TEMP}/cli-upgrade-${baseline}.json"
+          done
+          conda run -n harness python tests/integration/verify_installer_permissions.py --baseline "${baseline_root}/v90" --candidate . --output "${RUNNER_TEMP}/installer-permissions.json"
           cat "${RUNNER_TEMP}/installer-permissions.json"
 
       # Runtime-plan, receipt, relay and operations unit tests run in full discovery above.
@@ -123,34 +112,28 @@ jobs:
       - name: Verify the real Linux bootstrap and installed command
         if: runner.os == 'Linux'
         shell: bash -el {0}
-        run: conda run -n harness python tests/verify_cli_distribution.py --archive "${RUNNER_TEMP}/harness-dist/harness-codex-9.8-linux.tar.gz"
+        run: conda run -n harness python tests/integration/verify_cli_distribution.py --archive "${RUNNER_TEMP}/harness-dist/harness-codex-9.8-linux.tar.gz"
 
       - name: Verify public pipeline and cold environment setup
         if: runner.os == 'Linux'
         timeout-minutes: 25
         shell: bash -el {0}
-        run: conda run --no-capture-output -n harness python -B tests/verify_public_install.py --dist "${RUNNER_TEMP}/harness-dist"
+        run: conda run --no-capture-output -n harness python -B tests/integration/verify_public_install.py --dist "${RUNNER_TEMP}/harness-dist"
 
       - name: Verify Windows PowerShell bootstrap and cold environment setup
         if: runner.os == 'Windows'
         timeout-minutes: 30
         shell: powershell
         run: |
-          & ./tests/verify_windows_install.ps1 -Dist "$env:RUNNER_TEMP/harness-dist" -Cold
+          & ./tests/integration/verify_windows_install.ps1 -Dist "$env:RUNNER_TEMP/harness-dist" -Cold
 
-      - name: Download and run the authenticated standalone bootstrap
-        if: runner.os == 'Linux' && github.event_name == 'push'
+      - name: Verify installation from the authenticated source checkout
+        if: runner.os == 'Linux'
         shell: bash -el {0}
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p "${RUNNER_TEMP}/bootstrap-check"
-          printf 'Authorization: Bearer %s\n' "$GITHUB_TOKEN" |
-            curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --header @- --header 'Accept: application/vnd.github.raw+json' "https://api.github.com/repos/sholee-pt/Harness/contents/install_harness.sh?ref=${GITHUB_SHA}" --output "${RUNNER_TEMP}/bootstrap-check/install_harness.sh"
-          cmp install_harness.sh "${RUNNER_TEMP}/bootstrap-check/install_harness.sh"
-          bash "${RUNNER_TEMP}/bootstrap-check/install_harness.sh" --agent codex --branch codex/v9.8 --data-dir "${RUNNER_TEMP}/bootstrap-check/tool data" --bin-dir "${RUNNER_TEMP}/bootstrap-check/tool bin" --auto-update off
-          "${RUNNER_TEMP}/bootstrap-check/tool bin/harness-codex" --agent codex --version
-          conda run -n harness python -B -c 'import json, os, pathlib; state=json.loads((pathlib.Path(os.environ["RUNNER_TEMP"])/"bootstrap-check/tool data/active.json").read_text()); assert state["commit"]==os.environ["GITHUB_SHA"], state; assert state["version"]=="9.8"; print("Authenticated bootstrap installed the exact verified source commit.")'
+          bash installers/install.sh --data-dir "${RUNNER_TEMP}/source-install/data" --bin-dir "${RUNNER_TEMP}/source-install/bin" --auto-update off --no-modify-path
+          "${RUNNER_TEMP}/source-install/bin/harness-codex" --version
+          conda run -n harness python -B -c 'import json, os, pathlib; state=json.loads((pathlib.Path(os.environ["RUNNER_TEMP"])/"source-install/data/active.json").read_text()); assert state["commit"]==os.environ["GITHUB_SHA"], state; assert state["version"]=="9.8"; print("Source installer retained the exact checked-out commit.")'
 
       - name: Verify the checkout remains clean
         shell: bash -el {0}

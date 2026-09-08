@@ -77,15 +77,7 @@ class ReleaseConsistencyTests(unittest.TestCase):
         self.assertIn("This branch contains Harness for Codex v9.8", agents)
         self.assertIn("name: Harness for Codex v9.8 checks", workflow)
         self.assertIn("- codex/v9.8", workflow)
-        self.assertFalse((workflow_path.parent / "codex-v7.6.yml").exists())
-        self.assertFalse((workflow_path.parent / "codex-v8.yml").exists())
-        self.assertFalse((workflow_path.parent / "codex-v8.1.yml").exists())
-        self.assertFalse((workflow_path.parent / "codex-v9.1.yml").exists())
-        self.assertFalse((workflow_path.parent / "codex-v9.2.yml").exists())
-        self.assertFalse((workflow_path.parent / "codex-v9.3.yml").exists())
-        self.assertFalse((workflow_path.parent / "codex-v9.4.yml").exists())
-        self.assertFalse((workflow_path.parent / "codex-v9.5.yml").exists())
-        self.assertFalse((workflow_path.parent / "codex-v9.6.yml").exists())
+        self.assertEqual(sorted(workflow_path.parent.glob("codex-v*.yml")), [workflow_path])
 
     def test_manifest_asset_uses_current_generator_and_stable_schemas(self) -> None:
         asset = json.loads(

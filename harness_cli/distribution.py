@@ -44,6 +44,8 @@ VERSION_REQUIRED = (
     ((9, 4), frozenset({"harness_cli/lifecycle.py"})),
     ((9, 5), frozenset({"harness_cli/environment.py"})),
 )
+# Retain historical optional installer names for old managed receipts. New source
+# checkouts keep installers outside the runtime; only archive setup needs them.
 TOP_FILES = frozenset({"harness.py", "install.py", "install.sh", "install_harness.sh", "install_harness_codex.sh", "install.ps1", "install_harness_codex.ps1", "environment.yml", "README.md", "LICENSE", "_release.json"})
 OWNER = {"schema": 1, "tool": "sholee-pt/Harness"}
 TOKEN_HELPER = ('!f() { if test "$1" != get; then return; fi; p=; h=; r=; '

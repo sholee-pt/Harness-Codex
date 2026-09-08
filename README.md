@@ -53,10 +53,10 @@ Public deployment support does not change the repository's visibility. While thi
 
 ```bash
 git clone --branch codex/v9.8 --single-branch git@github.com:sholee-pt/Harness.git Harness
-bash Harness/install.sh
+bash Harness/installers/install.sh
 ```
 
-The advanced `install_harness.sh` bootstrap still supports existing HTTPS credentials, tokens and SSH transport for branch selection. It delegates to the same source installer and environment preparation. Git author name/email are not authentication. Codex CLI installation and login remain prerequisites for actual Codex sessions; version/help, installation and diagnosis do not require a model call.
+The retired `install_harness.sh` Git bootstrap has been removed from this branch. For private access, use an authenticated Git clone and the source installer above. The installed CLI retains its authenticated HTTPS/SSH update support. Git author name/email are not authentication. Codex CLI installation and login remain prerequisites for actual Codex sessions; version/help, installation and diagnosis do not require a model call.
 
 ## One-command Windows installation
 
@@ -84,7 +84,7 @@ While the repository is private, the public Windows URL has the same authenticat
 
 ```powershell
 git clone --branch codex/v9.8 --single-branch git@github.com:sholee-pt/Harness.git Harness
-& ([scriptblock]::Create((Get-Content ./Harness/install.ps1 -Raw))) -SourceRoot (Resolve-Path ./Harness).Path
+& ([scriptblock]::Create((Get-Content ./Harness/installers/install.ps1 -Raw))) -SourceRoot (Resolve-Path ./Harness).Path
 ```
 
 ## Configure and use a project
