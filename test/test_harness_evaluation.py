@@ -18,7 +18,7 @@ from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = REPO_ROOT / ".agents" / "skills" / "harness" / "scripts"
-FIXTURES = REPO_ROOT / "tests" / "fixtures" / "evaluation"
+FIXTURES = REPO_ROOT / "test" / "fixtures" / "evaluation"
 sys.path.insert(0, str(SCRIPTS))
 
 import harness_eval  # noqa: E402
@@ -1587,7 +1587,7 @@ class PairedIsolationTests(unittest.TestCase):
     @staticmethod
     def _local_only_repository(parent: Path) -> tuple[Path, str]:
         root = parent / "source"
-        shutil.copytree(REPO_ROOT / "tests" / "fixtures" / "minimal-project", root)
+        shutil.copytree(REPO_ROOT / "test" / "fixtures" / "minimal-project", root)
         subprocess.run(["git", "init", str(root)], check=True, stdout=subprocess.DEVNULL)
         subprocess.run(
             ["git", "-C", str(root), "config", "user.email", "fixture@example.invalid"],

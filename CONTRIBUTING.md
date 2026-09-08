@@ -33,19 +33,23 @@ Keep each commit focused and use an imperative, descriptive subject.
 
 | Location | Responsibility |
 | --- | --- |
-| `installers/install_harness_codex.sh` / `.ps1` | Download and verify release assets; published as standalone Linux/Windows installers |
-| `installers/install.sh` / `.ps1` | Prepare Conda and install from a checkout or verified archive |
+| `installer/install_harness_codex.sh` / `.ps1` | Download and verify release assets; published as standalone Linux/Windows installers |
+| `installer/install.sh` / `.ps1` | Prepare Conda and install from a checkout or verified archive |
 | `harness.py` / `install.py` | Small CLI/project-installer entry points whose root paths remain compatible with existing installations |
 | `harness_cli/project_installer.py` | Project-local generator installation, ownership, rollback and source-bound installer loading |
 | `harness_cli/paths.py` | Low-level CLI path checks shared by distribution, PATH registration and release builds |
 | `harness_cli/` | CLI commands, managed tool storage, updates, lifecycle and environment handling |
-| `tools/build_release.py` | Developer/CI build tooling; excluded from installed runtime payloads |
+| `build/build_release.py` | Developer/CI command and build orchestration |
+| `build/source.py` | Release input collection, source identity and completeness checks |
+| `build/artifacts.py` | Deterministic Linux/Windows archives, installers and checksum reports |
 | `.agents/skills/harness/` | Generator instructions, contracts, helpers and templates |
-| `tests/test_*.py` | Unit/regression tests discovered by unittest |
-| `tests/integration/` | Explicit release, installation, upgrade and parser-oracle checks |
-| `tests/fixtures/` | Shared deterministic projects and expected results |
+| `test/test_*.py` | Unit/regression tests discovered by unittest |
+| `test/integration/` | Explicit release, installation, upgrade and parser-oracle checks |
+| `test/fixtures/` | Shared deterministic projects and expected results |
 
-The independent Git-download bootstrap `install_harness.sh` was retired after v9.8 publication. Use an authenticated clone followed by `bash installers/install.sh` on Linux or `./installers/install.ps1` on Windows. GitHub authentication and branch updates remain in the installed CLI; ordinary Git handles initial private source access.
+The independent Git-download bootstrap `install_harness.sh` was retired after v9.8 publication. Use an authenticated clone followed by `bash installer/install.sh` on Linux or `./installer/install.ps1` on Windows. GitHub authentication and branch updates remain in the installed CLI; ordinary Git handles initial private source access.
+
+The entire `build/` package is excluded from installed runtime payloads. Source completeness and path checks shared with installation remain in `harness_cli/`; build code reuses them so installation and build validation cannot diverge.
 
 The builder maps the two source installers back to `install.sh` and `install.ps1` at the archive root. Release download URLs and extracted-archive commands are unchanged. Download-only bootstraps are separate release assets and are not duplicated inside runtime archives. Historical optional installer names remain accepted in `harness_cli/distribution.py` so existing managed installation receipts still validate.
 
@@ -59,8 +63,8 @@ Use the dedicated `harness` Conda environment for every Python command:
 
 ```bash
 conda run -n harness python install.py --root TARGET_PROJECT --dry-run
-conda run -n harness python -B -m unittest discover -s tests -v
-conda run -n harness python tools/build_release.py --output /tmp/harness-dist
+conda run -n harness python -B -m unittest discover -s test -v
+conda run -n harness python build/build_release.py --output /tmp/harness-dist
 ```
 
 Build output must be outside the repository. Only local development builds may use `--allow-dirty`.
@@ -68,9 +72,12 @@ Build output must be outside the repository. Only local development builds may u
 Integration checks run explicitly in CI on Linux and Windows. For example:
 
 ```bash
-conda run -n harness python tests/integration/prepare_release_baselines.py --output /tmp/harness-baselines
-conda run -n harness python tests/integration/verify_cli_upgrade.py --baseline /tmp/harness-baselines/v97 --output /tmp/cli-upgrade.json
-conda run -n harness python tests/integration/verify_release_upgrade.py --baseline /tmp/harness-baselines/v97 --output /tmp/project-upgrade.json
+conda run -n harness python test/integration/prepare_release_baselines.py --output /tmp/harness-baselines
+conda run -n harness python test/integration/verify_cli_upgrade.py --baseline /tmp/harness-baselines/v97 --output /tmp/cli-upgrade.json
+conda run -n harness python test/integration/verify_release_upgrade.py --baseline /tmp/harness-baselines/v97 --output /tmp/project-upgrade.json
+conda run -n harness python test/integration/verify_build_refactor.py --baseline /tmp/harness-baselines/v98_layout --output /tmp/build-comparison.json
 ```
 
-Parser differential checks require the pinned optional `tests/requirements-validation.txt`. Cold installer checks download Miniforge and create an isolated environment; the Windows registry/cold check is restricted to disposable CI runners. These are distinct from unit tests and must not run implicitly during unittest discovery.
+The build comparison runs the pinned pre-refactor builder and the current builder on identical release inputs, adapting only the source folder layout. Archives, standalone installers and checksums must match byte for byte; only output-directory fields are normalized in the reports. Historical update checks accept both `tests/` and `test/` fixture layouts without rewriting old source.
+
+Parser differential checks require the pinned optional `test/requirements-validation.txt`. Cold installer checks download Miniforge and create an isolated environment; the Windows registry/cold check is restricted to disposable CI runners. These are distinct from unit tests and must not run implicitly during unittest discovery.

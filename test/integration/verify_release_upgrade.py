@@ -27,7 +27,8 @@ def instruction_sizes(root):
 
 
 def worker(source, root, stage):
-    sys.path[:0] = [str(source / '.agents/skills/harness/scripts'), str(source / 'tests')]
+    tests_root = source / ("test" if (source / "test").is_dir() else "tests")
+    sys.path[:0] = [str(source / '.agents/skills/harness/scripts'), str(tests_root)]
     import harness_apply
     import harness_doctor
     import harness_metadata
@@ -39,7 +40,7 @@ def worker(source, root, stage):
     draft = test_runtime_teamplay.DeterministicPlanBuilderTests()._draft('coordinated-cross-contract-plan.json')
     if stage == 'baseline':
         assert harness_metadata.HARNESS_VERSION in {'7.6', '8.0', '8.1', '9.0', '9.1', '9.2', '9.3', '9.4', '9.5', '9.6', '9.7', '9.8'}
-        shutil.copytree(source / 'tests/fixtures/coordinated-cross-contract', root, dirs_exist_ok=True)
+        shutil.copytree(tests_root / 'fixtures/coordinated-cross-contract', root, dirs_exist_ok=True)
         plan = harness_plan_builder.materialize_plan(draft, root=root)
         harness_apply.apply_application(harness_apply.build_application(root, plan))
         report = validate_harness.Validator(root).run()

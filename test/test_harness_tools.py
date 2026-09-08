@@ -760,9 +760,9 @@ class ApplyTests(unittest.TestCase):
             self.assertFalse((root / ".harness" / "transaction.json").exists())
 
     def test_coordinated_full_plan_round_trip_is_valid_and_idempotent(self) -> None:
-        fixture_root = REPO_ROOT / "tests" / "fixtures" / "coordinated-cross-contract"
+        fixture_root = REPO_ROOT / "test" / "fixtures" / "coordinated-cross-contract"
         plan_path = (
-            REPO_ROOT / "tests" / "fixtures" / "coordinated-cross-contract-plan.json"
+            REPO_ROOT / "test" / "fixtures" / "coordinated-cross-contract-plan.json"
         )
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -2162,18 +2162,18 @@ class TopologyContractTests(unittest.TestCase):
         for project_name, fixture_name in fixtures:
             with self.subTest(fixture=fixture_name):
                 plan = json.loads(
-                    (REPO_ROOT / "tests" / "fixtures" / f"{fixture_name}-topology.json").read_text(
+                    (REPO_ROOT / "test" / "fixtures" / f"{fixture_name}-topology.json").read_text(
                         encoding="utf-8"
                     )
                 )
                 golden = json.loads(
-                    (REPO_ROOT / "tests" / "fixtures" / f"{fixture_name}-golden.json").read_text(
+                    (REPO_ROOT / "test" / "fixtures" / f"{fixture_name}-golden.json").read_text(
                         encoding="utf-8"
                     )
                 )
                 report = evaluate_topology.evaluate(plan, golden)
                 self.assertTrue(report["valid"], report)
-                root = REPO_ROOT / "tests" / "fixtures" / project_name
+                root = REPO_ROOT / "test" / "fixtures" / project_name
                 for label, evidence in harness_topology.iter_evidence(plan["topology"]):
                     harness_apply.validate_evidence(root, evidence, label)
 

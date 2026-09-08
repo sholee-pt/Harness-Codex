@@ -369,7 +369,7 @@ Harness for Codex v6.8 is a narrow runtime-compatibility correction to v6.7. Gen
 - Distinguishes execution outcome from thread lifecycle. A bounded control-plane wait may establish completion, while compatible local terminal evidence raises the result to cross-validated strength. Agent-reported text alone cannot establish completion.
 - Computes task accounting from required Runtime Plan tasks as `complete-direct`, `complete-delegated`, `complete-mixed`, `complete-fallback`, `partial`, or `failed`. A valid fallback cannot erase a collaboration conflict.
 - Uses allowlisted structural event fingerprints that exclude prompts, messages, paths, raw thread IDs, handles, task names, agent nicknames, arbitrary field names, and unknown values.
-- Packages `references/minimal-draft-plan.json` inside the installed skill, removing the repository-only `tests/fixtures/minimal-plan.json` dependency from plan-format guidance.
+- Packages `references/minimal-draft-plan.json` inside the installed skill, removing the repository-only `test/fixtures/minimal-plan.json` dependency from plan-format guidance.
 
 The public core JSONL profile is based only on the documented `item.*` event envelope. `collab_tool_call` and local `SubAgentActivity` remain explicitly version-specific observed profiles rather than stable public OpenAI schemas. Harness remains an instruction, validation, and evidence layer; it does not replace Codex orchestration or schedule agents independently.
 

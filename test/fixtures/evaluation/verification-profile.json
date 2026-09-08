@@ -5,7 +5,7 @@
     "unittest",
     "discover",
     "-s",
-    "tests"
+    "test"
   ],
   "id": "harness-unit-tests",
   "kind": "unit-test",

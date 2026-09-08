@@ -33,8 +33,8 @@ def main():
     try:
         import yaml
     except ImportError:
-        parser.error("Install the optional tests/requirements-validation.txt into a test-only environment or target directory; runtime has no YAML dependency.")
-    corpus_path = ROOT / "tests/fixtures/frontmatter-cases.json"
+        parser.error("Install the optional test/requirements-validation.txt into a test-only environment or target directory; runtime has no YAML dependency.")
+    corpus_path = ROOT / "test/fixtures/frontmatter-cases.json"
     corpus = json.loads(corpus_path.read_text())["cases"]
     failures = []
     accepted = rejected = 0

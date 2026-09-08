@@ -12,7 +12,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = REPO_ROOT / ".agents" / "skills" / "harness" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
-sys.path.insert(0, str(REPO_ROOT / "tests"))
+sys.path.insert(0, str(REPO_ROOT / "test"))
 
 import harness_runtime_receipt as receipt2  # noqa: E402
 import test_runtime_teamplay as runtime_fixture  # noqa: E402
@@ -717,7 +717,7 @@ class RuntimeReceiptV2Tests(unittest.TestCase):
 
     def test_schema1_golden_receipt_remains_valid(self) -> None:
         golden = json.loads(
-            (REPO_ROOT / "tests" / "fixtures" / "runtime-receipt-schema1-golden.json").read_text(
+            (REPO_ROOT / "test" / "fixtures" / "runtime-receipt-schema1-golden.json").read_text(
                 encoding="utf-8"
             )
         )

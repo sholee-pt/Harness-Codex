@@ -276,8 +276,8 @@ class ApplyCompatibilityTests(unittest.TestCase):
 
 def previous_plan(root):
     """Build existing canonical contracts without invoking the new materializer."""
-    shutil.copytree(SCRIPTS.parents[3] / 'tests/fixtures/coordinated-cross-contract', root, dirs_exist_ok=True)
-    plan = json.loads((SCRIPTS.parents[3] / 'tests/fixtures/coordinated-cross-contract-plan.json').read_text(encoding='utf-8'))
+    shutil.copytree(SCRIPTS.parents[3] / 'test/fixtures/coordinated-cross-contract', root, dirs_exist_ok=True)
+    plan = json.loads((SCRIPTS.parents[3] / 'test/fixtures/coordinated-cross-contract-plan.json').read_text(encoding='utf-8'))
     agents = {agent['path']: agent for agent in plan['topology']['agents']}
     for artifact in plan['artifacts']:
         if artifact['path'] in agents:

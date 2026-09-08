@@ -52,7 +52,7 @@ try {
 '''.replace('ARGUMENTS', arguments)
         env = os.environ.copy()
         env.update(TEST_ASSETS=str(self.base), TEST_MARKER=str(self.marker),
-                   TEST_BOOTSTRAP=str(ROOT / 'installers/install_harness_codex.ps1'), TEMP=str(self.base), TMP=str(self.base))
+                   TEST_BOOTSTRAP=str(ROOT / 'installer/install_harness_codex.ps1'), TEMP=str(self.base), TMP=str(self.base))
         result = subprocess.run([POWERSHELL, '-NoProfile', '-NonInteractive', '-Command', code],
                                 env=env, capture_output=True, text=True, timeout=30)
         self.assertFalse(list(self.base.glob('harness-codex-install-*')), result.stdout + result.stderr)

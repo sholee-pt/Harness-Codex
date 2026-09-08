@@ -31,7 +31,7 @@ import validate_runtime_plan as runtime_plan  # noqa: E402
 
 def fixture_manifest() -> dict:
     topology_fixture = json.loads(
-        (REPO_ROOT / "tests" / "fixtures" / "coordinated-cross-contract-topology.json").read_text(
+        (REPO_ROOT / "test" / "fixtures" / "coordinated-cross-contract-topology.json").read_text(
             encoding="utf-8"
         )
     )
@@ -680,7 +680,7 @@ class CompatibilityTests(RuntimeFixtureTestCase):
 
 class DeterministicPlanBuilderTests(unittest.TestCase):
     def _draft(self, name: str = "minimal-plan.json") -> dict:
-        plan = json.loads((REPO_ROOT / "tests" / "fixtures" / name).read_text(encoding="utf-8"))
+        plan = json.loads((REPO_ROOT / "test" / "fixtures" / name).read_text(encoding="utf-8"))
         plan["authoringContractVersion"] = harness_metadata.AUTHORING_CONTRACT_VERSION
         for artifact in plan["artifacts"]:
             if artifact["path"] == ".agents/skills/project-harness/SKILL.md":
@@ -724,7 +724,7 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             shutil.copytree(
-                REPO_ROOT / "tests" / "fixtures" / "minimal-project",
+                REPO_ROOT / "test" / "fixtures" / "minimal-project",
                 root,
                 dirs_exist_ok=True,
             )
@@ -741,7 +741,7 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             shutil.copytree(
-                REPO_ROOT / "tests" / "fixtures" / "minimal-project",
+                REPO_ROOT / "test" / "fixtures" / "minimal-project",
                 root,
                 dirs_exist_ok=True,
             )
@@ -886,7 +886,7 @@ class DeterministicPlanBuilderTests(unittest.TestCase):
             output = root / "plan.json"
             project = root / "project"
             shutil.copytree(
-                REPO_ROOT / "tests" / "fixtures" / "minimal-project", project
+                REPO_ROOT / "test" / "fixtures" / "minimal-project", project
             )
             source.write_text(json.dumps(self._draft()), encoding="utf-8")
             before = source.read_bytes()
@@ -1234,7 +1234,7 @@ class LegacyRuntimeReceiptTests(RuntimeFixtureTestCase):
                 sys.executable,
                 str(SCRIPTS / "harness_runtime_receipt_schema1.py"),
                 "--receipt",
-                str(REPO_ROOT / "tests" / "fixtures" / "runtime-receipt-schema1-golden.json"),
+                str(REPO_ROOT / "test" / "fixtures" / "runtime-receipt-schema1-golden.json"),
             ],
             check=False,
             capture_output=True,

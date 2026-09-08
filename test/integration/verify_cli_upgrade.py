@@ -1,4 +1,4 @@
-"""Run real v9.2/v9.3/v9.4/v9.5 tool installers/updaters against v9.8 using local Git transport.
+"""Run real v9.2/v9.3/v9.4/v9.5 tool installer/updaters against v9.8 using local Git transport.
 
 Only the fixed upstream URL is replaced for this test. Git branch discovery,
 fetch, ancestry, archives, old installation code, and the new launcher are real.
@@ -38,7 +38,8 @@ def state(root):
 
 
 def old_project(baseline, root, runtime_path):
-    sys.path[:0] = [str(baseline / ".agents/skills/harness/scripts"), str(baseline / "tests")]
+    tests_root = baseline / ("test" if (baseline / "test").is_dir() else "tests")
+    sys.path[:0] = [str(baseline / ".agents/skills/harness/scripts"), str(tests_root)]
     import harness_apply
     import harness_metadata
     import harness_plan_builder
@@ -47,7 +48,7 @@ def old_project(baseline, root, runtime_path):
     import shutil
 
     assert harness_metadata.HARNESS_VERSION in {"9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8"}
-    shutil.copytree(baseline / "tests/fixtures/coordinated-cross-contract", root)
+    shutil.copytree(tests_root / "fixtures/coordinated-cross-contract", root)
     draft = test_runtime_teamplay.DeterministicPlanBuilderTests()._draft("coordinated-cross-contract-plan.json")
     plan = harness_plan_builder.materialize_plan(draft, root=root)
     harness_apply.apply_application(harness_apply.build_application(root, plan))
@@ -84,7 +85,13 @@ def old_project(baseline, root, runtime_path):
 
 
 def verify(baseline):
-    spec = importlib.util.spec_from_file_location("_old_harness_distribution", baseline / "harness_cli/distribution.py")
+    package_spec = importlib.util.spec_from_file_location(
+        "_old_harness_cli", baseline / "harness_cli/__init__.py",
+        submodule_search_locations=[str(baseline / "harness_cli")])
+    package = importlib.util.module_from_spec(package_spec)
+    sys.modules[package_spec.name] = package
+    package_spec.loader.exec_module(package)
+    spec = importlib.util.spec_from_file_location("_old_harness_cli.distribution", baseline / "harness_cli/distribution.py")
     old = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = old
     spec.loader.exec_module(old)

@@ -5,16 +5,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sholee-pt/Harness/releases/tag/codex-v9.8"><img src="https://img.shields.io/badge/Harness_for_Codex-v9.8-2563EB.svg?style=flat-square" alt="Harness for Codex v9.8"></a>
-  <a href="#codex-and-future-claude-editions"><img src="https://custom-icon-badges.demolab.com/badge/Agent-Codex-111827.svg?style=flat-square&amp;logo=openai&amp;logoColor=white" alt="Agent: Codex"></a>
-  <a href="#what-it-generates"><img src="https://img.shields.io/badge/Type-Harness_Generator-7C3AED.svg?style=flat-square" alt="Type: Harness Generator"></a>
+  <a href="https://github.com/sholee-pt/Harness/releases/tag/codex-v9.8"><img src="https://img.shields.io/badge/Version-v9.8-2563EB.svg?style=flat-square" alt="Version: v9.8"></a>
+  <a href="#codex-and-future-claude-editions"><img src=".github/badges/agent-codex.svg" alt="Agent: Codex"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Proprietary-64748B.svg?style=flat-square" alt="License: Proprietary"></a>
 </p>
 
 <p align="center">
   <a href="environment.yml"><img src="https://img.shields.io/badge/Python-3.11-3776AB.svg?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.11"></a>
-  <a href="#one-command-linux-installation"><img src="https://img.shields.io/badge/Platform-Linux-334155.svg?style=flat-square&amp;logo=linux&amp;logoColor=white" alt="Platform: Linux"></a>
-  <a href="#one-command-windows-installation"><img src="https://custom-icon-badges.demolab.com/badge/Platform-Windows-0078D4.svg?style=flat-square&amp;logo=windows11&amp;logoColor=white" alt="Platform: Windows"></a>
+  <a href="#one-command-linux-installation"><img src=".github/badges/platform.svg" alt="Platform: Linux and Windows"></a>
 </p>
 
 <p align="center">
@@ -53,7 +51,7 @@ Public deployment support does not change the repository's visibility. While thi
 
 ```bash
 git clone --branch codex/v9.8 --single-branch git@github.com:sholee-pt/Harness.git Harness
-bash Harness/installers/install.sh
+bash Harness/installer/install.sh
 ```
 
 The retired `install_harness.sh` Git bootstrap has been removed from this branch. For private access, use an authenticated Git clone and the source installer above. The installed CLI retains its authenticated HTTPS/SSH update support. Git author name/email are not authentication. Codex CLI installation and login remain prerequisites for actual Codex sessions; version/help, installation and diagnosis do not require a model call.
@@ -84,7 +82,7 @@ While the repository is private, the public Windows URL has the same authenticat
 
 ```powershell
 git clone --branch codex/v9.8 --single-branch git@github.com:sholee-pt/Harness.git Harness
-& ([scriptblock]::Create((Get-Content ./Harness/installers/install.ps1 -Raw))) -SourceRoot (Resolve-Path ./Harness).Path
+& ([scriptblock]::Create((Get-Content ./Harness/installer/install.ps1 -Raw))) -SourceRoot (Resolve-Path ./Harness).Path
 ```
 
 ## Configure and use a project
@@ -314,7 +312,7 @@ conda run -n harness python .agents/skills/harness/scripts/harness_eval.py view 
 
 conda run -n harness python .agents/skills/harness/scripts/harness_eval.py change-discipline-suite \
   --root TARGET_REPOSITORY \
-  --cases tests/fixtures/evaluation/change-discipline-cases.json
+  --cases test/fixtures/evaluation/change-discipline-cases.json
 ```
 
 Run records distinguish measured empty sets, unavailable values, and non-applicable concepts. Schema 2 separately records declared configuration, expected execution, runtime discovery, and observed execution. Raw prompts, reports, component names, transcripts, commands, paths, source content, and JSONL events are not written to Harness evaluation state. `--ephemeral` prevents local Codex rollout persistence; service-side processing still follows the configured Codex account and provider policy.
@@ -406,7 +404,7 @@ conda run -n harness python .agents/skills/harness/scripts/harness_runtime_recei
 conda run -n harness python .agents/skills/harness/scripts/harness_relay_receipt.py --root . --plan PATH_TO_RUNTIME_PLAN.json --receipt PATH_TO_RELAY_RECEIPT.json
 conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py --plan PATH_TO_PLAN.json --golden PATH_TO_GOLDEN.json
 conda run -n harness python .agents/skills/harness/scripts/harness_eval.py --help
-conda run -n harness python -m unittest discover -s tests -v
+conda run -n harness python -m unittest discover -s test -v
 ```
 
 Inventory Schema 5 reports the selected workspace kind, bounded scan coverage, Conda manifests, conservative file roles, known nested Git boundaries, and research-output directories separately. Known output directories are excluded from content classification by default and may be inspected deliberately with `--include-artifacts`. Scan uncertainty never changes the selected root. Existing instruction precedence and the instruction path Harness could safely manage are reported separately.

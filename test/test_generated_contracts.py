@@ -30,11 +30,11 @@ def snapshot(root):
 
 
 def full_topology():
-    return json.loads((ROOT / "tests/fixtures/coordinated-cross-contract-plan.json").read_text())["topology"]
+    return json.loads((ROOT / "test/fixtures/coordinated-cross-contract-plan.json").read_text())["topology"]
 
 
 def coordinated(root):
-    shutil.copytree(ROOT / "tests/fixtures/coordinated-cross-contract", root, dirs_exist_ok=True)
+    shutil.copytree(ROOT / "test/fixtures/coordinated-cross-contract", root, dirs_exist_ok=True)
     draft = runtime_fixtures.DeterministicPlanBuilderTests()._draft("coordinated-cross-contract-plan.json")
     return builder.materialize_plan(draft, root=root)
 
@@ -71,7 +71,7 @@ class GitAdviceMaterializationTests(unittest.TestCase):
     def test_advice_reaches_decoded_agent_instructions_without_changing_other_settings(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            shutil.copytree(ROOT / "tests/fixtures/coordinated-cross-contract", root, dirs_exist_ok=True)
+            shutil.copytree(ROOT / "test/fixtures/coordinated-cross-contract", root, dirs_exist_ok=True)
             draft = runtime_fixtures.DeterministicPlanBuilderTests()._draft("coordinated-cross-contract-plan.json")
             original = {a["path"]: tomllib.loads(a["content"]) for a in draft["artifacts"] if a["path"].endswith(".toml")}
             plan = builder.materialize_plan(draft, root=root)
@@ -106,7 +106,7 @@ class GitAdviceMaterializationTests(unittest.TestCase):
 
 class FrontmatterTests(unittest.TestCase):
     def test_documented_acceptance_and_rejection_corpus(self):
-        cases = json.loads((ROOT / "tests/fixtures/frontmatter-cases.json").read_text())["cases"]
+        cases = json.loads((ROOT / "test/fixtures/frontmatter-cases.json").read_text())["cases"]
         for case in cases:
             with self.subTest(case=case["id"]):
                 if case["expected"] is None:
@@ -118,7 +118,7 @@ class FrontmatterTests(unittest.TestCase):
                     self.assertEqual(frontmatter.parse(rendered), case["expected"])
 
     def test_invalid_inputs_fail_before_writes_and_after_hash_resealing(self):
-        cases = json.loads((ROOT / "tests/fixtures/frontmatter-cases.json").read_text())["cases"]
+        cases = json.loads((ROOT / "test/fixtures/frontmatter-cases.json").read_text())["cases"]
         for case in cases:
             # Raw surrogate strings cannot be written as UTF-8 at all.
             if case["id"] == "raw-surrogate":
@@ -159,7 +159,7 @@ class AgentContractTests(unittest.TestCase):
     def test_full_builder_supports_escaped_toml_strings_and_repeated_materialization(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            shutil.copytree(ROOT / "tests/fixtures/coordinated-cross-contract", root, dirs_exist_ok=True)
+            shutil.copytree(ROOT / "test/fixtures/coordinated-cross-contract", root, dirs_exist_ok=True)
             draft = runtime_fixtures.DeterministicPlanBuilderTests()._draft("coordinated-cross-contract-plan.json")
             for artifact in draft["artifacts"]:
                 if artifact["path"].startswith(".codex/agents/"):

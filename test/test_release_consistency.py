@@ -71,7 +71,7 @@ class ReleaseConsistencyTests(unittest.TestCase):
         agents = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
         workflow_path = REPO_ROOT / ".github" / "workflows" / "codex-v9.8.yml"
         workflow = workflow_path.read_text(encoding="utf-8")
-        self.assertIn("Harness_for_Codex-v9.8", readme)
+        self.assertIn("Version-v9.8", readme)
         self.assertIn("--branch codex/v9.8", readme)
         self.assertIn("| `codex/v9.8` | Harness for Codex v9.8 |", versions)
         self.assertIn("This branch contains Harness for Codex v9.8", agents)

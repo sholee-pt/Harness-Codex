@@ -36,7 +36,7 @@ jobs:
 
       - name: Compile the runtime tools
         shell: bash -el {0}
-        run: conda run -n harness python -m compileall -q harness.py harness_cli tools install.py .agents/skills/harness/scripts tests
+        run: conda run -n harness python -m compileall -q harness.py harness_cli build install.py .agents/skills/harness/scripts test
 
       - name: Dry-run project-local installation
         shell: bash -el {0}
@@ -45,26 +45,27 @@ jobs:
       - name: Run unit tests
         timeout-minutes: 15
         shell: bash -el {0}
-        run: conda run --no-capture-output -n harness python -u -m unittest discover -s tests -v
+        run: conda run --no-capture-output -n harness python -u -m unittest discover -s test -v
 
       - name: Verify the pinned frontmatter oracle
         shell: bash -el {0}
         run: |
-          conda run -n harness python -m pip install -r tests/requirements-validation.txt
-          conda run -n harness python tests/integration/frontmatter_differential.py --seed 20260905 --count 11000 --output "${RUNNER_TEMP}/frontmatter-report.json"
+          conda run -n harness python -m pip install -r test/requirements-validation.txt
+          conda run -n harness python test/integration/frontmatter_differential.py --seed 20260905 --count 11000 --output "${RUNNER_TEMP}/frontmatter-report.json"
 
       - name: Cross-check real v7.6 through published v9.8 installation updates
         shell: bash -el {0}
         run: |
           baseline_root="${RUNNER_TEMP}/harness-baselines"
-          conda run -n harness python tests/integration/prepare_release_baselines.py --output "${baseline_root}"
+          conda run -n harness python test/integration/prepare_release_baselines.py --output "${baseline_root}"
+          conda run -n harness python test/integration/verify_build_refactor.py --baseline "${baseline_root}/v98_layout" --output "${RUNNER_TEMP}/build-refactor.json"
           for baseline in v76 v80 v81 v90 v91 v92 v93 v94 v95 v96 v97 v98; do
-            conda run -n harness python tests/integration/verify_release_upgrade.py --baseline "${baseline_root}/${baseline}" --output "${RUNNER_TEMP}/upgrade-${baseline}.json"
+            conda run -n harness python test/integration/verify_release_upgrade.py --baseline "${baseline_root}/${baseline}" --output "${RUNNER_TEMP}/upgrade-${baseline}.json"
           done
-          for baseline in v92 v93 v94 v95 v96 v97 v98; do
-            conda run -n harness python tests/integration/verify_cli_upgrade.py --baseline "${baseline_root}/${baseline}" --output "${RUNNER_TEMP}/cli-upgrade-${baseline}.json"
+          for baseline in v92 v93 v94 v95 v96 v97 v98 v98_layout; do
+            conda run -n harness python test/integration/verify_cli_upgrade.py --baseline "${baseline_root}/${baseline}" --output "${RUNNER_TEMP}/cli-upgrade-${baseline}.json"
           done
-          conda run -n harness python tests/integration/verify_installer_permissions.py --baseline "${baseline_root}/v90" --candidate . --output "${RUNNER_TEMP}/installer-permissions.json"
+          conda run -n harness python test/integration/verify_installer_permissions.py --baseline "${baseline_root}/v90" --candidate . --output "${RUNNER_TEMP}/installer-permissions.json"
           cat "${RUNNER_TEMP}/installer-permissions.json"
 
       # Runtime-plan, receipt, relay and operations unit tests run in full discovery above.
@@ -72,15 +73,15 @@ jobs:
       - name: Run deterministic topology evaluations
         shell: bash -el {0}
         run: |
-          conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py --plan tests/fixtures/minimal-plan.json --golden tests/fixtures/minimal-golden.json
-          conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py --plan tests/fixtures/modular-expert-pool-topology.json --golden tests/fixtures/modular-expert-pool-golden.json
-          conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py --plan tests/fixtures/coordinated-cross-contract-topology.json --golden tests/fixtures/coordinated-cross-contract-golden.json
-          conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py --plan tests/fixtures/coordinated-cross-contract-plan.json --golden tests/fixtures/coordinated-cross-contract-golden.json
+          conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py --plan test/fixtures/minimal-plan.json --golden test/fixtures/minimal-golden.json
+          conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py --plan test/fixtures/modular-expert-pool-topology.json --golden test/fixtures/modular-expert-pool-golden.json
+          conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py --plan test/fixtures/coordinated-cross-contract-topology.json --golden test/fixtures/coordinated-cross-contract-golden.json
+          conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py --plan test/fixtures/coordinated-cross-contract-plan.json --golden test/fixtures/coordinated-cross-contract-golden.json
 
       - name: Materialize and dry-run the installed plan example
         shell: bash -el {0}
         run: |
-          cp -R tests/fixtures/minimal-project "${RUNNER_TEMP}/harness-minimal-project"
+          cp -R test/fixtures/minimal-project "${RUNNER_TEMP}/harness-minimal-project"
           conda run -n harness python .agents/skills/harness/scripts/harness_plan_builder.py --root "${RUNNER_TEMP}/harness-minimal-project" --input .agents/skills/harness/references/minimal-draft-plan.json --output "${RUNNER_TEMP}/harness-minimal-plan.json"
           conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root "${RUNNER_TEMP}/harness-minimal-project" --plan "${RUNNER_TEMP}/harness-minimal-plan.json" --dry-run
           test ! -e "${RUNNER_TEMP}/harness-minimal-project/.harness/manifest.json"
@@ -90,8 +91,8 @@ jobs:
         shell: bash -el {0}
         run: |
           conda run -n harness python .agents/skills/harness/scripts/harness_eval.py --help
-          conda run -n harness python .agents/skills/harness/scripts/harness_eval.py change-discipline-suite --cases tests/fixtures/evaluation/change-discipline-cases.json --validate-only
-          cp -R tests/fixtures/minimal-project "${RUNNER_TEMP}/harness-eval-project"
+          conda run -n harness python .agents/skills/harness/scripts/harness_eval.py change-discipline-suite --cases test/fixtures/evaluation/change-discipline-cases.json --validate-only
+          cp -R test/fixtures/minimal-project "${RUNNER_TEMP}/harness-eval-project"
           git -C "${RUNNER_TEMP}/harness-eval-project" init
           git -C "${RUNNER_TEMP}/harness-eval-project" config user.email "fixture@example.invalid"
           git -C "${RUNNER_TEMP}/harness-eval-project" config user.name "Harness CI"
@@ -103,35 +104,35 @@ jobs:
           # This fixture chooses an explicit exclusion policy; generation never writes it.
           printf '%s\n' '/.agents/' '/.codex/' '/.harness/' '/AGENTS.md' >> "${RUNNER_TEMP}/harness-eval-project/.git/info/exclude"
           mkdir -p "${RUNNER_TEMP}/harness-codex-home"
-          conda run -n harness python .agents/skills/harness/scripts/harness_eval.py paired-run --root "${RUNNER_TEMP}/harness-eval-project" --task-file tests/fixtures/evaluation/task.txt --comparison-plan tests/fixtures/evaluation/comparison-plan.json --verification tests/fixtures/evaluation/verification-profile.json --codex-home "${RUNNER_TEMP}/harness-codex-home" --repetitions 2 --order counterbalanced --seed 730 --dry-run --validate-materialization
+          conda run -n harness python .agents/skills/harness/scripts/harness_eval.py paired-run --root "${RUNNER_TEMP}/harness-eval-project" --task-file test/fixtures/evaluation/task.txt --comparison-plan test/fixtures/evaluation/comparison-plan.json --verification test/fixtures/evaluation/verification-profile.json --codex-home "${RUNNER_TEMP}/harness-codex-home" --repetitions 2 --order counterbalanced --seed 730 --dry-run --validate-materialization
 
       - name: Build the standalone distribution
         shell: bash -el {0}
-        run: conda run -n harness python tools/build_release.py --output "${RUNNER_TEMP}/harness-dist"
+        run: conda run -n harness python build/build_release.py --output "${RUNNER_TEMP}/harness-dist"
 
       - name: Verify the real Linux bootstrap and installed command
         if: runner.os == 'Linux'
         shell: bash -el {0}
-        run: conda run -n harness python tests/integration/verify_cli_distribution.py --archive "${RUNNER_TEMP}/harness-dist/harness-codex-9.8-linux.tar.gz"
+        run: conda run -n harness python test/integration/verify_cli_distribution.py --archive "${RUNNER_TEMP}/harness-dist/harness-codex-9.8-linux.tar.gz"
 
       - name: Verify public pipeline and cold environment setup
         if: runner.os == 'Linux'
         timeout-minutes: 25
         shell: bash -el {0}
-        run: conda run --no-capture-output -n harness python -B tests/integration/verify_public_install.py --dist "${RUNNER_TEMP}/harness-dist"
+        run: conda run --no-capture-output -n harness python -B test/integration/verify_public_install.py --dist "${RUNNER_TEMP}/harness-dist"
 
       - name: Verify Windows PowerShell bootstrap and cold environment setup
         if: runner.os == 'Windows'
         timeout-minutes: 30
         shell: powershell
         run: |
-          & ./tests/integration/verify_windows_install.ps1 -Dist "$env:RUNNER_TEMP/harness-dist" -Cold
+          & ./test/integration/verify_windows_install.ps1 -Dist "$env:RUNNER_TEMP/harness-dist" -Cold
 
       - name: Verify installation from the authenticated source checkout
         if: runner.os == 'Linux'
         shell: bash -el {0}
         run: |
-          bash installers/install.sh --data-dir "${RUNNER_TEMP}/source-install/data" --bin-dir "${RUNNER_TEMP}/source-install/bin" --auto-update off --no-modify-path
+          bash installer/install.sh --data-dir "${RUNNER_TEMP}/source-install/data" --bin-dir "${RUNNER_TEMP}/source-install/bin" --auto-update off --no-modify-path
           "${RUNNER_TEMP}/source-install/bin/harness-codex" --version
           conda run -n harness python -B -c 'import json, os, pathlib; state=json.loads((pathlib.Path(os.environ["RUNNER_TEMP"])/"source-install/data/active.json").read_text()); assert state["commit"]==os.environ["GITHUB_SHA"], state; assert state["version"]=="9.8"; print("Source installer retained the exact checked-out commit.")'
 
@@ -158,7 +159,7 @@ jobs:
           environment-file: environment.yml
       - name: Build the verified release assets
         shell: bash -el {0}
-        run: conda run -n harness python tools/build_release.py --output "${RUNNER_TEMP}/harness-dist"
+        run: conda run -n harness python build/build_release.py --output "${RUNNER_TEMP}/harness-dist"
       - name: Publish the GitHub Release
         shell: bash -el {0}
         env:

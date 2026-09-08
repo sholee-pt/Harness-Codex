@@ -16,7 +16,7 @@ import zipfile
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
-from tools import build_release
+from build import build_release, source as build_source
 
 
 class ReleaseBuildTests(unittest.TestCase):
@@ -26,10 +26,10 @@ class ReleaseBuildTests(unittest.TestCase):
         self.base = Path(temporary.name)
         self.root = self.base / "release source"
         self.root.mkdir()
-        for name in build_release.ROOT_FILES:
+        for name in build_source.ROOT_FILES:
             (self.root / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(REPO_ROOT / name, self.root / name)
-        for name in build_release.ROOT_DIRS:
+        for name in build_source.ROOT_DIRS:
             shutil.copytree(REPO_ROOT / name, self.root / name,
                             ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
         self.git("init", "--quiet")
@@ -38,7 +38,7 @@ class ReleaseBuildTests(unittest.TestCase):
         self.git("-c", "user.name=Harness fixture", "-c", "user.email=fixture@example.invalid",
                  "commit", "--quiet", "-m", "Isolated release fixture")
         self.commit = self.git("rev-parse", "HEAD").stdout.strip()
-        self.version = build_release.release_version(self.root)
+        self.version = build_source.release_version(self.root)
         self.output = self.base / "build output"
 
     def git(self, *arguments):
@@ -79,8 +79,8 @@ class ReleaseBuildTests(unittest.TestCase):
                          f"{report['sha256']}  {artifact.name}\n{report['bootstrapSha256']}  install_harness_codex.sh\n"
                          f"{report['windowsSha256']}  harness-codex-{self.version}-windows.zip\n"
                          f"{report['windowsBootstrapSha256']}  install_harness_codex.ps1\n")
-        self.assertEqual((self.output / "install_harness_codex.sh").read_bytes(), (self.root / "installers/install_harness_codex.sh").read_bytes())
-        self.assertEqual(report["bootstrapSha256"], hashlib.sha256((self.root / "installers/install_harness_codex.sh").read_bytes()).hexdigest())
+        self.assertEqual((self.output / "install_harness_codex.sh").read_bytes(), (self.root / "installer/install_harness_codex.sh").read_bytes())
+        self.assertEqual(report["bootstrapSha256"], hashlib.sha256((self.root / "installer/install_harness_codex.sh").read_bytes()).hexdigest())
         files = self.contents(artifact)
         windows = Path(report['windowsArtifact'])
         self.assertEqual(report['windowsSha256'], hashlib.sha256(windows.read_bytes()).hexdigest())
@@ -92,18 +92,18 @@ class ReleaseBuildTests(unittest.TestCase):
                 windows_files[entry.filename.split('/', 1)[1]] = archive.read(entry)
         self.assertEqual(windows_files, files)
         bootstrap = self.output / 'install_harness_codex.ps1'
-        self.assertEqual(bootstrap.read_bytes(), (self.root / "installers" / bootstrap.name).read_bytes())
+        self.assertEqual(bootstrap.read_bytes(), (self.root / "installer" / bootstrap.name).read_bytes())
         self.assertEqual(report['windowsBootstrapSha256'], hashlib.sha256(bootstrap.read_bytes()).hexdigest())
         metadata = json.loads(files["_release.json"])
         self.assertEqual(metadata, {"runtime": "codex", "version": self.version, "commit": self.commit,
                                     "branch": f"codex/v{self.version}"})
         expected = {}
-        for name in build_release.ROOT_FILES:
+        for name in build_source.ROOT_FILES:
             if Path(name).name not in {"install_harness_codex.sh", "install_harness_codex.ps1"}:
                 expected[Path(name).name] = (self.root / name).read_bytes()
         for name in ("install_harness.sh", "install_harness_codex.sh", "install_harness_codex.ps1"):
             self.assertNotIn(name, files, "Download-only installers do not belong in runtime archives")
-        for name in build_release.ROOT_DIRS:
+        for name in build_source.ROOT_DIRS:
             for path in (self.root / name).rglob("*"):
                 if path.is_file():
                     expected[path.relative_to(self.root).as_posix()] = path.read_bytes()

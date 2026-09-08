@@ -26,7 +26,7 @@ root = pathlib.Path(sys.argv[sys.argv.index("--cd") + 1])
 pathlib.Path(os.environ["FAKE_CODEX_LOG"]).write_text(json.dumps({"argv": sys.argv[1:], "cwd": os.getcwd()}), encoding="utf-8")
 mode = os.environ.get("FAKE_CODEX_MODE", "noop")
 if mode in {"generate", "corrupt"}:
-    sys.path.insert(0, str(pathlib.Path(os.environ["FAKE_HARNESS_SOURCE"]) / "tests"))
+    sys.path.insert(0, str(pathlib.Path(os.environ["FAKE_HARNESS_SOURCE"]) / "test"))
     from test_harness_tools import minimal_plan, harness_apply
     harness_apply.apply_application(harness_apply.build_application(root, minimal_plan(root)))
     if mode == "corrupt":

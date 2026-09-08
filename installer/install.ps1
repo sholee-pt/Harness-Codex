@@ -20,7 +20,7 @@ if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitProcess -or $env:PRO
 }
 if ($CondaExe -and $CondaHome) { throw 'Choose -CondaExe or -CondaHome, not both.' }
 if ($SourceRoot -and -not (Test-Path -LiteralPath (Join-Path $SourceRoot 'harness.py') -PathType Leaf) -and
-    (Split-Path -Leaf $SourceRoot) -eq 'installers') {
+    (Split-Path -Leaf $SourceRoot) -eq 'installer') {
     $SourceRoot = Split-Path -Parent $SourceRoot
 }
 if (-not $SourceRoot -or -not (Test-Path -LiteralPath (Join-Path $SourceRoot 'harness.py') -PathType Leaf)) {

@@ -11,7 +11,7 @@ import unittest
 from unittest import mock
 
 from harness_cli import distribution as dist
-from tools import build_release
+from build import build_release, source as build_source
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -198,9 +198,9 @@ class SourceContractTests(unittest.TestCase):
 
     def test_development_release_build_rejects_missing_lifecycle_without_output(self):
         source = write_source(self.base / "build source", dist._snapshot(REPO))
-        (source / "installers").mkdir()
-        for path in (REPO / "installers").iterdir():
-            (source / "installers" / path.name).write_bytes(path.read_bytes())
+        (source / "installer").mkdir()
+        for path in (REPO / "installer").iterdir():
+            (source / "installer" / path.name).write_bytes(path.read_bytes())
         (source / "harness_cli/lifecycle.py").unlink()
         output = self.base / "build output"
         before = snapshot(self.base)
@@ -209,7 +209,7 @@ class SourceContractTests(unittest.TestCase):
             value = "a" * 40 + "\n" if "rev-parse" in arguments else " D harness_cli/lifecycle.py\n"
             return subprocess.CompletedProcess(arguments, 0, value, "")
 
-        with mock.patch.object(build_release.subprocess, "run", side_effect=dirty_git):
+        with mock.patch.object(build_source.subprocess, "run", side_effect=dirty_git):
             with self.assertRaisesRegex(ValueError, "lifecycle"):
                 build_release.build(source, output, allow_dirty=True)
         self.assertFalse(output.exists())

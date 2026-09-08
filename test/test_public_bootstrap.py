@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / 'installers/install_harness_codex.sh'
+SCRIPT = ROOT / 'installer/install_harness_codex.sh'
 
 
 @unittest.skipUnless(os.name == 'posix', 'Public installer uses Linux shell tools')
@@ -115,7 +115,7 @@ class SourceInstallerTests(unittest.TestCase):
             for arguments in (("--agent", "claude"), ("--agent=claude",),
                               ("--runtime", "claude"), ("--runtime=claude",)):
                 with self.subTest(arguments=arguments):
-                    result = subprocess.run([BASH, str(ROOT / "installers/install.sh"), *arguments],
+                    result = subprocess.run([BASH, str(ROOT / "installer/install.sh"), *arguments],
                                             env=environment, capture_output=True, text=True, encoding="utf-8", timeout=20)
                     self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                     self.assertIn("Claude integration is not implemented", result.stderr)
@@ -123,12 +123,12 @@ class SourceInstallerTests(unittest.TestCase):
             for arguments in (("--agent", "claude", "--runtime", "codex"),
                               ("--runtime=codex", "--agent=claude"),
                               ("--agent=claude", "--agent=codex")):
-                result = subprocess.run([BASH, str(ROOT / "installers/install.sh"), *arguments],
+                result = subprocess.run([BASH, str(ROOT / "installer/install.sh"), *arguments],
                                         env=environment, capture_output=True, text=True, encoding="utf-8", timeout=20)
                 self.assertEqual(result.returncode, 1)
                 self.assertIn("Conflicting", result.stderr)
                 self.assertFalse(marker.exists())
-            help_result = subprocess.run([BASH, str(ROOT / "installers/install.sh"), "--help"],
+            help_result = subprocess.run([BASH, str(ROOT / "installer/install.sh"), "--help"],
                                          env=environment, capture_output=True, text=True, encoding="utf-8", timeout=20)
             self.assertEqual(help_result.returncode, 0)
             self.assertIn("--agent", help_result.stdout)
