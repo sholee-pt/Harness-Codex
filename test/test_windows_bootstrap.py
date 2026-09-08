@@ -112,7 +112,7 @@ class WindowsSourceInstallerTests(unittest.TestCase):
     def test_explicit_conda_home_never_selects_an_external_same_named_environment(self):
         for state in ('new', 'existing', 'incomplete'):
             with self.subTest(state=state), tempfile.TemporaryDirectory() as directory:
-                base = Path(directory)
+                base = Path(directory).resolve()
                 home = base / 'isolated'
                 executable = home / 'Scripts/conda.exe'
                 executable.parent.mkdir(parents=True)
@@ -147,7 +147,9 @@ if ($env:CONDA_ENVS_PATH -cne $original) { exit 88 }
                 result = subprocess.run([POWERSHELL, '-NoProfile', '-NonInteractive', '-Command', code],
                                         env={**os.environ, 'TEST_BASE': str(base), 'TEST_SOURCE': str(ROOT / 'installer/install.ps1'),
                                              'TEMP': str(base), 'TMP': str(base)}, capture_output=True, text=True, timeout=30)
-                calls = [json.loads(line) for line in (base / 'calls.jsonl').read_text().splitlines()]
+                calls_path = base / 'calls.jsonl'
+                self.assertTrue(calls_path.is_file(), result.stdout + result.stderr)
+                calls = [json.loads(line) for line in calls_path.read_text().splitlines()]
                 self.assertEqual(external.read_text(), 'existing user environment')
                 if state == 'incomplete':
                     self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
