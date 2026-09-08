@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a reproducible Linux distribution with stdlib and a pinned source identity."""
+"""Build reproducible Linux and Windows distributions with stdlib and a pinned source identity."""
 from __future__ import annotations
 import argparse
 import ast
@@ -13,10 +13,11 @@ from pathlib import Path
 import stat
 import subprocess
 import tarfile
+import zipfile
 
 from harness_cli.distribution import _source_info
 
-ROOT_FILES = ("harness.py", "install.py", "install.sh", "install_harness.sh", "install_harness_codex.sh", "environment.yml", "README.md", "LICENSE")
+ROOT_FILES = ("harness.py", "install.py", "install.sh", "install_harness.sh", "install_harness_codex.sh", "install.ps1", "install_harness_codex.ps1", "environment.yml", "README.md", "LICENSE")
 ROOT_DIRS = ("harness_cli", ".agents/skills/harness")
 
 
@@ -113,10 +114,22 @@ def build(root: Path, output: Path, *, allow_dirty: bool = False) -> dict:
         stream.write(files["install_harness_codex.sh"])
     bootstrap.chmod(0o755)
     bootstrap_digest = hashlib.sha256(files["install_harness_codex.sh"]).hexdigest()
+    windows = output / f"harness-codex-{version}-windows.zip"
+    with zipfile.ZipFile(windows, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        for name, data in sorted(files.items()):
+            info = zipfile.ZipInfo(f"harness-codex-{version}/{name}", date_time=(1980, 1, 1, 0, 0, 0))
+            info.create_system = 3
+            info.external_attr = (stat.S_IFREG | 0o644) << 16
+            archive.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+    windows_digest = hashlib.sha256(windows.read_bytes()).hexdigest()
+    windows_bootstrap = output / "install_harness_codex.ps1"
+    windows_bootstrap.write_bytes(files[windows_bootstrap.name])
+    windows_bootstrap_digest = hashlib.sha256(windows_bootstrap.read_bytes()).hexdigest()
     with (output / "SHA256SUMS").open("x", encoding="utf-8", newline="\n") as stream:
-        stream.write(f"{digest}  {artifact.name}\n{bootstrap_digest}  {bootstrap.name}\n")
+        stream.write(f"{digest}  {artifact.name}\n{bootstrap_digest}  {bootstrap.name}\n{windows_digest}  {windows.name}\n{windows_bootstrap_digest}  {windows_bootstrap.name}\n")
     report = {"runtime": "codex", "version": version, "commit": commit, "developmentBuild": commit is None,
-              "artifact": str(artifact), "sha256": digest, "bootstrapSha256": bootstrap_digest, "files": len(files)}
+              "artifact": str(artifact), "sha256": digest, "bootstrapSha256": bootstrap_digest, "windowsArtifact": str(windows), "windowsSha256": windows_digest,
+              "windowsBootstrapSha256": windows_bootstrap_digest, "files": len(files)}
     with (output / "build.json").open("x", encoding="utf-8", newline="\n") as stream:
         stream.write(json.dumps(report, indent=2) + "\n")
     return report

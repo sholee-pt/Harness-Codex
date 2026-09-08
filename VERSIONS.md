@@ -6,7 +6,8 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 
 | Branch | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
-| `codex/v9.7` | Harness for Codex v9.7 | Named Codex command, public one-command bootstrap, automatic isolated environment setup, idempotent Bash PATH registration and config alias; project contracts unchanged. |
+| `codex/v9.8` | Harness for Codex v9.8 | Schema 3 | Schema 7 | Schema 2 | Native Windows PowerShell bootstrap, reproducible ZIP, isolated Conda setup and idempotent user PATH registration |
+| `codex/v9.7` | Harness for Codex v9.7 | Schema 3 | Schema 7 | Schema 2 | Named Codex command, public one-command Linux bootstrap, automatic isolated environment setup, idempotent Bash PATH registration and config alias |
 | `codex/v9.6` | Harness for Codex v9.6 | Schema 3 | Schema 7 | Schema 2 | Conditional model workflow guidance, clearer evidence/ownership diagnostics, reviewer examples and native execution validation protocol |
 | `codex/v9.5` | Harness for Codex v9.5 | Schema 3 | Schema 7 | Schema 2 | Versioned source completeness, caller-environment preservation, guarded launcher migration and bootstrap Git timeouts |
 | `codex/v9.4` | Harness for Codex v9.4 | Schema 3 | Schema 7 | Schema 2 | Markdown briefs, --agent option, existing-state notices and guarded removal/reset/recovery |
@@ -605,3 +606,12 @@ This maintenance release preserves the generated-project schemas and accepts val
 - Bootstrap Git branch queries and fetches have independent configurable deadlines (default 120 seconds, range 1–600), process-group TERM/KILL cleanup and an explicit timeout result. Initial curl, Conda and total installation time are outside this deadline. Existing installations remain intact after failed download.
 - Adds incomplete-source, removal/reset preview, legacy-upgrade, real child-process environment and Linux timeout regressions. Cross-platform checks and authenticated GitHub bootstrap verification remain publication gates; their execution results are distinct from observations on another user's server.
 - Adds no agent roles, topology redesign, project telemetry, model-quality claim or measured token-saving claim.
+
+
+## v9.8 Windows installation
+
+- Adds public `install_harness_codex.ps1` and unpacked `install.ps1` entry points for Windows x64, with pinned Miniforge checksums, bounded download/native-installer waits and no persistent execution-policy changes.
+- Registers user PATH in HKCU while preserving existing entries/type. Install and installed init are idempotent; dry-run is read-only. New named Windows installs use separate Codex data/bin locations.
+- Builds deterministic Windows ZIP and Linux tar archives from identical payloads, with both standalone installers covered by release checksums.
+- Adds Windows cold-install CI, existing-Conda PowerShell integration, malformed ZIP/checksum cases and isolated registry-preservation tests. Existing full regression and prior-source compatibility checks remain publication gates.
+- Does not alter project contracts or claim live agent/model performance improvements.

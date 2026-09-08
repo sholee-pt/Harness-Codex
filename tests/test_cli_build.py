@@ -11,6 +11,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+import zipfile
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -74,10 +75,24 @@ class ReleaseBuildTests(unittest.TestCase):
         self.assertFalse(report["developmentBuild"])
         self.assertEqual(report["sha256"], hashlib.sha256(artifact.read_bytes()).hexdigest())
         self.assertEqual((self.output / "SHA256SUMS").read_text(encoding="utf-8"),
-                         f"{report['sha256']}  {artifact.name}\n{report['bootstrapSha256']}  install_harness_codex.sh\n")
+                         f"{report['sha256']}  {artifact.name}\n{report['bootstrapSha256']}  install_harness_codex.sh\n"
+                         f"{report['windowsSha256']}  harness-codex-{self.version}-windows.zip\n"
+                         f"{report['windowsBootstrapSha256']}  install_harness_codex.ps1\n")
         self.assertEqual((self.output / "install_harness_codex.sh").read_bytes(), (self.root / "install_harness_codex.sh").read_bytes())
         self.assertEqual(report["bootstrapSha256"], hashlib.sha256((self.output / "install_harness_codex.sh").read_bytes()).hexdigest())
         files = self.contents(artifact)
+        windows = Path(report['windowsArtifact'])
+        self.assertEqual(report['windowsSha256'], hashlib.sha256(windows.read_bytes()).hexdigest())
+        with zipfile.ZipFile(windows) as archive:
+            windows_files = {}
+            for entry in archive.infolist():
+                self.assertEqual(entry.date_time, (1980, 1, 1, 0, 0, 0))
+                self.assertEqual(entry.external_attr >> 16, 0o100644)
+                windows_files[entry.filename.split('/', 1)[1]] = archive.read(entry)
+        self.assertEqual(windows_files, files)
+        bootstrap = self.output / 'install_harness_codex.ps1'
+        self.assertEqual(bootstrap.read_bytes(), (self.root / bootstrap.name).read_bytes())
+        self.assertEqual(report['windowsBootstrapSha256'], hashlib.sha256(bootstrap.read_bytes()).hexdigest())
         metadata = json.loads(files["_release.json"])
         self.assertEqual(metadata, {"runtime": "codex", "version": self.version, "commit": self.commit,
                                     "branch": f"codex/v{self.version}"})
@@ -103,6 +118,7 @@ class ReleaseBuildTests(unittest.TestCase):
         second = build_release.build(self.root, self.base / "another output")
         self.assertEqual(Path(first["artifact"]).read_bytes(), Path(second["artifact"]).read_bytes())
         self.assertEqual(first["sha256"], second["sha256"])
+        self.assertEqual(Path(first['windowsArtifact']).read_bytes(), Path(second['windowsArtifact']).read_bytes())
         self.assertEqual(Path(first["artifact"]).read_bytes()[4:8], b"\0\0\0\0")
 
     def test_dirty_source_is_refused_before_creating_output(self):

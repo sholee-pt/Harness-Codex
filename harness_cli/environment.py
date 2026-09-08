@@ -14,7 +14,7 @@ PRESERVED_ENVIRONMENT = "preserved-v1"
 def validate_interpreter() -> Path:
     prefix = Path(sys.prefix)
     if prefix.name != "harness" or not (prefix / "conda-meta/history").is_file():
-        raise ValueError("Run Harness in its dedicated Conda environment. Use bash install.sh, or conda run -n harness python harness.py ...")
+        raise ValueError("Run Harness in its dedicated Conda environment. Use the platform installer (install.sh on Linux, install.ps1 on Windows), or conda run -n harness python harness.py ...")
     return prefix
 
 

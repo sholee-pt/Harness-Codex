@@ -46,11 +46,21 @@ def contract_source(root, version):
         contents["harness_cli/lifecycle.py"] = b"pass\n"
     if tuple(map(int, version.split("."))) >= (9, 5):
         contents["harness_cli/environment.py"] = b"pass\n"
+    if tuple(map(int, version.split("."))) >= (9, 7):
+        contents["harness_cli/shell.py"] = b"pass\n"
+        contents["harness_cli/prepare_conda.sh"] = b"# fixture\n"
+    if tuple(map(int, version.split("."))) >= (9, 8):
+        contents["harness_cli/windows_path.py"] = b"pass\n"
     contents[dist.METADATA] = f'HARNESS_VERSION = "{version}"\n'.encode()
     return write_source(root, contents)
 
 
 class SourceContractTests(unittest.TestCase):
+    def test_v98_requires_windows_path_before_install_creates_state(self):
+        source = contract_source(self.base / 'source', '9.8')
+        (source / 'harness_cli/windows_path.py').unlink()
+        self.assert_rejected_before_writes(source, r'harness_cli/windows_path\.py')
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

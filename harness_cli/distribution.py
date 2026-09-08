@@ -39,11 +39,12 @@ REQUIRED = frozenset({"harness.py", "install.py", "harness_cli/__init__.py", "ha
 # Keep the original common set valid for complete v9.2 and v9.3 distributions.
 # Later releases inherit each dependency from its numeric introduction version.
 VERSION_REQUIRED = (
+    ((9, 8), frozenset({"harness_cli/windows_path.py"})),
     ((9, 7), frozenset({"harness_cli/shell.py", "harness_cli/prepare_conda.sh"})),
     ((9, 4), frozenset({"harness_cli/lifecycle.py"})),
     ((9, 5), frozenset({"harness_cli/environment.py"})),
 )
-TOP_FILES = frozenset({"harness.py", "install.py", "install.sh", "install_harness.sh", "install_harness_codex.sh", "environment.yml", "README.md", "LICENSE", "_release.json"})
+TOP_FILES = frozenset({"harness.py", "install.py", "install.sh", "install_harness.sh", "install_harness_codex.sh", "install.ps1", "install_harness_codex.ps1", "environment.yml", "README.md", "LICENSE", "_release.json"})
 OWNER = {"schema": 1, "tool": "sholee-pt/Harness"}
 TOKEN_HELPER = ('!f() { if test "$1" != get; then return; fi; p=; h=; r=; '
                 'while IFS="=" read -r k v; do case "$k" in '
@@ -786,9 +787,17 @@ def _git(arguments: list[str], *, timeout: int, git_executable: str = "git", all
             authentication = ["-c", "credential.helper=", "-c", "credential.useHttpPath=true",
                               "-c", "credential.helper=" + TOKEN_HELPER]
     if git_executable == "git" and shutil.which("git") is None:
-        bundled = Path(sys.executable).parent / ("git.exe" if os.name == "nt" else "git")
-        if bundled.is_file():
-            git_executable = str(bundled)
+        prefix = Path(sys.executable).parent
+        candidates = ([prefix / name for name in ("Library/cmd/git.exe", "Library/bin/git.exe", "Library/usr/bin/git.exe", "git.exe")]
+                      if os.name == "nt" else [prefix / "git"])
+        for bundled in candidates:
+            if bundled.is_file():
+                git_executable = str(bundled)
+                if os.name == "nt":
+                    # Git's DLLs belong to this child only; Codex keeps the caller environment.
+                    environment["PATH"] = os.pathsep.join([str(bundled.parent), str(prefix / "Library/bin"),
+                                                          str(prefix / "Library/usr/bin"), environment.get("PATH", "")])
+                break
     try:
         result = subprocess.run([git_executable, "-c", "protocol.file.allow=never", *authentication, *arguments], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment, timeout=timeout, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:

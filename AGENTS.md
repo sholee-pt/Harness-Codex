@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v9.7, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
+- This branch contains Harness for Codex v9.8, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add telemetry or marketplace dependencies. The separately authorized CLI distribution layer may check/fetch this repository and publish verified GitHub release assets; project generation never performs those operations.
 - Keep evaluation default-off, user-local, and isolated from generation/apply failure handling.
@@ -40,6 +40,6 @@
 
 ## CLI distribution
 
-- Keep the Linux command and updater separate from native project generation. Upstream fetches use only tool-owned storage and never inspect project remotes or reset project Git state.
+- Keep the Linux/Windows command and updater separate from native project generation. Upstream fetches use only tool-owned storage and never inspect project remotes or reset project Git state.
 - Preserve native Codex model, sandbox, permission, and hook-trust settings. CLI convenience is not an approval bypass or an independent agent engine.
 - Keep help, version, doctor, and dry-run offline. Updates occur between sessions and preserve edits in managed installations.

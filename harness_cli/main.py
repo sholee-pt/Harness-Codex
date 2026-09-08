@@ -32,6 +32,20 @@ def default_data_root(*, installer: bool = False) -> Path:
     return Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share"))) / "harness-codex"
 
 
+def default_bin_root() -> Path:
+    if os.name == "nt":
+        return Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData/Local"))) / "Programs/HarnessCodex/bin"
+    return Path.home() / ".local/bin"
+
+
+def _register_path(bin_dir: Path, *, dry_run: bool = False) -> dict:
+    if os.name == "nt":
+        from .windows_path import register_path
+    else:
+        from .shell import register_path
+    return register_path(bin_dir, dry_run=dry_run)
+
+
 class _AgentParser(argparse.ArgumentParser):
     def parse_args(self, args=None, namespace=None):
         parsed = super().parse_args(args, namespace)
@@ -66,11 +80,11 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
         commands.choices[name].add_argument("--no-update-check", action="store_true", default=argparse.SUPPRESS)
     install = commands.add_parser("install", help="Install this tool into user-local managed storage.")
     install.add_argument("--data-dir", type=Path, default=default_data_root(installer=True))
-    install.add_argument("--bin-dir", type=Path, default=Path.home() / ".local/bin")
+    install.add_argument("--bin-dir", type=Path, default=default_bin_root())
     install.add_argument("--branch", help="Pin a codex/vN[.M] branch; otherwise track the latest Codex branch.")
     install.add_argument("--repository", default=distribution.DEFAULT_REPOSITORY, help="HTTPS or SSH transport for sholee-pt/Harness.")
     install.add_argument("--auto-update", choices=("compatible", "check", "off"), default="compatible")
-    install.add_argument("--no-modify-path", action="store_true", help="Skip Bash startup PATH registration.")
+    install.add_argument("--no-modify-path", action="store_true", help="Skip user PATH registration (Bash startup on Linux; user registry on Windows).")
     update = commands.add_parser("update", help="Check or install an upstream tool release without changing project files.")
     update.add_argument("--check", action="store_true", help="Only inspect upstream versions; write nothing.")
     update.add_argument("--repair-launcher", action="store_true", help="Repair an owned legacy launcher or interrupted migration offline, then exit.")
@@ -171,16 +185,18 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
     try:
         _environment()
         if args.command == "install":
-            from .shell import register_path
-            if os.name == "posix" and not args.no_modify_path:
-                register_path(args.bin_dir, dry_run=True)
+            if not args.no_modify_path:
+                _register_path(args.bin_dir, dry_run=True)
             result = distribution.install_tool(source_root, args.data_dir, args.bin_dir,
                                                python_executable=sys.executable, branch=args.branch,
                                                repository=args.repository, auto_update=args.auto_update)
             print(json.dumps(result, indent=2))
-            if os.name == "posix" and not args.no_modify_path:
-                print(json.dumps(register_path(args.bin_dir), indent=2))
-            print(f"Installed {result.get('command', 'harness')} in {args.bin_dir.expanduser().absolute()}. Open a new terminal or run: . ~/.bashrc")
+            if not args.no_modify_path:
+                print(json.dumps(_register_path(args.bin_dir), indent=2))
+            hint = "Open a new terminal." if os.name == "nt" else "Open a new terminal or run: . ~/.bashrc"
+            if args.no_modify_path:
+                hint = "PATH registration skipped; invoke the command by its full path."
+            print(f"Installed {result.get('command', 'harness')} in {args.bin_dir.expanduser().absolute()}. {hint}")
             return 0
         if args.command == "update":
             if args.repair_launcher:
@@ -198,9 +214,8 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
                 print("Tool update complete. Use harness-codex init --project PATH --install-only to update the project generator, then harness-codex config --project PATH for a reviewed project update.")
             return 0
         preflight_project_command(args, source_root=source_root)
-        if args.command == "init" and os.name == "posix" and not args.dry_run and os.environ.get("HARNESS_TOOL_HOME"):
-            from .shell import register_path
-            register_path(Path(distribution.installed_status(default_data_root())["binDir"]))
+        if args.command == "init" and not args.dry_run and os.environ.get("HARNESS_TOOL_HOME"):
+            _register_path(Path(distribution.installed_status(default_data_root())["binDir"]))
         launcher_result = _launcher_environment_gate(args, source_root)
         if launcher_result is not None:
             return launcher_result
