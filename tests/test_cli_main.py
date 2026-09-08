@@ -131,7 +131,7 @@ class CliRoutingTests(unittest.TestCase):
 
 class AutomaticUpdateTests(unittest.TestCase):
     @contextmanager
-    def fixtures(self, *, policy="compatible", available="9.3", due=True, tty=True, stdout_tty=True):
+    def fixtures(self, *, policy="compatible", available="9.3", due=True, tty=True, stdout_tty=True, command=None):
         with ExitStack() as stack:
             stack.enter_context(mock.patch.dict(os.environ, {"HARNESS_TOOL_HOME": "unused-tool-root"}, clear=True))
             stack.enter_context(mock.patch.object(sys.stdin, "isatty", return_value=tty))
@@ -139,7 +139,7 @@ class AutomaticUpdateTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(sys.stdout, "isatty", return_value=stdout_tty))
             stderr = stack.enter_context(redirect_stderr(io.StringIO()))
             values = {
-                "state": stack.enter_context(mock.patch.object(distribution, "installed_status", return_value={"auto_update": policy, "release_root": str(REPO)})),
+                "state": stack.enter_context(mock.patch.object(distribution, "installed_status", return_value={"auto_update": policy, "release_root": str(REPO), **({"command": command} if command else {})})),
                 "due": stack.enter_context(mock.patch.object(distribution, "check_due", return_value=due)),
                 "mark": stack.enter_context(mock.patch.object(distribution, "mark_check")),
                 "check": stack.enter_context(mock.patch.object(distribution, "check_update", return_value={"updateAvailable": True, "availableVersion": available, "branch": "codex/v" + available})),
@@ -186,14 +186,15 @@ class AutomaticUpdateTests(unittest.TestCase):
             mocks.call.assert_not_called()
 
     def test_check_policy_and_new_major_only_notify(self):
-        for options in ({"policy": "check"}, {"available": "10.0"}):
+        for options in ({"policy": "check"}, {"available": "10.0"},
+                        {"policy": "check", "command": "harness-codex"}, {"available": "10.0", "command": "harness-codex"}):
             with self.subTest(options=options), self.fixtures(**options) as mocks:
                 self.assertIsNone(cli._automatic_update(self.arguments(), REPO, ["start"]))
                 mocks.mark.assert_called_once()
                 mocks.check.assert_called_once()
                 mocks.update.assert_not_called()
                 mocks.call.assert_not_called()
-                self.assertIn("harness-codex update", mocks.stderr.getvalue())
+                self.assertIn(options.get("command", "harness") + " update", mocks.stderr.getvalue())
 
     def test_up_to_date_does_not_download(self):
         with self.fixtures() as mocks:
