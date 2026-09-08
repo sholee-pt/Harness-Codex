@@ -6,15 +6,15 @@
 
 <p align="center">
   <a href="https://github.com/sholee-pt/Harness/releases/tag/codex-v9.8"><img src="https://img.shields.io/badge/Harness_for_Codex-v9.8-2563EB.svg?style=flat-square" alt="Harness for Codex v9.8"></a>
-  <a href="#codex-and-future-claude-editions"><img src="https://img.shields.io/badge/Agent-Codex-111827.svg?style=flat-square" alt="Agent: Codex"></a>
+  <a href="#codex-and-future-claude-editions"><img src="https://custom-icon-badges.demolab.com/badge/Agent-Codex-111827.svg?style=flat-square&amp;logo=openai&amp;logoColor=white" alt="Agent: Codex"></a>
   <a href="#what-it-generates"><img src="https://img.shields.io/badge/Type-Harness_Generator-7C3AED.svg?style=flat-square" alt="Type: Harness Generator"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Proprietary-64748B.svg?style=flat-square" alt="License: Proprietary"></a>
 </p>
 
 <p align="center">
-  <a href="environment.yml"><img src="https://img.shields.io/badge/Python-3.11-3776AB.svg?style=flat-square" alt="Python 3.11"></a>
-  <a href="#one-command-linux-installation"><img src="https://img.shields.io/badge/Platform-Linux-334155.svg?style=flat-square" alt="Platform: Linux"></a>
-  <a href="#one-command-windows-installation"><img src="https://img.shields.io/badge/Platform-Windows-0078D4.svg?style=flat-square" alt="Platform: Windows"></a>
+  <a href="environment.yml"><img src="https://img.shields.io/badge/Python-3.11-3776AB.svg?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.11"></a>
+  <a href="#one-command-linux-installation"><img src="https://img.shields.io/badge/Platform-Linux-334155.svg?style=flat-square&amp;logo=linux&amp;logoColor=white" alt="Platform: Linux"></a>
+  <a href="#one-command-windows-installation"><img src="https://custom-icon-badges.demolab.com/badge/Platform-Windows-0078D4.svg?style=flat-square&amp;logo=windows11&amp;logoColor=white" alt="Platform: Windows"></a>
 </p>
 
 <p align="center">
