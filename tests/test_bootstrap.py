@@ -386,7 +386,7 @@ class BootstrapIntegrationTests(unittest.TestCase):
         self.assertEqual(active["commit"], self.commits["9.10"])
         self.assertIsNone(active["branch"])
         self.assertEqual(active["auto_update"], "off")
-        version = subprocess.run([str(self.bin_dir / "harness"), "--version"], env=self.environment,
+        version = subprocess.run([str(self.bin_dir / "harness-codex"), "--version"], env=self.environment,
                                  capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(version.returncode, 0, version.stderr)
         self.assertIn("9.10", version.stdout)
