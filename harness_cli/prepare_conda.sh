@@ -18,22 +18,29 @@ if [[ -z "$conda_command" ]]; then
   prefix="${XDG_DATA_HOME:-$HOME/.local/share}/harness-codex-conda"
   [[ ! -e "$prefix" && ! -L "$prefix" ]] || { printf '%s\n' 'Conda setup directory already exists without a usable conda command; preserve and review it.' >&2; exit 1; }
   conda_scratch=$(mktemp -d "${TMPDIR:-/tmp}/harness-codex-conda.XXXXXXXX")
-  trap 'rm -rf -- "$conda_scratch"' EXIT
-  trap 'exit 130' INT
-  trap 'exit 143' TERM
+  printf '      Downloading and verifying the Python environment manager...\n'
   url="https://github.com/conda-forge/miniforge/releases/download/26.5.3-0/Miniforge3-26.5.3-0-Linux-$arch.sh"
   curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
-    --connect-timeout 15 --max-time 600 --retry 2 "$url" -o "$conda_scratch/miniforge.sh" </dev/null
+    --connect-timeout 15 --max-time 600 --retry 2 "$url" -o "$conda_scratch/miniforge.sh" </dev/null >> "$install_log" 2>&1
   actual=$(sha256sum "$conda_scratch/miniforge.sh")
   [[ ${actual%% *} == "$digest" ]] || { printf '%s\n' 'Miniforge checksum mismatch; refusing execution.' >&2; exit 1; }
   mkdir -p -- "$(dirname -- "$prefix")"
-  bash "$conda_scratch/miniforge.sh" -b -p "$prefix" </dev/null
+  printf '      Installing the Python environment manager; this may take a few minutes...\n'
+  bash "$conda_scratch/miniforge.sh" -b -p "$prefix" </dev/null >> "$install_log" 2>&1
   conda_command="$prefix/bin/conda"
 fi
-environments=$("$conda_command" env list --json)
+finish_step
+start_step '[2/3] Preparing the isolated Harness environment'
+environments=$("$conda_command" env list --json 2>> "$install_log")
+printf '%s\n' "$environments" >> "$install_log"
 if ! printf '%s' "$environments" | grep -Eq '"[^"]*/harness"'; then
-  "$conda_command" create --name harness --override-channels --channel conda-forge python=3.11 git --yes
+  printf '      First setup: preparing Python and Git; this may take a few minutes...\n'
+  "$conda_command" create --name harness --override-channels --channel conda-forge python=3.11 git --yes >> "$install_log" 2>&1
+else
+  printf '      Reusing the existing Harness environment.\n'
 fi
-if ! command -v git >/dev/null 2>&1 && ! "$conda_command" run -n harness git --version >/dev/null 2>&1; then
-  "$conda_command" install --name harness --override-channels --channel conda-forge git --yes
+if ! command -v git >/dev/null 2>&1 && ! "$conda_command" run -n harness git --version >> "$install_log" 2>&1; then
+  printf '      Preparing Git for tool updates...\n'
+  "$conda_command" install --name harness --override-channels --channel conda-forge git --yes >> "$install_log" 2>&1
 fi
+finish_step

@@ -54,6 +54,10 @@ git clone --branch codex/v9.8 --single-branch git@github.com:sholee-pt/Harness.g
 bash Harness/installer/install.sh
 ```
 
+The current branch's source installers show three stages: installation tools, the isolated Harness environment, and command/PATH installation. Each completed stage includes its elapsed time. Conda package output and the CLI's JSON installation receipts go to a uniquely named local log; its path is printed before work starts and again at completion. Failures report the failed stage and the last log lines. Long operations show their current task without an estimated percentage. Use `tail -f LOG_PATH` on Linux or `Get-Content -LiteralPath LOG_PATH -Wait` on Windows to follow the full log in another terminal. Logs stay in the system temporary directory after the installer exits and may be removed by normal temporary-file cleanup.
+
+These display changes are available from the current `codex/v9.8` source checkout. Already published `codex-v9.8` Release assets retain their original installer output. The underlying CLI `install` output and installation behavior remain compatible.
+
 The retired `install_harness.sh` Git bootstrap has been removed from this branch. For private access, use an authenticated Git clone and the source installer above. The installed CLI retains its authenticated HTTPS/SSH update support. Git author name/email are not authentication. Codex CLI installation and login remain prerequisites for actual Codex sessions; version/help, installation and diagnosis do not require a model call.
 
 ## One-command Windows installation
@@ -110,6 +114,8 @@ harness-codex start --project /path/to/project "Fix the preprocessing error and 
 | `harness-codex doctor --project PATH` | Validate installed artifacts and activation contracts |
 | `harness-codex update --check` | Inspect upstream without installing |
 | `harness-codex update` | Update tool code between sessions |
+| `harness-codex uninstall --dry-run` | Preview removal of the installed CLI |
+| `harness-codex uninstall` | Show the removal scope; require typing `yes` in an interactive terminal |
 
 Ordinary source-content drift can recommend `start` to re-read source. Missing evidence requires a reviewed `config`. Changed managed files, malformed references, links and contract errors retain the existing blocking behavior. No diagnostic silently updates manifest hashes. `status` exit code 0 means the state query completed, not that every validation passed; inspect its state and summary, or use `doctor` for validation.
 
@@ -128,6 +134,23 @@ harness-codex config --project /path/to/project
 Tool updates preserve project agents and skills. The last two commands separately adopt new generator guidance through a reviewed configuration update. Valid v9.0–v9.8 project artifacts remain compatible. Existing v9.2–v9.4 legacy launchers can be repaired with `harness update --repair-launcher`; current launchers are unchanged. Reinstalling the same tool source preserves file bytes and modification times. Managed source or launcher edits are refused rather than overwritten.
 
 Default automatic updates check at most once a day before interactive work and accept verified forward versions within the same major release. Use `--auto-update check` or `--auto-update off` when installing to change the policy; `--no-update-check` suppresses an invocation's automatic check. Explicit `update` can select a major version. Branch selection alone does not prove successful CI or improved model performance. Help, version, status, doctor and dry-run stay offline.
+
+## Uninstall the CLI
+
+Available in the current `codex/v9.8` branch (update an older CLI first):
+
+```bash
+harness-codex uninstall --dry-run
+harness-codex uninstall
+```
+
+The command lists tool storage, launchers and PATH handling, then requires the exact answer `yes` in an interactive terminal. Enter, `no`, `y` or any other answer cancels. Redirected/piped input cannot authorize deletion; there is no unattended confirmation flag. `--dry-run` writes nothing and needs no terminal. `--data-dir PATH` explicitly selects a different managed installation.
+
+Uninstall verifies all installed versions, receipts and launcher hashes before changing anything, and checks them again after confirmation. Modified/unrecognized files, links, orphaned receipts and active installation locks stop removal. Staging or PATH-update failures restore the original files; any files that cannot be restored or cleaned up are preserved and reported. After a forced process termination during staging, keep any `.harness-uninstall-*` backup directories/files for manual recovery.
+
+The CLI and its retained tool releases are removed. Project harnesses, the source checkout, the Conda environment and Miniforge remain. Shared command directories retain their PATH registration. Otherwise, only the exact generated Bash block or matching literal Windows user PATH entry is removed; user-edited Bash blocks and custom PATH expressions stay. Reopen the terminal afterwards to refresh its PATH and command cache. Use the project `remove` command below to remove a project's harness separately.
+
+On Windows, an executing batch launcher finishes deleting itself after the Python process returns. Any pending command cleanup is reported by path. Invoke uninstall through the installed `harness-codex` command; manually calling its Python launcher from an interactive CMD shell can leave that final batch cleanup pending.
 
 ## Remove or reset a project harness
 

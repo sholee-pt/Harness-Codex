@@ -45,11 +45,13 @@ main() {
   trap 'exit 143' TERM
   base="https://github.com/sholee-pt/Harness/releases/download/codex-v$VERSION"
   archive="harness-codex-$VERSION-linux.tar.gz"
+  printf 'Downloading Harness for Codex %s...\n' "$VERSION"
   for name in "$archive" SHA256SUMS; do
     curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
       --connect-timeout 15 --max-time 300 --retry 2 "$base/$name" -o "$temporary/$name" </dev/null \
       || fail 'Release download failed. The public one-line installer requires public release access; private repositories still need authentication.'
   done
+  printf 'Verifying checksum and extracting the release...\n'
   expected=$(awk -v name="$archive" '$2 == name {print $1}' "$temporary/SHA256SUMS")
   [ "${#expected}" -eq 64 ] || fail 'Missing or ambiguous archive checksum.'
   case "$expected" in *[!0-9a-f]*) fail 'Invalid archive checksum.' ;; esac

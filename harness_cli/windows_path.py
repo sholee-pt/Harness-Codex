@@ -60,3 +60,38 @@ def register_path(bin_dir: Path, *, dry_run: bool = False, registry=None, broadc
     notified = (broadcast or _broadcast)()
     return {**result, 'state': 'updated', 'writes': 1, 'notified': notified,
             'currentShell': 'Open a new terminal to load the updated user PATH.'}
+
+
+def unregister_path(bin_dir: Path, *, dry_run: bool = False, expected=None, registry=None, broadcast=None) -> dict:
+    """Remove the selected literal directory; retain expanded/custom PATH expressions."""
+    import hashlib
+    import json
+    if registry is None:
+        import winreg as registry
+    directory = str(_path(bin_dir))
+    try:
+        with registry.OpenKey(registry.HKEY_CURRENT_USER, 'Environment', 0, registry.KEY_READ) as key:
+            before = _read(registry, key)
+    except FileNotFoundError:
+        before = None
+    value, kind = before if before is not None else ('', registry.REG_EXPAND_SZ)
+    if not isinstance(value, str) or kind not in (registry.REG_SZ, registry.REG_EXPAND_SZ):
+        raise ValueError('User PATH must be a Windows string registry value')
+    entries = value.split(';')
+    kept = [entry for entry in entries if entry.casefold().rstrip('\\/') != directory.casefold().rstrip('\\/')]
+    result = {'profile': r'HKCU\Environment\Path', 'state': 'would-remove' if kept != entries else 'preserved',
+              'fingerprint': hashlib.sha256(json.dumps(before).encode()).hexdigest(), 'writes': 0}
+    if expected is not None and result != expected:
+        raise ValueError('Windows PATH changed after the uninstall preview; nothing was removed')
+    if kept == entries or dry_run:
+        return result
+    with registry.CreateKeyEx(registry.HKEY_CURRENT_USER, 'Environment', 0,
+                              registry.KEY_QUERY_VALUE | registry.KEY_SET_VALUE) as key:
+        if _read(registry, key) != before:
+            raise ValueError('User PATH changed during removal; retry without overwriting it')
+        registry.SetValueEx(key, 'Path', 0, kind, ';'.join(kept))
+    try:
+        notified = (broadcast or _broadcast)()
+    except OSError:
+        notified = False  # The write already succeeded; fresh terminals still read it.
+    return {**result, 'state': 'removed', 'writes': 1, 'notified': notified}

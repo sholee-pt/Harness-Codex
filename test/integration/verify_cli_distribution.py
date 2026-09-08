@@ -37,6 +37,42 @@ def report(output: str) -> dict:
     return value
 
 
+def terminal_uninstall(executable: Path, answer: str, env: dict) -> str:
+    """Exercise the actual shell command with terminal streams, not mocked input."""
+    import pty
+    import select
+    import time
+    master, slave = pty.openpty()
+    child = subprocess.Popen([str(executable), 'uninstall'], stdin=slave, stdout=slave, stderr=slave, env=env)
+    os.close(slave)
+    transcript = b''
+    sent = False
+    deadline = time.monotonic() + 60
+    try:
+        while time.monotonic() < deadline:
+            if select.select([master], [], [], 0.2)[0]:
+                try:
+                    part = os.read(master, 8192)
+                except OSError:
+                    break  # PTY closes with EIO after the child exits.
+                if not part:
+                    break
+                transcript += part
+                if b'Type yes to uninstall' in transcript and not sent:
+                    os.write(master, (answer + '\n').encode())
+                    sent = True
+            if child.poll() is not None:
+                break
+        assert sent, transcript
+        assert child.wait(timeout=5) == 0, transcript
+        return transcript.decode('utf-8')
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait()
+        os.close(master)
+
+
 def verify(artifact: Path) -> dict:
     if os.name != "posix":
         return {"status": "not-applicable", "reason": "Linux launcher check requires POSIX"}
@@ -141,6 +177,15 @@ def verify(artifact: Path) -> dict:
         assert snapshot(git_metadata) == git_before
         assert snapshot(project)["README.md"] == readme_before
         assert snapshot(data) == tool_before
+        project_before = snapshot(project)
+        run([executable, 'uninstall', '--dry-run'], env=env)
+        reject([executable, 'uninstall'], 'interactive terminal', input='yes\n', env=env)
+        assert 'cancelled' in terminal_uninstall(executable, 'no', env)
+        assert snapshot(data) == tool_before
+        assert 'Uninstalled harness-codex' in terminal_uninstall(executable, 'yes', env)
+        assert not data.exists() and not executable.exists()
+        assert snapshot(project) == project_before
+        assert '# >>> harness-codex PATH >>>' not in (home / '.bashrc').read_text()
         return {"status": "passed", "version": version, "archiveChecksums": True,
                 "bootstrap": True, "launcher": True, "spacedPaths": True, "dryRunReadOnly": True,
                 "installOnly": True, "repeatNoOp": True, "projectGitUntouched": True,
@@ -149,6 +194,7 @@ def verify(artifact: Path) -> dict:
                 "removalPreviewReadOnly": True, "ownedGeneratorRemoved": True,
                 "absentStatus": True, "reinstallAfterRemoval": True, "userReadmePreserved": True,
                 "toolStateUnchangedByProjectCommands": True,
+                "nativeTerminalUninstallConfirmed": True, "uninstallKeptProject": True,
                 "liveCodexInvoked": False}
 
 

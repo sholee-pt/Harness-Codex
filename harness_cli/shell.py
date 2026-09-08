@@ -12,6 +12,12 @@ START = '# >>> harness-codex PATH >>>'
 END = '# <<< harness-codex PATH <<<'
 
 
+def _block(directory: str) -> bytes:
+    quoted = shlex.quote(directory)
+    return (f'{START}\ncase ":${{PATH:-}}:" in\n'
+            f'  *:{quoted}:*) ;;\n  *) export PATH={quoted}"${{PATH:+:$PATH}}" ;;\nesac\n{END}\n').encode()
+
+
 def register_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False) -> dict:
     home = _path(home or Path.home())
     directory = str(_path(bin_dir))
@@ -22,9 +28,7 @@ def register_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = Fa
         raise ValueError('Bash startup file must be a regular file no larger than 1 MiB')
     before = profile.read_bytes() if profile.exists() else b''
     text = before.decode('utf-8')
-    quoted = shlex.quote(directory)
-    block = (f'{START}\ncase ":${{PATH:-}}:" in\n'
-             f'  *:{quoted}:*) ;;\n  *) export PATH={quoted}"${{PATH:+:$PATH}}" ;;\nesac\n{END}\n').encode()
+    block = _block(directory)
     if text.count(START) == 1 and text.count(END) == 1 and block.decode() in text:
         return {'profile': str(profile), 'state': 'unchanged', 'writes': 0}
     # Recognize literal exports without executing expansions, commands or the rc.
@@ -43,9 +47,15 @@ def register_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = Fa
     after = before + (b'\n' if before and not before.endswith(b'\n') else b'') + block
     if dry_run:
         return {'profile': str(profile), 'state': 'would-update', 'writes': 0}
+    _replace_profile(profile, before, after)
+    return {'profile': str(profile), 'state': 'updated', 'writes': 1,
+            'currentShell': 'Open a new terminal or run: . ~/.bashrc'}
+
+
+def _replace_profile(profile: Path, before: bytes, after: bytes) -> None:
     # Use a sibling created exclusively; recheck bytes before atomic replacement.
     import tempfile
-    fd, name = tempfile.mkstemp(prefix='.harness-codex-path-', dir=home)
+    fd, name = tempfile.mkstemp(prefix='.harness-codex-path-', dir=profile.parent)
     temporary = Path(name)
     try:
         with os.fdopen(fd, 'wb') as stream:
@@ -62,5 +72,22 @@ def register_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = Fa
         os.replace(temporary, profile)
     finally:
         temporary.unlink(missing_ok=True)
-    return {'profile': str(profile), 'state': 'updated', 'writes': 1,
-            'currentShell': 'Open a new terminal or run: . ~/.bashrc'}
+
+
+def unregister_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False, expected=None) -> dict:
+    """Remove only the exact generated block; literal/user-edited exports are preserved."""
+    import hashlib
+    profile = _path((home or Path.home()) / '.bashrc')
+    if profile.exists() and (not profile.is_file() or profile.stat().st_size > 1024 * 1024):
+        raise ValueError('Bash startup file must be a regular file no larger than 1 MiB')
+    before = profile.read_bytes() if profile.exists() else b''
+    block = _block(str(_path(bin_dir)))
+    removable = before.count(START.encode()) == before.count(END.encode()) == 1 and block in before
+    result = {'profile': str(profile), 'state': 'would-remove' if removable else 'preserved',
+              'fingerprint': hashlib.sha256(before).hexdigest(), 'writes': 0}
+    if expected is not None and result != expected:
+        raise ValueError('Bash PATH changed after the uninstall preview; nothing was removed')
+    if removable and not dry_run:
+        _replace_profile(profile, before, before.replace(block, b'', 1))
+        return {**result, 'state': 'removed', 'writes': 1}
+    return result

@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
-from harness_cli.shell import register_path, START
+from harness_cli.shell import register_path, unregister_path, START
 
 
 @unittest.skipUnless(os.name == 'posix', 'Bash PATH registration is POSIX-only')
@@ -34,6 +34,31 @@ class ShellPathTests(unittest.TestCase):
         self.assertEqual(self.run_bash().split(':').count(str(self.bin)), 1)
         self.assertEqual(register_path(self.bin, home=self.home)['writes'], 0)
         self.assertEqual((self.profile.read_bytes(), self.profile.stat().st_mtime_ns), before)
+
+    def test_unregister_removes_only_exact_block_and_rechecks_preview(self):
+        self.profile.write_bytes(b'# before\n')
+        self.profile.chmod(0o640)
+        register_path(self.bin, home=self.home)
+        with self.profile.open('ab') as stream:
+            stream.write(b'# after\n')
+        before = self.profile.read_bytes(), self.profile.stat().st_mtime_ns
+        preview = unregister_path(self.bin, home=self.home, dry_run=True)
+        self.assertEqual((self.profile.read_bytes(), self.profile.stat().st_mtime_ns), before)
+        self.profile.write_bytes(before[0] + b'# concurrent edit\n')
+        with self.assertRaisesRegex(ValueError, 'changed after'):
+            unregister_path(self.bin, home=self.home, expected=preview)
+        self.profile.write_bytes(before[0])
+        self.assertEqual(unregister_path(self.bin, home=self.home, expected=preview)['writes'], 1)
+        self.assertEqual(self.profile.read_bytes(), b'# before\n# after\n')
+        self.assertEqual(self.profile.stat().st_mode & 0o777, 0o640)
+        self.assertEqual(unregister_path(self.bin, home=self.home)['writes'], 0)
+
+    def test_unregister_preserves_literal_exports_and_edited_blocks(self):
+        for text in ('export PATH="' + str(self.bin) + ':$PATH"\n', START + '\n# user edited\n'):
+            self.profile.write_text(text)
+            before = self.profile.read_bytes(), self.profile.stat().st_mtime_ns
+            self.assertEqual(unregister_path(self.bin, home=self.home)['state'], 'preserved')
+            self.assertEqual((self.profile.read_bytes(), self.profile.stat().st_mtime_ns), before)
 
     def test_existing_home_or_literal_export_is_not_duplicated(self):
         binary = self.home / '.local/bin'

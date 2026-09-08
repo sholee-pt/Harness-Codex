@@ -85,6 +85,9 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     install.add_argument("--repository", default=distribution.DEFAULT_REPOSITORY, help="HTTPS or SSH transport for sholee-pt/Harness.")
     install.add_argument("--auto-update", choices=("compatible", "check", "off"), default="compatible")
     install.add_argument("--no-modify-path", action="store_true", help="Skip user PATH registration (Bash startup on Linux; user registry on Windows).")
+    uninstall = commands.add_parser("uninstall", help="Remove the installed CLI after typing yes; keep project harnesses and Conda.")
+    uninstall.add_argument("--data-dir", type=Path, default=default_data_root())
+    uninstall.add_argument("--dry-run", action="store_true", help="Preview tool removal without confirmation or writes.")
     update = commands.add_parser("update", help="Check or install an upstream tool release without changing project files.")
     update.add_argument("--check", action="store_true", help="Only inspect upstream versions; write nothing.")
     update.add_argument("--repair-launcher", action="store_true", help="Repair an owned legacy launcher or interrupted migration offline, then exit.")
@@ -184,6 +187,9 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
         return 0
     try:
         _environment()
+        if args.command == "uninstall":
+            from .uninstall import run
+            return run(args.data_dir, dry_run=args.dry_run)
         if args.command == "install":
             if not args.no_modify_path:
                 _register_path(args.bin_dir, dry_run=True)

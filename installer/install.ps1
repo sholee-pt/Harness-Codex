@@ -34,6 +34,21 @@ foreach ($directory in @($BinDir, $DataDir)) {
     if ($directory -match '[%!";\r\n]') { throw 'Installation paths contain unsupported characters.' }
 }
 
+$installLog = Join-Path ([IO.Path]::GetTempPath()) ('harness-codex-install-log-' + [guid]::NewGuid().ToString('N') + '.txt')
+$logStream = [IO.File]::Open($installLog, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
+$logStream.Dispose()
+function Start-HarnessStep([string]$Label) {
+    $script:installStep = $Label
+    $script:stepClock = [Diagnostics.Stopwatch]::StartNew()
+    Write-Host "$Label..."
+    [IO.File]::AppendAllText($installLog, "`n$Label`n")
+}
+function Complete-HarnessStep {
+    Write-Host ("{0}: done ({1}s)" -f $installStep, [int]$stepClock.Elapsed.TotalSeconds)
+}
+Write-Host "Harness for Codex installer`nDetailed log: $installLog"
+try {
+Start-HarnessStep '[1/3] Checking installation tools'
 # Do not activate Conda or change the caller's project Python environment.
 $condaCommand = $null
 if ($CondaExe) {
@@ -60,6 +75,8 @@ if (-not $condaCommand) {
         if (Test-Path -LiteralPath $CondaHome) { throw "Existing incomplete or unrelated directory preserved: $CondaHome" }
         $download = Join-Path ([IO.Path]::GetTempPath()) ('harness-miniforge-' + [guid]::NewGuid().ToString('N') + '.exe')
         try {
+            Write-Host '      Downloading and verifying the Python environment manager...'
+            $ProgressPreference = 'SilentlyContinue'
             [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
             Invoke-WebRequest -UseBasicParsing -TimeoutSec 300 -Uri 'https://github.com/conda-forge/miniforge/releases/download/26.5.3-0/Miniforge3-26.5.3-0-Windows-x86_64.exe' -OutFile $download
             $hasher = [Security.Cryptography.SHA256]::Create()
@@ -70,6 +87,7 @@ if (-not $condaCommand) {
                 throw 'Miniforge SHA-256 verification failed.'
             }
             # NSIS requires /D last, without quotes around its value (including spaces).
+            Write-Host '      Installing the Python environment manager; this may take a few minutes...'
             $process = Start-Process -FilePath $download -ArgumentList "/S /InstallationType=JustMe /RegisterPython=0 /AddToPath=0 /D=$CondaHome" -WindowStyle Hidden -PassThru
             if (-not $process.WaitForExit(600000)) {
                 & "$env:SystemRoot\System32\taskkill.exe" /PID $process.Id /T /F | Out-Null
@@ -86,14 +104,25 @@ if (-not $condaCommand) {
 
 function Invoke-HarnessConda {
     $originalEnvs = $env:CONDA_ENVS_PATH
+    $originalErrorPreference = $ErrorActionPreference
     try {
         if ($CondaHome) { $env:CONDA_ENVS_PATH = Join-Path $CondaHome 'envs' }
-        & $condaCommand @args
+        # PowerShell 5.1 wraps native stderr as ErrorRecord; warnings are not exit failures.
+        $ErrorActionPreference = 'Continue'
+        & $condaCommand @args 2>&1 | ForEach-Object {
+            [IO.File]::AppendAllText($installLog, "$_`n")
+            if ($_ -isnot [Management.Automation.ErrorRecord]) { $_ }
+        }
         $script:condaExit = $LASTEXITCODE
-    } finally { $env:CONDA_ENVS_PATH = $originalEnvs }
+    } finally {
+        $env:CONDA_ENVS_PATH = $originalEnvs
+        $ErrorActionPreference = $originalErrorPreference
+    }
 }
+Complete-HarnessStep
+Start-HarnessStep '[2/3] Preparing the isolated Harness environment'
 $environmentJson = Invoke-HarnessConda info --json
-if ($condaExit -ne 0) { throw 'Unable to inspect Conda environments.' }
+if ($condaExit -ne 0) { throw "Unable to inspect Conda environments (exit $condaExit)." }
 $environmentInfo = $environmentJson -join "`n" | ConvertFrom-Json
 # Registered environments from other Conda installations need not be resolvable by name.
 $existing = @($environmentInfo.envs_dirs | ForEach-Object { Join-Path $_ 'harness' } |
@@ -103,23 +132,38 @@ if ($CondaHome) {
     $existing = @($existing | Where-Object { [IO.Path]::GetFullPath($_) -ieq $expectedEnvironment })
 }
 if ($existing.Count -eq 0) {
-    Invoke-HarnessConda create --name harness --override-channels --channel conda-forge python=3.11 git --yes
-    if ($condaExit -ne 0) { throw 'Unable to create the harness Conda environment.' }
+    Write-Host '      First setup: preparing Python and Git; this may take a few minutes...'
+    Invoke-HarnessConda create --name harness --override-channels --channel conda-forge python=3.11 git --yes | Out-Null
+    if ($condaExit -ne 0) { throw "Unable to create the harness Conda environment (exit $condaExit)." }
 } else {
+    Write-Host '      Reusing the existing Harness environment.'
     # A dedicated Git makes updates work even when the calling shell has no Git.
-    Invoke-HarnessConda run --no-capture-output -n harness git --version
+    Invoke-HarnessConda run --no-capture-output -n harness git --version | Out-Null
     if ($condaExit -ne 0) {
-        Invoke-HarnessConda install --name harness --override-channels --channel conda-forge git --yes
-        if ($condaExit -ne 0) { throw 'Unable to prepare Git in the harness environment.' }
+        Write-Host '      Preparing Git for tool updates...'
+        Invoke-HarnessConda install --name harness --override-channels --channel conda-forge git --yes | Out-Null
+        if ($condaExit -ne 0) { throw "Unable to prepare Git in the harness environment (exit $condaExit)." }
     }
 }
+Complete-HarnessStep
+Start-HarnessStep '[3/3] Installing command and applying PATH preferences'
 $installArguments = @('run', '--no-capture-output', '-n', 'harness', 'python', '-B', (Join-Path $SourceRoot 'harness.py'), 'install', '--data-dir', $DataDir, '--bin-dir', $BinDir, '--auto-update', $AutoUpdate)
 if ($NoModifyPath) { $installArguments += '--no-modify-path' }
-Invoke-HarnessConda @installArguments
-if ($condaExit -ne 0) { throw 'Harness installation failed.' }
+$installOutput = Invoke-HarnessConda @installArguments
+if ($condaExit -ne 0) { throw "Harness installation failed (exit $condaExit)." }
 if (-not $NoModifyPath) {
     if (-not @($env:Path -split ';' | Where-Object { $_.TrimEnd('\') -ieq $BinDir.TrimEnd('\') }).Count) {
         $env:Path = "$BinDir;$env:Path"
     }
-    Write-Output 'Ready in this PowerShell session: harness-codex --version'
+}
+Complete-HarnessStep
+# Keep the CLI receipt contract intact; replay only its existing human summary.
+$installOutput | Where-Object { $_ -like 'Installed *' } | ForEach-Object { Write-Host $_ }
+if (-not $NoModifyPath) { Write-Host 'Ready in this PowerShell session: harness-codex --version' }
+Write-Host "Installation complete. Detailed log: $installLog"
+} catch {
+    [IO.File]::AppendAllText($installLog, "$_`n")
+    Write-Host "`n${installStep}: failed. Last log lines:"
+    Get-Content -LiteralPath $installLog -Tail 15 | ForEach-Object { Write-Host $_ }
+    throw "$_ Detailed log: $installLog"
 }

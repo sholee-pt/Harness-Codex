@@ -1,5 +1,6 @@
 """Run the real PowerShell bootstrap with controlled release transport."""
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -104,6 +105,72 @@ try {
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('9.8 Windows installer', result.stdout)
         self.assertFalse(self.marker.exists())
+
+
+@unittest.skipUnless(POWERSHELL, 'Requires native Windows PowerShell')
+class WindowsSourceInstallerTests(unittest.TestCase):
+    def test_stage_logs_handle_native_warnings_and_real_exit_failures(self):
+        for failure, existing in (("", False), ("", True), ("info", False), ("create", False), ("run", False)):
+            with self.subTest(failure=failure, existing=existing), tempfile.TemporaryDirectory() as directory:
+                base = Path(directory)
+                (base / "info.json").write_text(json.dumps({"envs_dirs": [str(base / "envs")]}))
+                if existing:
+                    history = base / "envs/harness/conda-meta/history"
+                    history.parent.mkdir(parents=True)
+                    history.write_text("fixture")
+                (base / "conda.cmd").write_text('''@echo off
+if "%~1"=="%TEST_FAIL%" (
+  echo dependency failure detail 1>&2
+  exit /b 23
+)
+echo advisory warning, not an error 1>&2
+if "%~1"=="info" (
+  type "%TEST_BASE%\\info.json"
+  exit /b 0
+)
+if "%~1"=="create" (
+  echo Channels: conda-forge
+  echo Downloading and Extracting Packages
+  exit /b 0
+)
+echo {"treeHash":"internal-receipt","branch":null}
+echo {"state":"unchanged","writes":0}
+echo Installed harness-codex in fixture-bin. PATH registration skipped; invoke the command by its full path.
+exit /b 0
+''')
+                env = {**os.environ, "TEST_BASE": str(base), "TEST_SOURCE": str(ROOT / "installer/install.ps1"),
+                       "TEST_FAIL": failure, "TEMP": str(base), "TMP": str(base)}
+                code = r'''
+$before = @($env:Path, $env:CONDA_PREFIX, $env:CONDA_DEFAULT_ENV, $env:CONDA_ENVS_PATH) -join '|'
+$result = 0
+try {
+    & ([scriptblock]::Create([IO.File]::ReadAllText($env:TEST_SOURCE))) -SourceRoot (Split-Path -Parent $env:TEST_SOURCE) -CondaExe (Join-Path $env:TEST_BASE 'conda.cmd') -DataDir (Join-Path $env:TEST_BASE 'data') -BinDir (Join-Path $env:TEST_BASE 'bin') -NoModifyPath
+} catch { Write-Output $_.Exception.Message; $result = 1 }
+if ($before -cne (@($env:Path, $env:CONDA_PREFIX, $env:CONDA_DEFAULT_ENV, $env:CONDA_ENVS_PATH) -join '|')) { exit 88 }
+exit $result
+'''
+                result = subprocess.run([POWERSHELL, '-NoProfile', '-NonInteractive', '-Command', code],
+                                        env=env, capture_output=True, text=True, timeout=30)
+                logs = list(base.glob('harness-codex-install-log-*.txt'))
+                self.assertEqual(len(logs), 1, result.stdout + result.stderr)
+                log = logs[0].read_text(encoding='utf-8-sig')
+                self.assertIn(logs[0].name, result.stdout)
+                if failure:
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                    self.assertNotIn('Installation complete', result.stdout)
+                    self.assertIn('exit 23', result.stdout)
+                    self.assertIn('dependency failure detail', result.stdout)
+                    self.assertIn('dependency failure detail', log)
+                else:
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertRegex(result.stdout, r'\[3/3\].*: done \(\d+s\)')
+                    self.assertIn('Installed harness-codex in fixture-bin', result.stdout)
+                    self.assertIn('PATH registration skipped', result.stdout)
+                    for detail in ('"treeHash"', '"writes":0', 'advisory warning'):
+                        self.assertNotIn(detail, result.stdout + result.stderr)
+                        self.assertIn(detail, log)
+                    self.assertNotIn('Downloading and Extracting', result.stdout)
+                    self.assertEqual('Reusing the existing' in result.stdout, existing)
 
 
 if __name__ == '__main__':

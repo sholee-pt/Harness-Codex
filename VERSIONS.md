@@ -615,3 +615,9 @@ This maintenance release preserves the generated-project schemas and accepts val
 - Builds deterministic Windows ZIP and Linux tar archives from identical payloads, with both standalone installers covered by release checksums.
 - Adds Windows cold-install CI, existing-Conda PowerShell integration, malformed ZIP/checksum cases and isolated registry-preservation tests. Existing full regression and prior-source compatibility checks remain publication gates.
 - Does not alter project contracts or claim live agent/model performance improvements.
+
+### Subsequent v9.8 branch changes
+
+- Source installers show timed installation stages and keep Conda output and JSON receipts in a local diagnostic log. Existing published Release assets are unchanged.
+- Adds `harness-codex uninstall` with a read-only preview and exact interactive `yes` confirmation. Tool versions and launchers are verified before removal; project harnesses, Conda environments and shared PATH registrations are preserved.
+- Adds Windows batch self-cleanup, long staging-path handling, failure rollback checks and installed-command removal tests alongside the existing compatibility suite.

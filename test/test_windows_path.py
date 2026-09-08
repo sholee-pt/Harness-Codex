@@ -55,6 +55,31 @@ class WindowsPathTests(unittest.TestCase):
         self.assertEqual(len(self.registry.writes), 1)
         self.notify.assert_called_once()
 
+    def test_unregister_keeps_other_entries_kind_and_rejects_stale_preview(self):
+        self.registry.value = ('C:\\first;' + str(self.binary) + ';%USERPROFILE%\\tools', 1)
+        preview = windows_path.unregister_path(self.binary, registry=self.registry, dry_run=True)
+        self.assertFalse(self.registry.writes)
+        original = self.registry.value
+        self.registry.value = ('concurrent edit', 1)
+        with self.assertRaisesRegex(ValueError, 'changed after'):
+            windows_path.unregister_path(self.binary, registry=self.registry, expected=preview)
+        self.assertFalse(self.registry.writes)
+        self.registry.value = original
+        result = windows_path.unregister_path(self.binary, registry=self.registry, broadcast=self.notify, expected=preview)
+        self.assertEqual(result['writes'], 1)
+        self.assertEqual(self.registry.value, ('C:\\first;%USERPROFILE%\\tools', 1))
+        self.notify.assert_called_once()
+
+    def test_unregister_preserves_user_path_expressions_and_missing_value(self):
+        for value in (None, ('%HARNESS_TEST_BIN%', 2)):
+            self.registry.value = value
+            with mock.patch.dict(os.environ, {'HARNESS_TEST_BIN': str(self.binary)}):
+                result = windows_path.unregister_path(self.binary, registry=self.registry, broadcast=self.notify)
+            self.assertEqual(result['state'], 'preserved')
+            self.assertEqual(self.registry.value, value)
+            self.assertFalse(self.registry.writes)
+        self.notify.assert_not_called()
+
     def test_absent_path_is_created_without_an_empty_search_entry(self):
         self.registry.value = None
         self.register()

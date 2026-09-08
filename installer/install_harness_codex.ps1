@@ -24,6 +24,8 @@ $temporary = Join-Path ([IO.Path]::GetTempPath()) ('harness-codex-install-' + [g
 $temporary = [IO.Path]::GetFullPath($temporary)
 [void][IO.Directory]::CreateDirectory($temporary)
 try {
+    $ProgressPreference = 'SilentlyContinue'
+    Write-Host "Downloading Harness for Codex $version..."
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     try {
         Invoke-WebRequest -UseBasicParsing -TimeoutSec 300 -Uri "$release/$name" -OutFile (Join-Path $temporary $name)
@@ -31,6 +33,7 @@ try {
     } catch {
         throw 'Unable to download the public Harness release. Check network access, tag/assets, and repository visibility; private GitHub resources return 404 without authentication.'
     }
+    Write-Host 'Verifying checksum and extracting the release...'
     $lines = @(Get-Content -LiteralPath (Join-Path $temporary 'SHA256SUMS') | Where-Object { $_ -cmatch ('^[0-9a-f]{64}  ' + [regex]::Escape($name) + '$') })
     if ($lines.Count -ne 1) { throw 'Missing or duplicate release checksum.' }
     $archivePath = Join-Path $temporary $name
