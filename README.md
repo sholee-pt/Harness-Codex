@@ -1,8 +1,29 @@
+<h1 align="center">Harness for Codex</h1>
+
 <p align="center">
-  <img src="https://img.shields.io/badge/Harness_for_Codex-v9.8-brightgreen.svg" alt="Harness for Codex v9.8">
+  Project-local orchestration with Codex-native agents and skills.
 </p>
 
-# Harness for Codex
+<p align="center">
+  <a href="https://github.com/sholee-pt/Harness/releases/tag/codex-v9.8"><img src="https://img.shields.io/badge/Harness_for_Codex-v9.8-2563EB.svg?style=flat-square" alt="Harness for Codex v9.8"></a>
+  <a href="#codex-and-future-claude-editions"><img src="https://img.shields.io/badge/Agent-Codex-111827.svg?style=flat-square" alt="Agent: Codex"></a>
+  <a href="#what-it-generates"><img src="https://img.shields.io/badge/Type-Harness_Generator-7C3AED.svg?style=flat-square" alt="Type: Harness Generator"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Proprietary-64748B.svg?style=flat-square" alt="License: Proprietary"></a>
+</p>
+
+<p align="center">
+  <a href="environment.yml"><img src="https://img.shields.io/badge/Python-3.11-3776AB.svg?style=flat-square" alt="Python 3.11"></a>
+  <a href="#one-command-linux-installation"><img src="https://img.shields.io/badge/Platform-Linux-334155.svg?style=flat-square" alt="Platform: Linux"></a>
+  <a href="#one-command-windows-installation"><img src="https://img.shields.io/badge/Platform-Windows-0078D4.svg?style=flat-square" alt="Platform: Windows"></a>
+</p>
+
+<p align="center">
+  <a href="#one-command-linux-installation">Linux install</a> &middot;
+  <a href="#one-command-windows-installation">Windows install</a> &middot;
+  <a href="#configure-and-use-a-project">Quick start</a> &middot;
+  <a href="https://github.com/sholee-pt/Harness/releases/tag/codex-v9.8">Release</a> &middot;
+  <a href="VERSIONS.md">Changelog</a>
+</p>
 
 Generate and maintain a project-local harness using Codex-native agents and skills. The Linux and Windows command is **`harness-codex`**. Project folders may be plain directories, Git worktrees or multi-repository workspaces.
 
