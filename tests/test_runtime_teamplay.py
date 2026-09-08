@@ -668,14 +668,14 @@ class CompatibilityTests(RuntimeFixtureTestCase):
             harness_metadata.READABLE_EVALUATION_VERSIONS
         ))
 
-    def test_no_new_runtime_dependency(self) -> None:
+    def test_environment_has_python_and_updater_git_without_agent_frameworks(self) -> None:
         environment = (REPO_ROOT / "environment.yml").read_text(encoding="utf-8")
         dependency_lines = [
             line.strip()
             for line in environment.splitlines()
             if line.startswith("  - ")
         ]
-        self.assertEqual(dependency_lines, ["- defaults", "- python=3.11"])
+        self.assertEqual(dependency_lines, ["- conda-forge", "- python=3.11", "- git"])
 
 
 class DeterministicPlanBuilderTests(unittest.TestCase):

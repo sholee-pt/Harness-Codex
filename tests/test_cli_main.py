@@ -193,7 +193,7 @@ class AutomaticUpdateTests(unittest.TestCase):
                 mocks.check.assert_called_once()
                 mocks.update.assert_not_called()
                 mocks.call.assert_not_called()
-                self.assertIn("harness update", mocks.stderr.getvalue())
+                self.assertIn("harness-codex update", mocks.stderr.getvalue())
 
     def test_up_to_date_does_not_download(self):
         with self.fixtures() as mocks:

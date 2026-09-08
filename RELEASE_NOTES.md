@@ -1,20 +1,68 @@
-Harness for Codex v9.6 improves project guidance and diagnostic clarity while preserving the v9.0–v9.5 project contracts.
+Harness for Codex v9.7
 
-- Model, training and benchmark projects can use a conditional analysis reference covering input/split identity, preprocessing fit population, checkpoints, evaluation comparability, run completion and execution paths. Only relevant procedures are generated; no fixed ML agent team or additional mandatory workflow is introduced.
-- Validation, doctor and status separate managed-artifact checks, source-evidence checks, untested runtime loading and unmeasured task quality. Ordinary source-content drift recommends re-reading with `start`; missing references require a reviewed `configure`. Managed edits or other contract errors retain the existing blocking behavior. No source hash is silently refreshed.
-- Evaluator/topology help no longer displays a stale v8.1 release label. The CLI and doctor continue to expose the version from common metadata.
-- A one-reviewer packet example clarifies active participants, parent integration and bounded completion. Native smoke and independent generation-evaluation protocols distinguish automatic discovery from manually transferred instructions and downstream task use from fresh authoring quality.
-- Authoring Contract 3, Plan Schema 3, Manifest Schema 7 and Artifact Contract 2 remain unchanged. Existing valid v9.0–v9.5 artifacts remain accepted, and a CLI update does not regenerate projects. Linux bootstrap timeouts and guarded legacy-launcher migration from v9.5 remain in place.
+## One-command Linux installation
+
+For public release access, run:
 
 ```bash
-harness update
-# Needed only for legacy v9.2–v9.4 launchers; already repaired launchers are unchanged.
-harness update --repair-launcher
-harness start --project /path/to/project
+curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v9.7/install_harness_codex.sh | sh
 ```
 
-To adopt new generator guidance in an existing project, update the installed generator with `harness init --project PATH --install-only`, then request a reviewed update with `harness configure --project PATH`. Project configuration remains separate from tool updates.
+The standalone script verifies the release archive's SHA-256, reuses an existing Conda installation or installs checksum-pinned [Miniforge 26.5.3-0](https://github.com/conda-forge/miniforge/releases/tag/26.5.3-0), creates the dedicated `harness` Python environment, installs `harness-codex`, and registers its bin directory in `~/.bashrc`. No sudo or GitHub CLI is required. Linux x86_64 and aarch64 are supported for environment setup. The machine needs curl, Bash, tar and sha256sum; the installer explains missing system utilities before installation. Git is included in a newly created environment for subsequent updates.
 
-Linux/Windows regression checks and pinned real-source upgrades gate publication. A documented native smoke procedure is not a claim that every runtime or user server passed it. Live results and limitations must be reported separately from structural checks. No general generation-quality improvement, model performance gain or token saving is claimed. Claude integration remains unimplemented.
+Open a new terminal, or apply the registration once in the current terminal:
 
-Local Windows checks with Codex CLI 0.153.4 observed project-router loading, one direct file change and a bounded interactive `harness start` session. A separate custom-reviewer probe did not complete delegation: its requested source paths exceeded the fixture reviewer's access scope, and that session reported no native custom-role selection interface. Neither a successful native reviewer run nor a complete interactive first-time `init` is established by these checks. One independent generation pass on a small synthetic model project produced relevant skills without adding agents; this is a limited smoke result, not a comparative quality benchmark.
+```bash
+. ~/.bashrc
+harness-codex --version
+harness-codex --help
+```
+
+A child process started by `curl | sh` cannot change its parent shell's environment. Registration makes the command available in fresh Bash sessions. Existing matching PATH exports are kept, repeated setup adds no duplicate export or PATH entry, and unchanged profiles retain their bytes and modification time. An edited Harness PATH block or a linked startup file is preserved with an explanation. Use `--no-modify-path` for manual PATH management. Installation does not initialize Conda or activate it in the project shell.
+
+GitHub `/blob/` URLs return an HTML page, not executable script content. Use the Release asset URL above or a `raw.githubusercontent.com` script URL.
+
+Public deployment support does not change the repository's visibility. While this repository is private, anonymous curl downloads cannot access it. The existing authenticated source installer remains available:
+
+```bash
+git clone --branch codex/v9.7 --single-branch git@github.com:sholee-pt/Harness.git Harness
+bash Harness/install.sh
+```
+
+The advanced `install_harness.sh` bootstrap still supports existing HTTPS credentials, tokens and SSH transport for branch selection. It delegates to the same source installer and environment preparation. Git author name/email are not authentication. Codex CLI installation and login remain prerequisites for actual Codex sessions; version/help, installation and diagnosis do not require a model call.
+
+
+## Changes and compatibility
+
+- The command is `harness-codex`; `config` is the primary project configuration command and `configure` remains an alias.
+- Fresh installs use Codex-specific tool storage. Existing generic installations preserve their recorded names and remain updateable.
+- Installation and installed `init` register Bash PATH without duplicate exports or repeated writes. Existing profile content and permissions are preserved. `--no-modify-path` opts out during installation.
+- A missing Conda installation is supplied through a pinned, hash-verified Miniforge installer. Project shell activation and Codex configuration remain native.
+- Reinstalling identical tool state avoids rewriting its active pointer. Redundant CI runs of tests already covered by full discovery were removed. Safety, compatibility and installed-command checks remain.
+- Authoring Contract 3, Plan Schema 3, Manifest Schema 7 and Artifact Contract 2 are unchanged; valid v9.0–v9.7 project artifacts are accepted.
+
+## Release files
+
+[The latest Codex Release](https://github.com/sholee-pt/Harness/releases/tag/codex-v9.7) contains:
+
+| File | Purpose |
+| --- | --- |
+| `install_harness_codex.sh` | Standalone public `curl | sh` installer, pinned to this release |
+| `harness-codex-9.7-linux.tar.gz` | Tool source and offline installation entry point; no bundled model or Codex binary |
+| `SHA256SUMS` | SHA-256 for the archive and standalone installer |
+| `build.json` | Version, immutable source commit and build hashes |
+
+After downloading all three named input files, manual installation is:
+
+```bash
+sha256sum --check SHA256SUMS
+tar -xzf harness-codex-9.7-linux.tar.gz
+bash harness-codex-9.7/install.sh
+```
+
+Only the latest GitHub Release is retained under the owner's distribution policy. Version-control tags and commits remain available for reproducibility; deleted older Release asset URLs are no longer installation endpoints.
+
+
+## Validation scope
+
+Linux and Windows regression tests, real prior-version source upgrades and installed-command tests gate publication. The cold Linux pipeline test uses exact locally built Harness assets in place of this currently private repository's public URLs; Miniforge download, checksum verification, Conda creation, Bash startup discovery and repeated installation are real. Authenticated GitHub installation and published asset hashes are checked separately. This does not establish anonymous access while the repository remains private, native reviewer completion, model performance improvement or token savings.

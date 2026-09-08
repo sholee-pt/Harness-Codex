@@ -220,7 +220,7 @@ class ProjectInputTests(unittest.TestCase):
         os.environ["FAKE_CODEX_EXIT"] = "7"
         code, out, err = self.run_cli("reset", "--yes")
         self.assertEqual(code, 7)
-        self.assertIn("configure to continue", out)
+        self.assertIn("config to continue", out)
         self.assertIn("not been confirmed", err)
         self.assertFalse((self.root / ".harness/manifest.json").exists())
         self.assertEqual(json.loads(self.run_cli("status", tty=False)[1])["state"], "generator-only")

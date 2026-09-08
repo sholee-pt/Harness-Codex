@@ -34,7 +34,9 @@ def register_project_commands(subparsers) -> None:
         "reset": "Preview or remove the generated harness, then configure it afresh.",
     }
     for command, description in descriptions.items():
-        parser = subparsers.add_parser(command, help=description, description=description)
+        parser = subparsers.add_parser("config" if command == "configure" else command,
+                                      aliases=["configure"] if command == "configure" else [],
+                                      help=description, description=description)
         parser.set_defaults(command=command)
         parser.add_argument("--project", type=Path, default=Path.cwd(),
                             help="Existing project directory (default: current directory).")
@@ -84,9 +86,9 @@ def _assert_no_transaction(root: Path, installer) -> None:
     if pending in {"orphaned-removal-workspace", "orphaned-transaction-workspace"}:
         raise ProjectError("Harness recovery data exists without its journal. Preserve the backup directory and review its ownership manually before configuration; automatic recovery cannot establish the original state.")
     if pending == "removal-pending":
-        raise ProjectError("An interrupted removal must be recovered first. Run harness remove --project PATH --recover to preview recovery, then add --yes.")
+        raise ProjectError("An interrupted removal must be recovered first. Run harness-codex remove --project PATH --recover to preview recovery, then add --yes.")
     if pending:
-        raise ProjectError("A project transaction is pending. Run harness doctor --project PATH and recover it before continuing.")
+        raise ProjectError("A project transaction is pending. Run harness-codex doctor --project PATH and recover it before continuing.")
 
 
 def _goal_input(args, installer) -> str | None:
@@ -297,8 +299,8 @@ def _check_existing(source_root: Path, root: Path, *, required: bool = False) ->
         return True
     print(json.dumps(report, indent=2, ensure_ascii=False), file=sys.stderr)
     raise ProjectError(
-        "The project harness is not ready. Run harness doctor --project PATH and resolve its findings; "
-        "use harness init for a new installation or configure for a supported upgrade."
+        "The project harness is not ready. Run harness-codex doctor --project PATH and resolve its findings; "
+        "use harness-codex init for a new installation or config for a supported upgrade."
     )
 
 
@@ -340,8 +342,8 @@ def project_status(source_root: Path, root: Path, installer) -> dict:
             result["errors"].append("Recovery data exists without its journal; preserve it for manual ownership review.")
             result["nextCommand"] = None
         else:
-            result["nextCommand"] = ("harness remove --project PATH --recover" if pending == "removal-pending"
-                                     else "harness doctor --project PATH")
+            result["nextCommand"] = ("harness-codex remove --project PATH --recover" if pending == "removal-pending"
+                                     else "harness-codex doctor --project PATH")
         return result
     if result["harnessPresent"]:
         code, report = _report(source_root, root)
@@ -368,10 +370,10 @@ def project_status(source_root: Path, root: Path, installer) -> dict:
         result["state"] = "invalid"
     can_reread = (result["state"] == "stale-evidence"
                   and _only_stale_evidence(report, root=root, source_root=source_root))
-    result["nextCommand"] = ("harness start --project PATH" if result["state"] == "configured" or can_reread
-                             else "harness configure --project PATH" if result["state"] in {"generator-only", "stale-evidence", "upgrade-required"}
-                             else "harness init --project PATH" if result["state"] == "absent"
-                             else "harness doctor --project PATH")
+    result["nextCommand"] = ("harness-codex start --project PATH" if result["state"] == "configured" or can_reread
+                             else "harness-codex config --project PATH" if result["state"] in {"generator-only", "stale-evidence", "upgrade-required"}
+                             else "harness-codex init --project PATH" if result["state"] == "absent"
+                             else "harness-codex doctor --project PATH")
     if result["state"] == "stale-evidence":
         result["guidance"] = (
             "Start can re-read changed source without regenerating the harness. Review configuration only if responsibilities or verification risks changed."
@@ -390,7 +392,7 @@ def _configuration_prompt(goal: str | None) -> str:
         "If the work or goals are unclear, ask for the missing information instead of inventing a fixed agent team. "
         "Do not commit, push, or modify Git metadata as part of harness configuration. "
         "After configuration, explain the validation result. Confirm whether the new native components are available "
-        "before using them; if they are not visible, direct the user to a fresh harness start session."
+        "before using them; if they are not visible, direct the user to a fresh harness-codex start session."
     )
     if goal:
         prompt += "\n\nThe user's project goal:\n" + goal
@@ -410,7 +412,7 @@ def _work_prompt(prompt: str | None, *, stale_evidence: bool = False) -> str:
             "the relevant source files before relying on stale project claims or choosing agents. "
             "Do not automatically regenerate or rewrite the harness merely because source files changed. "
             "If current evidence shows that the task needs a different persistent design, explain the finding "
-            "and propose a reviewed harness configure update."
+            "and propose a reviewed harness-codex config update."
         )
     if prompt:
         return instructions + "\n\nThe user's task:\n" + prompt
@@ -432,17 +434,17 @@ def _launch(command: list[str], root: Path, prompt: str) -> int:
 def _finish_configuration(source_root: Path, root: Path, command: list[str], goal: str | None) -> int:
     status = _launch(command, root, _configuration_prompt(goal))
     if status:
-        print(f"Codex exited with status {status}; configuration has not been confirmed. Run harness doctor --project PATH.",
+        print(f"Codex exited with status {status}; configuration has not been confirmed. Run harness-codex doctor --project PATH.",
               file=sys.stderr)
         return status
     status, report = _report(source_root, root)
     if status or not report["valid"]:
         print(json.dumps(report, indent=2, ensure_ascii=False), file=sys.stderr)
-        print("Codex exited, but a valid project harness was not confirmed. Run harness configure --project PATH to continue.",
+        print("Codex exited, but a valid project harness was not confirmed. Run harness-codex config --project PATH to continue.",
               file=sys.stderr)
         return status or 1
     print("Project harness files validate. This check does not prove runtime loading, task quality, or token savings.")
-    print("Use harness start --project PATH for your next project session.")
+    print("Use harness-codex start --project PATH for your next project session.")
     return 0
 
 
@@ -475,9 +477,9 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                 existing_status = project_status(source_root, root, installer)
                 print(f"A project harness already exists ({existing_status['state']}).")
                 if existing_status["state"] == "configured":
-                    print("Use harness start to work, configure to review it, or reset/remove to replace or remove its owned files.")
+                    print("Use harness-codex start to work, config to review it, or reset/remove to replace or remove its owned files.")
                 else:
-                    print("Review harness status/doctor before use. For a supported upgrade or stale evidence, supply --goal/--goal-file to init for a reviewed update.")
+                    print("Review harness-codex status/doctor before use. For a supported upgrade or stale evidence, supply --goal/--goal-file to init for a reviewed update.")
                 if args._existing_init_noop:
                     print("No project files were changed and Codex was not launched. Supply --goal/--goal-file to init for an explicit reviewed update.")
                     return 1 if existing_status["state"] == "invalid" else 0
@@ -492,7 +494,7 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                 print("Dry-run only: no generator files were written and Codex was not launched.")
                 return 0
             if args.install_only:
-                print("Generator installed. This command did not configure the project harness. Run harness configure --project PATH in a terminal.")
+                print("Generator installed. This command did not configure the project harness. Run harness-codex config --project PATH in a terminal.")
                 return 0
             return _finish_configuration(source_root, root, command, args._goal_text)
         if args.command == "configure":
@@ -501,10 +503,10 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
             _check_existing(source_root, root)
             destination = root / ".agents/skills/harness"
             if not (destination / "SKILL.md").is_file():
-                raise ProjectError("The generator is not installed. Run harness init --project PATH first.")
+                raise ProjectError("The generator is not installed. Run harness-codex init --project PATH first.")
             installation = installer.install(root, source=source, dry_run=True)
             if installation["writes"] or installation["removes"] or installation["directoriesCreated"]:
-                raise ProjectError("The installed generator needs updating. Run harness init --project PATH --install-only, then harness configure --project PATH.")
+                raise ProjectError("The installed generator needs updating. Run harness-codex init --project PATH --install-only, then harness-codex config --project PATH.")
             return _finish_configuration(source_root, root, command, args._goal_text)
         if args.command == "start":
             command = _interactive_codex(args.codex_binary)
@@ -537,9 +539,9 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
             report = lifecycle.remove_project(root, source_root=source_root, dry_run=False)
             print(json.dumps(report, indent=2, ensure_ascii=False), flush=True)
             if report.get("recoveryRequired"):
-                raise ProjectError("Removal committed but cleanup remains pending. Run harness remove --project PATH --recover, then add --yes; run harness configure after recovery.")
+                raise ProjectError("Removal committed but cleanup remains pending. Run harness-codex remove --project PATH --recover, then add --yes; run harness-codex config after recovery.")
             _assert_no_transaction(root, installer)
-            print("Previous generated harness removed. Starting fresh configuration; if Codex stops early, use harness configure to continue.")
+            print("Previous generated harness removed. Starting fresh configuration; if Codex stops early, use harness-codex config to continue.")
             return _finish_configuration(source_root, root, command, args._goal_text)
         raise ProjectError(f"Unknown project command: {args.command}")
     except KeyboardInterrupt:

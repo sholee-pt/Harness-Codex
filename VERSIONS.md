@@ -6,6 +6,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 
 | Branch | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
+| `codex/v9.7` | Harness for Codex v9.7 | Named Codex command, public one-command bootstrap, automatic isolated environment setup, idempotent Bash PATH registration and config alias; project contracts unchanged. |
 | `codex/v9.6` | Harness for Codex v9.6 | Schema 3 | Schema 7 | Schema 2 | Conditional model workflow guidance, clearer evidence/ownership diagnostics, reviewer examples and native execution validation protocol |
 | `codex/v9.5` | Harness for Codex v9.5 | Schema 3 | Schema 7 | Schema 2 | Versioned source completeness, caller-environment preservation, guarded launcher migration and bootstrap Git timeouts |
 | `codex/v9.4` | Harness for Codex v9.4 | Schema 3 | Schema 7 | Schema 2 | Markdown briefs, --agent option, existing-state notices and guarded removal/reset/recovery |

@@ -17,9 +17,9 @@ usage() {
     '  --auto-update POLICY        compatible (default), check, or off.' \
     '  --help                      Show this help without network or filesystem changes.' \
     '' \
-    'Requires Bash, Git, tar, GNU coreutils timeout, and Anaconda/Miniconda.' \
+    'Requires Bash, Git, tar, GNU coreutils timeout; Conda can be prepared automatically.' \
     'The timeout covers Git branch lookup and fetch, not the initial script download or Conda/source installation.' \
-    'The source installer prepares the harness environment.' \
+    'The source installer prepares the harness environment and installs Miniforge if Conda is absent.' \
     'For this private repository, use existing Git credentials, GITHUB_TOKEN/GH_TOKEN, or a configured SSH key.' \
     'Git author name/email do not authenticate downloads. This script never changes Git credentials or project files.' \
     'OpenSSH key/agent settings are preserved; passphrase prompts are disabled. Custom SSH wrappers must be noninteractive.'

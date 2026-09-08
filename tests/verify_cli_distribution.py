@@ -64,9 +64,12 @@ def verify(artifact: Path) -> dict:
         readme_before = snapshot(project)["README.md"]
         env = os.environ.copy()
         env["HARNESS_NO_UPDATE_CHECK"] = "1"
+        home = root / "home"
+        home.mkdir()
+        env["HOME"] = str(home)
         run(["bash", source / "install.sh", "--agent", "codex", "--data-dir", data,
              "--bin-dir", binary, "--auto-update", "off"], env=env)
-        executable = binary / "harness"
+        executable = binary / "harness-codex"
         version = run([executable, "--agent", "codex", "--version"], env=env).strip()
         assert "Harness for Codex" in version
         assert run([executable, "--runtime", "codex", "--version"], env=env).strip() == version

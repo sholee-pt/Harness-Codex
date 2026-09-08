@@ -169,7 +169,7 @@ class ProjectCliTests(unittest.TestCase):
     def test_configure_requires_generator_installation(self):
         code, out, err = self.run_cli("configure")
         self.assertEqual(code, 1)
-        self.assertIn("harness init", err)
+        self.assertIn("harness-codex init", err)
         self.assertEqual(list(self.root.iterdir()), [])
         self.assertFalse(self.log.exists())
 
@@ -462,7 +462,7 @@ class ProjectCliTests(unittest.TestCase):
         code, out, err = self.run_cli("status", tty=False)
         report = json.loads(out)
         self.assertEqual(report["state"], "stale-evidence", err)
-        self.assertEqual(report["nextCommand"], "harness start --project PATH")
+        self.assertEqual(report["nextCommand"], "harness-codex start --project PATH")
         self.assertEqual(report["summary"]["managedArtifacts"], "passed")
         self.assertEqual(report["summary"]["sourceEvidence"], "failed")
         self.assertEqual(snapshot(self.root), before)
@@ -475,7 +475,7 @@ class ProjectCliTests(unittest.TestCase):
         code, out, err = self.run_cli("status", tty=False)
         report = json.loads(out)
         self.assertEqual(report["state"], "stale-evidence", err)
-        self.assertEqual(report["nextCommand"], "harness configure --project PATH")
+        self.assertEqual(report["nextCommand"], "harness-codex config --project PATH")
         self.assertEqual(snapshot(self.root), before)
         self.assertFalse(self.log.exists())
 
@@ -487,7 +487,7 @@ class ProjectCliTests(unittest.TestCase):
         code, out, err = self.run_cli("status", tty=False)
         report = json.loads(out)
         self.assertEqual((code, report["state"]), (1, "invalid"), err)
-        self.assertEqual(report["nextCommand"], "harness doctor --project PATH")
+        self.assertEqual(report["nextCommand"], "harness-codex doctor --project PATH")
         self.assertEqual(report["summary"]["managedArtifacts"], "failed")
         self.assertEqual(report["summary"]["sourceEvidence"], "failed")
         code, out, err = self.run_cli("doctor", tty=False)

@@ -16,7 +16,7 @@ import tarfile
 
 from harness_cli.distribution import _source_info
 
-ROOT_FILES = ("harness.py", "install.py", "install.sh", "install_harness.sh", "environment.yml", "README.md", "LICENSE")
+ROOT_FILES = ("harness.py", "install.py", "install.sh", "install_harness.sh", "install_harness_codex.sh", "environment.yml", "README.md", "LICENSE")
 ROOT_DIRS = ("harness_cli", ".agents/skills/harness")
 
 
@@ -101,18 +101,18 @@ def build(root: Path, output: Path, *, allow_dirty: bool = False) -> dict:
         for name, data in sorted(files.items()):
             info = tarfile.TarInfo(f"harness-codex-{version}/{name}")
             info.size = len(data)
-            info.mode = 0o755 if name in {"install.sh", "install_harness.sh", "harness.py"} else 0o644
+            info.mode = 0o755 if name in {"install.sh", "install_harness.sh", "install_harness_codex.sh", "harness.py"} else 0o644
             info.mtime = 0
             archive.addfile(info, io.BytesIO(data))
     with artifact.open("xb") as stream:
         with gzip.GzipFile(fileobj=stream, filename="", mode="wb", mtime=0) as compressed:
             compressed.write(content.getvalue())
     digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
-    bootstrap = output / "install_harness.sh"
+    bootstrap = output / "install_harness_codex.sh"
     with bootstrap.open("xb") as stream:
-        stream.write(files["install_harness.sh"])
+        stream.write(files["install_harness_codex.sh"])
     bootstrap.chmod(0o755)
-    bootstrap_digest = hashlib.sha256(files["install_harness.sh"]).hexdigest()
+    bootstrap_digest = hashlib.sha256(files["install_harness_codex.sh"]).hexdigest()
     with (output / "SHA256SUMS").open("x", encoding="utf-8", newline="\n") as stream:
         stream.write(f"{digest}  {artifact.name}\n{bootstrap_digest}  {bootstrap.name}\n")
     report = {"runtime": "codex", "version": version, "commit": commit, "developmentBuild": commit is None,

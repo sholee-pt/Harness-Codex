@@ -1,184 +1,133 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Harness_for_Codex-v9.6-brightgreen.svg" alt="Harness for Codex v9.6">
-  <img src="https://img.shields.io/badge/Runtime-Codex-111827.svg" alt="Codex Runtime">
-  <img src="https://img.shields.io/badge/Type-Harness_Generator-orange.svg" alt="Harness Generator">
-  <img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="Proprietary License">
+  <img src="https://img.shields.io/badge/Harness_for_Codex-v9.7-brightgreen.svg" alt="Harness for Codex v9.7">
 </p>
 
 # Harness for Codex
 
-> Generate the smallest evidence-backed Codex agent system that matches a project's persistent decision boundaries.
+Generate and maintain a project-local harness using Codex-native agents and skills. The Linux command is **`harness-codex`**. Project folders may be plain directories, Git worktrees or multi-repository workspaces.
 
-Harness provides a standalone Linux command and a Codex skill, with project-local generator installation by default. Run it inside a local project workspace and it analyzes the available evidence, selects only justified agent and skill boundaries, and writes a native project harness for later work. A workspace may be a plain directory or a local Git work tree; GitHub is not required.
+## One-command Linux installation
 
-## Install with the Linux bootstrap
-
-`install_harness.sh` handles source download, version selection, the dedicated Conda environment and installation of the `harness` command. GitHub CLI (`gh`) and manually downloading/checking release archives are not required. Linux needs Bash, Git, tar, GNU coreutils (`timeout` and `sleep`), and Anaconda or Miniconda; the initial download below also uses curl. Codex CLI must be installed and authenticated separately.
-
-**Private repository authentication is required for the first download too.** `git config user.name` and `user.email` identify commit authors; they do not grant GitHub access. Use an existing `GITHUB_TOKEN`/`GH_TOKEN` with read access to this repository, or the SSH/source route below. The bootstrap can reuse a Git credential helper or SSH credentials once it has been downloaded, but it cannot authenticate a curl request that runs before the script exists. See [GitHub authentication](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github).
-
-If you have not already provided an access token in the environment, enter it locally without putting its value in shell history:
+For public release access, run:
 
 ```bash
-set +x
-read -r -s -p 'GitHub token with Harness Contents read access: ' GITHUB_TOKEN
-printf '\n'
-export GITHUB_TOKEN
+curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v9.7/install_harness_codex.sh | sh
 ```
 
-Then download the versioned bootstrap and install. The token is passed through curl's input, not its URL or command arguments:
+The standalone script verifies the release archive's SHA-256, reuses an existing Conda installation or installs checksum-pinned [Miniforge 26.5.3-0](https://github.com/conda-forge/miniforge/releases/tag/26.5.3-0), creates the dedicated `harness` Python environment, installs `harness-codex`, and registers its bin directory in `~/.bashrc`. No sudo or GitHub CLI is required. Linux x86_64 and aarch64 are supported for environment setup. The machine needs curl, Bash, tar and sha256sum; the installer explains missing system utilities before installation. Git is included in a newly created environment for subsequent updates.
+
+Open a new terminal, or apply the registration once in the current terminal:
 
 ```bash
-set +x
-printf 'Authorization: Bearer %s\n' "${GITHUB_TOKEN:-${GH_TOKEN:-}}" |
-  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
-    --header @- --header 'Accept: application/vnd.github.raw+json' \
-    'https://api.github.com/repos/sholee-pt/Harness/contents/install_harness.sh?ref=codex-v9.6' \
-    --output install_harness.sh &&
-  bash install_harness.sh --agent codex
-export PATH="$HOME/.local/bin:$PATH"
-
-harness --version
-harness --help
+. ~/.bashrc
+harness-codex --version
+harness-codex --help
 ```
 
-The versioned bootstrap link remains available when old version branches are removed. Running it without `--branch` selects the highest numeric Codex branch, fetches its exact source commit into temporary tool storage, validates the downloaded tree, and invokes the existing safe installer. It does not select an unrelated Claude release or use commit author information as authentication. Credentials remain in the process environment/credential provider; Harness never writes token values to its configuration, source, project, or logs. An environment token remains usable for later updates when it is supplied again; Harness does not save it.
+A child process started by `curl | sh` cannot change its parent shell's environment. Registration makes the command available in fresh Bash sessions. Existing matching PATH exports are kept, repeated setup adds no duplicate export or PATH entry, and unchanged profiles retain their bytes and modification time. An edited Harness PATH block or a linked startup file is preserved with an explanation. Use `--no-modify-path` for manual PATH management. Installation does not initialize Conda or activate it in the project shell.
 
-If you use SSH authentication and have no HTTPS token, curl cannot use your SSH key. Use the existing Git transport for the initial source download instead:
+GitHub `/blob/` URLs return an HTML page, not executable script content. Use the Release asset URL above or a `raw.githubusercontent.com` script URL.
+
+Public deployment support does not change the repository's visibility. While this repository is private, anonymous curl downloads cannot access it. The existing authenticated source installer remains available:
 
 ```bash
-git clone --depth 1 --branch codex/v9.6 git@github.com:sholee-pt/Harness.git Harness &&
-  bash Harness/install.sh --agent codex --repository git@github.com:sholee-pt/Harness.git
-export PATH="$HOME/.local/bin:$PATH"
+git clone --branch codex/v9.7 --single-branch git@github.com:sholee-pt/Harness.git Harness
+bash Harness/install.sh
 ```
 
-An already downloaded `install_harness.sh` also supports `--repository git@github.com:sholee-pt/Harness.git`. Without an explicit transport, it tries the fixed repository over HTTPS and then SSH using existing credentials. If the server has only an author name/email and no actual repository credential, installation reports the missing authentication instead of claiming success. No sudo or automatic shell-profile edits are used. Harness runs with its dedicated Python while the Codex child inherits the calling terminal's environment, including PATH and Conda labels. Activate the intended project environment, such as `scRAE`, before starting Harness.
+The advanced `install_harness.sh` bootstrap still supports existing HTTPS credentials, tokens and SSH transport for branch selection. It delegates to the same source installer and environment preparation. Git author name/email are not authentication. Codex CLI installation and login remain prerequisites for actual Codex sessions; version/help, installation and diagnosis do not require a model call.
 
-Each bootstrap Git branch query or fetch has its own timeout: 120 seconds by default, configurable with `bash install_harness.sh --timeout 60` (integer 1–600). A timeout terminates that process group, allows two seconds for shutdown, then kills remaining members and cleans temporary files. HTTPS lookup may still fall back to SSH; an exhausted lookup or fetch reports its phase and exits 124. This limit does not cover the initial curl download, Conda installation, the entire bootstrap, or processes that deliberately detach from the group. A failed download preserves the existing installed tool.
-
-## Configure and work
-
-The project folder must already exist. It may contain no Git repository, one repository, or multiple repositories.
+## Configure and use a project
 
 ```bash
-harness init --agent codex --project /absolute/path/to/project --goal-file /path/to/project-brief.md
-harness start --project /absolute/path/to/project
-harness start --project /absolute/path/to/project "Fix the preprocessing error and verify it"
-harness doctor --project /absolute/path/to/project
+harness-codex init --project /path/to/project --goal-file /path/to/project-brief.md
+harness-codex start --project /path/to/project
+harness-codex config --project /path/to/project --goal-file /path/to/project-brief.md
+harness-codex start --project /path/to/project "Fix the preprocessing error and verify it"
 ```
 
-`init` installs the generator inside the project and opens interactive Codex with the appropriate skill selected. If a project harness already exists, plain `init` reports its state and exits without changing project files or launching Codex. Supplying `--goal` or `--goal-file` explicitly requests a reviewed update; `--install-only` updates just the generator. Continue the conversation normally; native trust, login and approval prompts remain in effect. Exit Codex to let Harness verify the generated manifest. For later sessions, `start` selects the project harness internally, including projects with existing user-owned `AGENTS.md`. You do not need to type `$harness` or `$project-harness`. Fresh sessions discover newly generated instructions and agents; valid files do not prove model quality or actual agent loading.
+`init` installs the generator inside the project and starts interactive Codex with the generator selected. If a harness already exists, plain `init` reports its state; supplying a brief requests a reviewed update. `--install-only` installs or updates just the generator. Installed `init` also restores a missing Bash PATH registration, except during `--dry-run`. Continue normal conversation in Codex; `$harness` or `$project-harness` need not be typed manually. Trust, login, model, sandbox and approval settings remain native to Codex. On return, Harness checks the generated manifest; valid files do not establish live agent loading or task quality.
 
-`--goal` is a project description for `init`, `configure` and `reset`, not an option on `start`. Use `--goal-file` to supply a Markdown description instead. The two options are mutually exclusive. A brief should explain the project's purpose, recurring work, important boundaries, constraints and how results will be verified. Codex uses this description together with actual project files; the description alone does not prove that an agent boundary is needed, and it does not grant additional permissions.
-
-`--goal-file` accepts an existing UTF-8 `.md` or `.markdown` file, with an optional UTF-8 BOM and a 64 KiB file limit. Relative paths are resolved against the directory where the command is invoked. An explicitly selected description may be outside the project. Binary/control-character input, links and nonregular files are refused. Windows' final command-line length is checked before installation or reset; shorten a brief that exceeds that limit. The file is read as reference material and passed to the Codex session, so its text follows that session's normal processing. Harness does not copy the brief into its own project state or keep its path as a persistent setting; pass it again for a later configuration review.
-
-```bash
-harness configure --project /path/to/project --goal-file /path/to/project-brief.md
-harness start --agent codex --project /path/to/project "Implement the next requested change"
-```
-
-Ordinary source edits can make recorded evidence stale. When all safety/ownership checks pass, `start` asks Codex to re-read current source; it does not rewrite or declare the manifest valid. Deleted or renamed evidence blocks `start`, but `init`/`configure` can perform fresh analysis and reviewed replacement. Malformed references, symlinks, nonregular files, changed managed files and contract errors still block unsafe work.
+`config` is the public configuration command. The previous `configure` spelling remains a compatibility alias for existing scripts and dispatches to the same handler. `--goal` describes the project for `init`, `config` and `reset`; `--goal-file` reads an existing UTF-8 `.md`/`.markdown` file up to 64 KiB. They are mutually exclusive. Relative brief paths resolve from the invoking directory. A brief may be outside the project when explicitly selected; it is reference material, not extra authorization. Its path is not stored as a persistent project setting. `start` accepts an optional task argument instead.
 
 | Command | Behavior |
 | --- | --- |
-| `harness --version`, `harness --help` | Local information, no network or model call |
-| `harness init --project PATH` | Safe generator installation and interactive project configuration |
-| `harness init --project PATH --dry-run` | No writes, update check or Codex call |
-| `harness init --project PATH --install-only` | Generator installation only |
-| `harness configure --project PATH` | Review the project harness with the installed current generator |
-| `harness start --project PATH ["TASK"]` | Interactive Codex with the project harness selected |
-| `harness doctor --project PATH` | Read-only installed-state and activation diagnosis |
-| `harness status --project PATH` | Distinguish absent, generator-only, configured, stale, upgrade-required and invalid/pending state |
-| `harness remove --project PATH` | Preview removal of unchanged generated files; add `--yes` to apply |
-| `harness reset --project PATH --goal-file BRIEF.md` | Preview a fresh configuration; add `--yes` to remove generated artifacts and open Codex |
-| `harness update --check` | Read-only upstream branch check |
-| `harness update` | Update tool code; existing project artifacts remain unchanged |
-| `harness update --repair-launcher` | Offline, ownership-checked migration of an older installed launcher |
+| `harness-codex --version`, `--help` | Local information without network or a model call |
+| `harness-codex init --project PATH` | Install the project generator and open configuration |
+| `harness-codex init --project PATH --dry-run` | Preview without writes, PATH changes, updates or Codex |
+| `harness-codex init --project PATH --install-only` | Install only the generator |
+| `harness-codex config --project PATH` | Review project configuration |
+| `harness-codex start --project PATH ["TASK"]` | Open the project session |
+| `harness-codex status --project PATH` | Report installation state and next action |
+| `harness-codex doctor --project PATH` | Validate installed artifacts and activation contracts |
+| `harness-codex update --check` | Inspect upstream without installing |
+| `harness-codex update` | Update tool code between sessions |
 
-## Remove, reset and recover
+Ordinary source-content drift can recommend `start` to re-read source. Missing evidence requires a reviewed `config`. Changed managed files, malformed references, links and contract errors retain the existing blocking behavior. No diagnostic silently updates manifest hashes. `status` exit code 0 means the state query completed, not that every validation passed; inspect its state and summary, or use `doctor` for validation.
 
-These commands operate only inside the explicitly selected project. They do not uninstall the user-local `harness` command, alter Git metadata or remove arbitrary project files. Preview is the default; `--yes` applies the operation, while `--dry-run` always keeps it read-only.
+## Updates and existing installations
 
-```bash
-harness status --project /path/to/project
-harness remove --project /path/to/project                     # Preview generated-file removal
-harness remove --project /path/to/project --yes               # Apply removal; keep the generator
-harness remove --project /path/to/project --include-generator --yes
-harness reset --project /path/to/project --goal-file brief.md  # Preview
-harness reset --project /path/to/project --goal-file brief.md --yes
-```
+Fresh installations use `${XDG_DATA_HOME:-$HOME/.local/share}/harness-codex` and `~/.local/bin/harness-codex`. The separate Miniforge fallback, when needed, is in the sibling `harness-codex-conda` directory. The launcher preserves the caller's project environment. Existing Conda environments are reused; Git is added to the dedicated `harness` environment only if unavailable both there and on PATH. Project dependencies are not installed by Harness.
 
-Removal checks the recorded manifest/installer ownership and hashes before changing anything. Modified managed files, unsupported ownership/contract state and links cause a refusal; `--yes` does not force past those checks. Unmanaged files remain. In a shared `AGENTS.md`, only the exact unchanged Harness marker block is removed, preserving the bytes outside it. An empty instruction file or now-empty parent directories may remain because the manifest does not prove their entire ownership. Stale or removed source evidence does not by itself prevent removal of unchanged owned artifacts.
-
-`reset` checks the brief, generator installation and interactive Codex prerequisites first. It then installs/updates the generator, removes the previous generated harness and opens fresh configuration. If Codex fails or is cancelled, a newly valid harness is not claimed; continue with `harness configure`. It cannot undo arbitrary edits made during that interactive session. Use `configure` when you want a reviewed update without first removing the generated harness.
-
-Interrupted deletion retains an explicit CLI removal journal (`operation: remove`, `removalSchemaVersion: 1`) at `.harness/transaction.json` and owned recovery data under `.harness/removals/`. This is a separate contract from the generator's Transaction Schema 2. Pending state blocks normal configuration even when the manifest was already removed. Existing generator recovery deliberately refuses this different journal; recover it with the new CLI:
+Existing v9.2–v9.6 generic `harness` installations keep their recorded command and data directory when updated, so old launchers and automation continue to work. Run the new installer with default locations to adopt the separate `harness-codex` command. An explicitly reused legacy `--data-dir` retains its recorded launcher name; it does not silently rename user commands. Existing `HARNESS_TOOL_HOME` identifies an installed invocation, while installer defaults remain in the Codex namespace unless `--data-dir` is explicit.
 
 ```bash
-harness remove --project /path/to/project --recover       # Inspect recovery
-harness remove --project /path/to/project --recover --yes
+harness-codex update
+harness-codex init --project /path/to/project --install-only
+harness-codex config --project /path/to/project
 ```
 
-Recovery refuses to overwrite files changed since the recorded operation. Resolve reported conflicts before continuing; do not manually delete the journal or its backup directory. Recovery directories without a journal also block configuration and require manual ownership review. Successful removal does not touch optional user-level hooks or evaluation/operations records.
+Tool updates preserve project agents and skills. The last two commands separately adopt new generator guidance through a reviewed configuration update. Valid v9.0–v9.7 project artifacts remain compatible. Existing v9.2–v9.4 legacy launchers can be repaired with `harness update --repair-launcher`; current launchers are unchanged. Reinstalling the same tool source preserves file bytes and modification times. Managed source or launcher edits are refused rather than overwritten.
 
-## Codex and future Claude support
+Default automatic updates check at most once a day before interactive work and accept verified forward versions within the same major release. Use `--auto-update check` or `--auto-update off` when installing to change the policy; `--no-update-check` suppresses an invocation's automatic check. Explicit `update` can select a major version. Branch selection alone does not prove successful CI or improved model performance. Help, version, status, doctor and dry-run stay offline.
 
-The product direction is one `harness` command with separate runtime adapters and release channels. Codex is the default, and can be made explicit:
+## Remove or reset a project harness
 
 ```bash
-harness --agent codex init --project /absolute/path/to/project
-harness start --agent codex --project /absolute/path/to/project
-harness update --agent codex --check
+harness-codex remove --project /path/to/project                     # Preview
+harness-codex remove --project /path/to/project --yes               # Apply
+harness-codex remove --project /path/to/project --include-generator --yes
+harness-codex reset --project /path/to/project --goal-file brief.md  # Preview
+harness-codex reset --project /path/to/project --goal-file brief.md --yes
+harness-codex remove --project /path/to/project --recover --yes      # Recover interrupted removal
 ```
 
-`--agent` is the public option name. The old `--runtime` remains a hidden compatibility alias, and conflicting selections are rejected. This option chooses the Codex/Claude provider; it is not the name of a generated project subagent.
+Removal preserves modified/unowned files and Git metadata. `reset` preflights the brief, generator and native Codex, then removes owned artifacts and starts new configuration. It cannot undo arbitrary changes made during that session. Use `config` for a reviewed update without removal. Interrupted operations retain ownership-checked recovery state; preserve it and use the matching recovery command. These commands operate on the selected project and do not uninstall the CLI or remove Bash PATH entries.
 
-Claude CLI integration is not implemented in this release. `--agent claude` is recognized and exits with that explanation before environment preparation, downloads or file changes; it never runs Codex as a substitute. Existing `claude/*` branches do not imply compatibility with the new CLI.
+## Codex and future Claude editions
 
-| Component | Codex | Future Claude adapter |
+Provider identity is part of the executable, bootstrap, tool storage and release asset names:
+
+| Component | Codex | Future Claude edition |
 | --- | --- | --- |
-| User command | `harness --agent codex ...` | Same command, explicit Claude runtime |
+| Command | `harness-codex` | `harness-claude` |
+| Public installer | `install_harness_codex.sh` | `install_harness_claude.sh` |
+| Tool data directory | `harness-codex` | Separate Claude-owned directory |
 | Source branch | `codex/vN[.M]` | `claude/vN[.M]` |
-| Release tag | `codex-vN.M` | `claude-vN.M` |
-| Archive | `harness-codex-N.M-linux.tar.gz` | Separate Claude-named archive |
-| Native generated files | Codex agents, skills and project manifest | Claude-native files and distinct ownership contracts |
+| Tag / archive | `codex-vN.M` / `harness-codex-N.M-linux.tar.gz` | Separate Claude tag and archive |
 
-Runtime version numbers are independent: a higher Claude version must never replace a Codex installation. The existing Codex data path and project schemas stay compatible in v9.6. Before implementing the second runtime, active versions, receipts, locks and update histories must be separated per runtime with a reviewed migration. Merely broadening the current branch filter would create ownership collisions and is not supported.
+Only Codex is implemented. No Claude installer or executable is published as a placeholder. Compatibility options `--agent codex` and hidden `--runtime codex` remain accepted; conflicting assertions or Claude selection fail without launching another provider. Project-native formats and ownership contracts must be implemented separately before a Claude edition ships.
 
-## Updates and ownership
+## Release files
 
-Tool releases live under `${XDG_DATA_HOME:-$HOME/.local/share}/harness-cli`, separately from project-generated files. The launcher uses the real `harness` Conda interpreter. Managed files, launchers and active pointers are checked before replacement. Modified files cause a conflict; interrupted activation preserves the previous active release.
+[The latest Codex Release](https://github.com/sholee-pt/Harness/releases/tag/codex-v9.7) contains:
 
-The installer and release builder check required files against the declared source version before creating installation state or an archive: v9.4+ requires the lifecycle module, and v9.5+ also requires the environment module. Actual v9.2/v9.3 sources remain installable without modules introduced later. Hash integrity alone is not treated as proof that a source tree is complete.
+| File | Purpose |
+| --- | --- |
+| `install_harness_codex.sh` | Standalone public `curl | sh` installer, pinned to this release |
+| `harness-codex-9.7-linux.tar.gz` | Tool source and offline installation entry point; no bundled model or Codex binary |
+| `SHA256SUMS` | SHA-256 for the archive and standalone installer |
+| `build.json` | Version, immutable source commit and build hashes |
 
-Launchers installed by v9.2–v9.4 changed the Conda environment labels before starting the CLI. After updating the tool, run `harness update --repair-launcher`, then rerun the desired command from the same terminal. Interactive commands can perform this guarded repair and stop before launching Codex, because the original labels cannot be recovered reliably inside an already affected process. Help, version, status, doctor and previews remain read-only. The repair preserves modified launchers by refusing them and supports retry with a valid interrupted-migration journal. Malformed journals or unrecognized lock files require manual ownership review; do not delete them to force an update. Diagnostic helper processes receive the dedicated Harness environment separately; no project environment is activated automatically.
-
-Before interactive `init`, `configure` or `start`, the default policy checks at most once per day and installs forward updates within the same major version. It never replaces a running session's code. Major upgrades require explicit `harness update`. Offline or authentication failures retain the current installation and report the problem. Git uses an existing credential helper/SSH transport, or `GITHUB_TOKEN` then `GH_TOKEN` for this repository's HTTPS requests. Git author identity is not used for access.
-
-```bash
-bash install_harness.sh --auto-update check  # Notify only
-bash install_harness.sh --auto-update off    # No automatic checks
-harness start --project /path/to/project --no-update-check
-harness update --check --branch codex/v9.6
-harness update --branch codex/v9.6 --repository git@github.com:sholee-pt/Harness.git
-```
-
-Use `--bin-dir /absolute/bin/path --data-dir /absolute/tool/path` for custom installation locations, repeating those paths when reinstalling or changing installer settings. Keep tool storage outside the project. Without a branch pin, only numeric Codex branches are considered. Source commits and forward ancestry are checked, but branch selection itself does not assert a successful CI run or live model performance.
-
-Tool updates do not regenerate project agents automatically. Use `harness init --project PATH --install-only` to update the project generator, then `harness configure --project PATH` for a reviewed project update. Valid v9.0–v9.6 artifacts remain compatible. Operations recording and comparative evaluation are still optional and off by default.
-
-## Manual release archive
-
-[GitHub Releases](https://github.com/sholee-pt/Harness/releases/tag/codex-v9.6) also provides `harness-codex-9.6-linux.tar.gz`, `install_harness.sh`, `SHA256SUMS` and source-bound `build.json`. Download the first three files before running `sha256sum --check SHA256SUMS`; a checksum file cannot be checked before it exists. The archive is a Python-based tool, not a bundled Codex/model binary.
+After downloading all three named input files, manual installation is:
 
 ```bash
-sha256sum --check SHA256SUMS &&
-  tar -xzf harness-codex-9.6-linux.tar.gz &&
-  bash harness-codex-9.6/install.sh
+sha256sum --check SHA256SUMS
+tar -xzf harness-codex-9.7-linux.tar.gz
+bash harness-codex-9.7/install.sh
 ```
 
-The repository home page's About settings control whether Releases appears in the sidebar. This is separate from publishing a release and from repository visibility. Private releases require repository access. See [GitHub release management](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository).
+Only the latest GitHub Release is retained under the owner's distribution policy. Version-control tags and commits remain available for reproducibility; deleted older Release asset URLs are no longer installation endpoints.
 
 ## What It Generates
 
@@ -201,7 +150,7 @@ Simple projects may receive only `project-harness`. Harness does not create a fi
 Install the generator in the folder you selected for the project. GitHub membership, Git-root alignment, nested repositories, and registered worktree count do not determine whether that folder can host a harness. The target folder must already exist. Anaconda or Miniconda provides the dedicated standard-library-only Python environment.
 
 ```shell
-git clone --branch codex/v9.6 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v9.7 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 conda run -n harness python Harness/install.py --root "TARGET_PROJECT" --dry-run
 conda run -n harness python Harness/install.py --root "TARGET_PROJECT"
@@ -231,15 +180,15 @@ The skill also recognizes direct requests such as “configure the harness” an
 
 Harness first creates a structured proposal and runs a no-write dry-run. It applies files only when all ownership, selected-folder path safety, and instruction-precedence checks pass. Changed outputs are staged with backups before a journaled apply, and the manifest is written last. Codex detects skill changes automatically. A newly created `AGENTS.md` pointer applies on a fresh run; if a new custom agent or skill is not visible, start one new task in the same directory. No task deletion or per-request restart is required.
 
-Harness for Codex v9.6 retains a strict shared skill-frontmatter parser and binds every generated agent's instruction contract to its structured topology. It does not ask the model to reproduce fixed change-discipline or runtime-teamplay contracts. Authoring Contract 3 drafts use path-specific placeholders, and `harness_plan_builder.py` deterministically materializes a normal Schema 3 plan before the existing apply validator runs. Every project router and generated agent receives its required canonical block exactly once; an old draft revision, unsafe output path, or missing, duplicate, or misplaced placeholder fails before any workspace write.
+Harness for Codex v9.7 retains a strict shared skill-frontmatter parser and binds every generated agent's instruction contract to its structured topology. It does not ask the model to reproduce fixed change-discipline or runtime-teamplay contracts. Authoring Contract 3 drafts use path-specific placeholders, and `harness_plan_builder.py` deterministically materializes a normal Schema 3 plan before the existing apply validator runs. Every project router and generated agent receives its required canonical block exactly once; an old draft revision, unsafe output path, or missing, duplicate, or misplaced placeholder fails before any workspace write.
 
 The installed skill includes `references/minimal-draft-plan.json`, so plan authoring does not depend on repository-only test fixtures.
 
-## v9.6 compatibility and validation
+## v9.7 compatibility and validation
 
-v9.6 adds conditional model-workflow guidance, separates source evidence from managed-artifact diagnostics and clarifies reviewer and native execution checks. It retains v9.5's source completeness checks, caller-environment preservation, guarded launcher repair and bootstrap Git deadlines. Manifest Schema 7 and Artifact Contract 2 retain `project-local` workspace scope and `gitProtection: {"mode": "not-managed", "patterns": []}`. Authoring Contract 3 and Plan Schema 3 remain unchanged; older generated projects do not require regeneration solely for this maintenance release.
+v9.7 adds conditional model-workflow guidance, separates source evidence from managed-artifact diagnostics and clarifies reviewer and native execution checks. It retains v9.5's source completeness checks, caller-environment preservation, guarded launcher repair and bootstrap Git deadlines. Manifest Schema 7 and Artifact Contract 2 retain `project-local` workspace scope and `gitProtection: {"mode": "not-managed", "patterns": []}`. Authoring Contract 3 and Plan Schema 3 remain unchanged; older generated projects do not require regeneration solely for this maintenance release.
 
-Valid v9.0, v9.1, v9.2, v9.3, v9.4, v9.5 and v9.6 installations share this artifact contract. A v9.0 installation or valid Artifact Contract 2 plan remains accepted without the new advice; updating the generator does not silently rewrite existing project artifacts. A reviewed rematerialization adds the advice, and normal apply checks hashes before updating files. Installer maintenance and project-artifact validity are separate.
+Valid v9.0, v9.1, v9.2, v9.3, v9.4, v9.5, v9.6 and v9.7 installations share this artifact contract. A v9.0 installation or valid Artifact Contract 2 plan remains accepted without the new advice; updating the generator does not silently rewrite existing project artifacts. A reviewed rematerialization adds the advice, and normal apply checks hashes before updating files. Installer maintenance and project-artifact validity are separate.
 
 `status`, `doctor` and installed validation include a `summary` separating managed-artifact checks, source-evidence checks, runtime loading and task quality. A normal source-content change can leave the first check passed and the second failed; `status` recommends `start` to re-read current source while preserving the recorded manifest. Missing references still require a reviewed `configure`, and managed-file changes or other contract failures remain blocked. Runtime loading stays `not-tested` and task quality stays `not-measured` in these offline diagnostics, including after a structurally valid installation.
 
@@ -273,7 +222,7 @@ Inventory Schema 5 and Root Context Schema 3 report known Git boundaries and bou
 
 ## Optional Local Operations Evidence
 
-Harness for Codex v9.6 can observe long-running interactive use without treating one CLI session as one task. Each `UserPromptSubmit` turn becomes a separate pseudonymous work item. Subagent lifecycle events, enum-only execution and agent-selection assessments, verification state, outcome, and an optional relationship to an earlier turn are attached to that work item. Explicit acceptance, correction, refinement, follow-up, reopened work, cancellation, or an unrelated new task can therefore be distinguished inside the same session.
+Harness for Codex v9.7 can observe long-running interactive use without treating one CLI session as one task. Each `UserPromptSubmit` turn becomes a separate pseudonymous work item. Subagent lifecycle events, enum-only execution and agent-selection assessments, verification state, outcome, and an optional relationship to an earlier turn are attached to that work item. Explicit acceptance, correction, refinement, follow-up, reopened work, cancellation, or an unrelated new task can therefore be distinguished inside the same session.
 
 This mode is disabled until the user explicitly installs the user-level hook. Generate a candidate configuration first:
 
@@ -294,7 +243,7 @@ An audit reports task-level routing, agent use, verification, adverse outcomes, 
 
 ## Optional Evaluation
 
-Harness for Codex v9.6 can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, attribute results only to a plan-bound declared or preassigned configuration delta, ingest structured observations, and probe change-discipline decisions against synthetic cases. The delta comes from immutable arm configuration snapshots; it does not prove that every declared route, agent, skill, or policy was used at runtime. Evaluation is disabled by default and does not change generation, ownership, apply, recovery, operations evidence, or runtime-teamplay validation behavior.
+Harness for Codex v9.7 can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, attribute results only to a plan-bound declared or preassigned configuration delta, ingest structured observations, and probe change-discipline decisions against synthetic cases. The delta comes from immutable arm configuration snapshots; it does not prove that every declared route, agent, skill, or policy was used at runtime. Evaluation is disabled by default and does not change generation, ownership, apply, recovery, operations evidence, or runtime-teamplay validation behavior.
 
 ```shell
 conda run -n harness python .agents/skills/harness/scripts/harness_eval.py run \
@@ -324,7 +273,7 @@ The change-discipline suite checks a model's declared decision and behavior tags
 
 See [evaluation-contract.md](.agents/skills/harness/references/evaluation-contract.md) for the boundary, [run-record-schema.md](.agents/skills/harness/references/run-record-schema.md) for schemas, and [evaluation-isolation.md](.agents/skills/harness/references/evaluation-isolation.md) before paired runs.
 
-Paired runs require a clean Git-root source with a valid Harness for Codex v9.6 project-local installation, exactly one registered worktree, untracked Harness-managed outputs, and Comparison Plan Schema 2. These are optional evaluation preconditions; they do not restrict generation. The user chooses the source Git exclusion/cleanliness policy, since generation no longer installs one. The evaluator verifies and snapshots manifest-managed files, every manifest-referenced evidence file, and bounded project context that can alter Codex behavior: root instruction candidates, `.codex/config.toml`, unmanaged `.codex/agents/*.toml`, and unmanaged `.agents/skills/**`. It then creates two independent local clones at that commit, removes every remote, and gives each clone its own Git metadata and exclusion file. Tracked, ignored, and untracked evidence and project context are materialized identically in both arms. All destinations in both arms are checked before the first write, including lexical symlink, Windows reparse-point, directory-collision, and namespace conflicts. Evidence under `.git/**` or `.harness/**` is rejected before content is read or hashed.
+Paired runs require a clean Git-root source with a valid Harness for Codex v9.7 project-local installation, exactly one registered worktree, untracked Harness-managed outputs, and Comparison Plan Schema 2. These are optional evaluation preconditions; they do not restrict generation. The user chooses the source Git exclusion/cleanliness policy, since generation no longer installs one. The evaluator verifies and snapshots manifest-managed files, every manifest-referenced evidence file, and bounded project context that can alter Codex behavior: root instruction candidates, `.codex/config.toml`, unmanaged `.codex/agents/*.toml`, and unmanaged `.agents/skills/**`. It then creates two independent local clones at that commit, removes every remote, and gives each clone its own Git metadata and exclusion file. Tracked, ignored, and untracked evidence and project context are materialized identically in both arms. All destinations in both arms are checked before the first write, including lexical symlink, Windows reparse-point, directory-collision, and namespace conflicts. Evidence under `.git/**` or `.harness/**` is rejected before content is read or hashed.
 
 The baseline removes generated-only instruction files completely, then re-runs the same root instruction discovery used during generation so an existing fallback can become active. If a managed instruction file also contains preserved user content but its exact pre-install bytes are unavailable, that content remains in both arms and the comparison records `baseline-instruction-provenance-unavailable`, making it descriptive rather than eligible for concrete attribution. Immediately before clean synthetic pre-task commits are created, the evaluator rechecks evidence and project-context bytes and modes, absence of baseline Harness state, treatment validity, remote removal, source commits, allowed changed paths, and instruction selection. Ignored context is literal force-added to both task bases, and the indexed blob and executable bit are verified so later fingerprints measure changes to those paths. A present `.codex/config.toml` is preserved and hashed, but materialization is not proof that Codex effectively loaded it: until a deterministic load receipt exists, the pair records `project-config-load-unverified`, remains partial, and cannot support concrete configuration attribution. Likewise, unmanaged custom-agent files are preserved symmetrically, but their registry discovery, selected configuration layer, external skill references, and MCP dependencies are not inferred from file presence. A pair containing them records `project-agent-load-unverified` and remains descriptive until deterministic discovery and selected-agent dependency receipts exist. User and project rules are intentionally disabled by `--ignore-rules`; project hooks are not enabled by this evaluator. Paired runs accept `--repetitions` and an `--order` policy of `randomized`, `counterbalanced`, `baseline-first`, or `harness-first`. Task fingerprinting and patch-scope measurement occur immediately after Codex exits. Verification profiles must not change repository content, `HEAD`, symbolic `HEAD`, index entries, or porcelain status; a changed or non-quiescent repository is retained descriptively with partial comparability and a `verification-repository-state-mutated` gap. Verification runs in a dedicated process group and its cleanup must be confirmed. Known Harness skills in user, compatibility, Codex-home, or readable POSIX admin locations downgrade isolation; a dirty dedicated `CODEX_HOME` is rejected. Fixed arm order is retained as an explicit confounder. Windows runs require a matching user-local cleanup receipt before isolation can be labelled complete.
 
@@ -338,7 +287,7 @@ Concrete positive or negative configuration attribution requires `propose --comp
 
 ## Runtime Teamplay
 
-Harness for Codex v9.6 keeps persistent workspace topology separate from current-task execution. It creates no permanent team merely because multiple agents exist. A temporary runtime plan selects `direct`, `delegated`, or `coordinated` execution from interaction value: independent work delegates, one review pass uses delegated producer-reviewer, and only repeated feedback, conflicting expert judgment, cross-boundary agreement, or dynamic reassignment justifies coordination.
+Harness for Codex v9.7 keeps persistent workspace topology separate from current-task execution. It creates no permanent team merely because multiple agents exist. A temporary runtime plan selects `direct`, `delegated`, or `coordinated` execution from interaction value: independent work delegates, one review pass uses delegated producer-reviewer, and only repeated feedback, conflicting expert judgment, cross-boundary agreement, or dynamic reassignment justifies coordination.
 
 Runtime plans are bound to the exact manifest and canonical topology, validated before execution, and ephemeral by default. Their `participants` are the persistent agents activated for the current task. For delegated or coordinated work, Codex is instructed to spawn only those custom agents, collect parent-facing coordination packets, relay material evidence to affected agents, and keep final integration and task state under parent control. Parallel delegation uses `codex-subagent-relay`; unavailable delegation falls back to sequential relay or direct execution while preserving input, output, and verification contracts. Runtime roles and task state are never inserted into the persistent manifest.
 
@@ -358,7 +307,7 @@ conda run -n harness python .agents/skills/harness/scripts/harness_relay_receipt
   --receipt RELAY_RECEIPT.json
 ```
 
-See [teamplay-contract.md](.agents/skills/harness/references/teamplay-contract.md), [runtime-plan.md](.agents/skills/harness/references/runtime-plan.md), [native-subagent-relay.md](.agents/skills/harness/references/native-subagent-relay.md), [runtime-observation.md](.agents/skills/harness/references/runtime-observation.md), [relay-receipt.md](.agents/skills/harness/references/relay-receipt.md), and [team-recipes.md](.agents/skills/harness/references/team-recipes.md). v9.6 keeps Codex as the execution engine while using canonical receiver handles for bounded control, optional versioned public/local observation profiles for evidence, required-task accounting, and hash-bound offline review lineage. Capability policies use a small canonical registry so validated names cannot silently select a different fallback path. Missing observation evidence lowers confidence without cancelling a valid handle execution; verified binding or terminal-outcome contradictions fail closed.
+See [teamplay-contract.md](.agents/skills/harness/references/teamplay-contract.md), [runtime-plan.md](.agents/skills/harness/references/runtime-plan.md), [native-subagent-relay.md](.agents/skills/harness/references/native-subagent-relay.md), [runtime-observation.md](.agents/skills/harness/references/runtime-observation.md), [relay-receipt.md](.agents/skills/harness/references/relay-receipt.md), and [team-recipes.md](.agents/skills/harness/references/team-recipes.md). v9.7 keeps Codex as the execution engine while using canonical receiver handles for bounded control, optional versioned public/local observation profiles for evidence, required-task accounting, and hash-bound offline review lineage. Capability policies use a small canonical registry so validated names cannot silently select a different fallback path. Missing observation evidence lowers confidence without cancelling a valid handle execution; verified binding or terminal-outcome contradictions fail closed.
 
 ## Design Rules
 
@@ -416,7 +365,7 @@ Use `--recover` only when status or a failed apply reports a pending journal. Us
 
 If Windows Conda raises `UnicodeEncodeError` while forwarding a child-process error, inspect transaction status before retrying and rerun the diagnostic with `conda run --no-capture-output -n harness python ...`. This keeps the required environment while exposing the original Harness result.
 
-Harness for Codex v9.6 uses Manifest Schema 7, Artifact Contract 2, Inventory Schema 5, and Root Context Schema 3. Authoring Contract 3, generation Plan Schema 3, Transaction Schema 2, runtime-plan Schema 1, coordination-packet Schema 1, relay-receipt Schema 1, Runtime Receipt Schema 2, and Evaluation Schema 2 remain unchanged. Operations Event Schema 1 remains separate user-local evidence. Evaluation records through v9.5 remain readable descriptively; only current v9.6 runs in complete, independent, plan-verified pairs support concrete attribution. Persistent topology is not changed by runtime, relay, receipt, operations, or evaluation validation.
+Harness for Codex v9.7 uses Manifest Schema 7, Artifact Contract 2, Inventory Schema 5, and Root Context Schema 3. Authoring Contract 3, generation Plan Schema 3, Transaction Schema 2, runtime-plan Schema 1, coordination-packet Schema 1, relay-receipt Schema 1, Runtime Receipt Schema 2, and Evaluation Schema 2 remain unchanged. Operations Event Schema 1 remains separate user-local evidence. Evaluation records through v9.6 remain readable descriptively; only current v9.7 runs in complete, independent, plan-verified pairs support concrete attribution. Persistent topology is not changed by runtime, relay, receipt, operations, or evaluation validation.
 
 ## Versioning
 

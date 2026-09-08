@@ -452,7 +452,7 @@ def remove_project(root: Path, *, source_root: Path, include_generator: bool = F
                 _set_state(root, journal, "remove-recovery-required", helpers)
             except BaseException:
                 pass
-            raise LifecycleError("Removal was interrupted; backups are retained. Run harness remove --recover --project PATH. "
+            raise LifecycleError("Removal was interrupted; backups are retained. Run harness-codex remove --recover --project PATH. "
                                  f"Recovery detail: {recovery_error}") from exc
         if isinstance(exc, KeyboardInterrupt):
             raise
@@ -462,7 +462,7 @@ def remove_project(root: Path, *, source_root: Path, include_generator: bool = F
         _cleanup(root, journal, helpers)
     except (OSError, ValueError) as exc:
         report.update(state="removed-cleanup-required", recoveryRequired=True,
-                      warning=f"Removal committed; backups require cleanup through harness remove --recover: {exc}")
+                      warning=f"Removal committed; backups require cleanup through harness-codex remove --recover: {exc}")
     return report
 
 

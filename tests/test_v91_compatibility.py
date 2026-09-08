@@ -1,4 +1,4 @@
-"""Keep previous v9 artifacts valid in v9.6 when the optional Git advisory is absent.
+"""Keep previous v9 artifacts valid in v9.7 when the optional Git advisory is absent.
 
 These are synthetic contract-equivalent old plans assembled from unchanged
 contract blocks. verify_release_upgrade.py separately tests actual old sources.
@@ -137,12 +137,12 @@ class PreviousReleaseCompatibilityTests(unittest.TestCase):
                 self.assertFalse(report['valid'])
 
     def test_compatibility_is_explicit_not_a_future_v9_version_range(self):
-        self.assertEqual(harness_metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS, {'9.0', '9.1', '9.2', '9.3', '9.4', '9.5', '9.6'})
+        self.assertEqual(harness_metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS, {'9.0', '9.1', '9.2', '9.3', '9.4', '9.5', '9.6', '9.7'})
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             plan = previous_plan(root)
             apply.apply_application(apply.build_application(root, plan))
-            set_metadata(root, '9.7', 2)
+            set_metadata(root, '9.8', 2)
             before = preserved_state(root)
             self.assertEqual(validate_harness.Validator(root).run()['installationStatus'], 'invalid')
             with self.assertRaisesRegex(apply.PlanError, 'compatibility'):

@@ -56,7 +56,7 @@ class ReleaseBuildTests(unittest.TestCase):
                 self.assertNotIn("..", Path(member.name).parts)
                 relative = member.name[len(prefix):]
                 self.assertNotIn(relative, files)
-                self.assertEqual(member.mode, 0o755 if relative in {"harness.py", "install.sh", "install_harness.sh"} else 0o644)
+                self.assertEqual(member.mode, 0o755 if relative in {"harness.py", "install.sh", "install_harness.sh", "install_harness_codex.sh"} else 0o644)
                 files[relative] = archive.extractfile(member).read()
         return files
 
@@ -74,9 +74,9 @@ class ReleaseBuildTests(unittest.TestCase):
         self.assertFalse(report["developmentBuild"])
         self.assertEqual(report["sha256"], hashlib.sha256(artifact.read_bytes()).hexdigest())
         self.assertEqual((self.output / "SHA256SUMS").read_text(encoding="utf-8"),
-                         f"{report['sha256']}  {artifact.name}\n{report['bootstrapSha256']}  install_harness.sh\n")
-        self.assertEqual((self.output / "install_harness.sh").read_bytes(), (self.root / "install_harness.sh").read_bytes())
-        self.assertEqual(report["bootstrapSha256"], hashlib.sha256((self.output / "install_harness.sh").read_bytes()).hexdigest())
+                         f"{report['sha256']}  {artifact.name}\n{report['bootstrapSha256']}  install_harness_codex.sh\n")
+        self.assertEqual((self.output / "install_harness_codex.sh").read_bytes(), (self.root / "install_harness_codex.sh").read_bytes())
+        self.assertEqual(report["bootstrapSha256"], hashlib.sha256((self.output / "install_harness_codex.sh").read_bytes()).hexdigest())
         files = self.contents(artifact)
         metadata = json.loads(files["_release.json"])
         self.assertEqual(metadata, {"runtime": "codex", "version": self.version, "commit": self.commit,

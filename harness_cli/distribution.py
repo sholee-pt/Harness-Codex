@@ -39,10 +39,11 @@ REQUIRED = frozenset({"harness.py", "install.py", "harness_cli/__init__.py", "ha
 # Keep the original common set valid for complete v9.2 and v9.3 distributions.
 # Later releases inherit each dependency from its numeric introduction version.
 VERSION_REQUIRED = (
+    ((9, 7), frozenset({"harness_cli/shell.py", "harness_cli/prepare_conda.sh"})),
     ((9, 4), frozenset({"harness_cli/lifecycle.py"})),
     ((9, 5), frozenset({"harness_cli/environment.py"})),
 )
-TOP_FILES = frozenset({"harness.py", "install.py", "install.sh", "install_harness.sh", "environment.yml", "README.md", "LICENSE", "_release.json"})
+TOP_FILES = frozenset({"harness.py", "install.py", "install.sh", "install_harness.sh", "install_harness_codex.sh", "environment.yml", "README.md", "LICENSE", "_release.json"})
 OWNER = {"schema": 1, "tool": "sholee-pt/Harness"}
 TOKEN_HELPER = ('!f() { if test "$1" != get; then return; fi; p=; h=; r=; '
                 'while IFS="=" read -r k v; do case "$k" in '
@@ -293,13 +294,15 @@ if isinstance(version, str) and re.fullmatch(r"[0-9]+\\.[0-9]+", version):
 ''')
 
 
-def _launchers(data_root: Path, bin_dir: Path, python: str) -> dict[Path, bytes]:
+def _launchers(data_root: Path, bin_dir: Path, python: str, command: str = "harness") -> dict[Path, bytes]:
+    if command not in {"harness", "harness-codex"}:
+        raise DistributionError("unsupported launcher command")
     result = {data_root / "launcher.py": _launcher_source().encode("utf-8")}
-    result[bin_dir / "harness"] = ("#!/bin/sh\nexec " + shlex.quote(python) + " -B " + shlex.quote(str(data_root / "launcher.py")) + ' "$@"\n').encode()
+    result[bin_dir / command] = ("#!/bin/sh\nexec " + shlex.quote(python) + " -B " + shlex.quote(str(data_root / "launcher.py")) + ' "$@"\n').encode()
     if os.name == "nt":
         if any(c in python + str(data_root) for c in '%!\r\n"'):
             raise DistributionError("Windows launcher paths contain unsupported shell characters")
-        result[bin_dir / "harness.cmd"] = (f'@echo off\r\n"{python}" -B "{data_root / "launcher.py"}" %*\r\n').encode()
+        result[bin_dir / (command + ".cmd")] = (f'@echo off\r\n"{python}" -B "{data_root / "launcher.py"}" %*\r\n').encode()
     return result
 
 
@@ -358,7 +361,7 @@ def _installation_status(data_root, *, launcher_hashes_override=None) -> dict:
     if not isinstance(active.get("python"), str) or not isinstance(active.get("binDir"), str):
         raise DistributionError("invalid launcher metadata")
     launcher_hashes = active.get("launchers")
-    expected_paths = {str(path) for path in _launchers(data_root, _storage_path(active["binDir"]), active["python"])}
+    expected_paths = {str(path) for path in _launchers(data_root, _storage_path(active["binDir"]), active["python"], active.get("command", "harness"))}
     if not isinstance(launcher_hashes, dict) or set(launcher_hashes) != expected_paths:
         raise DistributionError("invalid launcher ownership metadata")
     if launcher_hashes_override is not None:
@@ -443,7 +446,7 @@ def launcher_status(data_root) -> dict:
             state = "repair-pending"
     return {"state": state, "sourceRoot": status["sourceRoot"],
             "callerEnvironmentPreserved": state == "current", "writes": 0,
-            "repairCommand": "harness update --repair-launcher" if state != "current" else None}
+            "repairCommand": status.get("command", "harness") + " update --repair-launcher" if state != "current" else None}
 
 
 def _sync_launcher_directory(path: Path) -> None:
@@ -630,11 +633,13 @@ def _activate(snapshot: dict[str, bytes], data_root: Path, active: dict) -> dict
                     path = staged.joinpath(*PurePosixPath(name).parts)
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(data)
-                    path.chmod(0o755 if name in {"install.sh", "install_harness.sh"} else 0o644)
+                    path.chmod(0o755 if name in {"install.sh", "install_harness.sh", "install_harness_codex.sh"} else 0o644)
                 os.replace(staged, target)
                 created = True
             _write_json(receipt, receipt_value)
-        _write_json(data_root / "active.json", active)
+        pointer = data_root / "active.json"
+        if not pointer.exists() or _read_json(pointer) != active:
+            _write_json(pointer, active)
     except BaseException:
         if created:
             # Roll back only this attempt's unchanged files, and only before its
@@ -683,10 +688,12 @@ def _install_tool(source_root, data_root, bin_dir, python_executable=sys.executa
         commit = _checkout_commit(source_root, snapshot)
     if branch is not None and _branch(branch) != _version(version):
         raise DistributionError("source version does not match pinned branch")
-    launchers = _launchers(data_root, bin_dir, python)
+    command = "harness-codex" if _version(version) >= (9, 7) else "harness"
+    launchers = _launchers(data_root, bin_dir, python, command)
     existing = None
     if data_root.exists() and any(data_root.iterdir()):
         existing = installed_status(data_root)
+        command = existing.get("command", "harness")
         if existing["python"] != python or existing["binDir"] != str(bin_dir):
             raise DistributionError("existing installation uses different interpreter or bin directory")
         if _version(version) < _version(existing["version"]):
@@ -722,9 +729,11 @@ def _install_tool(source_root, data_root, bin_dir, python_executable=sys.executa
                     with path.open("xb") as stream:
                         created_files[path] = data
                         stream.write(data)
-                    path.chmod(0o755 if path.name == "harness" else 0o644)
+                    path.chmod(0o755 if path.name == command else 0o644)
             active = {"schema": 1, "version": version, "commit": commit, "python": python, "binDir": str(bin_dir), "repository": repository, "branch": branch, "auto_update": auto_update,
                       "launchers": existing["launchers"] if existing else {str(path): hashlib.sha256(data).hexdigest() for path, data in launchers.items()}}
+            if command != "harness":
+                active["command"] = command
             return _activate(snapshot, data_root, active)
     except BaseException:
         if not existing and not (data_root / "active.json").exists():
@@ -776,6 +785,10 @@ def _git(arguments: list[str], *, timeout: int, git_executable: str = "git", all
                     environment.pop(key, None)
             authentication = ["-c", "credential.helper=", "-c", "credential.useHttpPath=true",
                               "-c", "credential.helper=" + TOKEN_HELPER]
+    if git_executable == "git" and shutil.which("git") is None:
+        bundled = Path(sys.executable).parent / ("git.exe" if os.name == "nt" else "git")
+        if bundled.is_file():
+            git_executable = str(bundled)
     try:
         result = subprocess.run([git_executable, "-c", "protocol.file.allow=never", *authentication, *arguments], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment, timeout=timeout, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
