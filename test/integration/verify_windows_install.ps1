@@ -98,8 +98,15 @@ try {
     # interactive input branch. CI itself has no interactive Windows console.
     $confirmationProbe = Join-Path $base 'confirm-uninstall.py'
     [IO.File]::WriteAllText($confirmationProbe, "import runpy, sys`nsys.stdin.isatty = lambda: True`nsys.stdout.isatty = lambda: True`nsys.argv = sys.argv[1:]`nrunpy.run_path(sys.argv[0], run_name='__main__')`n")
-    'yes' | & $active.python -B $confirmationProbe (Join-Path $data 'launcher.py') uninstall
-    if ($LASTEXITCODE -ne 0 -or (Test-Path -LiteralPath $data) -or (Test-Path -LiteralPath $command)) { throw 'Confirmed installed CLI removal failed.' }
+    # Windows PowerShell can prefix pipeline input with a UTF-8 BOM. Send the
+    # exact confirmation bytes; production's strict `yes` check stays unchanged.
+    $previousOutputEncoding = $OutputEncoding
+    try {
+        $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+        'yes' | & $active.python -B $confirmationProbe (Join-Path $data 'launcher.py') uninstall
+        $confirmationExit = $LASTEXITCODE
+    } finally { $OutputEncoding = $previousOutputEncoding }
+    if ($confirmationExit -ne 0 -or (Test-Path -LiteralPath $data) -or (Test-Path -LiteralPath $command)) { throw 'Confirmed installed CLI removal failed.' }
     $projectAfter = @(Get-ChildItem -LiteralPath $project -Recurse -File | ForEach-Object { $_.FullName + ':' + (Get-FileHash -LiteralPath $_.FullName).Hash }) -join '|'
     if ($projectAfter -cne $projectBefore -or -not (Test-Path -LiteralPath $active.python)) { throw 'Uninstall changed the project or Conda interpreter.' }
     if (@($registry.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) -split ';' | Where-Object { $_ -ieq $binary }).Count) { throw 'Uninstall left the dedicated bin directory in user PATH.' }
