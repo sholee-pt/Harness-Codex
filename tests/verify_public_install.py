@@ -44,11 +44,22 @@ else:
     os.execv(os.environ['TEST_REAL_CURL'], [os.environ['TEST_REAL_CURL'], *args])
 ''')
         wrapper.chmod(0o755)
+        # GitHub runners can expose Conda in /usr/bin as well. Build a utility
+        # PATH that excludes it, without deleting or changing any host command.
+        for directory in (Path('/usr/bin'), Path('/bin')):
+            for utility in directory.iterdir():
+                target = binary / utility.name
+                if utility.name == 'conda' or target.exists():
+                    continue
+                if utility.is_file() and os.access(utility, os.X_OK):
+                    target.symlink_to(utility)
         env = {'HOME': str(home), 'USER': os.environ.get('USER', 'runner'),
-               'PATH': str(binary) + ':/usr/bin:/bin', 'XDG_DATA_HOME': str(home / 'share'),
+               'PATH': str(binary), 'XDG_DATA_HOME': str(home / 'share'),
                'TMPDIR': str(base), 'TEST_ASSETS': json.dumps(assets), 'TEST_REAL_CURL': real_curl,
                'TEST_DOWNLOAD_LOG': str(base / 'downloads.log'), 'PYTHONDONTWRITEBYTECODE': '1'}
         # Do not inherit Conda, project, credential or shell-hook variables.
+        assert subprocess.run(['/bin/sh', '-c', 'command -v conda'], env=env,
+                              capture_output=True, timeout=10).returncode != 0
         version = json.loads((dist / 'build.json').read_text())['version']
         pipeline = f'curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v{version}/install_harness_codex.sh | sh'
         def run(command, timeout=120):
@@ -79,6 +90,7 @@ else:
         return {'valid': True, 'version': version, 'pipelineExecuted': True,
                 'harnessAssetTransport': 'exact local build substituted for private release URLs',
                 'miniforgeDownload': 'real official HTTPS with pinned SHA-256',
+                'preexistingCondaOnPath': False,
                 'freshCondaEnvironmentCreated': True, 'freshBashFoundCommand': True,
                 'repeatBytesAndMtimesPreserved': True, 'initRepairedMissingProfileEntry': True,
                 'nativeCodexInvoked': False}

@@ -56,18 +56,8 @@ jobs:
       - name: Cross-check real v7.6 through v9.6 installation updates
         shell: bash -el {0}
         run: |
-          baseline_root="$(mktemp -d)"
-          mkdir -p "${baseline_root}/v76" "${baseline_root}/v80" "${baseline_root}/v81" "${baseline_root}/v90" "${baseline_root}/v91" "${baseline_root}/v92" "${baseline_root}/v93" "${baseline_root}/v94" "${baseline_root}/v95" "${baseline_root}/v96"
-          git archive d91f0a5ae261d44c86f4082ba5098d55b7e5cc4c | tar -x -C "${baseline_root}/v76"
-          git archive ed2972555562c736496e8d90463f52efabf05305 | tar -x -C "${baseline_root}/v80"
-          git archive 2a920f9555df7270d8947b9e926654746aeb9247 | tar -x -C "${baseline_root}/v81"
-          git archive a1e12dadb1805e23df4c283eaa7a613e6b1b1b91 | tar -x -C "${baseline_root}/v90"
-          git archive 0d1e2bd885cd9ee4432918a19ec9839339af70e8 | tar -x -C "${baseline_root}/v91"
-          git archive 72e5cd82975aac838011d991a3e2e6da349ef4de | tar -x -C "${baseline_root}/v92"
-          git archive fa9892cfaa4741edb2e843a4e890f246c5cf1fe3 | tar -x -C "${baseline_root}/v93"
-          git archive f80ed8b14e74720c2dc19d303d53300c19a1acaf | tar -x -C "${baseline_root}/v94"
-          git archive 3b771abc19b64c473185b40d9217df0c6a0d4c76 | tar -x -C "${baseline_root}/v95"
-          git archive ee3791f6b6732c61bd6fa5e5e37ece362d808850 | tar -x -C "${baseline_root}/v96"
+          baseline_root="${RUNNER_TEMP}/harness-baselines"
+          conda run -n harness python tests/prepare_release_baselines.py --output "${baseline_root}"
           conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v96" --output "${RUNNER_TEMP}/upgrade-v96.json"
           conda run -n harness python tests/verify_cli_upgrade.py --baseline "${baseline_root}/v96" --output "${RUNNER_TEMP}/cli-upgrade-v96.json"
           conda run -n harness python tests/verify_release_upgrade.py --baseline "${baseline_root}/v95" --output "${RUNNER_TEMP}/upgrade-v95.json"
