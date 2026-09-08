@@ -109,6 +109,60 @@ try {
 
 @unittest.skipUnless(POWERSHELL, 'Requires native Windows PowerShell')
 class WindowsSourceInstallerTests(unittest.TestCase):
+    def test_explicit_conda_home_never_selects_an_external_same_named_environment(self):
+        for state in ('new', 'existing', 'incomplete'):
+            with self.subTest(state=state), tempfile.TemporaryDirectory() as directory:
+                base = Path(directory)
+                home = base / 'isolated'
+                executable = home / 'Scripts/conda.exe'
+                executable.parent.mkdir(parents=True)
+                executable.touch()  # PowerShell alias supplies the controlled Conda transport.
+                selected = home / 'envs/harness'
+                external = base / 'other/envs/harness/conda-meta/history'
+                external.parent.mkdir(parents=True)
+                external.write_text('existing user environment')
+                if state == 'existing':
+                    history = selected / 'conda-meta/history'
+                    history.parent.mkdir(parents=True)
+                    history.write_text('isolated environment')
+                elif state == 'incomplete':
+                    selected.mkdir(parents=True)
+                    (selected / 'keep.txt').write_text('unrelated')
+                (base / 'info.json').write_text(json.dumps({'envs_dirs': [str(home / 'envs'), str(base / 'other/envs')]}))
+                code = r'''
+$ErrorActionPreference = 'Stop'
+function Invoke-FixtureConda {
+    [IO.File]::AppendAllText((Join-Path $env:TEST_BASE 'calls.jsonl'), (ConvertTo-Json -Compress -InputObject @($args)) + "`n")
+    $global:LASTEXITCODE = 0
+    if ($args[0] -eq 'info') { Get-Content -LiteralPath (Join-Path $env:TEST_BASE 'info.json'); return }
+    if ($args -contains 'git' -and $args[0] -eq 'run') { $global:LASTEXITCODE = 1 }
+}
+Set-Alias -Name (Join-Path $env:TEST_BASE 'isolated\Scripts\conda.exe') -Value Invoke-FixtureConda
+$original = $env:CONDA_ENVS_PATH
+try {
+    & ([scriptblock]::Create([IO.File]::ReadAllText($env:TEST_SOURCE))) -SourceRoot (Split-Path -Parent $env:TEST_SOURCE) -CondaHome (Join-Path $env:TEST_BASE 'isolated') -DataDir (Join-Path $env:TEST_BASE 'data') -BinDir (Join-Path $env:TEST_BASE 'bin') -NoModifyPath
+} catch { Write-Output $_.Exception.Message; exit 1 }
+if ($env:CONDA_ENVS_PATH -cne $original) { exit 88 }
+'''
+                result = subprocess.run([POWERSHELL, '-NoProfile', '-NonInteractive', '-Command', code],
+                                        env={**os.environ, 'TEST_BASE': str(base), 'TEST_SOURCE': str(ROOT / 'installer/install.ps1'),
+                                             'TEMP': str(base), 'TMP': str(base)}, capture_output=True, text=True, timeout=30)
+                calls = [json.loads(line) for line in (base / 'calls.jsonl').read_text().splitlines()]
+                self.assertEqual(external.read_text(), 'existing user environment')
+                if state == 'incomplete':
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                    self.assertIn('environment preserved', result.stdout)
+                    self.assertEqual([call[0] for call in calls], ['info'])
+                    self.assertEqual((selected / 'keep.txt').read_text(), 'unrelated')
+                else:
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    operations = [call[0] for call in calls[1:]]
+                    self.assertEqual(operations, ['create', 'run'] if state == 'new' else ['run', 'install', 'run'])
+                    for call in calls[1:]:
+                        self.assertNotIn('--name', call)
+                        self.assertNotIn('-n', call)
+                        self.assertEqual(Path(call[call.index('--prefix') + 1]), selected)
+
     def test_stage_logs_handle_native_warnings_and_real_exit_failures(self):
         for failure, existing in (("", False), ("", True), ("info", False), ("create", False), ("run", False)):
             with self.subTest(failure=failure, existing=existing), tempfile.TemporaryDirectory() as directory:

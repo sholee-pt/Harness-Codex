@@ -127,27 +127,34 @@ $environmentInfo = $environmentJson -join "`n" | ConvertFrom-Json
 # Registered environments from other Conda installations need not be resolvable by name.
 $existing = @($environmentInfo.envs_dirs | ForEach-Object { Join-Path $_ 'harness' } |
     Where-Object { Test-Path -LiteralPath (Join-Path $_ 'conda-meta\history') -PathType Leaf })
+$environmentSelector = @('--name', 'harness')
 if ($CondaHome) {
     $expectedEnvironment = Join-Path $CondaHome 'envs\harness'
+    # CONDA_ENVS_PATH adds a search directory; it does not exclude other Condas.
+    # Creating by name can remove an existing same-named environment elsewhere.
+    $environmentSelector = @('--prefix', $expectedEnvironment)
     $existing = @($existing | Where-Object { [IO.Path]::GetFullPath($_) -ieq $expectedEnvironment })
+    if (-not $existing.Count -and (Test-Path -LiteralPath $expectedEnvironment)) {
+        throw "Existing incomplete or unrelated environment preserved: $expectedEnvironment"
+    }
 }
 if ($existing.Count -eq 0) {
     Write-Host '      First setup: preparing Python and Git; this may take a few minutes...'
-    Invoke-HarnessConda create --name harness --override-channels --channel conda-forge python=3.11 git --yes | Out-Null
+    Invoke-HarnessConda create @environmentSelector --override-channels --channel conda-forge python=3.11 git --yes | Out-Null
     if ($condaExit -ne 0) { throw "Unable to create the harness Conda environment (exit $condaExit)." }
 } else {
     Write-Host '      Reusing the existing Harness environment.'
     # A dedicated Git makes updates work even when the calling shell has no Git.
-    Invoke-HarnessConda run --no-capture-output -n harness git --version | Out-Null
+    Invoke-HarnessConda run --no-capture-output @environmentSelector git --version | Out-Null
     if ($condaExit -ne 0) {
         Write-Host '      Preparing Git for tool updates...'
-        Invoke-HarnessConda install --name harness --override-channels --channel conda-forge git --yes | Out-Null
+        Invoke-HarnessConda install @environmentSelector --override-channels --channel conda-forge git --yes | Out-Null
         if ($condaExit -ne 0) { throw "Unable to prepare Git in the harness environment (exit $condaExit)." }
     }
 }
 Complete-HarnessStep
 Start-HarnessStep '[3/3] Installing command and applying PATH preferences'
-$installArguments = @('run', '--no-capture-output', '-n', 'harness', 'python', '-B', (Join-Path $SourceRoot 'harness.py'), 'install', '--data-dir', $DataDir, '--bin-dir', $BinDir, '--auto-update', $AutoUpdate)
+$installArguments = @('run', '--no-capture-output') + $environmentSelector + @('python', '-B', (Join-Path $SourceRoot 'harness.py'), 'install', '--data-dir', $DataDir, '--bin-dir', $BinDir, '--auto-update', $AutoUpdate)
 if ($NoModifyPath) { $installArguments += '--no-modify-path' }
 $installOutput = Invoke-HarnessConda @installArguments
 if ($condaExit -ne 0) { throw "Harness installation failed (exit $condaExit)." }

@@ -10,6 +10,18 @@ $binary = Join-Path $base 'command bin'
 $data = Join-Path $base 'tool data'
 $originalPath = $env:Path
 $originalLabels = @($env:CONDA_PREFIX, $env:CONDA_DEFAULT_ENV, $env:CONDA_ENVS_PATH)
+# Preserve the pre-existing environment that a name-based cold create could
+# otherwise select. Check both metadata and the interpreter before and after.
+$externalConda = @{}
+foreach ($prefix in @($env:CONDA_PREFIX, (Join-Path $env:USERPROFILE '.conda\envs\harness'))) {
+    if (-not $prefix) { continue }
+    foreach ($relative in @('conda-meta\history', 'python.exe')) {
+        $file = Join-Path $prefix $relative
+        if (Test-Path -LiteralPath $file -PathType Leaf) {
+            $externalConda[$file] = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+        }
+    }
+}
 $registry = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', [bool]$Cold)
 $oldPath = $registry.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
 $oldKind = if ($null -ne $oldPath) { $registry.GetValueKind('Path') } else { $null }
@@ -39,6 +51,12 @@ function Get-ToolState {
 }
 try {
     & ([scriptblock]::Create([IO.File]::ReadAllText($bootstrap))) @options
+    foreach ($file in $externalConda.Keys) {
+        if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -cne $externalConda[$file]) {
+            throw 'Cold installation changed an existing Conda environment.'
+        }
+    }
     $command = Join-Path $binary 'harness-codex.cmd'
     $version = & $command --version
     if ($LASTEXITCODE -ne 0 -or $version -notmatch '^Harness for Codex 9\.8$') { throw 'Installed Windows command version failed.' }
@@ -97,15 +115,35 @@ try {
     # Adapt terminal detection only; run the actual installed Python launcher and
     # interactive input branch. CI itself has no interactive Windows console.
     $confirmationProbe = Join-Path $base 'confirm-uninstall.py'
-    [IO.File]::WriteAllText($confirmationProbe, "import runpy, sys`nsys.stdin.isatty = lambda: True`nsys.stdout.isatty = lambda: True`nsys.argv = sys.argv[1:]`nrunpy.run_path(sys.argv[0], run_name='__main__')`n")
-    # Windows PowerShell can prefix pipeline input with a UTF-8 BOM. Send the
-    # exact confirmation bytes; production's strict `yes` check stays unchanged.
-    $previousOutputEncoding = $OutputEncoding
-    try {
-        $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
-        'yes' | & $active.python -B $confirmationProbe (Join-Path $data 'launcher.py') uninstall
-        $confirmationExit = $LASTEXITCODE
-    } finally { $OutputEncoding = $previousOutputEncoding }
+    # Use an explicit byte pipe rather than PowerShell's host-dependent text
+    # pipeline. Observe the real input() result without replacing its answer.
+    [IO.File]::WriteAllText($confirmationProbe, @'
+import subprocess, sys
+adapter = """
+import builtins, runpy, sys
+raw = sys.stdin.buffer.peek(16)
+print('Fixture confirmation bytes: ' + raw.hex(), flush=True)
+assert raw == b'yes\\n', 'Unexpected confirmation transport'
+original_input = builtins.input
+def observed_input(prompt):
+    try:
+        answer = original_input(prompt)
+    except EOFError:
+        print('Fixture confirmation: EOF', flush=True)
+        raise
+    print('Fixture confirmation code points: ' + repr([ord(c) for c in answer]), flush=True)
+    return answer
+builtins.input = observed_input
+sys.stdin.isatty = lambda: True
+sys.stdout.isatty = lambda: True
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name='__main__')
+"""
+result = subprocess.run([sys.executable, '-B', '-c', adapter, *sys.argv[1:]], input=b'yes\n')
+raise SystemExit(result.returncode)
+'@)
+    & $active.python -B $confirmationProbe (Join-Path $data 'launcher.py') uninstall
+    $confirmationExit = $LASTEXITCODE
     if ($confirmationExit -ne 0 -or (Test-Path -LiteralPath $data) -or (Test-Path -LiteralPath $command)) { throw 'Confirmed installed CLI removal failed.' }
     $projectAfter = @(Get-ChildItem -LiteralPath $project -Recurse -File | ForEach-Object { $_.FullName + ':' + (Get-FileHash -LiteralPath $_.FullName).Hash }) -join '|'
     if ($projectAfter -cne $projectBefore -or -not (Test-Path -LiteralPath $active.python)) { throw 'Uninstall changed the project or Conda interpreter.' }
@@ -114,7 +152,9 @@ try {
       harnessTransport='exact local release assets'; miniforgeTransport=$(if ($Cold) {'real official HTTPS download'} else {'existing Conda'});
       version=$version; repeatBytesAndMtime=$true; callerEnvironmentPreserved=$true; projectDryRun=$true;
       realUserPathTest=[bool]$Cold; installedCliUninstall=$true; uninstallTerminalDetection='adapted for noninteractive CI';
-      uninstallKeptProjectAndConda=$true; nativeCodexExecuted=$false; evidenceDirectory=$base} | ConvertTo-Json
+      uninstallConfirmationTransport='Python subprocess byte pipe; input() answer observed unchanged';
+      uninstallKeptProjectAndConda=$true; existingCondaFilesPreserved=$externalConda.Count;
+      nativeCodexExecuted=$false; evidenceDirectory=$base} | ConvertTo-Json
 } finally {
     if ($Cold) {
         if ($null -eq $oldPath) { $registry.DeleteValue('Path', $false) } else { $registry.SetValue('Path', $oldPath, $oldKind) }
