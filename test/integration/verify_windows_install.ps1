@@ -5,7 +5,7 @@ if ($env:OS -ne 'Windows_NT') { throw 'Windows integration check only.' }
 if ($Cold -and $env:GITHUB_ACTIONS -ne 'true') { throw 'The real registry/cold check requires a disposable GitHub Actions runner.' }
 $Dist = [IO.Path]::GetFullPath($Dist)
 $buildInfo = Get-Content -LiteralPath (Join-Path $Dist 'build.json') -Raw | ConvertFrom-Json
-if ([string]$buildInfo.version -notmatch '^\d+\.\d+$') { throw 'Build version metadata is invalid.' }
+if ([string]$buildInfo.version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-beta)?\z') { throw 'Build version metadata is invalid.' }
 $expectedVersion = 'Harness for Codex ' + $buildInfo.version
 $base = Join-Path ([IO.Path]::GetTempPath()) ('harness-windows-check-' + [guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($base)
