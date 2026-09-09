@@ -1,7 +1,7 @@
 #!/bin/sh
 # Public, version-bound bootstrap. This entire file also works through `| sh`.
 set -eu
-VERSION=9.9
+VERSION=9.10
 fail() { printf 'Harness for Codex installer: %s\n' "$*" >&2; exit 1; }
 usage() {
   printf '%s\n' 'Usage: sh install_harness_codex.sh [OPTIONS]' \
@@ -10,6 +10,7 @@ usage() {
     '  --data-dir PATH         Managed Codex tool storage' \
     '  --auto-update POLICY    compatible, check, or off' \
     '  --existing MODE         ask (default), reuse, or reset Harness settings' \
+    '  --activate MODE         ask (default), shell, or skip opening a ready Bash' \
     '  --no-modify-path        Do not register PATH in ~/.bashrc' \
     '  --help                  Offline help' \
     'Linux x86_64/aarch64. Requires curl, Bash, tar and sha256sum.' \
@@ -19,7 +20,7 @@ validate_options() {
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --no-modify-path) shift ;;
-      --bin-dir|--data-dir|--auto-update|--existing|--repository|--branch|--agent|--runtime)
+      --bin-dir|--data-dir|--auto-update|--existing|--activate|--repository|--branch|--agent|--runtime)
         [ "$#" -ge 2 ] && [ -n "$2" ] || fail "Missing value for $1"
         key=$1; value=$2; shift 2
         case "$key" in
@@ -27,6 +28,7 @@ validate_options() {
           --branch) [ "$value" = "codex/v$VERSION" ] || fail "This installer is pinned to codex/v$VERSION." ;;
           --auto-update) case "$value" in compatible|check|off) ;; *) fail 'Invalid automatic update policy.' ;; esac ;;
           --existing) case "$value" in ask|reuse|reset) ;; *) fail 'Invalid existing-installation choice.' ;; esac ;;
+          --activate) case "$value" in ask|shell|skip) ;; *) fail 'Invalid activation choice.' ;; esac ;;
         esac ;;
       *) fail "Unknown option: $1. Use --help." ;;
     esac

@@ -6,6 +6,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 
 | Branch | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
+| [`codex/v9.10`](#harness-for-codex-v910) | Harness for Codex v9.10 | Schema 3 | Schema 7 | Schema 2 | Native configuration progress, concise diagnostics, command-specific edition and live installer timers |
 | [`codex/v9.9`](#harness-for-codex-v99) | Harness for Codex v9.9 | Schema 3 | Schema 7 | Schema 2 | Shared project harness, native conversation lifecycle, guarded reinstall/uninstall and concise distribution docs |
 | [`codex/v9.8`](#harness-for-codex-v98) | Harness for Codex v9.8 | Schema 3 | Schema 7 | Schema 2 | Native Windows PowerShell bootstrap, reproducible ZIP, isolated Conda setup and idempotent user PATH registration |
 | [`codex/v9.7`](#harness-for-codex-v97) | Harness for Codex v9.7 | Schema 3 | Schema 7 | Schema 2 | Named Codex command, public one-command Linux bootstrap, automatic isolated environment setup, idempotent Bash PATH registration and config alias |
@@ -50,6 +51,49 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | [`codex/v9`](#harness-for-codex-v90) | Harness for Codex v9.0 | Schema 3 | Schema 7 | Schema 2 | Project-local installer, user-selected folders independent of Git boundaries, Artifact Contract 2, no Git metadata writes |
 
 Only the latest Codex and latest Claude branches are retained. The default branch follows the latest verified release; earlier release history remains reachable through commits. Historical branch names in this table identify releases and are not a promise that those branches still exist.
+
+## Harness for Codex v9.10
+
+Configuration now shows observed stages and live elapsed seconds through the native Codex App Server. `init`, `config` and applied `reset` hide their internal bootstrap text and protocol JSON from the progress screen. Native command/file approvals and questions remain visible. Exact `yes` approves one request; unsupported approval types require `--interactive`. No model, sandbox, approval-policy or hook-trust settings are overridden.
+
+Incomplete/interrupted configuration is reported without a validator JSON dump. `status`, `doctor`, update and removal/reset reports are human-readable by default; add `--json` for full diagnostic reports. Use `config --resume SESSION_ID --goal "answer"` to continue configuration. `new`/`resume` retain the original native conversation interface and visible activation message.
+
+The command already identifies the edition: `harness-codex`. Provider selectors are removed from public help; hidden `--agent codex`/`--runtime codex` remain for older scripts. Claude remains a separate future command.
+
+Linux and Windows installers show live elapsed time on interactive terminals and ordinary stage logs when redirected. Linux offers Enter/yes to open a new child Bash that reads `~/.bashrc`. It cannot change its parent's environment; `exit` returns to the original shell. `--activate skip` disables the prompt.
+
+### Installation
+
+Linux:
+
+```bash
+curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v9.10/install_harness_codex.sh | sh
+# Press Enter/yes to open the configured Bash, or run source ~/.bashrc yourself.
+harness-codex --version
+```
+
+Windows x64 PowerShell:
+
+```powershell
+irm https://github.com/sholee-pt/Harness/releases/download/codex-v9.10/install_harness_codex.ps1 | iex
+harness-codex --version
+```
+
+Install/sign in to Codex CLI separately, then run `harness-codex init --goal-file PROJECT.md` inside your project. Work with `harness-codex new`; review configuration with `config`. An existing tool uses `harness-codex update`. Project artifacts from v9.0–v9.9 retain their compatibility; update the project generator with `init --install-only` when needed.
+
+### Assets
+
+| File | Purpose |
+| --- | --- |
+| `install_harness_codex.sh` / `.ps1` | Platform downloader with automatic checksum verification |
+| `harness-codex-9.10-linux.tar.gz` | Linux distribution including its source installer |
+| `harness-codex-9.10-windows.zip` | Windows distribution including its source installer |
+| `SHA256SUMS` | Asset digests |
+| `build.json` | Source commit and reproducible build metadata |
+
+### Validation scope
+
+Publication is gated on Linux and Windows regression, historical upgrade, build and cold installer checks. Subprocess protocol fixtures exercise native message shapes, approval refusal, questions, interruptions, timeout, early completion and actual deterministic artifact validation. These fixtures do not call a model. A native protocol handshake can confirm connectivity without proving live generation, agent discovery, task quality or token savings. No such quality benefit is claimed.
 
 ## Harness for Codex v9.9
 

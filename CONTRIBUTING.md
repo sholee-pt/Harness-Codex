@@ -77,7 +77,7 @@ conda run -n harness python test/integration/verify_cli_upgrade.py --baseline /t
 conda run -n harness python test/integration/verify_release_upgrade.py --baseline /tmp/harness-baselines/v97 --output /tmp/project-upgrade.json
 ```
 
-Historical update checks accept both `tests/` and `test/` fixture layouts without rewriting old source. The old one-off layout comparison was retired when v9.9 introduced intentional runtime changes; reproducible builds and historical upgrade tests remain active.
+Historical update checks accept both `tests/` and `test/` fixture layouts without rewriting old source. The old one-off layout comparison was retired when v9.10 introduced intentional runtime changes; reproducible builds and historical upgrade tests remain active.
 
 Parser differential checks require the pinned optional `test/requirements-validation.txt`. Cold installer checks download Miniforge and create an isolated environment; the Windows registry/cold check is restricted to disposable CI runners. These are distinct from unit tests and must not run implicitly during unittest discovery.
 

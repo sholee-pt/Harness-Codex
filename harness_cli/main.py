@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import argparse
 import ast
-import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 
-from . import distribution, environment
+from . import distribution, environment, presentation as ui
 from .project import preflight_project_command, register_project_commands, run_project_command
 
 
@@ -64,7 +63,7 @@ class _AgentParser(argparse.ArgumentParser):
 def _agent_options(parser, *, destination: str) -> None:
     parser.add_argument("--agent", dest=destination, action="append", choices=("codex", "claude"),
                         default=argparse.SUPPRESS,
-                        help="Agent provider (default: codex; Claude integration is not implemented yet).")
+                        help=argparse.SUPPRESS)
     parser.add_argument("--runtime", dest=destination, action="append", choices=("codex", "claude"),
                         default=argparse.SUPPRESS, help=argparse.SUPPRESS)
 
@@ -72,6 +71,7 @@ def _agent_options(parser, *, destination: str) -> None:
 def build_parser(source_root: Path) -> argparse.ArgumentParser:
     parser = _AgentParser(prog="harness-codex", description="Install, configure and use a native Codex project harness.")
     parser.add_argument("--version", "-V", action="store_true", help="Show the installed Harness version and exit.")
+    parser.add_argument('--json', action='store_true', help='Show complete diagnostic reports as JSON.')
     _agent_options(parser, destination="_root_agent_choices")
     parser.add_argument("--no-update-check", action="store_true", help="Skip automatic upstream checks for this invocation.")
     commands = parser.add_subparsers(dest="command")
@@ -100,6 +100,8 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     update.add_argument("--timeout", type=float, default=20)
     for command in dict.fromkeys(commands.choices.values()):
         _agent_options(command, destination="_command_agent_choices")
+        if '--json' not in command._option_string_actions:
+            command.add_argument('--json', action='store_true', default=argparse.SUPPRESS, help='Show the complete diagnostic report as JSON.')
     return parser
 
 
@@ -159,8 +161,8 @@ def _automatic_update(args, source_root: Path, argv: list[str]) -> int | None:
         if policy != "compatible" or available.split(".")[0] != version(source_root).split(".")[0]:
             print(f"Harness update available: {available}. Run {state.get('command', 'harness')} update to install it.", file=sys.stderr)
             return None
-        print(f"Installing compatible Harness update {available} before starting Codex...", file=sys.stderr)
-        result = distribution.update_tool(data_root, timeout=30, expected_major=int(version(source_root).split(".")[0]))
+        with ui.Progress(f'Installing compatible Harness update {available}'):
+            distribution.update_tool(data_root, timeout=30, expected_major=int(version(source_root).split(".")[0]))
         active = distribution.installed_status(data_root)
         new_root = Path(active["release_root"])
         if new_root.resolve() != source_root.resolve():
@@ -177,9 +179,10 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser(source_root)
     args = parser.parse_args(argv)
+    ui.JSON_MODE.set(args.json)
     if args.runtime != "codex":
         print("harness: Claude integration is not implemented in this tool. "
-              "Use --agent codex; Claude-native editions remain on the separate claude/* repository branches.",
+              "This command is Codex-only. Claude editions use a separate harness-claude command.",
               file=sys.stderr)
         return 2
     if args.version:
@@ -211,14 +214,16 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
             result = distribution.install_tool(source_root, args.data_dir, args.bin_dir,
                                                python_executable=sys.executable, branch=args.branch,
                                                repository=args.repository, auto_update=args.auto_update)
-            print(json.dumps(result, indent=2), flush=True)
+            ui.report(result, title='Tool installation')
             if args.owned_runtime:
                 from .footprint import record
-                print(json.dumps(record(args.owned_runtime, args.data_dir), indent=2))
+                runtime = record(args.owned_runtime, args.data_dir)
+                if args.json:
+                    ui.report(runtime, title='Runtime ownership')
             if choice == 'reset':
                 reset_check_cache(args.data_dir)
             if not args.no_modify_path:
-                print(json.dumps(path_registration(args.bin_dir, reset=choice == 'reset'), indent=2))
+                ui.report(path_registration(args.bin_dir, reset=choice == 'reset'), title='PATH registration')
             hint = "Open a new terminal." if os.name == "nt" else "Apply PATH in this Bash session: source ~/.bashrc"
             if args.no_modify_path:
                 hint = "PATH registration skipped; invoke the command by its full path."
@@ -228,14 +233,15 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
             if args.repair_launcher:
                 if args.check or args.branch is not None or args.repository is not None:
                     raise ValueError("--repair-launcher is offline and cannot be combined with --check, --branch, or --repository.")
-                print(json.dumps(distribution.repair_launcher(args.data_dir), indent=2))
+                ui.report(distribution.repair_launcher(args.data_dir), title='Launcher repair')
                 print("Repeat project commands from the same parent terminal so they inherit its original environment.")
                 return 0
             if args.timeout <= 0 or args.timeout > 600:
                 raise ValueError("--timeout must be greater than zero and at most 600 seconds.")
             action = distribution.check_update if args.check else distribution.update_tool
-            result = action(args.data_dir, branch=args.branch, repository=args.repository, timeout=args.timeout)
-            print(json.dumps(result, indent=2))
+            with ui.Progress('Checking for Harness updates' if args.check else 'Updating Harness'):
+                result = action(args.data_dir, branch=args.branch, repository=args.repository, timeout=args.timeout)
+            ui.report(result, title='Tool update')
             if not args.check:
                 print("Tool update complete. Use harness-codex init --project PATH --install-only to update the project generator, then harness-codex config --project PATH for a reviewed project update.")
             return 0

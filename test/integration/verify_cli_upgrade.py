@@ -1,4 +1,4 @@
-"""Run real v9.2/v9.3/v9.4/v9.5 tool installer/updaters against v9.9 using local Git transport.
+"""Run real v9.2/v9.3/v9.4/v9.5 tool installer/updaters against v9.10 using local Git transport.
 
 Only the fixed upstream URL is replaced for this test. Git branch discovery,
 fetch, ancestry, archives, old installation code, and the new launcher are real.
@@ -47,7 +47,7 @@ def old_project(baseline, root, runtime_path):
     import test_runtime_teamplay
     import shutil
 
-    assert harness_metadata.HARNESS_VERSION in {"9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8"}
+    assert harness_metadata.HARNESS_VERSION in {"9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8", "9.9"}
     shutil.copytree(tests_root / "fixtures/coordinated-cross-contract", root)
     draft = test_runtime_teamplay.DeterministicPlanBuilderTests()._draft("coordinated-cross-contract-plan.json")
     plan = harness_plan_builder.materialize_plan(draft, root=root)
@@ -100,8 +100,8 @@ def verify(baseline):
     baseline_version = old._source_info(old_snapshot)[0]
     assert current._source_info(old_snapshot)[0] == baseline_version, "Complete historical module layouts must remain readable"
     candidate_version = current._source_info(new_snapshot)[0]
-    assert baseline_version in {"9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8"}
-    assert candidate_version == "9.9"
+    assert baseline_version in {"9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8", "9.9"}
+    assert candidate_version == "9.10"
     optional_installers = {"install.sh", "install.ps1", "install_harness.sh", "install_harness_codex.sh", "install_harness_codex.ps1"}
     retired_installers = optional_installers & (old_snapshot.keys() - new_snapshot.keys())
     assert "install_harness.sh" not in new_snapshot
@@ -186,18 +186,18 @@ def verify(baseline):
         for option in ("--agent", "--runtime"):
             selected = run([sys.executable, "-B", launcher, option, "codex", "--version"], cwd=project, environment=environment).strip()
             assert selected == version, "The new agent option and legacy runtime alias must both work after upgrade"
-        doctor = json.loads(run([sys.executable, "-B", launcher, "doctor", "--project", project], environment=environment))
+        doctor = json.loads(run([sys.executable, "-B", launcher, "doctor", "--json", "--project", project], environment=environment))
         assert doctor["valid"] and doctor["installationStatus"] == "valid", doctor
-        status = json.loads(run([sys.executable, "-B", launcher, "status", "--project", project], environment=environment))
+        status = json.loads(run([sys.executable, "-B", launcher, "status", "--json", "--project", project], environment=environment))
         assert status["state"] == "configured" and status["harnessPresent"], status
-        removal_output = run([sys.executable, "-B", launcher, "remove", "--project", project], environment=environment)
+        removal_output = run([sys.executable, "-B", launcher, "remove", "--json", "--project", project], environment=environment)
         removal, _ = json.JSONDecoder().raw_decode(removal_output)
         assert removal["valid"] and removal["dryRun"] and removal["writes"] == 0 and removal["actions"], removal
-        reset_output = run([sys.executable, "-B", launcher, "reset", "--project", project, "--dry-run"], environment=environment)
+        reset_output = run([sys.executable, "-B", launcher, "reset", "--json", "--project", project, "--dry-run"], environment=environment)
         reset, _ = json.JSONDecoder().raw_decode(reset_output)
         assert reset["operation"] == "reset" and reset["dryRun"] and reset["removal"]["valid"], reset
         assert state(data) == legacy_tool_before, "Read-only commands implicitly migrated the legacy launcher"
-        repair_output = run([sys.executable, "-B", launcher, "update", "--repair-launcher"], environment=environment)
+        repair_output = run([sys.executable, "-B", launcher, "update", "--json", "--repair-launcher"], environment=environment)
         repair, _ = json.JSONDecoder().raw_decode(repair_output)
         if migration_required:
             assert repair["state"] == "repaired" and repair["repaired"], repair
@@ -207,7 +207,7 @@ def verify(baseline):
             assert launcher.read_bytes() == legacy_launcher_before
         assert current.launcher_status(data)["callerEnvironmentPreserved"]
         repaired_tool = state(data)
-        repeat_output = run([sys.executable, "-B", launcher, "update", "--repair-launcher"], environment=environment)
+        repeat_output = run([sys.executable, "-B", launcher, "update", "--json", "--repair-launcher"], environment=environment)
         repeat, _ = json.JSONDecoder().raw_decode(repeat_output)
         assert repeat["state"] == "unchanged" and repeat["writes"] == 0, repeat
         assert state(data) == repaired_tool, "Repeated launcher migration was not a no-op"

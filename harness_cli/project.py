@@ -15,6 +15,7 @@ import sys
 
 from .environment import codex_environment, helper_environment
 from .project_installer import load_installer
+from . import presentation as ui
 
 
 class ProjectError(ValueError):
@@ -26,8 +27,8 @@ MAX_GOAL_FILE_BYTES = 64 * 1024
 
 def register_project_commands(subparsers) -> None:
     descriptions = {
-        "init": "Install the generator and configure a project in interactive Codex.",
-        "configure": "Review and configure an installed project harness in interactive Codex.",
+        "init": "Install the generator and configure a project with live progress.",
+        "configure": "Review and configure a project harness with live progress.",
         "new": "Start a new Codex conversation using the shared project harness.",
         "resume": "Resume a Codex conversation with the current project harness.",
         "start": "Deprecated alias for new.",
@@ -43,10 +44,16 @@ def register_project_commands(subparsers) -> None:
         parser.set_defaults(command=command)
         parser.add_argument("--project", type=Path, default=Path.cwd(),
                             help="Existing project directory (default: current directory).")
+        parser.add_argument('--json', action='store_true', default=argparse.SUPPRESS,
+                            help='Show the complete diagnostic report as JSON.')
         if command in {"init", "configure", "new", "resume", "start", "reset"}:
             parser.add_argument("--codex-binary", default="codex",
                                 help="Codex executable name or path (default: codex on PATH).")
         if command in {"init", "configure", "reset"}:
+            parser.add_argument('--interactive', action='store_true', help='Use the native Codex conversation screen instead of progress output.')
+            parser.add_argument('--timeout', type=float, default=1800, help='Configuration time limit in seconds (default: 1800).')
+            if command == 'configure':
+                parser.add_argument('--resume', metavar='SESSION_ID', help='Continue an unfinished native configuration session.')
             goals = parser.add_mutually_exclusive_group()
             goals.add_argument("--goal", help="Describe the project purpose, responsibilities and constraints.")
             goals.add_argument("--goal-file", type=Path, metavar="MARKDOWN",
@@ -126,10 +133,10 @@ def _goal_input(args, installer) -> str | None:
             "project/system permission rules.\n\n" + text)
 
 
-def _validate_prompt_transport(root: Path, prompt: str, command: list[str] | None = None) -> None:
+def _validate_prompt_transport(root: Path, prompt: str, command: list[str] | None = None, *, native_argv=True) -> None:
     if "\0" in prompt or len(prompt.encode("utf-8")) > 72 * 1024:
         raise ProjectError("The combined project prompt is too large or contains a NUL character; shorten the project brief.")
-    if os.name == "nt":
+    if os.name == "nt" and native_argv:
         arguments = [*(command or ["codex.exe"]), "--cd", str(root), prompt]
         if len(subprocess.list2cmdline(arguments).encode("utf-16-le")) // 2 + 1 > 32767:
             raise ProjectError("The project brief exceeds the Windows command-line limit; shorten the Markdown before retrying.")
@@ -154,8 +161,13 @@ def preflight_project_command(args, *, source_root: Path) -> None:
     if args.command == "remove" and args.recover and args.include_generator:
         raise ProjectError("--recover restores the recorded operation; it cannot be combined with --include-generator.")
     if args.command in {"init", "configure", "reset"}:
+        if not 0 < args.timeout <= 86400:
+            raise ProjectError('--timeout must be between 0 and 86400 seconds.')
+        if getattr(args, 'resume', None) is not None:
+            if args.interactive or not args.resume.strip() or len(args.resume) > 1024 or any(ord(c) < 32 or ord(c) == 127 for c in args.resume):
+                raise ProjectError('--resume needs a valid native session ID and cannot be combined with --interactive.')
         args._goal_text = _goal_input(args, installer)
-        _validate_prompt_transport(root, _configuration_prompt(args._goal_text))
+        _validate_prompt_transport(root, _configuration_prompt(args._goal_text), native_argv=args.interactive)
     args._existing_init_noop = (args.command == "init" and not args.dry_run and not args.install_only
                                 and os.path.lexists(root / ".harness/manifest.json")
                                 and not getattr(args, "goal", None) and getattr(args, "goal_file", None) is None)
@@ -300,7 +312,7 @@ def _check_existing(source_root: Path, root: Path, *, required: bool = False) ->
               "Codex must re-read current source before relying on project claims. "
               "The manifest has not been refreshed or declared valid.", file=sys.stderr)
         return True
-    print(json.dumps(report, indent=2, ensure_ascii=False), file=sys.stderr)
+    ui.report(report, title='Project harness needs attention', error=True)
     raise ProjectError(
         "The project harness is not ready. Run harness-codex doctor --project PATH and resolve its findings; "
         "use harness-codex init for a new installation or config for a supported upgrade."
@@ -446,15 +458,24 @@ def _launch(command: list[str], root: Path, prompt: str, *, resume: bool = False
     return result.returncode if result.returncode >= 0 else 128 - result.returncode
 
 
-def _finish_configuration(source_root: Path, root: Path, command: list[str], goal: str | None) -> int:
-    status = _launch(command, root, _configuration_prompt(goal))
+def _finish_configuration(source_root: Path, root: Path, command: list[str], goal: str | None, *, args=None) -> int:
+    if args is not None and not args.interactive:
+        from .configuration import run
+        status = run(command, root, _configuration_prompt(goal), timeout=args.timeout, resume_id=getattr(args, 'resume', None))
+    else:
+        status = _launch(command, root, _configuration_prompt(goal))
     if status:
-        print(f"Codex exited with status {status}; configuration has not been confirmed. Run harness-codex doctor --project PATH.",
+        print(f"Configuration {'interrupted' if status == 130 else 'stopped'}; completion has not been confirmed. Run harness-codex status --project PATH.",
               file=sys.stderr)
         return status
+    if not os.path.lexists(root / '.harness/manifest.json'):
+        state = project_status(source_root, root, load_installer(source_root))
+        ui.report(state, title='Configuration incomplete', error=True)
+        print('A complete project harness was not created. Continue with harness-codex config; use --resume SESSION_ID to answer an earlier configuration question.', file=sys.stderr)
+        return 1
     status, report = _report(source_root, root)
     if status or not report["valid"]:
-        print(json.dumps(report, indent=2, ensure_ascii=False), file=sys.stderr)
+        ui.report(report, title='Configuration needs attention', error=True)
         print("Codex exited, but a valid project harness was not confirmed. Run harness-codex config --project PATH to continue.",
               file=sys.stderr)
         return status or 1
@@ -466,6 +487,7 @@ def _finish_configuration(source_root: Path, root: Path, command: list[str], goa
 def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
     """Execute one registered project command; return an ordinary process status."""
     try:
+        ui.JSON_MODE.set(getattr(args, 'json', False))
         source_root = Path(source_root).absolute()
         installer = load_installer(source_root)
         root = _project_path(args.project, installer)
@@ -476,14 +498,14 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
             report = project_status(source_root, root, installer)
             if hasattr(args, "_launcher_environment_status"):
                 report["cliLauncher"] = args._launcher_environment_status
-            print(json.dumps(report, indent=2, ensure_ascii=False))
+            ui.report(report, title='Project harness')
             return 1 if report["state"] in {"invalid", "unowned-artifacts", "removal-pending", "transaction-pending",
                                             "orphaned-removal-workspace", "orphaned-transaction-workspace"} else 0
         if args.command == "doctor":
             status, report = _report(source_root, root, doctor=True)
             if hasattr(args, "_launcher_environment_status"):
                 report["cliLauncher"] = args._launcher_environment_status
-            print(json.dumps(report, indent=2, ensure_ascii=False))
+            ui.report(report, title='Project harness diagnosis')
             return status
         if args.command == "init":
             _check_existing(source_root, root)
@@ -502,19 +524,19 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                 print("The generator is already present; a generated project harness has not yet been confirmed.")
             command = None if args.dry_run or args.install_only else _interactive_codex(args.codex_binary)
             if command is not None:
-                _validate_prompt_transport(root, _configuration_prompt(args._goal_text), command)
+                _validate_prompt_transport(root, _configuration_prompt(args._goal_text), command, native_argv=args.interactive)
             report = installer.install(root, source=source, dry_run=args.dry_run)
-            print(json.dumps(report, indent=2, ensure_ascii=False), flush=True)
+            ui.report(report, title='Generator installation')
             if args.dry_run:
                 print("Dry-run only: no generator files were written and Codex was not launched.")
                 return 0
             if args.install_only:
                 print("Generator installed. This command did not configure the project harness. Run harness-codex config --project PATH in a terminal.")
                 return 0
-            return _finish_configuration(source_root, root, command, args._goal_text)
+            return _finish_configuration(source_root, root, command, args._goal_text, args=args)
         if args.command == "configure":
             command = _interactive_codex(args.codex_binary)
-            _validate_prompt_transport(root, _configuration_prompt(args._goal_text), command)
+            _validate_prompt_transport(root, _configuration_prompt(args._goal_text), command, native_argv=args.interactive)
             _check_existing(source_root, root)
             destination = root / ".agents/skills/harness"
             if not (destination / "SKILL.md").is_file():
@@ -522,7 +544,7 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
             installation = installer.install(root, source=source, dry_run=True)
             if installation["writes"] or installation["removes"] or installation["directoriesCreated"]:
                 raise ProjectError("The installed generator needs updating. Run harness-codex init --project PATH --install-only, then harness-codex config --project PATH.")
-            return _finish_configuration(source_root, root, command, args._goal_text)
+            return _finish_configuration(source_root, root, command, args._goal_text, args=args)
         if args.command in {"new", "resume"}:
             command = _interactive_codex(args.codex_binary)
             stale = _check_existing(source_root, root, required=True)
@@ -547,7 +569,7 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                 else:
                     report = lifecycle.remove_project(root, source_root=source_root,
                                                       include_generator=args.include_generator, dry_run=dry_run)
-                print(json.dumps(report, indent=2, ensure_ascii=False))
+                ui.report(report, title='Project removal')
                 if dry_run:
                     print("Preview only. Add --yes without --dry-run to apply this operation.")
                 return 1 if report.get("recoveryRequired") else 0
@@ -555,20 +577,20 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
             plan = lifecycle.remove_project(root, source_root=source_root, dry_run=True)
             installation = installer.install(root, source=source, dry_run=True)
             if dry_run:
-                print(json.dumps({"operation": "reset", "dryRun": True, "removal": plan,
-                                  "generatorInstallation": installation}, indent=2, ensure_ascii=False))
+                ui.report({"operation": "reset", "dryRun": True, "removal": plan,
+                           "generatorInstallation": installation}, title='Project reset preview')
                 print("Preview only. Add --yes without --dry-run to remove owned generated files and open fresh configuration.")
                 return 0
             command = _interactive_codex(args.codex_binary)
-            _validate_prompt_transport(root, _configuration_prompt(args._goal_text), command)
+            _validate_prompt_transport(root, _configuration_prompt(args._goal_text), command, native_argv=args.interactive)
             installer.install(root, source=source)
             report = lifecycle.remove_project(root, source_root=source_root, dry_run=False)
-            print(json.dumps(report, indent=2, ensure_ascii=False), flush=True)
+            ui.report(report, title='Previous project harness removal')
             if report.get("recoveryRequired"):
                 raise ProjectError("Removal committed but cleanup remains pending. Run harness-codex remove --project PATH --recover, then add --yes; run harness-codex config after recovery.")
             _assert_no_transaction(root, installer)
             print("Previous generated harness removed. Starting fresh configuration; if Codex stops early, use harness-codex config to continue.")
-            return _finish_configuration(source_root, root, command, args._goal_text)
+            return _finish_configuration(source_root, root, command, args._goal_text, args=args)
         raise ProjectError(f"Unknown project command: {args.command}")
     except KeyboardInterrupt:
         print("Harness interrupted.", file=sys.stderr)

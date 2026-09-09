@@ -4,8 +4,30 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import sys
+import stat
 
 from . import distribution as dist
+
+
+def _pause_installer(paused: bool) -> None:
+    """Pause the installer's timer while its child asks on the real terminal."""
+    name = os.environ.get('HARNESS_INSTALL_PAUSE_FILE')
+    if not name:
+        return
+    path = Path(name)
+    if not path.name.startswith('harness-codex-progress-') or path.is_symlink():
+        return
+    try:
+        with path.open('r+', encoding='utf-8', newline='\n') as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                return
+            if stream.read(128) not in {'Harness installation progress\nrunning\n', 'Harness installation progress\npaused\n'}:
+                return
+            stream.seek(0)
+            stream.write('Harness installation progress\n' + ('paused\n' if paused else 'running\n'))
+            stream.truncate()
+    except OSError:
+        pass
 
 
 def choose(data_root: Path, bin_dir: Path, selection: str) -> tuple[str, dict | None]:
@@ -30,6 +52,7 @@ def choose(data_root: Path, bin_dir: Path, selection: str) -> tuple[str, dict | 
                '         Project harnesses and unrelated shell settings are preserved.\n'
                'Choose reuse/reset, or press Enter to cancel: ')
     try:
+        _pause_installer(True)
         if sys.stdin.isatty() and sys.stdout.isatty():
             answer = input(message)
         else:
@@ -44,6 +67,8 @@ def choose(data_root: Path, bin_dir: Path, selection: str) -> tuple[str, dict | 
                 answer = reader.readline().rstrip('\r\n')
     except (OSError, EOFError) as exc:
         raise ValueError('Existing installation needs a choice. Run in a terminal, or specify --existing reuse/reset.') from exc
+    finally:
+        _pause_installer(False)
     if answer not in {'reuse', 'reset'}:
         raise ValueError('Installation cancelled. Existing tool settings were preserved.')
     return answer, existing

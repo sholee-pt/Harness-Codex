@@ -21,8 +21,8 @@ class ReinstallTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.base = Path(tmp.name).resolve()
         self.data, self.binary = self.base / 'tool', self.base / 'bin'
-        self.source = source(self.base / 'source', '9.9')
-        dist.install_tool(self.source, self.data, self.binary, python_executable=sys.executable, branch='codex/v9.9', auto_update='off')
+        self.source = source(self.base / 'source', '9.10')
+        dist.install_tool(self.source, self.data, self.binary, python_executable=sys.executable, branch='codex/v9.10', auto_update='off')
 
     def test_reuse_keeps_preferences_reset_clears_only_tool_check_cache(self):
         dist.mark_check(self.data)

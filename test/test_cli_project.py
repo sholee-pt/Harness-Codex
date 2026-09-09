@@ -69,7 +69,8 @@ class ProjectCliTests(unittest.TestCase):
     def run_cli(self, command, *extra, tty=True):
         output = TerminalBuffer() if tty else io.StringIO()
         error = io.StringIO()
-        args = self.parser.parse_args([command, "--project", str(self.root), *extra])
+        options = ["--interactive"] if command in {"init", "configure", "config", "reset"} else []
+        args = self.parser.parse_args([command, "--json", "--project", str(self.root), *options, *extra])
         with mock.patch.object(sys, "stdin", TerminalBuffer() if tty else io.StringIO()), contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
             status = project.run_project_command(args, source_root=REPO_ROOT)
         return status, output.getvalue(), error.getvalue()
@@ -137,7 +138,7 @@ class ProjectCliTests(unittest.TestCase):
     def test_zero_exit_without_generated_manifest_is_not_success(self):
         code, out, err = self.run_cli("init")
         self.assertEqual(code, 1)
-        self.assertIn("valid project harness was not confirmed", err)
+        self.assertIn("complete project harness was not created", err)
         self.assertNotIn("Project harness files validate", out)
         self.assertTrue((self.root / ".agents/skills/harness/SKILL.md").exists())
 

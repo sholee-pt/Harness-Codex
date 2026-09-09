@@ -48,17 +48,63 @@ foreach ($directory in @($BinDir, $DataDir)) {
 $installLog = Join-Path ([IO.Path]::GetTempPath()) ('harness-codex-install-log-' + [guid]::NewGuid().ToString('N') + '.txt')
 $logStream = [IO.File]::Open($installLog, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
 $logStream.Dispose()
+$pauseFile = Join-Path ([IO.Path]::GetTempPath()) ('harness-codex-progress-' + [guid]::NewGuid().ToString('N'))
+$previousPauseFile = $env:HARNESS_INSTALL_PAUSE_FILE
+$liveProgress = $false
+$script:installStep = 'Starting installer'
+try {
+[IO.File]::WriteAllText($pauseFile, "Harness installation progress`nrunning`n", [Text.UTF8Encoding]::new($false))
+$env:HARNESS_INSTALL_PAUSE_FILE = $pauseFile
+$liveProgress = -not [Console]::IsOutputRedirected
+if ($liveProgress -and -not ('HarnessInstallClock' -as [type])) {
+    # A native console writer keeps ticking while synchronous Conda/download
+    # calls run. It never changes PowerShell execution policy or opens a window.
+    Add-Type -TypeDefinition @'
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Threading;
+public static class HarnessInstallClock {
+    static Thread worker;
+    static volatile bool stopping;
+    public static void Stop() {
+        stopping = true;
+        if (worker != null) { worker.Join(1000); worker = null; }
+        try { Console.Write("\r" + new string(' ', Math.Max(1, Console.WindowWidth - 1)) + "\r"); } catch {}
+    }
+    public static void Start(string label, string pause) {
+        Stop(); stopping = false;
+        worker = new Thread(() => {
+            var clock = Stopwatch.StartNew(); int frame = 0;
+            while (!stopping) {
+                try {
+                    if (!File.ReadAllText(pause).Contains("\npaused\n")) {
+                        string text = "  " + "|/-\\"[(frame++) % 4] + " " + label + "  " + (int)clock.Elapsed.TotalSeconds + "s";
+                        int width = Math.Max(40, Console.WindowWidth - 1);
+                        Console.Write("\r" + (text.Length > width ? text.Substring(0, width) : text.PadRight(width)));
+                    }
+                } catch {}
+                Thread.Sleep(200);
+            }
+        });
+        worker.IsBackground = true;
+        worker.Start();
+    }
+}
+'@
+}
 function Start-HarnessStep([string]$Label) {
     $script:installStep = $Label
     $script:stepClock = [Diagnostics.Stopwatch]::StartNew()
     Write-Host "`n$Label" -ForegroundColor Cyan
     [IO.File]::AppendAllText($installLog, "`n$Label`n")
+    if ($liveProgress) { [HarnessInstallClock]::Start($Label, $pauseFile) }
 }
 function Complete-HarnessStep {
+    if ($liveProgress) { [HarnessInstallClock]::Stop() }
     Write-Host ("  OK  {0}: done ({1}s)" -f $installStep, [int]$stepClock.Elapsed.TotalSeconds) -ForegroundColor Green
 }
 Write-Host "`nHarness for Codex installer`n================================`nDetailed log: $installLog"
-try {
 Start-HarnessStep '[1/3] Checking installation tools'
 $ownedRuntime = $null
 $runtimeReference = Join-Path $DataDir 'runtime.json'
@@ -208,9 +254,14 @@ $installOutput | Where-Object { $_ -like 'Installed *' } | ForEach-Object { Writ
 if (-not $NoModifyPath) { Write-Host 'Ready in this PowerShell session: harness-codex --version' }
 Write-Host "Installation complete. Detailed log: $installLog"
 } catch {
+    if ($liveProgress -and ('HarnessInstallClock' -as [type])) { [HarnessInstallClock]::Stop() }
     [IO.File]::AppendAllText($installLog, "$_`n")
     Write-Host "`n${installStep}: failed. Last log lines:"
     Select-String -LiteralPath $installLog -Pattern '^harness:' | ForEach-Object { Write-Host $_.Line }
     Get-Content -LiteralPath $installLog -Tail 15 | ForEach-Object { Write-Host $_ }
     throw "$_ Detailed log: $installLog"
+} finally {
+    if ($liveProgress -and ('HarnessInstallClock' -as [type])) { [HarnessInstallClock]::Stop() }
+    $env:HARNESS_INSTALL_PAUSE_FILE = $previousPauseFile
+    if (Test-Path -LiteralPath $pauseFile) { Remove-Item -LiteralPath $pauseFile -Force }
 }

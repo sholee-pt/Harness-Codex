@@ -65,7 +65,7 @@ class LegacyLauncherGateTests(unittest.TestCase):
             with self.subTest(arguments=arguments):
                 completed = subprocess.run(
                     [sys.executable, "-B", str(self.launcher), *arguments,
-                     "--project", str(self.project)],
+                     "--json", "--project", str(self.project)],
                     capture_output=True, text=True, encoding="utf-8", env=self.caller, timeout=30,
                 )
                 # Doctor reports the intentionally unconfigured project.

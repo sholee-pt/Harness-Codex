@@ -110,7 +110,7 @@ def verify(artifact: Path) -> dict:
         assert "Harness for Codex" in version
         assert run([executable, "--runtime", "codex", "--version"], env=env).strip() == version
         help_text = run([executable, "--help"], env=env)
-        assert "init" in help_text and "--agent" in help_text and "--runtime" not in help_text
+        assert "init" in help_text and "--agent" not in help_text and "--runtime" not in help_text
         tool_before = snapshot(data)
         project_before = snapshot(project)
         reject([executable, "--agent", "claude", "status", "--project", project], "not implemented", env=env)
@@ -146,20 +146,20 @@ def verify(artifact: Path) -> dict:
         (git_metadata / "HEAD").write_text("ref: refs/heads/user-owned\n")
         git_before = snapshot(git_metadata)
         project_before = snapshot(project)
-        status = report(run([executable, "status", "--agent", "codex", "--project", project], env=env))
+        status = report(run([executable, "status", "--json", "--agent", "codex", "--project", project], env=env))
         assert status["state"] == "generator-only" and status["generator"] == "installed"
         assert status["harnessPresent"] is False
         assert snapshot(project) == project_before
 
         for arguments in ([], ["--include-generator"], ["--include-generator", "--yes", "--dry-run"]):
-            preview = report(run([executable, "remove", "--agent", "codex", "--project", project,
+            preview = report(run([executable, "remove", "--json", "--agent", "codex", "--project", project,
                                   *arguments], env=env))
             assert preview["dryRun"] is True and preview["writes"] == 0
             assert preview["gitMetadataTouched"] is False
             assert bool(preview["actions"]) == ("--include-generator" in arguments)
             assert snapshot(project) == project_before
 
-        removed = report(run([executable, "remove", "--runtime", "codex", "--project", project,
+        removed = report(run([executable, "remove", "--json", "--runtime", "codex", "--project", project,
                               "--include-generator", "--yes"], env=env))
         assert removed["state"] == "removed" and removed["dryRun"] is False and removed["writes"] > 0
         assert removed["gitMetadataTouched"] is False
@@ -167,12 +167,12 @@ def verify(artifact: Path) -> dict:
         assert snapshot(git_metadata) == git_before
         assert snapshot(project)["README.md"] == readme_before
         absent_before = snapshot(project)
-        absent = report(run([executable, "status", "--agent", "codex", "--project", project], env=env))
+        absent = report(run([executable, "status", "--json", "--agent", "codex", "--project", project], env=env))
         assert absent["state"] == "absent" and absent["generator"] == "absent"
         assert snapshot(project) == absent_before
 
         run([executable, "init", "--agent", "codex", "--project", project, "--install-only"], env=env)
-        reinstalled = report(run([executable, "status", "--project", project], env=env))
+        reinstalled = report(run([executable, "status", "--json", "--project", project], env=env))
         assert (installed / "SKILL.md").is_file() and reinstalled["state"] == "generator-only"
         assert snapshot(git_metadata) == git_before
         assert snapshot(project)["README.md"] == readme_before

@@ -381,12 +381,12 @@ class PreviousReleaseCompatibilityTests(unittest.TestCase):
                 self.assertFalse(report['valid'])
 
     def test_compatibility_is_explicit_not_a_future_v9_version_range(self):
-        self.assertEqual(metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS, {'9.0', '9.1', '9.2', '9.3', '9.4', '9.5', '9.6', '9.7', '9.8', '9.9'})
+        self.assertEqual(metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS, {'9.0', '9.1', '9.2', '9.3', '9.4', '9.5', '9.6', '9.7', '9.8', '9.9', '9.10'})
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             plan = previous_plan(root)
             apply.apply_application(apply.build_application(root, plan))
-            set_metadata(root, '9.10', 2)
+            set_metadata(root, '9.11', 2)
             before = preserved_state(root)
             self.assertEqual(validate_harness.Validator(root).run()['installationStatus'], 'invalid')
             with self.assertRaisesRegex(apply.PlanError, 'compatibility'):

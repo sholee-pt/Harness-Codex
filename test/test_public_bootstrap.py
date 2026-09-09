@@ -33,7 +33,7 @@ while [ "$#" -gt 0 ]; do
 done
 case "$url" in
   */SHA256SUMS) cp "$TEST_SUMS" "$output" ;;
-  */harness-codex-9.9-linux.tar.gz) cp "$TEST_ARCHIVE" "$output" ;;
+  */harness-codex-9.10-linux.tar.gz) cp "$TEST_ARCHIVE" "$output" ;;
   *) exit 87 ;;
 esac
 ''')
@@ -44,7 +44,7 @@ esac
 
     def make_archive(self, *, unsafe=False, linked=False):
         with tarfile.open(self.archive, 'w:gz') as archive:
-            name = '../escape' if unsafe else 'harness-codex-9.9/install.sh'
+            name = '../escape' if unsafe else 'harness-codex-9.10/install.sh'
             data = b'#!/bin/sh\nprintf installed > "$TEST_MARKER"\n'
             info = tarfile.TarInfo(name)
             if linked:
@@ -53,7 +53,7 @@ esac
             else:
                 info.size = len(data)
             archive.addfile(info, None if linked else io.BytesIO(data))
-        self.sums.write_text(hashlib.sha256(self.archive.read_bytes()).hexdigest() + '  harness-codex-9.9-linux.tar.gz\n')
+        self.sums.write_text(hashlib.sha256(self.archive.read_bytes()).hexdigest() + '  harness-codex-9.10-linux.tar.gz\n')
 
     def invoke(self, *arguments):
         return subprocess.run(['/bin/sh', '-s', '--', *arguments], input=SCRIPT.read_text(),
@@ -71,7 +71,7 @@ esac
 
     def test_checksum_failure_never_executes_payload(self):
         self.make_archive()
-        self.sums.write_text('0' * 64 + '  harness-codex-9.9-linux.tar.gz\n')
+        self.sums.write_text('0' * 64 + '  harness-codex-9.10-linux.tar.gz\n')
         result = self.invoke()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('checksum mismatch', result.stderr)
@@ -197,10 +197,78 @@ esac
             help_result = subprocess.run([BASH, str(ROOT / "installer/install.sh"), "--help"],
                                          env=environment, capture_output=True, text=True, encoding="utf-8", timeout=20)
             self.assertEqual(help_result.returncode, 0)
-            self.assertIn("--agent", help_result.stdout)
+            self.assertNotIn("--agent", help_result.stdout)
             self.assertNotIn("--runtime", help_result.stdout)
             self.assertFalse(marker.exists())
 
 
 if __name__ == "__main__":
     unittest.main()
+
+@unittest.skipUnless(os.name == 'posix', 'Requires a Linux controlling terminal')
+class InstallerTerminalTests(unittest.TestCase):
+    def test_timer_and_confirmed_child_bash_activation(self):
+        import pty
+        import select
+        import signal
+        import time
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            fake = base / 'conda'
+            fake.write_text("""#!/usr/bin/env bash
+case "$1" in
+ env) printf '{"envs":[]}\\n' ;;
+ create) sleep 1.4 ;;
+ run) printf 'Installed harness-codex in fixture.\\n' ;;
+esac
+""")
+            fake.chmod(0o755)
+            marker = base / 'child-read-bashrc'
+            (base / '.bashrc').write_text('printf loaded > "$HOME/child-read-bashrc"\nexit 7\n')
+            env = {**os.environ, 'CONDA_EXE': str(fake), 'HOME': str(base), 'TMPDIR': str(base),
+                   'TERM': 'xterm', 'PATH': '/usr/bin:/bin'}
+            for key in ('BASH_ENV', 'ENV'):
+                env.pop(key, None)
+            pid, terminal = pty.fork()
+            if pid == 0:
+                os.execve('/bin/bash', ['/bin/bash', str(ROOT / 'installer/install.sh'),
+                          '--data-dir', str(base / 'data'), '--auto-update', 'off'], env)
+            output = bytearray()
+            status = None
+            answered = False
+            deadline = time.monotonic() + 20
+            try:
+                while time.monotonic() < deadline:
+                    ready, _, _ = select.select([terminal], [], [], 0.2)
+                    if ready:
+                        try:
+                            data = os.read(terminal, 65536)
+                        except OSError:
+                            break
+                        if not data:
+                            break
+                        output.extend(data)
+                        if not answered and b'[Enter/yes opens, no skips]' in output:
+                            os.write(terminal, b'\n')
+                            answered = True
+                    done, state = os.waitpid(pid, os.WNOHANG)
+                    if done:
+                        status = state
+                        break
+                if status is None:
+                    done, state = os.waitpid(pid, os.WNOHANG)
+                    if done:
+                        status = state
+                    else:
+                        os.kill(pid, signal.SIGKILL)
+                        os.waitpid(pid, 0)
+                        self.fail('Installer terminal fixture timed out: ' + output.decode(errors='replace'))
+            finally:
+                os.close(terminal)
+            text = output.decode(errors='replace')
+            self.assertEqual(os.waitstatus_to_exitcode(status), 0, text)
+            self.assertIn('  1s', text)
+            self.assertTrue(answered, text)
+            self.assertEqual(marker.read_text(), 'loaded')
+            self.assertIn('Harness remains installed', text)
+            self.assertEqual(list(base.glob('harness-codex-progress-*')), [])

@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sholee-pt/Harness/releases/tag/codex-v9.9"><img src="https://img.shields.io/badge/Version-v9.9-2563EB.svg?style=flat-square" alt="Version: v9.9"></a>
+  <a href="https://github.com/sholee-pt/Harness/releases/tag/codex-v9.10"><img src="https://img.shields.io/badge/Version-v9.10-2563EB.svg?style=flat-square" alt="Version: v9.10"></a>
   <a href="#agent-editions"><img src=".github/badges/agent-codex.svg" alt="Agent: Codex"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Proprietary-64748B.svg?style=flat-square" alt="License: Proprietary"></a>
 </p>
@@ -19,7 +19,7 @@
   <a href="#for-linux">Linux install</a> &middot;
   <a href="#for-windows">Windows install</a> &middot;
   <a href="#quick-start">Quick start</a> &middot;
-  <a href="https://github.com/sholee-pt/Harness/releases/tag/codex-v9.9">Release</a> &middot;
+  <a href="https://github.com/sholee-pt/Harness/releases/tag/codex-v9.10">Release</a> &middot;
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
@@ -30,25 +30,24 @@ Generate and maintain one shared project harness with Codex-native agents and sk
 ### For Linux
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v9.9/install_harness_codex.sh | sh
-source ~/.bashrc
+curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v9.10/install_harness_codex.sh | sh
 harness-codex --version
 ```
 
-Supports Linux x86_64 and aarch64. Requires curl, Bash, tar and sha256sum. The installer verifies the release checksum, prepares an isolated Python 3.11 environment and Git, installs the command in `~/.local/bin`, and registers PATH in `~/.bashrc`. No sudo is required. A new terminal also loads the PATH registration; a child installer cannot change the calling shell's environment.
+Supports Linux x86_64 and aarch64. Requires curl, Bash, tar and sha256sum. The installer verifies the release checksum, prepares an isolated Python 3.11 environment and Git, installs the command in `~/.local/bin`, and registers PATH in `~/.bashrc`. No sudo is required. After installation, press Enter or type yes to open a new Bash with ~/.bashrc loaded. Exit returns to the original shell. To stay in the original shell instead, run `source ~/.bashrc` yourself. Redirected installation skips this prompt.
 
 ### For Windows
 
 Run in **64-bit Windows PowerShell 5.1 or PowerShell 7** on Windows x64:
 
 ```powershell
-irm https://github.com/sholee-pt/Harness/releases/download/codex-v9.9/install_harness_codex.ps1 | iex
+irm https://github.com/sholee-pt/Harness/releases/download/codex-v9.10/install_harness_codex.ps1 | iex
 harness-codex --version
 ```
 
 The installer verifies the ZIP checksum, prepares an isolated Python 3.11 environment and Git, and adds the command to your user PATH. It also updates PATH in the current PowerShell session. Administrator access is not required.
 
-If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness/blob/codex/v9.9/docs/installation.md).
+If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness/blob/codex/v9.10/docs/installation.md).
 
 ## Quick Start
 
@@ -61,7 +60,9 @@ harness-codex new "Fix the preprocessing failure and run the tests"
 harness-codex resume
 ```
 
-`PROJECT.md` is an optional UTF-8 Markdown brief describing the project's purpose, responsibilities and constraints. `init` opens Codex to inspect the project and create its harness, then validates the resulting files. Existing harnesses are reported and retained. You can also provide a short description with `--goal "..."`, or run `init` without a brief.
+`PROJECT.md` is an optional UTF-8 Markdown brief describing the project's purpose, responsibilities and constraints. `init` uses Codex to inspect the project and create its harness, showing live stages and elapsed seconds instead of the internal setup prompt. Native approval requests and additional questions remain visible. It then validates the resulting files. Existing harnesses are reported and retained. You can also provide a short description with `--goal "..."`, or run `init` without a brief.
+
+Configuration uses the native Codex App Server. If your Codex version or an approval type needs the full conversation screen, retry with `init --interactive` or `config --interactive`. After an interruption or unanswered question, continue the printed native session with `harness-codex config --resume SESSION_ID --goal "Your answer"`. See [configuration progress](https://github.com/sholee-pt/Harness/blob/codex/v9.10/docs/sessions.md#configuration-progress) for details.
 
 ### Conversations and project maintenance
 
@@ -80,9 +81,11 @@ harness-codex resume
 | `reset` | Preview removal and fresh configuration of the project harness |
 | `uninstall` | Remove the tool and its recorded installation settings after typing `yes` |
 
+Reports are concise by default. Add `--json` to `status`, `doctor`, update checks or previews for the complete diagnostic report. `new` and `resume` keep the native Codex conversation screen and its visible harness activation message.
+
 Project commands default to the current directory. Add `--project "/path/to/project"` to select another folder. `start` remains a deprecated alias for `new`; `configure` remains an alias for `config`.
 
-Every `new` and `resume` validates and uses the **current shared harness**, without copying or regenerating it. Resume retains Codex's conversation history. Run `config` explicitly when the harness needs revising. See [session lifecycle](https://github.com/sholee-pt/Harness/blob/codex/v9.9/docs/sessions.md).
+Every `new` and `resume` validates and uses the **current shared harness**, without copying or regenerating it. Resume retains Codex's conversation history. Run `config` explicitly when the harness needs revising. See [session lifecycle](https://github.com/sholee-pt/Harness/blob/codex/v9.10/docs/sessions.md).
 
 ### Update an existing project harness
 
@@ -119,16 +122,16 @@ After reinstalling, run `status` in a project to recognize its retained harness.
 
 ## Documentation
 
-- [Installation, reinstall choices and troubleshooting](https://github.com/sholee-pt/Harness/blob/codex/v9.9/docs/installation.md)
-- [Project and conversation lifecycle](https://github.com/sholee-pt/Harness/blob/codex/v9.9/docs/sessions.md)
-- [Generated structure and design](https://github.com/sholee-pt/Harness/blob/codex/v9.9/docs/architecture.md)
-- [Quality evaluation and optional local evidence](https://github.com/sholee-pt/Harness/blob/codex/v9.9/docs/evaluation.md)
-- [Release assets and verification](https://github.com/sholee-pt/Harness/blob/codex/v9.9/docs/distribution.md)
+- [Installation, reinstall choices and troubleshooting](https://github.com/sholee-pt/Harness/blob/codex/v9.10/docs/installation.md)
+- [Project and conversation lifecycle](https://github.com/sholee-pt/Harness/blob/codex/v9.10/docs/sessions.md)
+- [Generated structure and design](https://github.com/sholee-pt/Harness/blob/codex/v9.10/docs/architecture.md)
+- [Quality evaluation and optional local evidence](https://github.com/sholee-pt/Harness/blob/codex/v9.10/docs/evaluation.md)
+- [Release assets and verification](https://github.com/sholee-pt/Harness/blob/codex/v9.10/docs/distribution.md)
 - [Changelog](CHANGELOG.md) · [GitHub Releases](https://github.com/sholee-pt/Harness/releases) · [Contributing](CONTRIBUTING.md)
 
 ## Agent editions
 
-This edition provides **`harness-codex`**. Claude development is maintained separately on `claude/*` branches; this command does not implement Claude sessions.
+This edition provides **`harness-codex`** and needs no `--agent` option. The future Claude command is `harness-claude`. Hidden legacy Codex selectors remain accepted for older scripts. Claude development is maintained separately on `claude/*` branches; this command does not implement Claude sessions.
 
 ## License
 

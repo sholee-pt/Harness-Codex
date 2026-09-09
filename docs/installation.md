@@ -10,6 +10,7 @@ The [README installation guide](../README.md#installation-guide) provides the st
 | `--bin-dir PATH` | `-BinDir PATH` | Command directory |
 | `--auto-update compatible\|check\|off` | `-AutoUpdate compatible\|check\|off` | Between-session update policy |
 | `--existing ask\|reuse\|reset` | `-Existing ask\|reuse\|reset` | Existing-installation choice |
+| `--activate ask\|shell\|skip` | — | Ask to open a child Bash, open it explicitly, or skip activation |
 | `--no-modify-path` | `-NoModifyPath` | Skip PATH registration |
 | `CONDA_EXE=/path/to/conda` | `-CondaExe PATH` | Use an existing environment manager |
 | — | `-CondaHome PATH` | Select a dedicated Miniforge location |
@@ -17,18 +18,18 @@ The [README installation guide](../README.md#installation-guide) provides the st
 `reuse` retains the recorded branch, repository transport and automatic-update policy. `reset` applies the supplied/default preferences, clears the update-check cache and rebuilds the exact managed PATH registration. Both preserve verified releases and runtime files, project harnesses, unrelated shell/registry settings and modified user content. Reset does not authorize removing unknown directories. Without a terminal, an existing installation requires an explicit choice.
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v9.9/install_harness_codex.sh | sh -s -- --existing reuse
+curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v9.10/install_harness_codex.sh | sh -s -- --existing reuse
 source ~/.bashrc
 ```
 
 ```powershell
-& ([scriptblock]::Create((irm https://github.com/sholee-pt/Harness/releases/download/codex-v9.9/install_harness_codex.ps1))) -Existing reset
+& ([scriptblock]::Create((irm https://github.com/sholee-pt/Harness/releases/download/codex-v9.10/install_harness_codex.ps1))) -Existing reset
 ```
 
 ## Source installation
 
 ```bash
-git clone --branch codex/v9.9 --single-branch https://github.com/sholee-pt/Harness.git
+git clone --branch codex/v9.10 --single-branch https://github.com/sholee-pt/Harness.git
 bash Harness/installer/install.sh
 source ~/.bashrc
 ```
@@ -37,11 +38,11 @@ On Windows, run the verified source installer from PowerShell: `& ./Harness/inst
 
 ## PATH and logs
 
-On Bash, run **`source ~/.bashrc`** or open a new terminal. Running `~/.bashrc` as a command tries to execute it and may report permission denied; executable permissions are not needed to source it. Use `~/.local/bin/harness-codex --version` to distinguish PATH lookup from command installation. A `bash installer/install.sh` child cannot export variables back into its parent shell. GitHub CLI is not required.
+The Linux installer asks whether to open a new Bash after installation. Enter or yes opens an interactive child shell that reads `~/.bashrc`; `exit` returns to the original shell. This executes your existing Bash startup instructions, including any environment initialization you have configured. It does not modify the parent shell. Choose no to skip. To apply settings in the original Bash, run **`source ~/.bashrc`**, or open a new terminal. Running `~/.bashrc` as a command tries to execute it and may report permission denied; executable permissions are not needed to source it. Use `~/.local/bin/harness-codex --version` to distinguish PATH lookup from command installation. A `bash installer/install.sh` child cannot export variables back into its parent shell. GitHub CLI is not required.
 
 Windows registers user PATH and refreshes the current PowerShell PATH. Other open terminals need restarting. A shared bin directory may remain on PATH after uninstall to preserve other commands.
 
-The installer displays timed stages and the detailed log location. Failed downloads, environment setup or installation retain a diagnostic log. Colors are presentation only; redirected output remains readable. An incomplete pre-existing environment is preserved for review instead of being overwritten.
+The installer displays an animated indicator and live elapsed seconds on an interactive terminal, with a detailed log location. It pauses animation while asking for a reinstall choice. Noninteractive/redirected output contains ordinary stage lines; Linux skips child-shell activation when there is no controlling terminal or `--no-modify-path` is selected. Failed downloads, environment setup or installation retain a diagnostic log. Colors are presentation only; redirected output remains readable. An incomplete pre-existing environment is preserved for review instead of being overwritten.
 
 ## Ownership and uninstall
 

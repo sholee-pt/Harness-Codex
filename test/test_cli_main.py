@@ -60,13 +60,13 @@ class CliRoutingTests(unittest.TestCase):
         parsed = cli.build_parser(REPO).parse_args(["--runtime", "codex", "start", "--agent", "codex"])
         self.assertEqual(parsed.runtime, "codex")
 
-    def test_help_advertises_agent_and_hides_runtime_alias(self):
+    def test_help_is_codex_specific_and_hides_legacy_provider_aliases(self):
         for arguments in (["--help"], *([command, "--help"] for command in self.command_names())):
             with self.subTest(arguments=arguments), redirect_stdout(io.StringIO()) as output:
                 with self.assertRaises(SystemExit) as exit_status:
                     cli.main(arguments, source_root=REPO)
                 self.assertEqual(exit_status.exception.code, 0)
-                self.assertIn("--agent", output.getvalue())
+                self.assertNotIn("--agent", output.getvalue())
                 self.assertNotIn("--runtime", output.getvalue())
 
     def test_unsupported_runtime_version_and_unknown_runtime_do_not_look_supported(self):

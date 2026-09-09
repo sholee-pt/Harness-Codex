@@ -20,14 +20,14 @@ class WindowsBootstrapTests(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         self.base = Path(temp.name)
         self.marker = self.base / 'executed.txt'
-        self.archive = self.base / 'harness-codex-9.9-windows.zip'
+        self.archive = self.base / 'harness-codex-9.10-windows.zip'
         self.sums = self.base / 'SHA256SUMS'
 
     def build(self, extra=()):
         self.marker.unlink(missing_ok=True)
         with zipfile.ZipFile(self.archive, 'w') as archive:
-            archive.writestr('harness-codex-9.9/harness.py', '# fixture')
-            archive.writestr('harness-codex-9.9/install.ps1',
+            archive.writestr('harness-codex-9.10/harness.py', '# fixture')
+            archive.writestr('harness-codex-9.10/install.ps1',
                              "param($SourceRoot, $AutoUpdate, $NoModifyPath, $BinDir)\n"
                              "[IO.File]::WriteAllText($env:TEST_MARKER, $BinDir + '|' + $AutoUpdate + '|' + $NoModifyPath)\n")
             for name, data in extra:
@@ -44,7 +44,7 @@ class WindowsBootstrapTests(unittest.TestCase):
 $ErrorActionPreference = 'Stop'
 function Invoke-WebRequest {
     param($Uri, $OutFile, [switch]$UseBasicParsing, $TimeoutSec)
-    if ($Uri -notlike 'https://github.com/sholee-pt/Harness/releases/download/codex-v9.9/*') { throw 'Unexpected network request' }
+    if ($Uri -notlike 'https://github.com/sholee-pt/Harness/releases/download/codex-v9.10/*') { throw 'Unexpected network request' }
     Copy-Item -LiteralPath (Join-Path $env:TEST_ASSETS ([Uri]$Uri).Segments[-1]) -Destination $OutFile
 }
 try {
@@ -80,9 +80,9 @@ try {
         self.assertFalse(self.marker.exists())
 
     def test_unsafe_entries_are_refused_before_extraction_or_execution(self):
-        for name in ('harness-codex-9.9/../outside', 'harness-codex-9.9/INSTALL.PS1',
-                     'harness-codex-9.9/CON.txt', 'harness-codex-9.9/trailing. ',
-                     'harness-codex-9.9/name:stream', 'harness-codex-9.9/a\\b', '/absolute'):
+        for name in ('harness-codex-9.10/../outside', 'harness-codex-9.10/INSTALL.PS1',
+                     'harness-codex-9.10/CON.txt', 'harness-codex-9.10/trailing. ',
+                     'harness-codex-9.10/name:stream', 'harness-codex-9.10/a\\b', '/absolute'):
             with self.subTest(name=name):
                 self.build([(name, b'unsafe')])
                 result = self.run_bootstrap()
@@ -91,7 +91,7 @@ try {
                 self.assertFalse(self.marker.exists())
 
     def test_symlink_entry_is_refused(self):
-        info = zipfile.ZipInfo('harness-codex-9.9/link')
+        info = zipfile.ZipInfo('harness-codex-9.10/link')
         info.create_system = 3
         info.external_attr = 0o120777 << 16
         self.build([(info, b'outside')])
@@ -103,7 +103,7 @@ try {
     def test_help_is_offline_without_release_assets(self):
         result = self.run_bootstrap('-Help')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('9.9 Windows installer', result.stdout)
+        self.assertIn('9.10 Windows installer', result.stdout)
         self.assertFalse(self.marker.exists())
 
 
@@ -234,3 +234,42 @@ exit $result
 
 if __name__ == '__main__':
     unittest.main()
+
+@unittest.skipUnless(POWERSHELL, 'Requires native Windows PowerShell')
+class WindowsProgressClockTests(unittest.TestCase):
+    def test_native_clock_ticks_and_pauses_for_questions(self):
+        import re
+        policy = subprocess.check_output([POWERSHELL, '-NoProfile', '-NonInteractive', '-Command', 'Get-ExecutionPolicy'], text=True).strip()
+        if policy in {'Restricted', 'AllSigned'}:
+            if os.environ.get('GITHUB_ACTIONS') == 'true':
+                self.fail('Windows CI must permit its local unsigned clock fixture under its existing policy: ' + policy)
+            self.skipTest('Existing PowerShell policy prevents unsigned fixture execution: ' + policy)
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            source = (ROOT / 'installer/install.ps1').read_text(encoding='utf-8')
+            csharp = re.search(r"Add-Type -TypeDefinition @'\n(.*?)\n'@", source, re.S).group(1)
+            (base / 'Clock.cs').write_text(csharp, encoding='utf-8')
+            pause = base / 'harness-codex-progress-clock'
+            pause.write_bytes(b'Harness installation progress\nrunning\n')
+            runner = base / 'check.ps1'
+            runner.write_text("""
+$ErrorActionPreference = 'Stop'
+Add-Type -Path (Join-Path $PSScriptRoot 'Clock.cs')
+$pause = Join-Path $PSScriptRoot 'harness-codex-progress-clock'
+try {
+ [HarnessInstallClock]::Start('Clock', $pause)
+ Start-Sleep -Milliseconds 1400
+ [IO.File]::WriteAllText($pause, "Harness installation progress`npaused`n")
+ Start-Sleep -Milliseconds 300
+ [Console]::Write('PAUSE-BEGIN')
+ Start-Sleep -Milliseconds 500
+ [Console]::Write('PAUSE-END')
+} finally {
+ [HarnessInstallClock]::Stop()
+}
+""", encoding='utf-8')
+            result = subprocess.run([POWERSHELL, '-NoProfile', '-NonInteractive', '-File', str(runner)],
+                                    capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('Clock  1s', result.stdout)
+            self.assertIn('PAUSE-BEGINPAUSE-END', result.stdout)
