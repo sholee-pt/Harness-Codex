@@ -94,6 +94,12 @@ On later runs, repeat the evidence scan and compare the proposed topology with t
 
 ## Optional operations evidence mode
 
+When bounded project maintenance is explicitly enabled and a recurring concern or
+review lease is supplied, read [maintenance.md](references/maintenance.md). Keep the
+current harness by default; do not review every turn or add agents merely because
+scope grows. The helper allows only validated corrections to existing skills in
+auto mode; broader changes use explicit configuration review.
+
 Do not enable operations evidence during normal generation. When the user explicitly asks to observe long-term Harness use or judge routing across interactive requests, read [operations-evidence.md](references/operations-evidence.md) and use `scripts/harness_ops.py`. Treat each user turn as a separate work item even inside one session. Record only finite classifications and local HMAC references; never retain raw prompts, responses, transcripts, agent names, or absolute paths. Missing quality evidence remains unknown, later corrections are linked rather than used to rewrite prior records, and no audit result may regenerate agents or topology automatically.
 
 ## Optional evaluation mode

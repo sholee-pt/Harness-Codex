@@ -1,12 +1,12 @@
-name: Harness for Codex v9.11 checks
+name: Harness for Codex v0.10.0-beta checks
 
 on:
   push:
     branches:
-      - codex/v9.11
+      - codex/v0.10.0-beta
   pull_request:
     branches:
-      - codex/v9.11
+      - codex/v0.10.0-beta
   workflow_dispatch:
     inputs:
       publish:
@@ -56,14 +56,18 @@ jobs:
           conda run -n harness python -m pip install -r test/requirements-validation.txt
           conda run -n harness python test/integration/frontmatter_differential.py --seed 20260905 --count 11000 --output "${RUNNER_TEMP}/frontmatter-report.json"
 
-      - name: Cross-check the previous release v9.10 update to v9.11
+      - name: Verify real Conda and installer with competing Python on PATH
+        shell: bash -el {0}
+        run: conda run --no-capture-output -n harness python -B test/integration/verify_interpreter_selection.py --output "${RUNNER_TEMP}/interpreter-selection.json"
+
+      - name: Cross-check the previous release v0.9.11-beta update to v0.10.0-beta
         shell: bash -el {0}
         run: |
           baseline_root="${RUNNER_TEMP}/harness-baselines"
           conda run -n harness python test/integration/prepare_release_baselines.py --output "${baseline_root}"
-          conda run -n harness python test/integration/verify_release_upgrade.py --baseline "${baseline_root}/v910" --output "${RUNNER_TEMP}/upgrade-v910.json"
-          conda run -n harness python test/integration/verify_cli_upgrade.py --baseline "${baseline_root}/v910" --output "${RUNNER_TEMP}/cli-upgrade-v910.json"
-          conda run -n harness python test/integration/verify_installer_permissions.py --baseline "${baseline_root}/v910" --candidate . --output "${RUNNER_TEMP}/installer-permissions.json"
+          conda run -n harness python test/integration/verify_release_upgrade.py --baseline "${baseline_root}/v911" --output "${RUNNER_TEMP}/upgrade-v911.json"
+          conda run -n harness python test/integration/verify_cli_upgrade.py --baseline "${baseline_root}/v911" --output "${RUNNER_TEMP}/cli-upgrade-v911.json"
+          conda run -n harness python test/integration/verify_installer_permissions.py --baseline "${baseline_root}/v911" --candidate . --output "${RUNNER_TEMP}/installer-permissions.json"
           cat "${RUNNER_TEMP}/installer-permissions.json"
 
       # Runtime-plan, receipt, relay and operations unit tests run in full discovery above.
@@ -111,7 +115,7 @@ jobs:
       - name: Verify the real Linux bootstrap and installed command
         if: runner.os == 'Linux'
         shell: bash -el {0}
-        run: conda run -n harness python test/integration/verify_cli_distribution.py --archive "${RUNNER_TEMP}/harness-dist/harness-codex-9.11-linux.tar.gz"
+        run: conda run -n harness python test/integration/verify_cli_distribution.py --archive "${RUNNER_TEMP}/harness-dist/harness-codex-0.10.0-beta-linux.tar.gz"
 
       - name: Verify public pipeline and cold environment setup
         if: runner.os == 'Linux'
@@ -132,7 +136,7 @@ jobs:
         run: |
           bash installer/install.sh --data-dir "${RUNNER_TEMP}/source-install/data" --bin-dir "${RUNNER_TEMP}/source-install/bin" --auto-update off --no-modify-path
           "${RUNNER_TEMP}/source-install/bin/harness-codex" --version
-          conda run -n harness python -B -c 'import json, os, pathlib; state=json.loads((pathlib.Path(os.environ["RUNNER_TEMP"])/"source-install/data/active.json").read_text()); assert state["commit"]==os.environ["GITHUB_SHA"], state; assert state["version"]=="9.11"; print("Source installer retained the exact checked-out commit.")'
+          conda run -n harness python -B -c 'import json, os, pathlib; state=json.loads((pathlib.Path(os.environ["RUNNER_TEMP"])/"source-install/data/active.json").read_text()); assert state["commit"]==os.environ["GITHUB_SHA"], state; assert state["version"]=="0.10.0-beta"; print("Source installer retained the exact checked-out commit.")'
 
       - name: Verify the checkout remains clean
         shell: bash -el {0}
@@ -141,7 +145,7 @@ jobs:
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
 
   release:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/codex/v9.11'
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/codex/v0.10.0-beta'
     needs: verify
     runs-on: ubuntu-latest
     permissions:
@@ -162,8 +166,8 @@ jobs:
         shell: bash -el {0}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: codex-v9.11
+          RELEASE_TAG: codex-v0.10.0-beta
         run: |
-          test "$GITHUB_REF_NAME" = "codex/v9.11"
+          test "$GITHUB_REF_NAME" = "codex/v0.10.0-beta"
           conda run -n harness python build/release_notes.py --output "${RUNNER_TEMP}/release-body.md"
-          gh release create "$RELEASE_TAG" "${RUNNER_TEMP}/harness-dist/harness-codex-9.11-linux.tar.gz" "${RUNNER_TEMP}/harness-dist/SHA256SUMS" "${RUNNER_TEMP}/harness-dist/build.json" "${RUNNER_TEMP}/harness-dist/install_harness_codex.sh" "${RUNNER_TEMP}/harness-dist/harness-codex-9.11-windows.zip" "${RUNNER_TEMP}/harness-dist/install_harness_codex.ps1" --target "$GITHUB_SHA" --title "Harness for Codex v9.11" --notes-file "${RUNNER_TEMP}/release-body.md" --latest
+          gh release create "$RELEASE_TAG" "${RUNNER_TEMP}/harness-dist/harness-codex-0.10.0-beta-linux.tar.gz" "${RUNNER_TEMP}/harness-dist/SHA256SUMS" "${RUNNER_TEMP}/harness-dist/build.json" "${RUNNER_TEMP}/harness-dist/install_harness_codex.sh" "${RUNNER_TEMP}/harness-dist/harness-codex-0.10.0-beta-windows.zip" "${RUNNER_TEMP}/harness-dist/install_harness_codex.ps1" --target "$GITHUB_SHA" --title "Harness for Codex v0.10.0-beta" --notes-file "${RUNNER_TEMP}/release-body.md" --prerelease

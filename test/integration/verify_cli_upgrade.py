@@ -1,4 +1,4 @@
-"""Run real v9.2/v9.3/v9.4/v9.5 tool installer/updaters against v9.11 using local Git transport.
+"""Run the previous release installer and beta migrator using local Git transport.
 
 Only the fixed upstream URL is replaced for this test. Git branch discovery,
 fetch, ancestry, archives, old installation code, and the new launcher are real.
@@ -47,7 +47,7 @@ def old_project(baseline, root, runtime_path):
     import test_runtime_teamplay
     import shutil
 
-    assert harness_metadata.HARNESS_VERSION in {"9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8", "9.9", "9.10"}
+    assert harness_metadata.HARNESS_VERSION == "9.11"
     shutil.copytree(tests_root / "fixtures/coordinated-cross-contract", root)
     draft = test_runtime_teamplay.DeterministicPlanBuilderTests()._draft("coordinated-cross-contract-plan.json")
     plan = harness_plan_builder.materialize_plan(draft, root=root)
@@ -100,8 +100,8 @@ def verify(baseline):
     baseline_version = old._source_info(old_snapshot)[0]
     assert current._source_info(old_snapshot)[0] == baseline_version, "Complete historical module layouts must remain readable"
     candidate_version = current._source_info(new_snapshot)[0]
-    assert baseline_version in {"9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8", "9.9", "9.10"}
-    assert candidate_version == "9.11"
+    assert baseline_version == "9.11"
+    assert candidate_version == "0.10.0-beta"
     optional_installers = {"install.sh", "install.ps1", "install_harness.sh", "install_harness_codex.sh", "install_harness_codex.ps1"}
     retired_installers = optional_installers & (old_snapshot.keys() - new_snapshot.keys())
     assert "install_harness.sh" not in new_snapshot
@@ -153,7 +153,7 @@ def verify(baseline):
         git("add", "--all")
         git("-c", "user.name=Harness fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Real v" + candidate_version + " runtime")
         next_commit = git("rev-parse", "HEAD").strip()
-        real_git = old._git
+        real_git = current._git
         calls = []
 
         def local_transport(arguments, **kwargs):
@@ -165,8 +165,13 @@ def verify(baseline):
             # This allowance exists only in the injected test transport.
             return real_git(["-c", "protocol.file.allow=always", *rewritten], **kwargs)
 
+        # The old binary cannot discover beta branch names. The current
+        # installer/migrator reads its immutable receipt and handles ordering.
         with mock.patch.dict(os.environ, environment, clear=True), mock.patch.object(old, "_git", side_effect=local_transport):
-            updated = old.update_tool(data)
+            legacy_check = old.check_update(data)
+        assert not legacy_check['updateAvailable'], 'Legacy updater unexpectedly selected a beta branch'
+        with mock.patch.dict(os.environ, environment, clear=True), mock.patch.object(current, "_git", side_effect=local_transport):
+            updated = current.update_tool(data)
         assert updated["updated"] and updated["installation"]["commit"] == next_commit
         active = current.installed_status(data)
         active_root = Path(active["sourceRoot"])
@@ -221,7 +226,8 @@ def verify(baseline):
         return {"status": "passed", "baselineVersion": baseline_version, "candidateVersion": candidate_version,
                 "baselineRuntimeTreeSha256": old._tree_hash(old._hashes(old_snapshot)),
                 "candidateRuntimeTreeSha256": current._tree_hash(current._hashes(new_snapshot)),
-                "oldInstallerAndUpdaterExecuted": True, "realLocalGitFetchAndAncestry": True,
+                "oldInstallerAndDiscoveryExecuted": True, "newMigratorExecuted": True,
+                "legacyUpdaterRequiresOneTimeReinstall": True, "realLocalGitFetchAndAncestry": True,
                 "newLauncherVersion": version, "retiredOptionalInstallersRemoved": sorted(retired_installers),
                 "newAgentOptionAndLegacyRuntimeAliasAccepted": True,
                 "oldApplyAndRecoveryRefuseRemovalJournalWithoutWrites": True,

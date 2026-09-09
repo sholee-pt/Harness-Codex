@@ -277,7 +277,8 @@ def run(command: list[str], root: Path, prompt: str, *, timeout=1800, resume_id=
         server = Server(command, root, progress)
         completed = False
         try:
-            server.call('initialize', {'clientInfo': {'name': 'harness_codex', 'title': 'Harness for Codex', 'version': '9.11'}}, timeout=min(30, deadline-time.monotonic()))
+            from .main import version
+            server.call('initialize', {'clientInfo': {'name': 'harness_codex', 'title': 'Harness for Codex', 'version': version(Path(__file__).resolve().parents[1])}}, timeout=min(30, deadline-time.monotonic()))
             server.send({'method': 'initialized', 'params': {}})
             params = {'cwd': str(root)}
             if resume_id:

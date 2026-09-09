@@ -253,6 +253,8 @@ def run(data_root: Path, *, dry_run=False) -> int:
         print(f'No managed Harness installation at {data_root}. Nothing was removed.')
         return 0
     plan = prepare(data_root)
+    from .maintenance import remove_hooks
+    maintenance_hooks = remove_hooks(data_root)
     print(f"Uninstall {plan['command']} {plan['version']}")
     print(f"Tool storage: {plan['root']}")
     print('Commands: ' + ', '.join(str(path) for path in sorted(plan['external'])))
@@ -276,6 +278,8 @@ def run(data_root: Path, *, dry_run=False) -> int:
     if answer != 'yes':
         print('Uninstall cancelled. Nothing was removed.')
         return 0
+    if maintenance_hooks['state'] == 'remove':
+        remove_hooks(data_root, dry_run=False)
     cleanup_source = None
     if plan['runtime'] and os.name == 'nt':
         cleanup_source = Path(__file__).with_name('runtime_cleanup.ps1').read_bytes()

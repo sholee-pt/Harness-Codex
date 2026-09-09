@@ -50,6 +50,8 @@ def register_project_commands(subparsers) -> None:
             parser.add_argument("--codex-binary", default="codex",
                                 help="Codex executable name or path (default: codex on PATH).")
         if command in {"init", "configure", "reset"}:
+            parser.add_argument('--maintenance', choices=('off', 'suggest', 'auto'),
+                                help='Opt into bounded maintenance after configuration; auto may update existing skills only.')
             parser.add_argument('--interactive', action='store_true', help='Use the native Codex conversation screen instead of progress output.')
             parser.add_argument('--settings', choices=('ask', 'native'), default='ask',
                                 help='Choose model, reasoning and permissions before configuration (default: ask); native keeps current settings.')
@@ -506,6 +508,9 @@ def _finish_configuration(source_root: Path, root: Path, command: list[str], goa
     if ui.JSON_MODE.get():
         ui.report(report, title='Project harness validation')
     print('Configuration complete. Project harness files validate.')
+    if getattr(args, 'maintenance', None) is not None:
+        from .maintenance import enable
+        enable(source_root, root, args.maintenance)
     print('Next: harness-codex new (from this project).')
     return 0
 
@@ -544,6 +549,10 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                 else:
                     print("Review harness-codex status/doctor before use. For a supported upgrade or stale evidence, supply --goal/--goal-file to init for a reviewed update.")
                 if args._existing_init_noop:
+                    if getattr(args, 'maintenance', None) is not None:
+                        from .maintenance import enable
+                        enable(source_root, root, args.maintenance)
+                        return 0
                     print("No project files were changed and Codex was not launched. Supply --goal/--goal-file to init for an explicit reviewed update.")
                     return 1 if existing_status["state"] == "invalid" else 0
             elif os.path.lexists(root / ".agents/skills/harness"):
@@ -570,7 +579,8 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                 raise ProjectError("The generator is not installed. Run harness-codex init --project PATH first.")
             installation = installer.install(root, source=source, dry_run=True)
             if installation["writes"] or installation["removes"] or installation["directoriesCreated"]:
-                raise ProjectError("The installed generator needs updating. Run harness-codex init --project PATH --install-only, then harness-codex config --project PATH.")
+                print('Updating the owned project generator before reviewing the existing harness.')
+                installer.install(root, source=source)
             return _finish_configuration(source_root, root, command, args._goal_text, args=args)
         if args.command in {"new", "resume"}:
             command = _interactive_codex(args.codex_binary)
@@ -578,6 +588,8 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
             revision = harness_revision(root)
             print(f"Project harness revision: {revision}", flush=True)
             prompt = _work_prompt(None, stale_evidence=stale)
+            from .maintenance import activation
+            prompt += activation(source_root, root)
             prompt += ("\n\nUse the current canonical project harness at revision " + revision
                        + ". Do not copy or regenerate its agents, skills, or manifest when starting/resuming a conversation.")
             if args.command == "resume":

@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sholee-pt/Harness/releases/tag/codex-v9.11"><img src="https://img.shields.io/badge/Version-v9.11-2563EB.svg?style=flat-square" alt="Version: v9.11"></a>
+  <a href="https://github.com/sholee-pt/Harness/releases/tag/codex-v0.10.0-beta"><img src="https://img.shields.io/badge/Version-v0.10.0--beta-2563EB.svg?style=flat-square" alt="Version: v0.10.0-beta"></a>
   <a href="#agent-editions"><img src=".github/badges/agent-codex.svg" alt="Agent: Codex"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Proprietary-64748B.svg?style=flat-square" alt="License: Proprietary"></a>
 </p>
@@ -19,18 +19,20 @@
   <a href="#for-linux">Linux install</a> &middot;
   <a href="#for-windows">Windows install</a> &middot;
   <a href="#quick-start">Quick start</a> &middot;
-  <a href="https://github.com/sholee-pt/Harness/releases/tag/codex-v9.11">Release</a> &middot;
+  <a href="https://github.com/sholee-pt/Harness/releases/tag/codex-v0.10.0-beta">Release</a> &middot;
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
 Generate and maintain one shared project harness with Codex-native agents and skills. Use **`harness-codex`** to configure it, start new conversations, or resume existing ones. Plain folders, Git worktrees and workspaces containing multiple repositories are supported.
+
+**Development beta:** versions use `vX.Y.Z-beta`. Stable releases will begin at `v1.0.0`; see [versioning and migration](docs/versioning.md). Upgrading from the former `v9.11` or earlier requires running the current installer once and choosing `reuse`; those older updaters do not discover the new version format.
 
 ## Installation Guide
 
 ### For Linux
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v9.11/install_harness_codex.sh | sh
+curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v0.10.0-beta/install_harness_codex.sh | sh
 harness-codex --version
 ```
 
@@ -41,13 +43,13 @@ Supports Linux x86_64 and aarch64. Requires curl, Bash, tar and sha256sum. The i
 Run in **64-bit Windows PowerShell 5.1 or PowerShell 7** on Windows x64:
 
 ```powershell
-irm https://github.com/sholee-pt/Harness/releases/download/codex-v9.11/install_harness_codex.ps1 | iex
+irm https://github.com/sholee-pt/Harness/releases/download/codex-v0.10.0-beta/install_harness_codex.ps1 | iex
 harness-codex --version
 ```
 
 The installer verifies the ZIP checksum, prepares an isolated Python 3.11 environment and Git, and adds the command to your user PATH. It also updates PATH in the current PowerShell session. Administrator access is not required.
 
-If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness/blob/codex/v9.11/docs/installation.md).
+If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness/blob/codex/v0.10.0-beta/docs/installation.md).
 
 ## Quick Start
 
@@ -62,7 +64,7 @@ harness-codex resume
 
 `PROJECT.md` is an optional UTF-8 Markdown brief describing the project's purpose, responsibilities and constraints. `init` uses Codex to inspect the project and create its harness, showing live stages and elapsed seconds instead of the internal setup prompt. Native approval requests and additional questions remain visible. It then validates the resulting files. Existing harnesses are reported and retained. You can also provide a short description with `--goal "..."`, or run `init` without a brief.
 
-Choose a model, reasoning level and permissions from the configuration menu; Enter keeps current Codex settings. Three concise stages show progress and file validation. `--settings native` skips the menu; `--details` includes the model's final summary. Questions and approvals remain visible. If your Codex version needs the full conversation screen, use `--interactive`. Continue unfinished configuration with `harness-codex config --resume SESSION_ID --goal "Your answer"`. See [configuration progress](https://github.com/sholee-pt/Harness/blob/codex/v9.11/docs/sessions.md#configuration-progress).
+Choose a model, reasoning level and permissions from the configuration menu; Enter keeps current Codex settings. Three concise stages show progress and file validation. `--settings native` skips the menu; `--details` includes the model's final summary. Questions and approvals remain visible. If your Codex version needs the full conversation screen, use `--interactive`. Continue unfinished configuration with `harness-codex config --resume SESSION_ID --goal "Your answer"`. See [configuration progress](https://github.com/sholee-pt/Harness/blob/codex/v0.10.0-beta/docs/sessions.md#configuration-progress).
 
 ### Conversations and project maintenance
 
@@ -72,7 +74,8 @@ Choose a model, reasoning level and permissions from the configuration menu; Ent
 | `new [TASK]` | Start a fresh conversation sharing the existing harness: `harness-codex new "Implement CSV import"` |
 | `resume [SESSION_ID]` | Open the native conversation picker, or resume a specific ID |
 | `resume --last` | Resume the latest native conversation for the selected project |
-| `config` | Review and update the project's canonical harness in Codex |
+| `config` | Refresh the owned generator and review the existing project harness in Codex |
+| `maintenance` | Inspect opt-in maintenance; `--mode suggest` enables review notices, `--mode auto` permits bounded existing-skill corrections |
 | `status` | Read-only installation, compatibility and evidence status, with a suggested next command |
 | `doctor` | Read-only ownership, manifest, references and activation checks |
 | `update --check` | Check for a newer tool version without installing it |
@@ -85,7 +88,7 @@ Reports are concise by default. Add `--json` to `status`, `doctor`, update check
 
 Project commands default to the current directory. Add `--project "/path/to/project"` to select another folder. `start` remains a deprecated alias for `new`; `configure` remains an alias for `config`.
 
-Every `new` and `resume` validates and uses the **current shared harness**, without copying or regenerating it. Resume retains Codex's conversation history. Run `config` explicitly when the harness needs revising. See [session lifecycle](https://github.com/sholee-pt/Harness/blob/codex/v9.11/docs/sessions.md).
+Every `new` and `resume` validates and uses the **current shared harness**, without copying or regenerating it. Resume retains Codex's conversation history. Run `config` explicitly when the harness needs revising. See [session lifecycle](https://github.com/sholee-pt/Harness/blob/codex/v0.10.0-beta/docs/sessions.md).
 
 ### Update an existing project harness
 
@@ -93,11 +96,12 @@ Every `new` and `resume` validates and uses the **current shared harness**, with
 harness-codex update
 harness-codex status
 # When the project generator needs updating:
-harness-codex init --install-only
 harness-codex config
 ```
 
 Compatible existing project harnesses can be reused. Source changes may require refreshing evidence; changed managed files require review. A valid status confirms file contracts, not measured model quality or token savings.
+
+Optional maintenance can be enabled once with `harness-codex maintenance --mode suggest` or `--mode auto`. Review the handler in Codex `/hooks`. Ordinary turns do not launch an extra review model; scope growth alone never requires additional agents. See [maintenance limits and records](docs/maintenance.md).
 
 ### Remove, reset or uninstall
 
@@ -122,11 +126,13 @@ After reinstalling, run `status` in a project to recognize its retained harness.
 
 ## Documentation
 
-- [Installation, reinstall choices and troubleshooting](https://github.com/sholee-pt/Harness/blob/codex/v9.11/docs/installation.md)
-- [Project and conversation lifecycle](https://github.com/sholee-pt/Harness/blob/codex/v9.11/docs/sessions.md)
-- [Generated structure and design](https://github.com/sholee-pt/Harness/blob/codex/v9.11/docs/architecture.md)
-- [Quality evaluation and optional local evidence](https://github.com/sholee-pt/Harness/blob/codex/v9.11/docs/evaluation.md)
-- [Release assets and verification](https://github.com/sholee-pt/Harness/blob/codex/v9.11/docs/distribution.md)
+- [Installation, reinstall choices and troubleshooting](https://github.com/sholee-pt/Harness/blob/codex/v0.10.0-beta/docs/installation.md)
+- [Project and conversation lifecycle](https://github.com/sholee-pt/Harness/blob/codex/v0.10.0-beta/docs/sessions.md)
+- [Bounded maintenance and local records](docs/maintenance.md)
+- [Beta versioning and migration](docs/versioning.md)
+- [Generated structure and design](https://github.com/sholee-pt/Harness/blob/codex/v0.10.0-beta/docs/architecture.md)
+- [Quality evaluation and optional local evidence](https://github.com/sholee-pt/Harness/blob/codex/v0.10.0-beta/docs/evaluation.md)
+- [Release assets and verification](https://github.com/sholee-pt/Harness/blob/codex/v0.10.0-beta/docs/distribution.md)
 - [Changelog](CHANGELOG.md) · [GitHub Releases](https://github.com/sholee-pt/Harness/releases) · [Contributing](CONTRIBUTING.md)
 
 ## Agent editions

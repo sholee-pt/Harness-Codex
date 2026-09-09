@@ -1,59 +1,102 @@
 # Changelog
 
-Harness releases are maintained as runtime-specific branches. Names such as `codex/v5.1` mean **Harness for Codex v5.1**; they do not identify the Codex product or model version. Displayed release and generator versions use two components (`N.M`). A major Harness version changes a generation contract, state format, ownership model, or required workflow. A minor Harness version contains backward-compatible features, corrections and validation improvements.
+Development releases use `vX.Y.Z-beta`: X for major changes, Y for features, Z for bug fixes, chores and refactoring. Historical `vN.M` labels are displayed as `v0.N.M-beta`; existing tags, installed receipts and evidence keep their original identifiers. Stable public releases will start at `v1.0.0`. See [versioning](docs/versioning.md).
 
 ## Harness for Codex releases
 
-| Branch | Harness release | Plan | Manifest | Transaction | Main change or patch |
+| Version | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
-| [`codex/v9.11`](#harness-for-codex-v911) | Harness for Codex v9.11 | Schema 3 | Schema 7 | Schema 2 | Native model/reasoning/permission picker, compact progress and independently validated completion |
-| [`codex/v9.10`](#harness-for-codex-v910) | Harness for Codex v9.10 | Schema 3 | Schema 7 | Schema 2 | Native configuration progress, concise diagnostics, command-specific edition and live installer timers |
-| [`codex/v9.9`](#harness-for-codex-v99) | Harness for Codex v9.9 | Schema 3 | Schema 7 | Schema 2 | Shared project harness, native conversation lifecycle, guarded reinstall/uninstall and concise distribution docs |
-| [`codex/v9.8`](#harness-for-codex-v98) | Harness for Codex v9.8 | Schema 3 | Schema 7 | Schema 2 | Native Windows PowerShell bootstrap, reproducible ZIP, isolated Conda setup and idempotent user PATH registration |
-| [`codex/v9.7`](#harness-for-codex-v97) | Harness for Codex v9.7 | Schema 3 | Schema 7 | Schema 2 | Named Codex command, public one-command Linux bootstrap, automatic isolated environment setup, idempotent Bash PATH registration and config alias |
-| [`codex/v9.6`](#harness-for-codex-v96) | Harness for Codex v9.6 | Schema 3 | Schema 7 | Schema 2 | Conditional model workflow guidance, clearer evidence/ownership diagnostics, reviewer examples and native execution validation protocol |
-| [`codex/v9.5`](#harness-for-codex-v95) | Harness for Codex v9.5 | Schema 3 | Schema 7 | Schema 2 | Versioned source completeness, caller-environment preservation, guarded launcher migration and bootstrap Git timeouts |
-| [`codex/v9.4`](#harness-for-codex-v94) | Harness for Codex v9.4 | Schema 3 | Schema 7 | Schema 2 | Markdown briefs, --agent option, existing-state notices and guarded removal/reset/recovery |
-| [`codex/v9.3`](#harness-for-codex-v93) | Harness for Codex v9.3 | Schema 3 | Schema 7 | Schema 2 | Downloadable private-repository bootstrap, reusable Git authentication and explicit runtime selection |
-| [`codex/v9.2`](#harness-for-codex-v92) | Harness for Codex v9.2 | Schema 3 | Schema 7 | Schema 2 | Standalone Linux CLI, project initialization and session launch, managed branch updates and release packaging |
-| [`codex/v9.1`](#harness-for-codex-v91) | Harness for Codex v9.1 | Schema 3 | Schema 7 | Schema 2 | Installer directory-mode preservation, compatible v9.0 updates, nonmandatory Git authorization advice |
-| [`codex/v1`](#harness-for-codex-v10) | Harness for Codex v1.0 | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
-| [`codex/v2`](#harness-for-codex-v20) | Harness for Codex v2.0 | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
-| [`codex/v2.1`](#harness-for-codex-v21) | Harness for Codex v2.1 | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
-| [`codex/v3`](#harness-for-codex-v30) | Harness for Codex v3.0 | Schema 1 | Schema 3 | Schema 1 | Journaled multi-file apply, verified staging, rollback, recovery, manifest-last commit |
-| [`codex/v3.1`](#harness-for-codex-v31) | Harness for Codex v3.1 | Schema 1 | Schema 3 | Schema 1 | Recovery hardening, orphan inspection and cleanup, directory sync, live smoke-test guide |
-| [`codex/v4`](#harness-for-codex-v40) | Harness for Codex v4.0 | Schema 2 | Schema 4 | Schema 2 | SHA-256-bound structured evidence, line ranges, POSIX permission tracking and recovery |
-| [`codex/v5`](#harness-for-codex-v50) | Harness for Codex v5.0 | Schema 3 | Schema 5 | Schema 2 | Machine-verifiable material boundaries, persistent topology classes, routing and quality contracts, deterministic golden evaluation |
-| [`codex/v5.1`](#harness-for-codex-v51) | Harness for Codex v5.1 | Schema 3 | Schema 5 | Schema 2 | Literal/prefix scope correction, portable case collision checks, topology cross-validation, unambiguous routing, exact quality budgets, expanded fixtures and Windows CI |
-| [`codex/v5.2`](#harness-for-codex-v52) | Harness for Codex v5.2 | Schema 3 | Schema 5 | Schema 2 | Portable output namespace validation, complete-overlap handoffs, unique decision ownership, linked coordination witnesses, coordinated full-plan integration |
-| [`codex/v5.3`](#harness-for-codex-v53) | Harness for Codex v5.3 | Schema 3 | Schema 5 | Schema 2 | Default-off local evaluation, JSONL provenance, isolated paired comparison, immutable records, non-binding evidence proposals |
-| [`codex/v5.4`](#harness-for-codex-v54) | Harness for Codex v5.4 | Schema 3 | Schema 5 | Schema 2 | Minimal-change discipline, self-contained writer safeguards, four-case behavioral classification probe |
-| [`codex/v5.5`](#harness-for-codex-v55) | Harness for Codex v5.5 | Schema 3 | Schema 5 | Schema 2 | Canonical discipline enforcement, complete bounded result fingerprints, isolated user homes, annotation semantics, experiment-only positive proposals |
-| [`codex/v6`](#harness-for-codex-v60) | Harness for Codex v6.0 | Schema 3 | Schema 5 | Schema 2 | Evaluation Schema 2, declared configuration-delta attribution, observation and annotation lifecycles, derived views, structured ingest, patch-scope evaluation |
-| [`codex/v6.1`](#harness-for-codex-v61) | Harness for Codex v6.1 | Schema 3 | Schema 5 | Schema 2 | Plan-bound positive and negative attribution, conservative patch-scope eligibility, exact symmetric support thresholds, v6.0/v6.1 evidence separation |
-| [`codex/v6.2`](#harness-for-codex-v62) | Harness for Codex v6.2 | Schema 3 | Schema 5 | Schema 2 | Independent complete evidence units, arm-specific task bases, store-verified proposal eligibility, runtime-stratum and untracked-budget corrections |
-| [`codex/v6.3`](#harness-for-codex-v63) | Harness for Codex v6.3 | Schema 3 | Schema 5 | Schema 2 | Derived-view comparison lifecycle, verification-pure task measurement, explicit stratum selection, auxiliary binding and clean-tree hardening |
-| [`codex/v6.4`](#harness-for-codex-v64) | Harness for Codex v6.4 | Schema 3 | Schema 5 | Schema 2 | Stable two-pass fingerprints, expanded repository-state verification checks, process-group cleanup and missing-stratum errors |
-| [`codex/v6.5`](#harness-for-codex-v65) | Harness for Codex v6.5 | Schema 3 | Schema 5 | Schema 2 | Single-source release metadata, manifest-bound ephemeral runtime plans, bounded teamplay contracts, capability fallback and privacy-safe retention |
-| [`codex/v6.6`](#harness-for-codex-v66) | Harness for Codex v6.6 | Schema 3 | Schema 5 | Schema 2 | Native Codex subagent parent relay, scoped coordination-packet validation, conservative writer isolation and live-smoke accounting |
-| [`codex/v6.7`](#harness-for-codex-v67) | Harness for Codex v6.7 | Schema 3 | Schema 5 | Schema 2 | Deterministic contract materialization, spawn/wait liveness gates, version-bound privacy-safe runtime receipts, stale-review and affected-agent relay accounting |
-| [`codex/v6.8`](#harness-for-codex-v68) | Harness for Codex v6.8 | Schema 3 | Schema 5 | Schema 2 | Canonical-handle runtime control, versioned public/local observation profiles, Runtime Receipt Schema 2, required-task accounting, installed draft-plan example |
-| [`codex/v6.9`](#harness-for-codex-v69) | Harness for Codex v6.9 | Schema 3 | Schema 5 | Schema 2 | Deterministic teamplay materialization, nested-root and research-artifact inventory, canonical capability registry, layered validation report |
-| [`codex/v6.10`](#harness-for-codex-v610) | Harness for Codex v6.10 | Schema 3 | Schema 5 | Schema 2 | Enforced single-root preflight, Inventory Schema 3 role summaries, instruction-state split, Authoring Contract 2 drafts |
-| [`codex/v7`](#harness-for-codex-v70) | Harness for Codex v7.0 | Schema 3 | Schema 6 | Schema 2 | Workspace-first roots, Inventory Schema 4 scan coverage, local-only Git exclusion, tracked-file and user-instruction protection |
-| [`codex/v7.1`](#harness-for-codex-v71) | Harness for Codex v7.1 | Schema 3 | Schema 6 | Schema 2 | Single-worktree exclusion isolation, literal Git ignore paths, safe synchronous protection rollback, unbound-marker detection |
-| [`codex/v7.2`](#harness-for-codex-v72) | Harness for Codex v7.2 | Schema 3 | Schema 6 | Schema 2 | Verified local-only paired evaluation, independent no-remote clones, source snapshot preflight, dry-run worktree-count diagnostics |
-| [`codex/v7.3`](#harness-for-codex-v73) | Harness for Codex v7.3 | Schema 3 | Schema 6 | Schema 2 | Exact ignored/untracked evidence materialization, instruction-provenance isolation gaps, paired pre-task invariants, truthful optional materialization dry-run |
-| [`codex/v7.4`](#harness-for-codex-v74) | Harness for Codex v7.4 | Schema 3 | Schema 6 | Schema 2 | Reserved evidence namespaces, shared instruction discovery, project-context parity, effective-config load gaps, literal task-base coverage |
-| [`codex/v7.5`](#harness-for-codex-v75) | Harness for Codex v7.5 | Schema 3 | Schema 6 | Schema 2 | Opt-in per-turn operations evidence, privacy-safe outcome review, custom-agent load and dependency attribution gaps |
-| [`codex/v7.6`](#harness-for-codex-v76) | Harness for Codex v7.6 | Schema 3 | Schema 6 | Schema 2 | Activation diagnostics, explicit usage coverage, and lighter direct-task guidance |
-| [`codex/v8`](#harness-for-codex-v80) | Harness for Codex v8.0 | Schema 3 | Schema 6 | Schema 2 | Authoring Contract 3, Artifact Contract 1, strict frontmatter, topology-bound agent contracts, explicit upgrade status |
-| [`codex/v8.1`](#harness-for-codex-v81) | Harness for Codex v8.1 | Schema 3 | Schema 6 | Schema 2 | Apply rejects unsupported existing artifact contracts while preserving supported v8.0 and legacy updates |
-| [`codex/v9`](#harness-for-codex-v90) | Harness for Codex v9.0 | Schema 3 | Schema 7 | Schema 2 | Project-local installer, user-selected folders independent of Git boundaries, Artifact Contract 2, no Git metadata writes |
+| [`v0.10.0-beta`](#harness-for-codex-v0100-beta) | Harness for Codex v0.10.0-beta | Schema 3 | Schema 7 | Schema 2 | Bounded opt-in maintenance, exact Conda interpreter selection and beta versioning |
+| [`v0.9.11-beta`](#harness-for-codex-v0911-beta) | Harness for Codex v0.9.11-beta | Schema 3 | Schema 7 | Schema 2 | Native model/reasoning/permission picker, compact progress and independently validated completion |
+| [`v0.9.10-beta`](#harness-for-codex-v0910-beta) | Harness for Codex v0.9.10-beta | Schema 3 | Schema 7 | Schema 2 | Native configuration progress, concise diagnostics, command-specific edition and live installer timers |
+| [`v0.9.9-beta`](#harness-for-codex-v099-beta) | Harness for Codex v0.9.9-beta | Schema 3 | Schema 7 | Schema 2 | Shared project harness, native conversation lifecycle, guarded reinstall/uninstall and concise distribution docs |
+| [`v0.9.8-beta`](#harness-for-codex-v098-beta) | Harness for Codex v0.9.8-beta | Schema 3 | Schema 7 | Schema 2 | Native Windows PowerShell bootstrap, reproducible ZIP, isolated Conda setup and idempotent user PATH registration |
+| [`v0.9.7-beta`](#harness-for-codex-v097-beta) | Harness for Codex v0.9.7-beta | Schema 3 | Schema 7 | Schema 2 | Named Codex command, public one-command Linux bootstrap, automatic isolated environment setup, idempotent Bash PATH registration and config alias |
+| [`v0.9.6-beta`](#harness-for-codex-v096-beta) | Harness for Codex v0.9.6-beta | Schema 3 | Schema 7 | Schema 2 | Conditional model workflow guidance, clearer evidence/ownership diagnostics, reviewer examples and native execution validation protocol |
+| [`v0.9.5-beta`](#harness-for-codex-v095-beta) | Harness for Codex v0.9.5-beta | Schema 3 | Schema 7 | Schema 2 | Versioned source completeness, caller-environment preservation, guarded launcher migration and bootstrap Git timeouts |
+| [`v0.9.4-beta`](#harness-for-codex-v094-beta) | Harness for Codex v0.9.4-beta | Schema 3 | Schema 7 | Schema 2 | Markdown briefs, --agent option, existing-state notices and guarded removal/reset/recovery |
+| [`v0.9.3-beta`](#harness-for-codex-v093-beta) | Harness for Codex v0.9.3-beta | Schema 3 | Schema 7 | Schema 2 | Downloadable private-repository bootstrap, reusable Git authentication and explicit runtime selection |
+| [`v0.9.2-beta`](#harness-for-codex-v092-beta) | Harness for Codex v0.9.2-beta | Schema 3 | Schema 7 | Schema 2 | Standalone Linux CLI, project initialization and session launch, managed branch updates and release packaging |
+| [`v0.9.1-beta`](#harness-for-codex-v091-beta) | Harness for Codex v0.9.1-beta | Schema 3 | Schema 7 | Schema 2 | Installer directory-mode preservation, compatible v0.9.0-beta updates, nonmandatory Git authorization advice |
+| [`v0.1.0-beta`](#harness-for-codex-v010-beta) | Harness for Codex v0.1.0-beta | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+| [`v0.2.0-beta`](#harness-for-codex-v020-beta) | Harness for Codex v0.2.0-beta | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
+| [`v0.2.1-beta`](#harness-for-codex-v021-beta) | Harness for Codex v0.2.1-beta | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
+| [`v0.3.0-beta`](#harness-for-codex-v030-beta) | Harness for Codex v0.3.0-beta | Schema 1 | Schema 3 | Schema 1 | Journaled multi-file apply, verified staging, rollback, recovery, manifest-last commit |
+| [`v0.3.1-beta`](#harness-for-codex-v031-beta) | Harness for Codex v0.3.1-beta | Schema 1 | Schema 3 | Schema 1 | Recovery hardening, orphan inspection and cleanup, directory sync, live smoke-test guide |
+| [`v0.4.0-beta`](#harness-for-codex-v040-beta) | Harness for Codex v0.4.0-beta | Schema 2 | Schema 4 | Schema 2 | SHA-256-bound structured evidence, line ranges, POSIX permission tracking and recovery |
+| [`v0.5.0-beta`](#harness-for-codex-v050-beta) | Harness for Codex v0.5.0-beta | Schema 3 | Schema 5 | Schema 2 | Machine-verifiable material boundaries, persistent topology classes, routing and quality contracts, deterministic golden evaluation |
+| [`v0.5.1-beta`](#harness-for-codex-v051-beta) | Harness for Codex v0.5.1-beta | Schema 3 | Schema 5 | Schema 2 | Literal/prefix scope correction, portable case collision checks, topology cross-validation, unambiguous routing, exact quality budgets, expanded fixtures and Windows CI |
+| [`v0.5.2-beta`](#harness-for-codex-v052-beta) | Harness for Codex v0.5.2-beta | Schema 3 | Schema 5 | Schema 2 | Portable output namespace validation, complete-overlap handoffs, unique decision ownership, linked coordination witnesses, coordinated full-plan integration |
+| [`v0.5.3-beta`](#harness-for-codex-v053-beta) | Harness for Codex v0.5.3-beta | Schema 3 | Schema 5 | Schema 2 | Default-off local evaluation, JSONL provenance, isolated paired comparison, immutable records, non-binding evidence proposals |
+| [`v0.5.4-beta`](#harness-for-codex-v054-beta) | Harness for Codex v0.5.4-beta | Schema 3 | Schema 5 | Schema 2 | Minimal-change discipline, self-contained writer safeguards, four-case behavioral classification probe |
+| [`v0.5.5-beta`](#harness-for-codex-v055-beta) | Harness for Codex v0.5.5-beta | Schema 3 | Schema 5 | Schema 2 | Canonical discipline enforcement, complete bounded result fingerprints, isolated user homes, annotation semantics, experiment-only positive proposals |
+| [`v0.6.0-beta`](#harness-for-codex-v060-beta) | Harness for Codex v0.6.0-beta | Schema 3 | Schema 5 | Schema 2 | Evaluation Schema 2, declared configuration-delta attribution, observation and annotation lifecycles, derived views, structured ingest, patch-scope evaluation |
+| [`v0.6.1-beta`](#harness-for-codex-v061-beta) | Harness for Codex v0.6.1-beta | Schema 3 | Schema 5 | Schema 2 | Plan-bound positive and negative attribution, conservative patch-scope eligibility, exact symmetric support thresholds, v0.6.0-beta/v0.6.1-beta evidence separation |
+| [`v0.6.2-beta`](#harness-for-codex-v062-beta) | Harness for Codex v0.6.2-beta | Schema 3 | Schema 5 | Schema 2 | Independent complete evidence units, arm-specific task bases, store-verified proposal eligibility, runtime-stratum and untracked-budget corrections |
+| [`v0.6.3-beta`](#harness-for-codex-v063-beta) | Harness for Codex v0.6.3-beta | Schema 3 | Schema 5 | Schema 2 | Derived-view comparison lifecycle, verification-pure task measurement, explicit stratum selection, auxiliary binding and clean-tree hardening |
+| [`v0.6.4-beta`](#harness-for-codex-v064-beta) | Harness for Codex v0.6.4-beta | Schema 3 | Schema 5 | Schema 2 | Stable two-pass fingerprints, expanded repository-state verification checks, process-group cleanup and missing-stratum errors |
+| [`v0.6.5-beta`](#harness-for-codex-v065-beta) | Harness for Codex v0.6.5-beta | Schema 3 | Schema 5 | Schema 2 | Single-source release metadata, manifest-bound ephemeral runtime plans, bounded teamplay contracts, capability fallback and privacy-safe retention |
+| [`v0.6.6-beta`](#harness-for-codex-v066-beta) | Harness for Codex v0.6.6-beta | Schema 3 | Schema 5 | Schema 2 | Native Codex subagent parent relay, scoped coordination-packet validation, conservative writer isolation and live-smoke accounting |
+| [`v0.6.7-beta`](#harness-for-codex-v067-beta) | Harness for Codex v0.6.7-beta | Schema 3 | Schema 5 | Schema 2 | Deterministic contract materialization, spawn/wait liveness gates, version-bound privacy-safe runtime receipts, stale-review and affected-agent relay accounting |
+| [`v0.6.8-beta`](#harness-for-codex-v068-beta) | Harness for Codex v0.6.8-beta | Schema 3 | Schema 5 | Schema 2 | Canonical-handle runtime control, versioned public/local observation profiles, Runtime Receipt Schema 2, required-task accounting, installed draft-plan example |
+| [`v0.6.9-beta`](#harness-for-codex-v069-beta) | Harness for Codex v0.6.9-beta | Schema 3 | Schema 5 | Schema 2 | Deterministic teamplay materialization, nested-root and research-artifact inventory, canonical capability registry, layered validation report |
+| [`v0.6.10-beta`](#harness-for-codex-v0610-beta) | Harness for Codex v0.6.10-beta | Schema 3 | Schema 5 | Schema 2 | Enforced single-root preflight, Inventory Schema 3 role summaries, instruction-state split, Authoring Contract 2 drafts |
+| [`v0.7.0-beta`](#harness-for-codex-v070-beta) | Harness for Codex v0.7.0-beta | Schema 3 | Schema 6 | Schema 2 | Workspace-first roots, Inventory Schema 4 scan coverage, local-only Git exclusion, tracked-file and user-instruction protection |
+| [`v0.7.1-beta`](#harness-for-codex-v071-beta) | Harness for Codex v0.7.1-beta | Schema 3 | Schema 6 | Schema 2 | Single-worktree exclusion isolation, literal Git ignore paths, safe synchronous protection rollback, unbound-marker detection |
+| [`v0.7.2-beta`](#harness-for-codex-v072-beta) | Harness for Codex v0.7.2-beta | Schema 3 | Schema 6 | Schema 2 | Verified local-only paired evaluation, independent no-remote clones, source snapshot preflight, dry-run worktree-count diagnostics |
+| [`v0.7.3-beta`](#harness-for-codex-v073-beta) | Harness for Codex v0.7.3-beta | Schema 3 | Schema 6 | Schema 2 | Exact ignored/untracked evidence materialization, instruction-provenance isolation gaps, paired pre-task invariants, truthful optional materialization dry-run |
+| [`v0.7.4-beta`](#harness-for-codex-v074-beta) | Harness for Codex v0.7.4-beta | Schema 3 | Schema 6 | Schema 2 | Reserved evidence namespaces, shared instruction discovery, project-context parity, effective-config load gaps, literal task-base coverage |
+| [`v0.7.5-beta`](#harness-for-codex-v075-beta) | Harness for Codex v0.7.5-beta | Schema 3 | Schema 6 | Schema 2 | Opt-in per-turn operations evidence, privacy-safe outcome review, custom-agent load and dependency attribution gaps |
+| [`v0.7.6-beta`](#harness-for-codex-v076-beta) | Harness for Codex v0.7.6-beta | Schema 3 | Schema 6 | Schema 2 | Activation diagnostics, explicit usage coverage, and lighter direct-task guidance |
+| [`v0.8.0-beta`](#harness-for-codex-v080-beta) | Harness for Codex v0.8.0-beta | Schema 3 | Schema 6 | Schema 2 | Authoring Contract 3, Artifact Contract 1, strict frontmatter, topology-bound agent contracts, explicit upgrade status |
+| [`v0.8.1-beta`](#harness-for-codex-v081-beta) | Harness for Codex v0.8.1-beta | Schema 3 | Schema 6 | Schema 2 | Apply rejects unsupported existing artifact contracts while preserving supported v0.8.0-beta and legacy updates |
+| [`v0.9.0-beta`](#harness-for-codex-v090-beta) | Harness for Codex v0.9.0-beta | Schema 3 | Schema 7 | Schema 2 | Project-local installer, user-selected folders independent of Git boundaries, Artifact Contract 2, no Git metadata writes |
 
-Only the latest Codex and latest Claude branches are retained. The default branch follows the latest verified release; earlier release history remains reachable through commits. Historical branch names in this table identify releases and are not a promise that those branches still exist.
+Only the latest Codex and latest Claude branches are retained. The default branch follows the latest verified release; earlier release history remains reachable through commits. The table uses normalized display versions; it does not rename historical Git branches, tags or evidence identifiers.
 
-## Harness for Codex v9.11
+## Harness for Codex v0.10.0-beta
+
+Development prerelease. Existing project harnesses are preserved; Manifest Schema 7 and Artifact Contract 2 remain supported.
+
+- Opt-in `maintenance` connects stable project concerns to bounded review. Ordinary turns launch no additional review model. Identical reviewed evidence stays suppressed. Automatic changes are limited to two existing managed skills and 8 KiB; new agents, topology changes and permissions require explicit config review.
+- Native hooks deliver review/reload notices within the same conversation. Hook trust is reviewed in Codex. Two automatic review leases per day, an hour apart, with a 180-second application deadline. Token usage remains reported/unavailable where the native interactive session does not expose an enforceable review budget; no savings claim is made.
+- `config` refreshes an unchanged owned generator before reviewing the existing project. Conflicts preserve user edits.
+- Linux and Windows installers execute the Python belonging to the dynamically selected Conda prefix, even when system Python precedes Conda in PATH. Prefix validation stays enabled and errors include expected/actual interpreter details.
+- Development versioning is `vX.Y.Z-beta`; legacy `v9.11` is displayed as `v0.9.11-beta`. A feature increment produces this `v0.10.0-beta`. Old receipt identifiers remain readable and are never silently relabelled.
+
+### Installation
+
+Linux:
+
+```sh
+curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v0.10.0-beta/install_harness_codex.sh | sh
+```
+
+Windows PowerShell:
+
+```powershell
+Invoke-WebRequest https://github.com/sholee-pt/Harness/releases/download/codex-v0.10.0-beta/install_harness_codex.ps1 -OutFile install_harness_codex.ps1
+./install_harness_codex.ps1
+```
+
+Existing pre-SemVer installations need one run of this installer with `reuse`: their old updater cannot discover the new beta branch names. The new installer retains owned installation preferences and project files. An authenticated checkout can run `bash installer/install.sh --existing reuse` or `./installer/install.ps1 -Existing reuse`.
+
+### Release files
+
+`install_harness_codex.sh` and `.ps1` download and verify the matching Linux tarball or Windows ZIP, then prepare the isolated runtime and command. The archives contain the CLI, project generator and local installers. `SHA256SUMS` lists asset checksums; `build.json` identifies the exact source commit and archive digests. Source archives generated by GitHub are separate from these built assets.
+
+### Project maintenance
+
+```sh
+harness-codex init --goal-file PROJECT.md --maintenance suggest
+harness-codex maintenance --mode auto
+harness-codex maintenance
+harness-codex maintenance --mode off
+```
+
+Review and trust new/changed hooks with `/hooks` in Codex. This release does not automatically enable the separate operations/evaluation collectors, measure account-wide billing, or prove improved agent decisions. See [maintenance](docs/maintenance.md) and [versioning](docs/versioning.md).
+
+## Harness for Codex v0.9.11-beta
 
 `init`, `config` and applied `reset` now offer a numbered model, reasoning and permissions menu. Models and supported reasoning levels come from the installed Codex catalog. Enter preserves current settings; changing models offers that model's supported default reasoning. The choice affects this native configuration conversation and its later resumed turns, without writing global settings or project session records. `--settings native` skips the menu.
 
@@ -66,16 +109,16 @@ Configuration has three concise stages with one live activity/timer line. Repeat
 Linux:
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v9.11/install_harness_codex.sh | sh
+curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v0.9.11-beta/install_harness_codex.sh | sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://github.com/sholee-pt/Harness/releases/download/codex-v9.11/install_harness_codex.ps1 | iex
+irm https://github.com/sholee-pt/Harness/releases/download/codex-v0.9.11-beta/install_harness_codex.ps1 | iex
 ```
 
-Existing installation: `harness-codex update`. Install and sign in to Codex separately. From a project, run `harness-codex init --goal-file PROJECT.md`, choose settings, then use `harness-codex new`. For an existing project, update its generator with `init --install-only`, then use `config` when a configuration review is needed. Project artifact contracts stay compatible with v9.0–v9.10; regeneration is not required just to upgrade the CLI.
+Existing installation: `harness-codex update`. Install and sign in to Codex separately. From a project, run `harness-codex init --goal-file PROJECT.md`, choose settings, then use `harness-codex new`. For an existing project, update its generator with `init --install-only`, then use `config` when a configuration review is needed. Project artifact contracts stay compatible with v0.9.0-beta–v0.9.10-beta; regeneration is not required just to upgrade the CLI.
 
 ### Assets
 
@@ -89,9 +132,9 @@ Existing installation: `harness-codex update`. Install and sign in to Codex sepa
 
 ### Validation scope
 
-Publication requires the exact commit to pass Linux and Windows regression, v9.10-to-v9.11 upgrades, builds and cold installer checks. Release comparison now uses only the immediately preceding published version; the full historical source matrix is no longer part of CI. Protocol fixtures cover settings defaults and explicit choices, paginated model discovery, unsupported outcomes, approval handling, incomplete work and concise output. File validation establishes static integrity, not runtime discovery, model quality, task-time savings or token savings. Native connectivity/catalog checks do not run model generation.
+Publication requires the exact commit to pass Linux and Windows regression, v0.9.10-beta-to-v0.9.11-beta upgrades, builds and cold installer checks. Release comparison now uses only the immediately preceding published version; the full historical source matrix is no longer part of CI. Protocol fixtures cover settings defaults and explicit choices, paginated model discovery, unsupported outcomes, approval handling, incomplete work and concise output. File validation establishes static integrity, not runtime discovery, model quality, task-time savings or token savings. Native connectivity/catalog checks do not run model generation.
 
-## Harness for Codex v9.10
+## Harness for Codex v0.9.10-beta
 
 Configuration now shows observed stages and live elapsed seconds through the native Codex App Server. `init`, `config` and applied `reset` hide their internal bootstrap text and protocol JSON from the progress screen. Native command/file approvals and questions remain visible. Exact `yes` approves one request; unsupported approval types require `--interactive`. No model, sandbox, approval-policy or hook-trust settings are overridden.
 
@@ -106,7 +149,7 @@ Linux and Windows installers show live elapsed time on interactive terminals and
 Linux:
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v9.10/install_harness_codex.sh | sh
+curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v0.9.10-beta/install_harness_codex.sh | sh
 # Press Enter/yes to open the configured Bash, or run source ~/.bashrc yourself.
 harness-codex --version
 ```
@@ -114,11 +157,11 @@ harness-codex --version
 Windows x64 PowerShell:
 
 ```powershell
-irm https://github.com/sholee-pt/Harness/releases/download/codex-v9.10/install_harness_codex.ps1 | iex
+irm https://github.com/sholee-pt/Harness/releases/download/codex-v0.9.10-beta/install_harness_codex.ps1 | iex
 harness-codex --version
 ```
 
-Install/sign in to Codex CLI separately, then run `harness-codex init --goal-file PROJECT.md` inside your project. Work with `harness-codex new`; review configuration with `config`. An existing tool uses `harness-codex update`. Project artifacts from v9.0–v9.9 retain their compatibility; update the project generator with `init --install-only` when needed.
+Install/sign in to Codex CLI separately, then run `harness-codex init --goal-file PROJECT.md` inside your project. Work with `harness-codex new`; review configuration with `config`. An existing tool uses `harness-codex update`. Project artifacts from v0.9.0-beta–v0.9.9-beta retain their compatibility; update the project generator with `init --install-only` when needed.
 
 ### Assets
 
@@ -134,25 +177,25 @@ Install/sign in to Codex CLI separately, then run `harness-codex init --goal-fil
 
 Publication is gated on Linux and Windows regression, historical upgrade, build and cold installer checks. Subprocess protocol fixtures exercise native message shapes, approval refusal, questions, interruptions, timeout, early completion and actual deterministic artifact validation. These fixtures do not call a model. A native protocol handshake can confirm connectivity without proving live generation, agent discovery, task quality or token savings. No such quality benefit is claimed.
 
-## Harness for Codex v9.9
+## Harness for Codex v0.9.9-beta
 
 Project configuration is shared across native Codex conversations. `new [TASK]` starts a fresh conversation; `resume [SESSION_ID]` and `resume --last` use native history with the current project harness. Launches validate and print a stable manifest fingerprint without copying agents or mutating session state into the manifest. `start` remains a deprecated alias; `config` is the explicit configuration workflow.
 
-Installation now offers reuse/reset choices, timed progress and `source ~/.bashrc` guidance. New dedicated runtime installations have file ownership receipts for guarded uninstall. Reused Conda environments, modified files and project harnesses are preserved. Windows completes runtime cleanup after the CLI exits. The project artifact contracts remain compatible with v9.0–v9.8.
+Installation now offers reuse/reset choices, timed progress and `source ~/.bashrc` guidance. New dedicated runtime installations have file ownership receipts for guarded uninstall. Reused Conda environments, modified files and project harnesses are preserved. Windows completes runtime cleanup after the CLI exits. The project artifact contracts remain compatible with v0.9.0-beta–v9.8.
 
 ### Installation
 
 Linux:
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v9.9/install_harness_codex.sh | sh
+curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v0.9.9-beta/install_harness_codex.sh | sh
 source ~/.bashrc
 ```
 
 Windows x64 PowerShell:
 
 ```powershell
-irm https://github.com/sholee-pt/Harness/releases/download/codex-v9.9/install_harness_codex.ps1 | iex
+irm https://github.com/sholee-pt/Harness/releases/download/codex-v0.9.9-beta/install_harness_codex.ps1 | iex
 ```
 
 Then install/sign in to Codex CLI and run:
@@ -179,9 +222,9 @@ Existing tool: `harness-codex update`. Existing projects remain separate: inspec
 
 The release workflow gates publication on Linux and Windows regression, historical upgrade, build and installer checks. Session tests verify native argument forwarding and unchanged project files; they do not measure live model decisions, native agent discovery, time savings or token savings. Automatic per-session metadata is deferred pending an explicitly trusted native hook integration; original conversation fingerprints are not automatically retained.
 
-## Harness for Codex v1.0
+## Harness for Codex v0.1.0-beta
 
-Harness for Codex v1.0 introduced the project-adaptive generator.
+Harness for Codex v0.1.0-beta introduced the project-adaptive generator.
 
 - Inspects repository evidence before choosing a topology.
 - Generates native Codex artifacts under `.codex/agents/`, `.agents/skills/`, and `AGENTS.md`.
@@ -191,9 +234,9 @@ Harness for Codex v1.0 introduced the project-adaptive generator.
 
 This branch receives documentation or critical maintenance corrections only.
 
-## Harness for Codex v2.0
+## Harness for Codex v0.2.0-beta
 
-Harness for Codex v2.0 added a guarded and reproducible generation lifecycle.
+Harness for Codex v0.2.0-beta added a guarded and reproducible generation lifecycle.
 
 - Separates analysis from mutation through generation plan schema 1.
 - Requires a no-write dry-run before applying a plan.
@@ -203,9 +246,9 @@ Harness for Codex v2.0 added a guarded and reproducible generation lifecycle.
 - Introduces manifest schema 2 with topology rationale, artifact purpose, and the active instruction path.
 - Adds the dedicated Anaconda `harness` environment and fixture-based validation.
 
-## Harness for Codex v2.1
+## Harness for Codex v0.2.1-beta
 
-Harness for Codex v2.1 patched the v2.0 lifecycle without changing its plan or manifest schemas.
+Harness for Codex v0.2.1-beta patched the v0.2.0-beta lifecycle without changing its plan or manifest schemas.
 
 - Skips writes for artifacts, root instructions, and manifests classified as unchanged.
 - Validates the complete action map before the first write.
@@ -213,11 +256,11 @@ Harness for Codex v2.1 patched the v2.0 lifecycle without changing its plan or m
 - Adds automated unit-test and fixture dry-run checks.
 - Declares the limited generated skill-frontmatter contract and removes an unused YAML dependency.
 
-Existing clean Harness for Codex v2.0 manifests remain compatible.
+Existing clean Harness for Codex v0.2.0-beta manifests remain compatible.
 
-## Harness for Codex v3.0
+## Harness for Codex v0.3.0-beta
 
-Harness for Codex v3.0 replaced sequential multi-file mutation with a recoverable journaled lifecycle.
+Harness for Codex v0.3.0-beta replaced sequential multi-file mutation with a recoverable journaled lifecycle.
 
 - Introduces manifest schema 3 and transaction schema 1.
 - Revalidates managed hashes and create-path absence immediately before staging.
@@ -230,9 +273,9 @@ Harness for Codex v3.0 replaced sequential multi-file mutation with a recoverabl
 
 The filesystem cannot atomically replace unrelated paths as one operation. Transaction schema 1 therefore defines recoverability rather than claiming full multi-file atomicity.
 
-## Harness for Codex v3.1
+## Harness for Codex v0.3.1-beta
 
-Harness for Codex v3.1 hardened v3.0 without changing the generation or state schemas.
+Harness for Codex v0.3.1-beta hardened v0.3.0-beta without changing the generation or state schemas.
 
 - Corrects stale release text in repository instructions.
 - Reports incomplete legacy evidence without silently fabricating semantic claims.
@@ -240,9 +283,9 @@ Harness for Codex v3.1 hardened v3.0 without changing the generation or state sc
 - Synchronizes parent directory entries after atomic replacement on supported POSIX filesystems.
 - Documents a repeatable live Codex discovery and delegation smoke test.
 
-## Harness for Codex v4.0
+## Harness for Codex v0.4.0-beta
 
-Harness for Codex v4.0 made evidence and portable permission behavior deterministic contracts.
+Harness for Codex v0.4.0-beta made evidence and portable permission behavior deterministic contracts.
 
 - Introduces generation plan schema 2 with `path`, `sha256`, `claim`, and optional line ranges.
 - Rejects missing, escaped, stale, or out-of-range evidence before planning mutations.
@@ -254,9 +297,9 @@ Harness for Codex v4.0 made evidence and portable permission behavior determinis
 
 Evidence hashes prove which unchanged bytes a claim references; semantic truth remains a review responsibility.
 
-## Harness for Codex v5.0
+## Harness for Codex v0.5.0-beta
 
-Harness for Codex v5.0 promotes v4.0 topology guidance into a machine-verifiable contract while retaining transaction schema 2.
+Harness for Codex v0.5.0-beta promotes v0.4.0-beta topology guidance into a machine-verifiable contract while retaining transaction schema 2.
 
 - Introduces generation plan schema 3 and manifest schema 5.
 - Records persistent material boundaries with stable decision-area IDs, repository evidence, persistence, contracts, verification, and separation benefits.
@@ -271,11 +314,11 @@ Harness for Codex v5.0 promotes v4.0 topology guidance into a machine-verifiable
 - Adds deterministic golden evaluation based on stable decision-area IDs rather than semantic string similarity.
 - Keeps model inheritance as the default and does not add an unverified persistent model-selection schema.
 
-Harness for Codex v4.0 → v5.0 is a reviewed regeneration upgrade. Harness validates the clean v4.0 ownership state, re-analyzes the repository, dry-runs a schema 3 plan, and writes schema 5 only through the existing journaled apply. It does not infer material boundaries from legacy manifest fields.
+Harness for Codex v0.4.0-beta → v0.5.0-beta is a reviewed regeneration upgrade. Harness validates the clean v0.4.0-beta ownership state, re-analyzes the repository, dry-runs a schema 3 plan, and writes schema 5 only through the existing journaled apply. It does not infer material boundaries from legacy manifest fields.
 
-## Harness for Codex v5.1
+## Harness for Codex v0.5.1-beta
 
-Harness for Codex v5.1 stabilizes the v5.0 contract without changing plan, manifest, or transaction schemas.
+Harness for Codex v0.5.1-beta stabilizes the v0.5.0-beta contract without changing plan, manifest, or transaction schemas.
 
 - Distinguishes literal file scopes from recursive `/**` scopes during access containment checks.
 - Treats case-only writer overlaps as conflicts on every platform for portable Windows safety.
@@ -288,11 +331,11 @@ Harness for Codex v5.1 stabilizes the v5.0 contract without changing plan, manif
 - Runs CI on both Ubuntu and Windows.
 - Uses two-component Harness and generator versions such as `5.1`.
 
-Harness for Codex v5.0 plans and manifests remain on schema 3 and schema 5. The stricter validator may reject previously accepted ambiguous topology declarations; regenerate and review such plans before applying them.
+Harness for Codex v0.5.0-beta plans and manifests remain on schema 3 and schema 5. The stricter validator may reject previously accepted ambiguous topology declarations; regenerate and review such plans before applying them.
 
-## Harness for Codex v5.2
+## Harness for Codex v0.5.2-beta
 
-Harness for Codex v5.2 hardens v5.1 without changing plan, manifest, or transaction schemas.
+Harness for Codex v0.5.2-beta hardens v0.5.1-beta without changing plan, manifest, or transaction schemas.
 
 - Rejects case-only artifact, application, manifest, and transaction target collisions before staging.
 - Rejects output sets in which one file target is an ancestor of another file target.
@@ -304,13 +347,13 @@ Harness for Codex v5.2 hardens v5.1 without changing plan, manifest, or transact
 - Adds a coordinated full-plan fixture covering dry-run, journaled apply, manifest validation, and a no-op second apply.
 - Keeps generation plan schema 3, manifest schema 5, and transaction schema 2.
 
-Harness for Codex v5.1 plans remain structurally compatible, but the stricter portable namespace, decision ownership, coordination witness, and handoff checks may reject previously accepted ambiguous plans. Regenerate and review those plans before applying them with v5.2.
+Harness for Codex v0.5.1-beta plans remain structurally compatible, but the stricter portable namespace, decision ownership, coordination witness, and handoff checks may reject previously accepted ambiguous plans. Regenerate and review those plans before applying them with v5.2.
 
 Runtime enforcement, automatic adaptation, Hooks, and an SDK controller remain outside the v5 generation contract.
 
-## Harness for Codex v5.3
+## Harness for Codex v0.5.3-beta
 
-Harness for Codex v5.3 adds an optional evaluation layer without changing the v5.2 generation, ownership, or transaction contracts.
+Harness for Codex v0.5.3-beta adds an optional evaluation layer without changing the v0.5.2-beta generation, ownership, or transaction contracts.
 
 - Records evaluator-started `codex exec --json` metadata without retaining raw JSONL, prompts, transcripts, commands, paths, or source content.
 - Distinguishes measured zero, unavailable values, reported values, and partial metric coverage.
@@ -322,11 +365,11 @@ Harness for Codex v5.3 adds an optional evaluation layer without changing the v5
 - Keeps evaluation disabled unless `harness_eval.py` is invoked explicitly.
 - Keeps generation plan schema 3, manifest schema 5, and transaction schema 2.
 
-Harness for Codex v5.2 installations require no migration. Regenerating with v5.3 changes only the generator version when the same reviewed plan is applied; project artifacts and the managed instruction remain equivalent.
+Harness for Codex v0.5.2-beta installations require no migration. Regenerating with v0.5.3-beta changes only the generator version when the same reviewed plan is applied; project artifacts and the managed instruction remain equivalent.
 
-## Harness for Codex v5.4
+## Harness for Codex v0.5.4-beta
 
-Harness for Codex v5.4 adds a backward-compatible change-discipline contract without changing the v5 plan, manifest, or transaction schemas.
+Harness for Codex v0.5.4-beta adds a backward-compatible change-discipline contract without changing the v5 plan, manifest, or transaction schemas.
 
 - Adds a common code-change discipline to generated `project-harness` skills: surface material ambiguity and simpler alternatives, make the smallest scoped change, avoid unrelated cleanup, and define verification before implementation.
 - Requires every generated writer's `developer_instructions` to carry a concise self-contained form of the same contract because delegated agents are not guaranteed to load `project-harness`.
@@ -335,11 +378,11 @@ Harness for Codex v5.4 adds a backward-compatible change-discipline contract wit
 - Adds `--validate-only` fixture validation that does not invoke Codex and keeps live behavioral probing explicitly opt-in.
 - Keeps generation plan schema 3, manifest schema 5, transaction schema 2, and evaluation auxiliary schema 1.
 
-Harness for Codex v5.3 installations require no state migration. A reviewed regeneration may update generated `project-harness` and writer instructions; ownership conflicts continue to stop the full apply before changes are written.
+Harness for Codex v0.5.3-beta installations require no state migration. A reviewed regeneration may update generated `project-harness` and writer instructions; ownership conflicts continue to stop the full apply before changes are written.
 
-## Harness for Codex v5.5
+## Harness for Codex v0.5.5-beta
 
-Harness for Codex v5.5 hardens generation and evaluation semantics without changing any generation or evaluation schema number.
+Harness for Codex v0.5.5-beta hardens generation and evaluation semantics without changing any generation or evaluation schema number.
 
 - Requires the canonical project change-discipline block exactly once after line-ending normalization.
 - Requires the canonical self-contained discipline block exactly once in every agent whose topology grants write access.
@@ -352,11 +395,11 @@ Harness for Codex v5.5 hardens generation and evaluation semantics without chang
 - Emits only experiment suggestions for positive Schema 1 evidence and only bundle-level negative signals for harmful evidence; it does not invent a delegated or reviewer configuration.
 - Keeps generation plan schema 3, manifest schema 5, transaction schema 2, and all evaluation auxiliary schemas at version 1.
 
-Harness for Codex v5.4 installations require no stored-state migration. Regeneration is required before applying a new plan whose generated discipline text does not satisfy the canonical validator.
+Harness for Codex v0.5.4-beta installations require no stored-state migration. Regeneration is required before applying a new plan whose generated discipline text does not satisfy the canonical validator.
 
-## Harness for Codex v6.0
+## Harness for Codex v0.6.0-beta
 
-Harness for Codex v6.0 changes the optional evaluation state contract while leaving generation, ownership, and transaction schemas unchanged.
+Harness for Codex v0.6.0-beta changes the optional evaluation state contract while leaving generation, ownership, and transaction schemas unchanged.
 
 - Introduces Run, Annotation, Comparison Plan, Comparison, and Proposal Schema 2.
 - Separates declared configuration, expected execution, discovered configuration, and observed execution.
@@ -375,11 +418,11 @@ Harness for Codex v6.0 changes the optional evaluation state contract while leav
 - Retains Schema 1 readers for list, inspect, export, integrity checks, repair, and purge without automatic rewrite or inferred migration.
 - Keeps every proposal non-causal and non-auto-applicable. A configuration or bundle proposal can contain only the observed delta supported by eligible Schema 2 comparisons.
 
-Harness for Codex v5.5 evaluation files need no destructive migration. They remain legacy read-only evidence and are excluded from v6 attribution groups. Runtime Hooks, phase enforcement, write-lane control, and automatic adaptation remain outside v6 and are reserved for a later major release.
+Harness for Codex v0.5.5-beta evaluation files need no destructive migration. They remain legacy read-only evidence and are excluded from v6 attribution groups. Runtime Hooks, phase enforcement, write-lane control, and automatic adaptation remain outside v6 and are reserved for a later major release.
 
-## Harness for Codex v6.1
+## Harness for Codex v0.6.1-beta
 
-Harness for Codex v6.1 corrects attribution eligibility and support statistics without changing any generation, ownership, transaction, or evaluation schema number.
+Harness for Codex v0.6.1-beta corrects attribution eligibility and support statistics without changing any generation, ownership, transaction, or evaluation schema number.
 
 - Requires the original validated Comparison Plan for concrete positive or negative configuration attribution; missing or descriptive-only plans produce only experiment suggestions or no-change records with an empty candidate.
 - Binds proposal evidence to one canonical plan digest and includes the plan digest and Harness runtime version in evaluation-stratum calculation.
@@ -390,14 +433,14 @@ Harness for Codex v6.1 corrects attribution eligibility and support statistics w
 - Treats exact zero as a tie even when the minimum effect is zero.
 - Uses the raw treatment-minus-baseline median in records while using an internal direction-adjusted median for support decisions.
 - Applies weak, moderate, and strong ratios symmetrically by integer cross multiplication; weak means exactly at least two of three, and at least three non-ties are required.
-- Reads v6.0 Schema 2 records descriptively while limiting new concrete attribution to v6.1 run evidence.
+- Reads v0.6.0-beta Schema 2 records descriptively while limiting new concrete attribution to v0.6.1-beta run evidence.
 - Derives independent-review configuration only from the topology contract's producer-reviewer collaboration pattern or independent-safety-review quality policy.
 
-Harness for Codex v6.0 records remain immutable and readable. They are not rewritten or silently promoted into v6.1 attribution evidence.
+Harness for Codex v0.6.0-beta records remain immutable and readable. They are not rewritten or silently promoted into v0.6.1-beta attribution evidence.
 
-## Harness for Codex v6.2
+## Harness for Codex v0.6.2-beta
 
-Harness for Codex v6.2 corrects the independence, comparability, and task-baseline rules used by Evaluation Schema 2 without changing generation plan schema 3, manifest schema 5, transaction schema 2, or any persisted evaluation schema number.
+Harness for Codex v0.6.2-beta corrects the independence, comparability, and task-baseline rules used by Evaluation Schema 2 without changing generation plan schema 3, manifest schema 5, transaction schema 2, or any persisted evaluation schema number.
 
 - Counts only complete comparisons made from independent Run pairs in Proposal evidence statistics.
 - Excludes partial comparability from positive and negative concrete attribution while preserving each Comparison for descriptive inspection.
@@ -410,11 +453,11 @@ Harness for Codex v6.2 corrects the independence, comparability, and task-baseli
 - Describes configuration differences as declared or preassigned snapshot deltas rather than proof of runtime component use.
 - Distinguishes standalone plan binding, paired-run plans supplied before arm execution, and unsupported durable preregistration.
 
-Harness for Codex v6.0 and v6.1 records remain immutable and readable for descriptive inspection. They are not rewritten or silently promoted into v6.2 concrete attribution evidence.
+Harness for Codex v0.6.0-beta and v0.6.1-beta records remain immutable and readable for descriptive inspection. They are not rewritten or silently promoted into v0.6.2-beta concrete attribution evidence.
 
-## Harness for Codex v6.3
+## Harness for Codex v0.6.3-beta
 
-Harness for Codex v6.3 completes the Observation and Annotation comparison lifecycle and separates Codex task measurement from verification side effects without changing generation plan schema 3, manifest schema 5, transaction schema 2, or any persisted evaluation schema number.
+Harness for Codex v0.6.3-beta completes the Observation and Annotation comparison lifecycle and separates Codex task measurement from verification side effects without changing generation plan schema 3, manifest schema 5, transaction schema 2, or any persisted evaluation schema number.
 
 - Includes both Derived View fingerprints in the Schema 2 Comparison duplicate identity, allowing the same Run pair and Plan to be compared again after a lifecycle change while still rejecting exact duplicates.
 - Keeps stale immutable Comparisons for inspection and excludes them before Run-independence accounting, so only the fresh Comparison can contribute evidence.
@@ -424,11 +467,11 @@ Harness for Codex v6.3 completes the Observation and Annotation comparison lifec
 - Binds auxiliary filenames and storage scope to their internal record and repository IDs, and makes repair detect misplaced Comparison and Proposal records.
 - Extends the final Linux and Windows CI clean-tree check to include non-ignored untracked files.
 
-Harness for Codex v6.0 through v6.2 records remain immutable and readable for descriptive inspection. They are not rewritten or silently promoted into v6.3 concrete attribution evidence.
+Harness for Codex v0.6.0-beta through v0.6.2-beta records remain immutable and readable for descriptive inspection. They are not rewritten or silently promoted into v0.6.3-beta concrete attribution evidence.
 
-## Harness for Codex v6.4
+## Harness for Codex v0.6.4-beta
 
-Harness for Codex v6.4 hardens verification isolation and fingerprint stability without changing generation plan schema 3, manifest schema 5, transaction schema 2, or any persisted evaluation schema number.
+Harness for Codex v0.6.4-beta hardens verification isolation and fingerprint stability without changing generation plan schema 3, manifest schema 5, transaction schema 2, or any persisted evaluation schema number.
 
 - Accepts a result fingerprint only when two complete bounded content snapshots match, including a second read of every non-ignored untracked artifact.
 - Compares verification repository-state signatures containing task content, `HEAD`, symbolic `HEAD`, index entries, and porcelain status.
@@ -437,11 +480,11 @@ Harness for Codex v6.4 hardens verification isolation and fingerprint stability 
 - Performs a bounded post-cleanup quiescence check before accepting the final repository state.
 - Rejects a syntactically valid `--evaluation-stratum` fingerprint when it does not exist among comparisons matching the requested repository and task stratum.
 
-Harness for Codex v6.0 through v6.3 records remain immutable and readable for descriptive inspection. They are not rewritten or silently promoted into v6.4 concrete attribution evidence. Windows complete isolation continues to require a receipt matching the current process-tree cleanup implementation.
+Harness for Codex v0.6.0-beta through v0.6.3-beta records remain immutable and readable for descriptive inspection. They are not rewritten or silently promoted into v0.6.4-beta concrete attribution evidence. Windows complete isolation continues to require a receipt matching the current process-tree cleanup implementation.
 
-## Harness for Codex v6.5
+## Harness for Codex v0.6.5-beta
 
-Harness for Codex v6.5 adds a runtime-only teamplay plane without changing generation plan schema 3, manifest schema 5, transaction schema 2, or any persisted evaluation schema number.
+Harness for Codex v0.6.5-beta adds a runtime-only teamplay plane without changing generation plan schema 3, manifest schema 5, transaction schema 2, or any persisted evaluation schema number.
 
 - Centralizes the current Harness release, runtime, and schema metadata used by generation, state, transaction, and evaluation modules.
 - Keeps persistent evidence-backed topology separate from a manifest-bound ephemeral runtime plan.
@@ -450,14 +493,14 @@ Harness for Codex v6.5 adds a runtime-only teamplay plane without changing gener
 - Validates manifest and topology hashes, known participants, scope containment, acyclic task ownership, required verification, communication budgets, stopping conditions, capability fallback, writer isolation, handoffs, and retention.
 - Defaults runtime workspaces to ephemeral storage with no raw message or artifact retention; full audit requires explicit user opt-in.
 - Adds generated project-harness and agent guidance for structured findings, evidence-backed challenges, leader authority, frozen handoffs, and completion packets.
-- Preserves existing evaluation CLI commands and keeps v6.0 through v6.4 records readable for descriptive inspection; only v6.5 records are eligible for new concrete attribution.
-- Keeps native peer-to-peer execution and fully automated runtime adapters deferred; v6.5 validates the semantic plan but does not claim that a native team ran.
+- Preserves existing evaluation CLI commands and keeps v0.6.0-beta through v0.6.4-beta records readable for descriptive inspection; only v0.6.5-beta records are eligible for new concrete attribution.
+- Keeps native peer-to-peer execution and fully automated runtime adapters deferred; v0.6.5-beta validates the semantic plan but does not claim that a native team ran.
 
-Harness for Codex v6.0 through v6.4 records remain immutable and readable. Runtime plans are never written to the persistent manifest and cannot automatically change generated agents, skills, routes, or policies.
+Harness for Codex v0.6.0-beta through v0.6.4-beta records remain immutable and readable. Runtime plans are never written to the persistent manifest and cannot automatically change generated agents, skills, routes, or policies.
 
-## Harness for Codex v6.6
+## Harness for Codex v0.6.6-beta
 
-Harness for Codex v6.6 turns the v6.5 semantic teamplay plan into an explicit Codex-native parent-relay instruction contract without changing generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, or any persisted evaluation schema number.
+Harness for Codex v0.6.6-beta turns the v0.6.5-beta semantic teamplay plan into an explicit Codex-native parent-relay instruction contract without changing generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, or any persisted evaluation schema number.
 
 - Treats runtime-plan `participants` as the complete set of persistent custom agents activated for the current task instead of introducing another active-agent field.
 - Instructs the parent Codex session to spawn only selected project agents, assign bounded task and scope contracts, wait for required results, relay material evidence, and retain final integration authority.
@@ -467,13 +510,13 @@ Harness for Codex v6.6 turns the v6.5 semantic teamplay plan into an explicit Co
 - Defaults to multiple read-only subagents and one writer; parallel writers require observed isolated workspaces and non-overlapping scopes rather than a declaration alone.
 - Keeps packet schema 1 ephemeral and separate from the persistent manifest. A valid packet deliberately reports that it is not proof of live subagent execution.
 - Expands the optional Codex smoke test to record selected versus observed subagents, packet validation, relay behavior, revision count, and fallback use.
-- Preserves existing evaluation CLI commands, reads v6.0 through v6.5 records descriptively, and limits new concrete attribution to v6.6 evidence.
+- Preserves existing evaluation CLI commands, reads v0.6.0-beta through v0.6.5-beta records descriptively, and limits new concrete attribution to v0.6.6-beta evidence.
 
-Harness for Codex v6.5 records and runtime-plan adapter aliases remain readable. This release is instruction-driven rather than a standalone scheduler, does not claim direct peer messaging, and does not guarantee automatic per-subagent worktree creation.
+Harness for Codex v0.6.5-beta records and runtime-plan adapter aliases remain readable. This release is instruction-driven rather than a standalone scheduler, does not claim direct peer messaging, and does not guarantee automatic per-subagent worktree creation.
 
-## Harness for Codex v6.7
+## Harness for Codex v0.6.7-beta
 
-Harness for Codex v6.7 narrows the live-smoke findings from v6.6 into deterministic generation and offline runtime-evidence validation. It does not replace Codex orchestration and does not change generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, or persisted evaluation schemas.
+Harness for Codex v0.6.7-beta narrows the live-smoke findings from v0.6.6-beta into deterministic generation and offline runtime-evidence validation. It does not replace Codex orchestration and does not change generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, or persisted evaluation schemas.
 
 - Adds a deterministic plan builder that replaces exact project and writer placeholders with the canonical change-discipline contracts before the unchanged Schema 3 apply validator runs.
 - Uses the first real selected task agent as the capability probe, requires a non-empty child ID plus child-session metadata that matches the expected role and parent before wait, rejects empty or unknown receivers, and fixes the liveness budget at three waits and 300000 total milliseconds per agent.
@@ -482,18 +525,18 @@ Harness for Codex v6.7 narrows the live-smoke findings from v6.6 into determinis
 - Pseudonymizes parent and child identifiers with a separate salt, rejects raw prompts, messages, paths, source content, commands, credentials, and authentication fields, and records only derived fingerprints, counts, measurements, and state.
 - Separates receipt integrity from execution evidence. A canonical receipt hash protects the derived record; only a supported complete public-event chain cross-validated against child-session metadata can set `provesLiveSubagentExecution: true`.
 - Adds a separate Relay Receipt Schema 1 so reviews echo their input packet hash, packet revisions invalidate stale reviews, and rerun accounting includes exactly affected agents without altering Coordination Packet Schema 1.
-- Preserves Evaluation Schema 2 and the existing CLI. v6.0 through v6.6 records remain readable for descriptive inspection, while new concrete attribution is limited to eligible v6.7 evidence.
+- Preserves Evaluation Schema 2 and the existing CLI. v0.6.0-beta through v0.6.6-beta records remain readable for descriptive inspection, while new concrete attribution is limited to eligible v0.6.7-beta evidence.
 
 This release remains an instruction and validation layer rather than a scheduler. Its JSONL parser is deliberately bound to the observed CLI version; adding another version requires an explicit parser review and deterministic fixtures. Runtime receipt capture does not create `CODEX_HOME`, manage authentication, launch Codex, or make an automatic retention-mode transition.
 
-## Harness for Codex v6.8
+## Harness for Codex v0.6.8-beta
 
-Harness for Codex v6.8 is a narrow runtime-compatibility correction to v6.7. Generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, ownership, and transaction behavior remain unchanged.
+Harness for Codex v0.6.8-beta is a narrow runtime-compatibility correction to v6.7. Generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, ownership, and transaction behavior remain unchanged.
 
 - Uses the non-empty canonical receiver handle returned by Codex and confirmed by the current agent list for wait, follow-up, and interrupt. A raw child thread ID is no longer a model-visible acknowledgement prerequisite.
 - Separates handle acknowledgement, optional child-session binding, observed lifecycle, terminal completion sources, failure sources, fallback, and required-task accounting.
 - Adds Runtime Receipt Schema 2 with distinct `streamCompleteness`, `collaborationCompleteness`, `taskAccountingStatus`, event profiles, and agent-level evidence sources.
-- Keeps Runtime Receipt Schema 1 validation-only and verifies an unchanged v6.7 golden receipt without conversion, rewriting, or evidence promotion.
+- Keeps Runtime Receipt Schema 1 validation-only and verifies an unchanged v0.6.7-beta golden receipt without conversion, rewriting, or evidence promotion.
 - Treats exact registered `not-exposed`, `unobserved`, `partial`, and unsupported profiles as evidence limitations. Only verified binding or incompatible same-spawn terminal outcomes fail closed; source timing differences do not.
 - Distinguishes execution outcome from thread lifecycle. A bounded control-plane wait may establish completion, while compatible local terminal evidence raises the result to cross-validated strength. Agent-reported text alone cannot establish completion.
 - Computes task accounting from required Runtime Plan tasks as `complete-direct`, `complete-delegated`, `complete-mixed`, `complete-fallback`, `partial`, or `failed`. A valid fallback cannot erase a collaboration conflict.
@@ -502,9 +545,9 @@ Harness for Codex v6.8 is a narrow runtime-compatibility correction to v6.7. Gen
 
 The public core JSONL profile is based only on the documented `item.*` event envelope. `collab_tool_call` and local `SubAgentActivity` remain explicitly version-specific observed profiles rather than stable public OpenAI schemas. Harness remains an instruction, validation, and evidence layer; it does not replace Codex orchestration or schedule agents independently.
 
-## Harness for Codex v6.9
+## Harness for Codex v0.6.9-beta
 
-Harness for Codex v6.9 hardens the generator and its reporting without changing generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, or Runtime Receipt Schema 2.
+Harness for Codex v0.6.9-beta hardens the generator and its reporting without changing generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, or Runtime Receipt Schema 2.
 
 - Adds deterministic project-teamplay and agent-teamplay placeholders beside the existing change-discipline placeholders.
 - Requires the canonical runtime-teamplay block exactly once in the generated `project-harness` and every generated Codex agent, both before apply and during installed-state validation.
@@ -513,13 +556,13 @@ Harness for Codex v6.9 hardens the generator and its reporting without changing 
 - Defines canonical runtime capability IDs and normalizes the legacy `parallel-subagent-delegation` alias before final topology validation.
 - Rejects unregistered capability IDs instead of allowing a validated name to silently select a fallback adapter.
 - Adds a validation capability matrix that distinguishes transaction, manifest, evidence, topology, ownership, and runtime-state checks from untested live agent discovery, delegation, task correctness, and benefit attribution.
-- Keeps v6.0 through v6.8 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v6.9 evidence.
+- Keeps v0.6.0-beta through v0.6.8-beta evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v0.6.9-beta evidence.
 
 This release does not claim `.gitignore`-complete filtering, semantic source-code classification, live Codex execution proof, or automatic long-term topology adaptation. Those concerns require separate evidence and are not inferred from a successful static validation report.
 
-## Harness for Codex v6.10
+## Harness for Codex v0.6.10-beta
 
-Harness for Codex v6.10 closes the remaining root-selection and inventory-semantics gap from v6.9 without changing generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, or Runtime Receipt Schema 2.
+Harness for Codex v0.6.10-beta closes the remaining root-selection and inventory-semantics gap from v0.6.9-beta without changing generation plan schema 3, manifest schema 5, transaction schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, or Runtime Receipt Schema 2.
 
 - Introduces Inventory Schema 3 with `nonArtifactFileCount` and conservative code, configuration, documentation, test, research-artifact, and unknown role counts.
 - Adds role counts and `primary` or `review` priority to candidate boundaries instead of describing every non-artifact file as source.
@@ -528,13 +571,13 @@ Harness for Codex v6.10 closes the remaining root-selection and inventory-semant
 - Classifies nested Git markers as registered submodules, independent repositories, or linked repositories. Registered submodules stay visible without making the parent root ambiguous by themselves.
 - Makes the builder, apply preflight, and installed-state validator reject ambiguous outer roots and bounded root scans that cannot establish completeness.
 - Introduces Authoring Contract 2 for draft plans. The builder rejects older draft revisions with migration guidance and removes the authoring-only field from the final Schema 3 plan.
-- Keeps v6.0 through v6.9 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v6.10 evidence.
+- Keeps v0.6.0-beta through v0.6.9-beta evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v0.6.10-beta evidence.
 
-Harness v6.10 remains repository-scoped. A non-Git workspace containing multiple independent repositories is not treated as one supported project root in that release. Inventory roles are structural hints, not semantic responsibility claims, and `.gitignore`-complete classification remains outside it.
+Harness v0.6.10-beta remains repository-scoped. A non-Git workspace containing multiple independent repositories is not treated as one supported project root in that release. Inventory roles are structural hints, not semantic responsibility claims, and `.gitignore`-complete classification remains outside it.
 
-## Harness for Codex v7.0
+## Harness for Codex v0.7.0-beta
 
-Harness for Codex v7.0 changes generation from repository-first to local-workspace-first operation. Generation Plan Schema 3, Transaction Schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, Runtime Receipt Schema 2, and Evaluation Schema 2 remain unchanged. Manifest Schema 6 and Inventory Schema 4 record the new local-only workspace contract.
+Harness for Codex v0.7.0-beta changes generation from repository-first to local-workspace-first operation. Generation Plan Schema 3, Transaction Schema 2, runtime-plan schema 1, coordination-packet schema 1, relay-receipt schema 1, Runtime Receipt Schema 2, and Evaluation Schema 2 remain unchanged. Manifest Schema 6 and Inventory Schema 4 record the new local-only workspace contract.
 
 - Classifies plain directories, non-Git directory workspaces, local Git repositories, linked worktrees, Git-contained selections, and incomplete scans without querying a Git remote or GitHub.
 - Separates content-inventory exclusions from root-boundary discovery, so `vendor`, dependency, output, data, and checkpoint trees remain visible when looking for nested Git roots.
@@ -546,13 +589,13 @@ Harness for Codex v7.0 changes generation from repository-first to local-workspa
 - Preserves existing user-owned or tracked root instructions byte-for-byte. Such installations use explicit `$project-harness` activation instead of creating an override that could suppress user guidance.
 - Records workspace kind, local-only scope, instruction activation, and Git protection in Manifest Schema 6 and validates them against current local state.
 - Keeps older managed artifacts as unchanged or removal candidates. It does not automatically delete superseded agents or skills, and task-topic changes continue to affect ephemeral runtime routing before persistent topology.
-- Keeps v6.0 through v6.10 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.0 evidence.
+- Keeps v0.6.0-beta through v0.6.10-beta evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v0.7.0-beta evidence.
 
-Schema 4 and 5 installations upgrade only through re-analysis and a reviewed Schema 3 plan. A legacy Harness path already committed to Git must be untracked manually before local-only conversion; v7.0 does not rewrite Git history or index state.
+Schema 4 and 5 installations upgrade only through re-analysis and a reviewed Schema 3 plan. A legacy Harness path already committed to Git must be untracked manually before local-only conversion; v0.7.0-beta does not rewrite Git history or index state.
 
-## Harness for Codex v7.1
+## Harness for Codex v0.7.1-beta
 
-Harness for Codex v7.1 is a local-only protection maintenance patch. Generation Plan Schema 3, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, runtime, relay, receipt, and evaluation schemas remain unchanged.
+Harness for Codex v0.7.1-beta is a local-only protection maintenance patch. Generation Plan Schema 3, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, runtime, relay, receipt, and evaluation schemas remain unchanged.
 
 - Rejects local Git protection whenever the selected repository has more than one registered worktree, whether the selected root is the main or a linked worktree, because `info/exclude` belongs to their shared Git directory.
 - Rejects C0 and DEL control characters in managed paths and encodes Git ignore metacharacters so each protection line denotes the intended literal generated path.
@@ -560,13 +603,13 @@ Harness for Codex v7.1 is a local-only protection maintenance patch. Generation 
 - Restores a just-written exclusion block after a synchronous precondition failure or completed project rollback only when no pending transaction exists and the destination content has not changed externally.
 - Detects a Harness exclusion marker without a manifest as unbound state and refuses silent adoption or cleanup.
 - Clarifies authoring-contract migration errors so a version mismatch is not misreported as a missing-placeholder defect.
-- Keeps v6.0 through v7.0 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.1 evidence.
+- Keeps v0.6.0-beta through v0.7.0-beta evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v0.7.1-beta evidence.
 
 This release does not make `info/exclude` part of Transaction Schema 2. Abrupt process termination between the exclusion write and transaction-journal creation can still leave an unbound block, which subsequent build and validation detect for explicit resolution.
 
-## Harness for Codex v7.2
+## Harness for Codex v0.7.2-beta
 
-Harness for Codex v7.2 is a narrow paired-evaluation compatibility patch for local-only installations. Generation Plan Schema 3, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, Runtime Receipt Schema 2, and Evaluation Schema 2 remain unchanged.
+Harness for Codex v0.7.2-beta is a narrow paired-evaluation compatibility patch for local-only installations. Generation Plan Schema 3, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, Runtime Receipt Schema 2, and Evaluation Schema 2 remain unchanged.
 
 - Requires `paired-run` to start from a clean, valid current-version local-only installation with exactly one registered source worktree.
 - Validates and captures exact manifest, managed-file, and manifest-referenced evidence bytes and file modes before either arm is created; a later source drift fails the run.
@@ -576,13 +619,13 @@ Harness for Codex v7.2 is a narrow paired-evaluation compatibility patch for loc
 - Rejects overlay collisions before writing and bounds the number and total size of captured files. Arbitrary ignored or untracked project files are not copied.
 - Makes `paired-run --dry-run` validate the source materialization prerequisites and report the materialization mode, worktree count, managed-file count, and snapshot digests without invoking Codex or writing evaluation state.
 - Adds `worktreeCount` to successful generation dry-run `localProtection` output for explicit Git-scope diagnostics.
-- Keeps v6.0 through v7.1 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.2 evidence.
+- Keeps v0.6.0-beta through v0.7.1-beta evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v0.7.2-beta evidence.
 
 This release makes the optional paired evaluator compatible with local-only generated files; it does not make evaluation automatic, prove runtime use of declared agents, or establish a performance benefit without complete eligible live pairs.
 
-## Harness for Codex v7.3
+## Harness for Codex v0.7.3-beta
 
-Harness for Codex v7.3 is a narrow paired-evaluation fidelity patch. Generation Plan Schema 3, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, Runtime Receipt Schema 2, and Evaluation Schema 2 remain unchanged.
+Harness for Codex v0.7.3-beta is a narrow paired-evaluation fidelity patch. Generation Plan Schema 3, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, Runtime Receipt Schema 2, and Evaluation Schema 2 remain unchanged.
 
 - Records whether each manifest-referenced evidence file belongs to the source commit and materializes ignored or untracked evidence into both independent clone arms.
 - Preflights every evidence destination in both arms before the first write, rejecting lexical symlink and reparse-point ancestors, non-regular targets, missing tracked files, and managed/evidence namespace overlap; absent untracked evidence is created and an existing regular target is replaced with the captured bytes.
@@ -591,13 +634,13 @@ Harness for Codex v7.3 is a narrow paired-evaluation fidelity patch. Generation 
 - Verifies evidence bytes and modes, baseline isolation, treatment validity, commit identity, remote removal, allowed changed paths, and normalized instruction remainders immediately before synthetic task-base creation.
 - Advances synthetic task-base `HEAD` without a hard checkout so platform line-ending conversion cannot rewrite captured evidence, then verifies evidence again before execution.
 - Makes default `paired-run --dry-run` distinguish expected properties from unobserved ones. The opt-in `--validate-materialization` flag creates disposable clones and reports actually validated materialization without invoking Codex or writing evaluation state.
-- Keeps v6.0 through v7.2 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.3 evidence.
+- Keeps v0.6.0-beta through v0.7.2-beta evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v0.7.3-beta evidence.
 
 This release does not add full pre-install instruction provenance, copy arbitrary ignored project content, change persistent schemas, or broaden the evaluation system into an execution engine.
 
-## Harness for Codex v7.4
+## Harness for Codex v0.7.4-beta
 
-Harness for Codex v7.4 is a paired-evaluation context and safety patch. Generation Plan Schema 3, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, Runtime Receipt Schema 2, Evaluation Schema 2, and result fingerprint v3 remain unchanged.
+Harness for Codex v0.7.4-beta is a paired-evaluation context and safety patch. Generation Plan Schema 3, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, Runtime Receipt Schema 2, Evaluation Schema 2, and result fingerprint v3 remain unchanged.
 
 - Rejects `.git/**` and `.harness/**` as evidence at plan validation, installed validation, and paired snapshot capture before those files are read or hashed.
 - Uses one instruction discovery function for generation, apply, validation, and evaluation, including configured root fallback filenames after `AGENTS.override.md` and `AGENTS.md`.
@@ -606,13 +649,13 @@ Harness for Codex v7.4 is a paired-evaluation context and safety patch. Generati
 - States that project rules are intentionally disabled by the evaluator and that project hooks are not enabled without a separate trust and safety contract.
 - Preflights every evidence and context target in both arms before the first paired write, verifies context symmetry and post-removal instruction selection, and includes context identity in the in-memory overlay digest.
 - Literal force-adds ignored evidence and project context into each synthetic task base, verifies Git-normalized blob identity and executable bits, and rechecks the immutable task-base context after Codex exits so result fingerprint v3 measures later changes.
-- Keeps v6.0 through v7.3 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.4 evidence.
+- Keeps v0.6.0-beta through v0.7.3-beta evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v0.7.4-beta evidence.
 
 This release does not claim that `.codex/config.toml` was effectively loaded merely because it was copied, enable project rules or hooks, change persistent schemas, or copy arbitrary unrelated ignored files.
 
-## Harness for Codex v7.5
+## Harness for Codex v0.7.5-beta
 
-Harness for Codex v7.5 adds opt-in, task-scoped operations evidence and tightens custom-agent attribution without changing Generation Plan Schema 3, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, Runtime Receipt Schema 2, Evaluation Schema 2, or result fingerprint v3. Operations Event Schema 1 is separate user-local state.
+Harness for Codex v0.7.5-beta adds opt-in, task-scoped operations evidence and tightens custom-agent attribution without changing Generation Plan Schema 3, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, Runtime Receipt Schema 2, Evaluation Schema 2, or result fingerprint v3. Operations Event Schema 1 is separate user-local state.
 
 - Treats every interactive `UserPromptSubmit` turn as a distinct work item, so unrelated tasks, refinements, corrections, follow-ups, reopens, and cancellations can coexist in one Codex session.
 - Offers an explicit user-level hook template for prompt, subagent, stop, and session lifecycle events. The handler ignores workspaces without a current local-only Harness manifest and fails open on observability errors.
@@ -621,13 +664,13 @@ Harness for Codex v7.5 adds opt-in, task-scoped operations evidence and tightens
 - Adds immutable per-event records, idempotent lifecycle replay, linked annotation supersession, tamper detection, bounded retention, explicit per-workspace purge, and task-level correction, agent-use, and agent-selection review summaries.
 - Marks paired snapshots containing unmanaged custom agents with `project-agent-load-unverified`; symmetric TOML materialization no longer implies registry discovery, selected-agent configuration loading, or external skill/MCP dependency closure.
 - Reports custom-agent count, effective-load status, and dependency-verification status in paired dry-run output while keeping the existing evaluation schema and fingerprint unchanged.
-- Keeps v6.0 through v7.4 evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v7.5 evidence.
+- Keeps v0.6.0-beta through v0.7.4-beta evaluation records readable for descriptive inspection while restricting new concrete attribution to eligible v0.7.5-beta evidence.
 
 This release does not continuously judge semantic answer quality, parse Codex transcripts, automatically redesign a project Harness, enable paired-run project hooks, or claim that a custom agent was used because its TOML file was present. Operations evidence must be explicitly enabled and reviewed through Codex hook trust.
 
-## Harness for Codex v7.6
+## Harness for Codex v0.7.6-beta
 
-Harness for Codex v7.6 adds read-only activation diagnostics, presentation-only usage coverage, and a lighter direct-task path. Existing Generation Plan Schema 3, Authoring Contract 2, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, runtime schemas, and Evaluation Schema 2 remain unchanged.
+Harness for Codex v0.7.6-beta adds read-only activation diagnostics, presentation-only usage coverage, and a lighter direct-task path. Existing Generation Plan Schema 3, Authoring Contract 2, Manifest Schema 6, Transaction Schema 2, Inventory Schema 4, runtime schemas, and Evaluation Schema 2 remain unchanged.
 
 - Reports configured activation separately from runtime loading. The smoke test handles both managed root pointers and explicit `$project-harness` activation without editing user-owned instructions.
 - Adds `harness_doctor.py --root WORKSPACE` for environment, installed-state, activation, and capability-gap diagnostics. It neither launches Codex nor changes the workspace.
@@ -637,11 +680,11 @@ Harness for Codex v7.6 adds read-only activation diagnostics, presentation-only 
 - Adds advisory direct-execution guidance during draft materialization and removes a redundant generic run protocol from the router template. Small direct tasks do not require runtime-plan files, coordination packets, relay receipts, or disposable probes; verification, permissions, explicit planning requests, and delegation-transition validation remain intact.
 - Preserves the canonical v2 runtime contract and accepts older valid Schema 3 plans and generated artifacts. Existing installations receive the advisory only through a reviewed, hash-checked update.
 - Extends the synthetic one-line-change probe to reject unnecessary runtime artifacts and unverified completion. A classification probe is not proof of live editing behavior or token savings.
-- Keeps v6.0 through v7.5 evaluation records readable descriptively. Only complete, independent, plan-verified v7.6 pairs are eligible for concrete configuration attribution.
+- Keeps v0.6.0-beta through v0.7.5-beta evaluation records readable descriptively. Only complete, independent, plan-verified v0.7.6-beta pairs are eligible for concrete configuration attribution.
 
 This minor release does not introduce a hard token-budget controller, per-agent usage aggregation, automatic model routing or topology adaptation, broader worktree support, or new runtime observation profiles. Evaluation and operations evidence remain opt-in. The diagnostic and usage reports are additive CLI output, not new persistent schemas.
 
-## Harness for Codex v8.0
+## Harness for Codex v0.8.0-beta
 
 This major release requires Authoring Contract 3 drafts and Artifact Contract 1 plans and installations. Plan Schema 3 and Manifest Schema 6 remain unchanged, but previously valid generated agents lack a newly required contract. Schema stability is not artifact compatibility.
 
@@ -649,27 +692,27 @@ This major release requires Authoring Contract 3 drafts and Artifact Contract 1 
 - Derives each agent's canonical responsibility, boundaries, skills, access lanes, phases, and handoffs from the topology and verifies decoded TOML instructions. Project-specific methods remain authored prose.
 - Reports clean known v7 installations as `upgrade-required`, with CLI exit 2; integrity errors, unsupported metadata, and incomplete v8 installations remain invalid. Safe updates preserve ownership checks, transaction recovery, and no-op behavior.
 - Supplies a fixed input/expected-value corpus, a seeded differential generator, a pinned optional PyYAML 6.0.1 test oracle, and cross-platform CI. Runtime dependencies remain unchanged.
-- Preserves prior evaluation records descriptively through v7.6; concrete attribution requires eligible v8.0 evidence.
+- Preserves prior evaluation records descriptively through v0.7.6-beta; concrete attribution requires eligible v0.8.0-beta evidence.
 - Makes no claim of full YAML compatibility, semantic consistency of arbitrary prose, actual runtime discovery, token savings, or improved scRAE performance.
 
-## Harness for Codex v8.1
+## Harness for Codex v0.8.1-beta
 
 This maintenance release enforces the existing installation's artifact compatibility before normal apply, including dry-run. Authoring Contract 3, Artifact Contract 1, and all outer schema versions are unchanged.
 
 - Rejects unsupported or incomplete Schema 6 generator/artifact combinations before any local Git protection, staging, journal, or managed-file write.
-- Keeps v8.0 and v8.1 installations with Artifact Contract 1 compatible. Installation compatibility follows an explicit supported release set rather than equality with the latest generator version.
-- Preserves recognized v7.0–v7.6 legacy updates, separate Schema 4/5 regeneration upgrades, hash ownership, external-edit protection, transaction recovery, and no-op updates.
+- Keeps v0.8.0-beta and v0.8.1-beta installations with Artifact Contract 1 compatible. Installation compatibility follows an explicit supported release set rather than equality with the latest generator version.
+- Preserves recognized v0.7.0-beta–v0.7.6-beta legacy updates, separate Schema 4/5 regeneration upgrades, hash ownership, external-edit protection, transaction recovery, and no-op updates.
 - Adds API and CLI regression cases across installation validation, doctor, runtime-plan validation, dry-run, and real apply, including file/mtime/journal/Git exclude preservation.
-- Extends the real-source upgrade reproducer to v7.6 and v8.0 baselines. Retains evaluation records through v8.0 descriptively; attribution and live receipt release binding retain their existing release-specific policies.
+- Extends the real-source upgrade reproducer to v0.7.6-beta and v0.8.0-beta baselines. Retains evaluation records through v0.8.0-beta descriptively; attribution and live receipt release binding retain their existing release-specific policies.
 - Claims no new live agent, model-quality, time, or token-efficiency result.
 
 ## Harness for Claude Code releases
 
 Harness for Claude Code editions are maintained independently on `claude/*` branches. Their version numbers identify Harness releases for that runtime, not Claude Code product versions. Release details remain on those branches so this document does not duplicate mutable Claude-specific state.
 
-## Harness for Codex v9.0
+## Harness for Codex v0.9.0-beta
 
-Harness for Codex v9.0 replaces the local-only Git-exclusion contract with a project-local installation contract. Manifest Schema 7, Artifact Contract 2, Inventory Schema 5, and Root Context Schema 3 explicitly identify the changed behavior. Authoring Contract 3, Plan Schema 3, Transaction Schema 2, runtime and relay schemas, and Evaluation Schema 2 remain unchanged.
+Harness for Codex v0.9.0-beta replaces the local-only Git-exclusion contract with a project-local installation contract. Manifest Schema 7, Artifact Contract 2, Inventory Schema 5, and Root Context Schema 3 explicitly identify the changed behavior. Authoring Contract 3, Plan Schema 3, Transaction Schema 2, runtime and relay schemas, and Evaluation Schema 2 remain unchanged.
 
 - Stabilizes concurrent evaluation-store initialization on Windows by creating its shared repository parent before UUID path resolution, and rejects state-directory symlink/junction redirection through the common path guard. Deterministic Windows race and inside/outside state-link regressions cover the CI finding.
 
@@ -678,34 +721,34 @@ Harness for Codex v9.0 replaces the local-only Git-exclusion contract with a pro
 - Keeps generated project artifacts inside the selected root and rejects traversal and symlink/junction escapes. Existing ownership, hash, transaction, evidence, and canonical agent-contract checks remain required.
 - Records `project-local` scope and `not-managed` Git protection with no patterns. Installation and generation never change Git metadata or guarantee that outputs remain untracked or ignored. Existing user and legacy exclusion rules are preserved.
 - Classifies clean known v7/v8 Schema 6 installations as `upgrade-required`; malformed metadata, tampered files, and missing required v8 canonical contracts remain invalid. A reviewed generation plan performs the Schema 7 / Artifact Contract 2 upgrade. Schema 4/5 regeneration remains separate.
-- Verifies real installations made by pinned v7.6, v8.0, and v8.1 sources in Linux and Windows CI. The optional clone-based evaluator retains a separate Git-root isolation contract; this restriction does not apply to generation.
+- Verifies real installations made by pinned v0.7.6-beta, v0.8.0-beta, and v0.8.1-beta sources in Linux and Windows CI. The optional clone-based evaluator retains a separate Git-root isolation contract; this restriction does not apply to generation.
 - Claims no live model improvement, token reduction, or agent-discovery result from structural tests alone.
 
-## Harness for Codex v9.1
+## Harness for Codex v0.9.1-beta
 
-This maintenance release preserves the v9.0 project-local contract, Manifest Schema 7, Artifact Contract 2, Authoring Contract 3, Plan Schema 3 and all runtime/evaluation schemas. Valid v9.0 installations remain compatible; changing the latest version does not implicitly remove v9.0 from the supported installation set.
+This maintenance release preserves the v0.9.0-beta project-local contract, Manifest Schema 7, Artifact Contract 2, Authoring Contract 3, Plan Schema 3 and all runtime/evaluation schemas. Valid v0.9.0-beta installations remain compatible; changing the latest version does not implicitly remove v0.9.0-beta from the supported installation set.
 
 - Preserves POSIX directory modes during generator installation and update, including the existing destination root, retained user directories and source modes for newly copied directories. Captures destination-root metadata to refuse changes made while staging. No-op behavior and folder-promotion rollback remain protected.
 - Adds Git authorization advice to newly materialized project routers and all generated agents while preserving other TOML settings. Existing valid plans and installations do not require this advice, and receive it only through a reviewed, hash-checked update.
 - Separates requested source edits from commit, push and destructive Git authorization. Scoped existing approvals remain usable; a generator-maintenance convention does not grant permission in other projects. This release does not intercept commands or APIs or claim a hard runtime approval gate.
-- Extends pinned real-source CI to compatible v9.0 installation updates alongside v7.6/v8.0/v8.1 upgrades. Keeps v9.0 evaluation records readable descriptively; concrete attribution remains bound to the current release's eligible evidence.
+- Extends pinned real-source CI to compatible v0.9.0-beta installation updates alongside v0.7.6-beta/v0.8.0-beta/v0.8.1-beta upgrades. Keeps v0.9.0-beta evaluation records readable descriptively; concrete attribution remains bound to the current release's eligible evidence.
 - Does not claim Windows ACL/extended-attribute preservation, automatic approval discovery, live agent execution, model improvement, or measured token savings.
 
-## Harness for Codex v9.2
+## Harness for Codex v0.9.2-beta
 
-This additive release introduces the standalone `harness` command while retaining v9.0/v9.1 project-artifact compatibility and all existing schemas. The original installer and skill workflow remain supported.
+This additive release introduces the standalone `harness` command while retaining v0.9.0-beta/v0.9.1-beta project-artifact compatibility and all existing schemas. The original installer and skill workflow remain supported.
 
 - Adds Linux user-local installation, `--version`, `--help`, `init`, `start`, `configure`, `doctor`, and branch-aware `update`.
 - Initiates native interactive Codex with the appropriate skill selected internally; existing user instructions and executor permissions remain in effect.
 - Keeps tool releases in owned user-local storage with integrity receipts and atomic activation. Upstream version checks and downloads never mutate project Git metadata.
 - Checks for updates between sessions, applies compatible updates according to the chosen policy, and supports offline operation and explicit major-version updates.
 - Builds a deterministic Linux distribution archive with checksums and exercises installation, dispatch, update conflicts, previous-release compatibility and rollback independently of live model quality.
-- Existing directory modes already changed by v9.0 are not reconstructed: v9.2, like v9.1, preserves the current modes.
+- Existing directory modes already changed by v0.9.0-beta are not reconstructed: v0.9.2-beta, like v0.9.1-beta, preserves the current modes.
 - Claims no measured model improvement, automatic topology evolution, or hard Git approval enforcement.
 
-## Harness for Codex v9.3
+## Harness for Codex v0.9.3-beta
 
-This additive release preserves v9.0/v9.1/v9.2 artifacts, schemas and existing Codex tool storage.
+This additive release preserves v0.9.0-beta/v0.9.1-beta/v0.9.2-beta artifacts, schemas and existing Codex tool storage.
 
 - Adds a downloadable Linux `install_harness.sh` without requiring GitHub CLI or manual archive steps. It resolves a numeric Codex branch, fetches an immutable commit and delegates installation to the existing safe installer.
 - Reuses actual Git credential providers, SSH keys or transient environment tokens. Commit author name/email never grant repository access. Private bootstrap download still needs authentication.
@@ -714,9 +757,9 @@ This additive release preserves v9.0/v9.1/v9.2 artifacts, schemas and existing C
 - Publishes the standalone bootstrap with checksums and exercises authentication failure, runtime isolation and old-CLI upgrade compatibility. No live model quality or token-saving claim is added.
 
 
-## Harness for Codex v9.4
+## Harness for Codex v0.9.4-beta
 
-v9.4 adds CLI conveniences without changing Manifest Schema 7, Artifact Contract 2 or the generator's Transaction Schema 2. Valid v9.0–v9.4 generated installations remain compatible.
+v0.9.4-beta adds CLI conveniences without changing Manifest Schema 7, Artifact Contract 2 or the generator's Transaction Schema 2. Valid v0.9.0-beta–v0.9.4-beta generated installations remain compatible.
 
 - `init`, `configure` and `reset` accept mutually exclusive project text (`--goal`) or an explicitly selected Markdown brief (`--goal-file`). Briefs are bounded UTF-8 reference material; paths, encodings and prompt transport are checked before mutations.
 - `--agent` becomes the public provider selector. The hidden `--runtime` alias remains accepted; conflicting choices fail. Claude execution remains unimplemented.
@@ -725,19 +768,19 @@ v9.4 adds CLI conveniences without changing Manifest Schema 7, Artifact Contract
 - CLI removal uses its own `removalSchemaVersion: 1` journal identified by `operation: remove` at the reserved transaction path. It is not labelled as a Schema 2 apply transaction. Existing generators reject it; `harness remove --recover` provides guarded recovery. Normal project schemas, user files, Git state and optional user-level records remain separate.
 - No live agent-quality or token-saving claim is made by these CLI changes.
 
-## Harness for Codex v9.5
+## Harness for Codex v0.9.5-beta
 
-This maintenance release preserves the generated-project schemas and accepts valid v9.0–v9.5 Artifact Contract 2 installations. Tool-source completeness and launcher migration are separate from project compatibility.
+This maintenance release preserves the generated-project schemas and accepts valid v0.9.0-beta–v0.9.5-beta Artifact Contract 2 installations. Tool-source completeness and launcher migration are separate from project compatibility.
 
-- Installer and release builder reject missing version-required modules before creating installation state or release output. v9.4+ requires `lifecycle.py`; v9.5+ also requires `environment.py`. Actual v9.2/v9.3 source installation and updater compatibility remain covered.
+- Installer and release builder reject missing version-required modules before creating installation state or release output. v0.9.4-beta+ requires `lifecycle.py`; v0.9.5-beta+ also requires `environment.py`. Actual v0.9.2-beta/v0.9.3-beta source installation and updater compatibility remain covered.
 - The dedicated Harness interpreter no longer rewrites the caller's PATH or Conda labels. Native Codex inherits the caller environment; deterministic diagnostic helpers receive a separately prepared Harness environment. Process probes compare labels, PATH and the Python executable without running a model or training task.
-- Adds offline `update --repair-launcher` with ownership checks, interrupted-migration recovery and no-op repeats. Interactive calls through legacy v9.2–v9.4 launchers stop for repair and a fresh invocation before Codex can inherit an already changed environment. Read-only commands do not migrate state.
+- Adds offline `update --repair-launcher` with ownership checks, interrupted-migration recovery and no-op repeats. Interactive calls through legacy v0.9.2-beta–v0.9.4-beta launchers stop for repair and a fresh invocation before Codex can inherit an already changed environment. Read-only commands do not migrate state.
 - Bootstrap Git branch queries and fetches have independent configurable deadlines (default 120 seconds, range 1–600), process-group TERM/KILL cleanup and an explicit timeout result. Initial curl, Conda and total installation time are outside this deadline. Existing installations remain intact after failed download.
 - Adds incomplete-source, removal/reset preview, legacy-upgrade, real child-process environment and Linux timeout regressions. Cross-platform checks and authenticated GitHub bootstrap verification remain publication gates; their execution results are distinct from observations on another user's server.
 - Adds no agent roles, topology redesign, project telemetry, model-quality claim or measured token-saving claim.
 
 
-## Harness for Codex v9.8
+## Harness for Codex v0.9.8-beta
 
 - Adds public `install_harness_codex.ps1` and unpacked `install.ps1` entry points for Windows x64, with pinned Miniforge checksums, bounded download/native-installer waits and no persistent execution-policy changes.
 - Registers user PATH in HKCU while preserving existing entries/type. Install and installed init are idempotent; dry-run is read-only. New named Windows installs use separate Codex data/bin locations.
@@ -745,17 +788,17 @@ This maintenance release preserves the generated-project schemas and accepts val
 - Adds Windows cold-install CI, existing-Conda PowerShell integration, malformed ZIP/checksum cases and isolated registry-preservation tests. Existing full regression and prior-source compatibility checks remain publication gates.
 - Does not alter project contracts or claim live agent/model performance improvements.
 
-### Subsequent v9.8 branch changes
+### Subsequent v0.9.8-beta branch changes
 
 - Source installers show timed installation stages and keep Conda output and JSON receipts in a local diagnostic log. Existing published Release assets are unchanged.
 - Adds `harness-codex uninstall` with a read-only preview and exact interactive `yes` confirmation. Tool versions and launchers are verified before removal; project harnesses, Conda environments and shared PATH registrations are preserved.
 - Adds Windows batch self-cleanup, long staging-path handling, failure rollback checks and installed-command removal tests alongside the existing compatibility suite.
 - Windows source installation with `-CondaHome` now uses the exact `envs/harness` prefix for create, dependency setup and execution. A name-only Conda create could select and remove an existing `harness` environment outside that home. Incomplete target environments are preserved and rejected. This bootstrap correction requires the current source installer; updating only the CLI does not replace a previously downloaded installer.
 
-## Harness for Codex v9.6
+## Harness for Codex v0.9.6-beta
 
 Conditional model workflow guidance, clearer evidence/ownership diagnostics, reviewer examples and native execution validation protocol.
 
-## Harness for Codex v9.7
+## Harness for Codex v0.9.7-beta
 
 Named Codex command, one-command Linux bootstrap, isolated environment setup, idempotent Bash PATH registration and the `config` alias.

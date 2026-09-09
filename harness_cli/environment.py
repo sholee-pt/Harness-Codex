@@ -13,8 +13,14 @@ PRESERVED_ENVIRONMENT = "preserved-v1"
 
 def validate_interpreter() -> Path:
     prefix = Path(sys.prefix)
-    if prefix.name != "harness" or not (prefix / "conda-meta/history").is_file():
-        raise ValueError("Run Harness in its dedicated Conda environment. Use the platform installer from installer/ in a checkout or the archive root, or conda run -n harness python harness.py ...")
+    expected = os.environ.get("HARNESS_INSTALL_EXPECTED_PREFIX")
+    mismatch = expected is not None and os.path.normcase(str(prefix.resolve())) != os.path.normcase(str(Path(expected).resolve()))
+    if prefix.name != "harness" or not (prefix / "conda-meta/history").is_file() or mismatch:
+        raise ValueError("Run Harness in its dedicated Conda environment. "
+                         f"Expected prefix: {expected or 'the selected harness environment'}; "
+                         f"actual sys.prefix: {sys.prefix}; executable: {sys.executable}; "
+                         f"Python: {sys.version.split()[0]}; CONDA_PREFIX: {os.environ.get('CONDA_PREFIX', '<unset>')}. "
+                         "Rerun the current platform installer; it selects the environment's absolute Python path.")
     return prefix
 
 
@@ -36,4 +42,5 @@ def codex_environment() -> dict[str, str]:
     result = os.environ.copy()
     # This private entry-point marker must not claim provenance for nested calls.
     result.pop(LAUNCHER_MARKER, None)
+    result.pop("HARNESS_INSTALL_EXPECTED_PREFIX", None)
     return result

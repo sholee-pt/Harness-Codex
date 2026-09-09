@@ -15,21 +15,21 @@ The [README installation guide](../README.md#installation-guide) provides the st
 | `CONDA_EXE=/path/to/conda` | `-CondaExe PATH` | Use an existing environment manager |
 | — | `-CondaHome PATH` | Select a dedicated Miniforge location |
 
-`reuse` retains the recorded branch, repository transport and automatic-update policy. `reset` applies the supplied/default preferences, clears the update-check cache and rebuilds the exact managed PATH registration. Both preserve verified releases and runtime files, project harnesses, unrelated shell/registry settings and modified user content. Reset does not authorize removing unknown directories. Without a terminal, an existing installation requires an explicit choice.
+`reuse` retains the repository transport and automatic-update policy. Branch pins are retained except for the [one-time legacy-to-beta migration](versioning.md). `reset` applies the supplied/default preferences, clears the update-check cache and rebuilds the exact managed PATH registration. Both preserve verified releases and runtime files, project harnesses, unrelated shell/registry settings and modified user content. Reset does not authorize removing unknown directories. Without a terminal, an existing installation requires an explicit choice.
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v9.11/install_harness_codex.sh | sh -s -- --existing reuse
+curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v0.10.0-beta/install_harness_codex.sh | sh -s -- --existing reuse
 source ~/.bashrc
 ```
 
 ```powershell
-& ([scriptblock]::Create((irm https://github.com/sholee-pt/Harness/releases/download/codex-v9.11/install_harness_codex.ps1))) -Existing reset
+& ([scriptblock]::Create((irm https://github.com/sholee-pt/Harness/releases/download/codex-v0.10.0-beta/install_harness_codex.ps1))) -Existing reset
 ```
 
 ## Source installation
 
 ```bash
-git clone --branch codex/v9.11 --single-branch https://github.com/sholee-pt/Harness.git
+git clone --branch codex/v0.10.0-beta --single-branch https://github.com/sholee-pt/Harness.git
 bash Harness/installer/install.sh
 source ~/.bashrc
 ```
@@ -37,6 +37,12 @@ source ~/.bashrc
 On Windows, run the verified source installer from PowerShell: `& ./Harness/installer/install.ps1` under your normal script execution policy. The source scripts install an existing checkout; `install_harness_codex.sh` and `.ps1` first download a release and then invoke the corresponding source installer. Installation does not alter project Git state.
 
 ## PATH and logs
+
+The source installer resolves the selected Conda environment and executes its
+absolute Python path. It checks the actual Python prefix against the selected
+prefix before creating installation state. A conflicting Python earlier on PATH
+does not select the interpreter. Expected/actual interpreter details are recorded
+in the diagnostic log; parent-shell and project environment settings are preserved.
 
 The Linux installer asks whether to open a new Bash after installation. Enter or yes opens an interactive child shell that reads `~/.bashrc`; `exit` returns to the original shell. This executes your existing Bash startup instructions, including any environment initialization you have configured. It does not modify the parent shell. Choose no to skip. To apply settings in the original Bash, run **`source ~/.bashrc`**, or open a new terminal. Running `~/.bashrc` as a command tries to execute it and may report permission denied; executable permissions are not needed to source it. Use `~/.local/bin/harness-codex --version` to distinguish PATH lookup from command installation. A `bash installer/install.sh` child cannot export variables back into its parent shell. GitHub CLI is not required.
 

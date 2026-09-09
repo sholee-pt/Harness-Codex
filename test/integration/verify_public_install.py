@@ -77,6 +77,18 @@ else:
         assert located == str(executable), located
         data = home / 'share/harness-codex'
         before = snapshot(data), snapshot(home / '.local/bin'), (home / '.bashrc').read_bytes(), (home / '.bashrc').stat().st_mtime_ns
+        # Reproduce the reported activation condition: a different Python
+        # precedes an active base prefix. The installer must use its exact Python.
+        runtime = home / 'share/harness-codex-runtime'
+        env['CONDA_PREFIX'] = str(runtime / 'conda')
+        env['CONDA_SHLVL'] = '1'
+        env['CONDA_EXE'] = str(runtime / 'conda/bin/conda')
+        env['PATH'] = str(binary) + os.pathsep + str(runtime / 'conda/bin') + os.pathsep + '/usr/bin'
+        wrong_python = binary / 'python'
+        if wrong_python.is_symlink():
+            wrong_python.unlink()
+        wrong_python.write_text('#!/bin/sh\necho "ERROR: installer selected PATH Python" >&2\nexit 97\n')
+        wrong_python.chmod(0o755)
         run(['/bin/bash', '-o', 'pipefail', '-c', pipeline + ' -s -- --existing reuse'], timeout=300)
         after = snapshot(data), snapshot(home / '.local/bin'), (home / '.bashrc').read_bytes(), (home / '.bashrc').stat().st_mtime_ns
         assert before == after, 'Repeated installation changed owned tool or Bash profile bytes/mtime'

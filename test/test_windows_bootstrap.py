@@ -20,14 +20,14 @@ class WindowsBootstrapTests(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         self.base = Path(temp.name)
         self.marker = self.base / 'executed.txt'
-        self.archive = self.base / 'harness-codex-9.11-windows.zip'
+        self.archive = self.base / 'harness-codex-0.10.0-beta-windows.zip'
         self.sums = self.base / 'SHA256SUMS'
 
     def build(self, extra=()):
         self.marker.unlink(missing_ok=True)
         with zipfile.ZipFile(self.archive, 'w') as archive:
-            archive.writestr('harness-codex-9.11/harness.py', '# fixture')
-            archive.writestr('harness-codex-9.11/install.ps1',
+            archive.writestr('harness-codex-0.10.0-beta/harness.py', '# fixture')
+            archive.writestr('harness-codex-0.10.0-beta/install.ps1',
                              "param($SourceRoot, $AutoUpdate, $NoModifyPath, $BinDir)\n"
                              "[IO.File]::WriteAllText($env:TEST_MARKER, $BinDir + '|' + $AutoUpdate + '|' + $NoModifyPath)\n")
             for name, data in extra:
@@ -44,7 +44,7 @@ class WindowsBootstrapTests(unittest.TestCase):
 $ErrorActionPreference = 'Stop'
 function Invoke-WebRequest {
     param($Uri, $OutFile, [switch]$UseBasicParsing, $TimeoutSec)
-    if ($Uri -notlike 'https://github.com/sholee-pt/Harness/releases/download/codex-v9.11/*') { throw 'Unexpected network request' }
+    if ($Uri -notlike 'https://github.com/sholee-pt/Harness/releases/download/codex-v0.10.0-beta/*') { throw 'Unexpected network request' }
     Copy-Item -LiteralPath (Join-Path $env:TEST_ASSETS ([Uri]$Uri).Segments[-1]) -Destination $OutFile
 }
 try {
@@ -80,9 +80,9 @@ try {
         self.assertFalse(self.marker.exists())
 
     def test_unsafe_entries_are_refused_before_extraction_or_execution(self):
-        for name in ('harness-codex-9.11/../outside', 'harness-codex-9.11/INSTALL.PS1',
-                     'harness-codex-9.11/CON.txt', 'harness-codex-9.11/trailing. ',
-                     'harness-codex-9.11/name:stream', 'harness-codex-9.11/a\\b', '/absolute'):
+        for name in ('harness-codex-0.10.0-beta/../outside', 'harness-codex-0.10.0-beta/INSTALL.PS1',
+                     'harness-codex-0.10.0-beta/CON.txt', 'harness-codex-0.10.0-beta/trailing. ',
+                     'harness-codex-0.10.0-beta/name:stream', 'harness-codex-0.10.0-beta/a\\b', '/absolute'):
             with self.subTest(name=name):
                 self.build([(name, b'unsafe')])
                 result = self.run_bootstrap()
@@ -91,7 +91,7 @@ try {
                 self.assertFalse(self.marker.exists())
 
     def test_symlink_entry_is_refused(self):
-        info = zipfile.ZipInfo('harness-codex-9.11/link')
+        info = zipfile.ZipInfo('harness-codex-0.10.0-beta/link')
         info.create_system = 3
         info.external_attr = 0o120777 << 16
         self.build([(info, b'outside')])
@@ -103,7 +103,7 @@ try {
     def test_help_is_offline_without_release_assets(self):
         result = self.run_bootstrap('-Help')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('9.11 Windows installer', result.stdout)
+        self.assertIn('0.10.0-beta Windows installer', result.stdout)
         self.assertFalse(self.marker.exists())
 
 
@@ -125,6 +125,7 @@ class WindowsSourceInstallerTests(unittest.TestCase):
                     history = selected / 'conda-meta/history'
                     history.parent.mkdir(parents=True)
                     history.write_text('isolated environment')
+                    (selected / 'python.exe').touch()
                 elif state == 'incomplete':
                     selected.mkdir(parents=True)
                     (selected / 'keep.txt').write_text('unrelated')
@@ -136,6 +137,12 @@ function Invoke-FixtureConda {
     [IO.File]::AppendAllText((Join-Path $env:TEST_BASE 'calls.jsonl'), (ConvertTo-Json -Compress -InputObject @($args)) + "`n")
     $global:LASTEXITCODE = 0
     if ($args[0] -eq 'info') { Get-Content -LiteralPath (Join-Path $env:TEST_BASE 'info.json'); return }
+    if ($args[0] -eq 'create') {
+        $prefix = $args[[array]::IndexOf($args, '--prefix') + 1]
+        [IO.Directory]::CreateDirectory((Join-Path $prefix 'conda-meta')) | Out-Null
+        [IO.File]::WriteAllText((Join-Path $prefix 'conda-meta/history'), 'fixture')
+        [IO.File]::WriteAllText((Join-Path $prefix 'python.exe'), '')
+    }
     if ($args -contains 'git' -and $args[0] -eq 'run') { $global:LASTEXITCODE = 1 }
 }
 Set-Alias -Name (Join-Path $env:TEST_BASE 'isolated\Scripts\conda.exe') -Value Invoke-FixtureConda
@@ -175,6 +182,7 @@ if ($env:CONDA_ENVS_PATH -cne $original) { exit 88 }
                     history = base / "envs/harness/conda-meta/history"
                     history.parent.mkdir(parents=True)
                     history.write_text("fixture")
+                    (base / 'envs/harness/python.exe').touch()
                     (base / 'data').mkdir()
                     (base / 'data/active.json').write_text('{}')  # Existing legacy CLI, controlled Conda transport.
                 (base / "conda.cmd").write_text('''@echo off
@@ -188,6 +196,9 @@ if "%~1"=="info" (
   exit /b 0
 )
 if "%~1"=="create" (
+  mkdir "%~3\\conda-meta"
+  type nul > "%~3\\conda-meta\\history"
+  type nul > "%~3\\python.exe"
   echo Channels: conda-forge
   echo Downloading and Extracting Packages
   exit /b 0

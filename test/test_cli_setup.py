@@ -49,6 +49,17 @@ class ReinstallTests(unittest.TestCase):
                     setup.choose(self.data, self.binary, 'ask')
         self.assertEqual(files(self.data), before)
 
+    def test_beta_reinstall_retires_legacy_pin_and_preserves_other_preferences(self):
+        candidate = source(self.base / 'beta source', '0.10.0-beta', commit='b' * 40)
+        with mock.patch.object(main, '_environment'), contextlib.redirect_stdout(io.StringIO()):
+            result = main.main(['install', '--data-dir', str(self.data), '--bin-dir', str(self.binary),
+                                '--no-modify-path', '--existing', 'reuse'], source_root=candidate)
+        self.assertEqual(result, 0)
+        status = dist.installed_status(self.data)
+        self.assertIsNone(status['branch'])
+        self.assertEqual(status['auto_update'], 'off')
+        self.assertEqual(status['version'], '0.10.0-beta')
+
     def test_noninteractive_choice_is_explicit_and_unknown_files_are_preserved(self):
         with mock.patch.object(sys.stdin, 'isatty', return_value=False), mock.patch('builtins.open', side_effect=OSError('no terminal')):
             with self.assertRaisesRegex(ValueError, '--existing'):

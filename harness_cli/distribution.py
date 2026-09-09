@@ -24,12 +24,11 @@ import tempfile
 import time
 
 from .paths import checked_path, is_link as _linked
+from .versions import BRANCH_RE, VERSION_RE, version_key, branch_version
 
 
 DEFAULT_REPOSITORY = "https://github.com/sholee-pt/Harness.git"
 REPOSITORIES = frozenset({DEFAULT_REPOSITORY, "git@github.com:sholee-pt/Harness.git", "ssh://git@github.com/sholee-pt/Harness.git"})
-BRANCH_RE = re.compile(r"codex/v(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*))?\Z")
-VERSION_RE = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
 COMMIT_RE = re.compile(r"[0-9a-f]{40}\Z")
 RELEASE_RE = re.compile(r"(?:[0-9a-f]{40}|content-[0-9a-f]{64})\Z")
 MAX_FILES = 10000
@@ -41,13 +40,14 @@ REQUIRED = frozenset({"harness.py", "install.py", "harness_cli/__init__.py", "ha
 # Keep the original common set valid for complete v9.2 and v9.3 distributions.
 # Later releases inherit each dependency from its numeric introduction version.
 VERSION_REQUIRED = (
-    ((9, 10), frozenset({"harness_cli/presentation.py", "harness_cli/configuration.py"})),
-    ((9, 11), frozenset({"harness_cli/session_settings.py"})),
-    ((9, 9), frozenset({"harness_cli/runtime_cleanup.ps1"})),
-    ((9, 8), frozenset({"harness_cli/windows_path.py"})),
-    ((9, 7), frozenset({"harness_cli/shell.py", "harness_cli/prepare_conda.sh"})),
-    ((9, 4), frozenset({"harness_cli/lifecycle.py"})),
-    ((9, 5), frozenset({"harness_cli/environment.py"})),
+    (version_key("9.10"), frozenset({"harness_cli/presentation.py", "harness_cli/configuration.py"})),
+    (version_key("9.11"), frozenset({"harness_cli/session_settings.py"})),
+    (version_key("9.9"), frozenset({"harness_cli/runtime_cleanup.ps1"})),
+    (version_key("9.8"), frozenset({"harness_cli/windows_path.py"})),
+    (version_key("9.7"), frozenset({"harness_cli/shell.py", "harness_cli/prepare_conda.sh"})),
+    (version_key("9.4"), frozenset({"harness_cli/lifecycle.py"})),
+    (version_key("9.5"), frozenset({"harness_cli/environment.py"})),
+    (version_key("0.10.0-beta"), frozenset({"harness_cli/versions.py", "harness_cli/maintenance.py", ".agents/skills/harness/scripts/harness_maintenance.py"})),
 )
 # Retain historical optional installer names for old managed receipts. New source
 # checkouts keep installers outside the runtime; only archive setup needs them.
@@ -92,18 +92,18 @@ def _runtime(name: str) -> bool:
     return name in TOP_FILES or name.startswith("harness_cli/") or name.startswith(".agents/skills/harness/")
 
 
-def _version(value: str) -> tuple[int, int]:
-    match = VERSION_RE.fullmatch(value) if isinstance(value, str) else None
-    if not match:
-        raise DistributionError("invalid Harness release version")
-    return int(match[1]), int(match[2])
+def _version(value: str) -> tuple[int, int, int, int]:
+    try:
+        return version_key(value)
+    except ValueError as exc:
+        raise DistributionError(str(exc)) from exc
 
 
-def _branch(value: str) -> tuple[int, int]:
-    match = BRANCH_RE.fullmatch(value) if isinstance(value, str) else None
-    if not match:
-        raise DistributionError("branch must be codex/vN or codex/vN.M")
-    return int(match[1]), int(match[2] or 0)
+def _branch(value: str) -> tuple[int, int, int, int]:
+    try:
+        return version_key(branch_version(value))
+    except ValueError as exc:
+        raise DistributionError(str(exc)) from exc
 
 
 def _repository(value: str) -> str:
@@ -311,7 +311,7 @@ runpy.run_path(sys.argv[0], run_name="__main__")
 '''
 
 
-def _launcher_source() -> str:
+def _previous_launcher_source() -> str:
     legacy_environment = '''prefix = pathlib.Path(sys.prefix)
 if (prefix / "conda-meta" / "history").is_file() and prefix.name == "harness":
     os.environ["CONDA_PREFIX"] = str(prefix)
@@ -323,6 +323,14 @@ if isinstance(version, str) and re.fullmatch(r"[0-9]+\\.[0-9]+", version):
     if tuple(int(part) for part in version.split(".")) >= (9, 5):
         os.environ["HARNESS_LAUNCHER_ENVIRONMENT"] = "preserved-v1"
 ''')
+
+
+def _launcher_source() -> str:
+    return _previous_launcher_source().replace(
+        're.fullmatch(r"[0-9]+\\.[0-9]+", version)',
+        're.fullmatch(r"[0-9]+\\.[0-9]+(?:\\.[0-9]+(?:-beta)?)?", version)').replace(
+        'if tuple(int(part) for part in version.split(".")) >= (9, 5):',
+        'if len(version.removesuffix("-beta").split(".")) == 3 or tuple(int(part) for part in version.split(".")) >= (9, 5):')
 
 
 def _launchers(data_root: Path, bin_dir: Path, python: str, command: str = "harness") -> dict[Path, bytes]:
@@ -432,11 +440,13 @@ def _launcher_migration(data_root: Path) -> tuple[dict, dict] | None:
         raise DistributionError("invalid launcher migration journal; preserving the installation")
     launcher = _path(data_root / "launcher.py")
     before, after = journal["before"], journal["after"]
-    old_hash = hashlib.sha256(_legacy_launcher_source().encode()).hexdigest()
+    old_hashes = {hashlib.sha256(source().encode()).hexdigest()
+                  for source in (_legacy_launcher_source, _previous_launcher_source)}
     new_hash = hashlib.sha256(_launcher_source().encode()).hexdigest()
     hashes = before.get("launchers")
-    if not isinstance(hashes, dict) or hashes.get(str(launcher)) != old_hash:
+    if not isinstance(hashes, dict) or hashes.get(str(launcher)) not in old_hashes:
         raise DistributionError("launcher migration does not identify an owned legacy launcher")
+    old_hash = hashes[str(launcher)]
     expected_after = {**before, "launchers": {**hashes, str(launcher): new_hash}}
     if after != expected_after:
         raise DistributionError("launcher migration attempts to change unrelated installation state")
@@ -468,7 +478,7 @@ def launcher_status(data_root) -> dict:
         content = (data_root / "launcher.py").read_bytes()
         if content == _launcher_source().encode():
             state = "current"
-        elif content == _legacy_launcher_source().encode():
+        elif content in {_legacy_launcher_source().encode(), _previous_launcher_source().encode()}:
             state = "legacy"
         else:
             raise DistributionError("owned launcher has an unknown implementation; automatic repair refused")
@@ -509,7 +519,7 @@ def _replace_launcher(path: Path, payload: bytes, mode: int) -> None:
                 os.fchmod(output.fileno(), mode)
             output.flush()
             os.fsync(output.fileno())
-        if (_path(path).read_bytes() != _legacy_launcher_source().encode()
+        if (_path(path).read_bytes() not in {_legacy_launcher_source().encode(), _previous_launcher_source().encode()}
                 or (os.name != "nt" and stat.S_IMODE(path.stat().st_mode) != mode)):
             raise DistributionError("managed launcher changed immediately before replacement")
         os.replace(temporary, path)
@@ -719,7 +729,7 @@ def _install_tool(source_root, data_root, bin_dir, python_executable=sys.executa
         commit = _checkout_commit(source_root, snapshot)
     if branch is not None and _branch(branch) != _version(version):
         raise DistributionError("source version does not match pinned branch")
-    command = "harness-codex" if _version(version) >= (9, 7) else "harness"
+    command = "harness-codex" if _version(version) >= _version("9.7") else "harness"
     launchers = _launchers(data_root, bin_dir, python, command)
     existing = None
     if data_root.exists() and any(data_root.iterdir()):
@@ -879,7 +889,7 @@ def check_update(data_root, *, branch=None, repository=None, timeout=20, git_exe
     if not heads:
         raise DistributionError("no supported Codex release branch was found")
     selected = max(heads, key=lambda name: (_branch(name), name))
-    available = ".".join(map(str, _branch(selected)))
+    available = branch_version(selected)
     downgrade = _version(available) < _version(active["version"])
     changed = heads[selected] != active["commit"] or available != active["version"]
     return {"status": "downgrade-refused" if downgrade else "update-available" if changed else "up-to-date", "updateAvailable": changed and not downgrade,

@@ -135,7 +135,7 @@ class CliRoutingTests(unittest.TestCase):
 
 class AutomaticUpdateTests(unittest.TestCase):
     @contextmanager
-    def fixtures(self, *, policy="compatible", available="9.3", due=True, tty=True, stdout_tty=True, command=None):
+    def fixtures(self, *, policy="compatible", available="0.10.1-beta", due=True, tty=True, stdout_tty=True, command=None):
         with ExitStack() as stack:
             stack.enter_context(mock.patch.dict(os.environ, {"HARNESS_TOOL_HOME": "unused-tool-root"}, clear=True))
             stack.enter_context(mock.patch.object(sys.stdin, "isatty", return_value=tty))
@@ -190,8 +190,8 @@ class AutomaticUpdateTests(unittest.TestCase):
             mocks.call.assert_not_called()
 
     def test_check_policy_and_new_major_only_notify(self):
-        for options in ({"policy": "check"}, {"available": "10.0"},
-                        {"policy": "check", "command": "harness-codex"}, {"available": "10.0", "command": "harness-codex"}):
+        for options in ({"policy": "check"}, {"available": "1.0.0"},
+                        {"policy": "check", "command": "harness-codex"}, {"available": "1.0.0", "command": "harness-codex"}):
             with self.subTest(options=options), self.fixtures(**options) as mocks:
                 self.assertIsNone(cli._automatic_update(self.arguments(), REPO, ["start"]))
                 mocks.mark.assert_called_once()
@@ -223,7 +223,7 @@ class AutomaticUpdateTests(unittest.TestCase):
             arguments = ["start", "--project", "a path with spaces", "Fix $HOME; preserve user choices"]
             self.assertEqual(cli._automatic_update(self.arguments(), REPO, arguments), 29)
             mocks.update.assert_called_once()
-            self.assertEqual(mocks.update.call_args.kwargs["expected_major"], 9)
+            self.assertEqual(mocks.update.call_args.kwargs["expected_major"], 0)
             command = mocks.call.call_args.args[0]
             self.assertEqual(command, [sys.executable, "-B", str(newer / "harness.py"), *arguments])
             self.assertEqual(mocks.call.call_args.kwargs["env"]["HARNESS_NO_UPDATE_CHECK"], "1")

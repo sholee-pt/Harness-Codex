@@ -76,6 +76,8 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     parser.add_argument("--no-update-check", action="store_true", help="Skip automatic upstream checks for this invocation.")
     commands = parser.add_subparsers(dest="command", title="commands", metavar="COMMAND")
     register_project_commands(commands)
+    from .maintenance import register
+    register(commands)
     for name in ("init", "new", "resume", "start", "configure"):
         commands.choices[name].add_argument("--no-update-check", action="store_true", default=argparse.SUPPRESS)
     install = commands.add_parser("install", help="Install this tool into user-local managed storage.")
@@ -158,11 +160,11 @@ def _automatic_update(args, source_root: Path, argv: list[str]) -> int | None:
         if not result.get("updateAvailable"):
             return None
         available = result.get("availableVersion", "")
-        if policy != "compatible" or available.split(".")[0] != version(source_root).split(".")[0]:
+        if policy != "compatible" or distribution._version(available)[0] != distribution._version(version(source_root))[0]:
             print(f"Harness update available: {available}. Run {state.get('command', 'harness')} update to install it.", file=sys.stderr)
             return None
         with ui.Progress(f'Installing compatible Harness update {available}'):
-            distribution.update_tool(data_root, timeout=30, expected_major=int(version(source_root).split(".")[0]))
+            distribution.update_tool(data_root, timeout=30, expected_major=distribution._version(version(source_root))[0])
         active = distribution.installed_status(data_root)
         new_root = Path(active["release_root"])
         if new_root.resolve() != source_root.resolve():
@@ -204,6 +206,9 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
                 validate_root(args.owned_runtime, args.data_dir)
             if previous is not None and choice == 'reuse':
                 args.branch, args.repository, args.auto_update = previous['branch'], previous['repository'], previous['auto_update']
+                if args.branch and len(previous['version'].split('.')) == 2 and len(version(source_root).split('.')) == 3:
+                    args.branch = None
+                    print('Legacy branch pin retired for beta migration; updates now follow the newest compatible Codex release.')
             if not args.no_modify_path:
                 path_registration(args.bin_dir, reset=choice == 'reset', dry_run=True)
             if args.owned_runtime:
@@ -243,8 +248,11 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
                 result = action(args.data_dir, branch=args.branch, repository=args.repository, timeout=args.timeout)
             ui.report(result, title='Tool update')
             if not args.check:
-                print("Tool update complete. Use harness-codex init --project PATH --install-only to update the project generator, then harness-codex config --project PATH for a reviewed project update.")
+                print("Tool update complete. Use harness-codex config --project PATH to refresh the owned generator and review the existing project harness.")
             return 0
+        if args.command == 'maintenance':
+            from .maintenance import run
+            return run(args, source_root)
         preflight_project_command(args, source_root=source_root)
         if args.command == "init" and not args.dry_run and os.environ.get("HARNESS_TOOL_HOME"):
             _register_path(Path(distribution.installed_status(default_data_root())["binDir"]))

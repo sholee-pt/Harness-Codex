@@ -33,7 +33,7 @@ while [ "$#" -gt 0 ]; do
 done
 case "$url" in
   */SHA256SUMS) cp "$TEST_SUMS" "$output" ;;
-  */harness-codex-9.11-linux.tar.gz) cp "$TEST_ARCHIVE" "$output" ;;
+  */harness-codex-0.10.0-beta-linux.tar.gz) cp "$TEST_ARCHIVE" "$output" ;;
   *) exit 87 ;;
 esac
 ''')
@@ -44,7 +44,7 @@ esac
 
     def make_archive(self, *, unsafe=False, linked=False):
         with tarfile.open(self.archive, 'w:gz') as archive:
-            name = '../escape' if unsafe else 'harness-codex-9.11/install.sh'
+            name = '../escape' if unsafe else 'harness-codex-0.10.0-beta/install.sh'
             data = b'#!/bin/sh\nprintf installed > "$TEST_MARKER"\n'
             info = tarfile.TarInfo(name)
             if linked:
@@ -53,7 +53,7 @@ esac
             else:
                 info.size = len(data)
             archive.addfile(info, None if linked else io.BytesIO(data))
-        self.sums.write_text(hashlib.sha256(self.archive.read_bytes()).hexdigest() + '  harness-codex-9.11-linux.tar.gz\n')
+        self.sums.write_text(hashlib.sha256(self.archive.read_bytes()).hexdigest() + '  harness-codex-0.10.0-beta-linux.tar.gz\n')
 
     def invoke(self, *arguments):
         return subprocess.run(['/bin/sh', '-s', '--', *arguments], input=SCRIPT.read_text(),
@@ -71,7 +71,7 @@ esac
 
     def test_checksum_failure_never_executes_payload(self):
         self.make_archive()
-        self.sums.write_text('0' * 64 + '  harness-codex-9.11-linux.tar.gz\n')
+        self.sums.write_text('0' * 64 + '  harness-codex-0.10.0-beta-linux.tar.gz\n')
         result = self.invoke()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('checksum mismatch', result.stderr)
@@ -98,7 +98,7 @@ BASH = (shutil.which("bash") if os.name != "nt" else
               if path.is_file()), None))
 
 
-@unittest.skipUnless(BASH, "Bash is unavailable")
+@unittest.skipUnless(BASH and os.name == 'posix', "Source shell installer targets Linux; native Windows installer is tested separately")
 class SourceInstallerTests(unittest.TestCase):
     def test_stage_output_keeps_conda_noise_and_receipts_in_log_and_preserves_failures(self):
         for failure, existing in (("", False), ("", True), ("env", False), ("create", False), ("run", True)):
@@ -117,8 +117,9 @@ case "$1" in
   env)
     printf 'advisory warning, not an error\\n' >&2
     if [[ "$HARNESS_TEST_EXISTING" == yes ]]; then printf '{"envs":["/fixture/harness"]}\\n'; else printf '{"envs":[]}\\n'; fi ;;
-  create) printf 'Channels: conda-forge\\nDownloading and Extracting Packages\\n'; printf 'advisory warning, not an error\\n' >&2 ;;
+  create) mkdir -p -- "$HARNESS_TEST_PREFIX/conda-meta" "$HARNESS_TEST_PREFIX/bin"; touch "$HARNESS_TEST_PREFIX/conda-meta/history"; printf '#!/bin/sh\\nexit 0\\n' > "$HARNESS_TEST_PREFIX/bin/python"; chmod +x "$HARNESS_TEST_PREFIX/bin/python"; printf 'Channels: conda-forge\\nDownloading and Extracting Packages\\n'; printf 'advisory warning, not an error\\n' >&2 ;;
   run)
+    if [[ " $* " == *" /bin/sh "* ]]; then printf '%s\\n' "$HARNESS_TEST_PREFIX"; exit 0; fi
     printf '{"treeHash":"internal-receipt","branch":null}\\n'
     printf '{"state":"unchanged","writes":0}\\n'
     printf 'Installed harness-codex in /fixture/bin. PATH registration skipped; invoke the command by its full path.\\n'
@@ -126,14 +127,17 @@ case "$1" in
 esac
 ''', encoding="utf-8")
                 fake_conda.chmod(0o755)
+                selected_prefix = base / ('legacy/harness' if existing else 'data-runtime/envs/harness')
+                if existing:
+                    (selected_prefix / 'conda-meta').mkdir(parents=True)
+                    (selected_prefix / 'conda-meta/history').write_text('fixture')
+                    (selected_prefix / 'bin').mkdir()
+                    (selected_prefix / 'bin/python').write_text('#!/bin/sh\nexit 0\n')
+                    (selected_prefix / 'bin/python').chmod(0o755)
                 arguments = base / "arguments"
                 environment = {**os.environ, "CONDA_EXE": fake_conda.as_posix(), "TMPDIR": base.as_posix(),
                                "HARNESS_TEST_FAIL": failure, "HARNESS_TEST_EXISTING": "yes" if existing else "no",
-                               "HARNESS_TEST_ARGUMENTS": arguments.as_posix()}
-                if os.name == 'nt':
-                    # Exercise one coherent MSYS toolchain, not Anaconda's
-                    # native Windows coreutils with incompatible path syntax.
-                    environment['PATH'] = str(Path(BASH).parents[1] / 'usr/bin') + os.pathsep + environment['PATH']
+                               "HARNESS_TEST_ARGUMENTS": arguments.as_posix(), "HARNESS_TEST_PREFIX": selected_prefix.as_posix()}
                 for name in ("BASH_ENV", "ENV"):
                     environment.pop(name, None)
                 result = subprocess.run([BASH, str(ROOT / "installer/install.sh"), "--data-dir", (base / 'data').as_posix(), "--no-modify-path", "--auto-update", "off"],
@@ -218,7 +222,7 @@ class InstallerTerminalTests(unittest.TestCase):
             fake.write_text("""#!/usr/bin/env bash
 case "$1" in
  env) printf '{"envs":[]}\\n' ;;
- create) sleep 1.4 ;;
+ create) mkdir -p "$3/conda-meta" "$3/bin"; touch "$3/conda-meta/history"; printf '#!/bin/sh\\nexit 0\\n' > "$3/bin/python"; chmod +x "$3/bin/python"; sleep 1.4 ;;
  run) printf 'Installed harness-codex in fixture.\\n' ;;
 esac
 """)

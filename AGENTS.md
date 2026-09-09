@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v9.11, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
+- This branch contains Harness for Codex v0.10.0-beta, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add telemetry or marketplace dependencies. The separately authorized CLI distribution layer may check/fetch this repository and publish verified GitHub release assets; project generation never performs those operations.
 - Keep evaluation default-off, user-local, and isolated from generation/apply failure handling.
@@ -32,9 +32,9 @@
 
 ## Git conventions
 
-- Harness for Codex version branches use `codex/vN` or `codex/vN.M`; the number identifies the Harness release, not the Codex product version.
-- Harness for Claude Code version branches use `claude/vN` or `claude/vN.M`.
-- Displayed Harness and generator versions use two components (`N.M`); major `.0` release branches may retain the shorter `codex/vN` form.
+- New Codex branches use `codex/vX.Y.Z-beta` during development, with X major, Y feature, Z bug fix/chore/refactoring. Preserve legacy versions in immutable receipts and compatibility tests.
+- Historical display versions map `vN.M` to `v0.N.M-beta`; this is a label correction, not a claim that old source was rebuilt. Keep the current Claude branch untouched.
+- Public stable releases begin at `v1.0.0` after an explicit release decision; repository visibility alone does not publish a release.
 - Later commits use `[Feat]`, `[Fix]`, `[Docs]`, `[Refactor]`, `[Test]`, or `[Chore]`.
 - Do not commit, push, merge, or rewrite history unless the user has authorized it. An explicit implementation request from this repository owner includes commit and push. Keep the latest verified release as the default branch and retain only the latest Codex and latest Claude release branches, as authorized by the owner. This repository-maintenance convention does not authorize remote operations during generated-project configuration.
 

@@ -367,10 +367,10 @@ class DistributionTests(unittest.TestCase):
 
     def test_auto_update_checks_major_again_inside_lock(self):
         self.install()
-        self.heads = f"{B}\trefs/heads/codex/v10\n"
+        self.heads = f"{B}\trefs/heads/codex/v1.0.0\n"
         before = files(self.data)
         with self.assertRaisesRegex(dist.DistributionError, "major version"):
-            self.update(expected_major=9)
+            self.update(expected_major=0)
         self.assertEqual(before, files(self.data))
         self.assertEqual(len(self.calls), 1)
 

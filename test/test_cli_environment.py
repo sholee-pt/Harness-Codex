@@ -334,7 +334,7 @@ dist.repair_launcher(Path(sys.argv[1]))
     def test_current_payload_receives_marker_after_launcher_integrity_checks(self):
         candidate = source(self.root / "candidate", "9.5", "b" * 40)
         for minimum, required in dist.VERSION_REQUIRED:
-            if minimum <= (9, 5):
+            if minimum <= dist._version("9.5"):
                 for name in required:
                     (candidate / name).write_text("pass\n", encoding="utf-8")
         (candidate / "harness.py").write_text(OBSERVATION, encoding="utf-8")

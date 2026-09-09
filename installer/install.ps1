@@ -200,6 +200,13 @@ $environmentInfo = $environmentJson -join "`n" | ConvertFrom-Json
 $existingEnvironments = @($environmentInfo.envs_dirs | ForEach-Object { Join-Path $_ 'harness' } |
     Where-Object { Test-Path -LiteralPath (Join-Path $_ 'conda-meta\history') -PathType Leaf })
 $environmentSelector = @('--name', 'harness')
+if ($existingEnvironments.Count) {
+    $expectedEnvironment = [IO.Path]::GetFullPath($existingEnvironments[0])
+    $environmentSelector = @('--prefix', $expectedEnvironment)
+} elseif (@($environmentInfo.envs_dirs).Count) {
+    $expectedEnvironment = [IO.Path]::GetFullPath((Join-Path $environmentInfo.envs_dirs[0] 'harness'))
+    $environmentSelector = @('--prefix', $expectedEnvironment)
+}
 if (-not $ownedRuntime -and -not $CondaHome -and -not (Test-Path -LiteralPath (Join-Path $DataDir 'active.json'))) {
     $ownedRuntime = "$DataDir-runtime"
     if (Test-Path -LiteralPath $ownedRuntime) { throw "Existing runtime directory preserved: $ownedRuntime" }
@@ -243,10 +250,18 @@ if ($existingEnvironments.Count -eq 0) {
 }
 Complete-HarnessStep
 Start-HarnessStep '[3/3] Installing command and applying PATH preferences'
-$installArguments = @('run', '--no-capture-output') + $environmentSelector + @('python', '-B', (Join-Path $SourceRoot 'harness.py'), 'install', '--data-dir', $DataDir, '--bin-dir', $BinDir, '--auto-update', $AutoUpdate, '--existing', $Existing)
+if (-not $expectedEnvironment) { throw 'Unable to resolve the selected Harness environment.' }
+$selectedPython = Join-Path $expectedEnvironment 'python.exe'
+Assert-HarnessPath $selectedPython
+if (-not (Test-Path -LiteralPath $selectedPython -PathType Leaf)) { throw "Selected environment has no Python: $selectedPython" }
+[IO.File]::AppendAllText($installLog, "Expected interpreter: $selectedPython`nExpected prefix: $expectedEnvironment`n")
+$previousExpectedPrefix = $env:HARNESS_INSTALL_EXPECTED_PREFIX
+$env:HARNESS_INSTALL_EXPECTED_PREFIX = $expectedEnvironment
+$installArguments = @('run', '--no-capture-output') + $environmentSelector + @($selectedPython, '-B', (Join-Path $SourceRoot 'harness.py'), 'install', '--data-dir', $DataDir, '--bin-dir', $BinDir, '--auto-update', $AutoUpdate, '--existing', $Existing)
 if ($ownedRuntime) { $installArguments += @('--owned-runtime', $ownedRuntime) }
 if ($NoModifyPath) { $installArguments += '--no-modify-path' }
-$installOutput = Invoke-HarnessConda @installArguments
+try { $installOutput = Invoke-HarnessConda @installArguments }
+finally { $env:HARNESS_INSTALL_EXPECTED_PREFIX = $previousExpectedPrefix }
 if ($condaExit -ne 0) { throw "Harness installation failed (exit $condaExit)." }
 if (-not $NoModifyPath) {
     if (-not @($env:Path -split ';' | Where-Object { $_.TrimEnd('\') -ieq $BinDir.TrimEnd('\') }).Count) {

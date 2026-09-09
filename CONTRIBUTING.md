@@ -77,7 +77,7 @@ conda run -n harness python test/integration/verify_cli_upgrade.py --baseline /t
 conda run -n harness python test/integration/verify_release_upgrade.py --baseline /tmp/harness-baselines/v910 --output /tmp/project-upgrade.json
 ```
 
-Release comparison runs only against the immediately preceding published release (currently v9.10). CI does not recreate the entire historical version matrix. Functional regression tests still check supported contracts and failure cases. Add an older source comparison only for a concrete compatibility defect that requires it.
+Release comparison runs only against the immediately preceding published release (v0.9.11-beta, originally tagged v9.11). CI does not recreate the entire historical version matrix. Functional regression tests still check supported contracts and failure cases. Add an older source comparison only for a concrete compatibility defect that requires it.
 
 Parser differential checks require the pinned optional `test/requirements-validation.txt`. Cold installer checks download Miniforge and create an isolated environment; the Windows registry/cold check is restricted to disposable CI runners. These are distinct from unit tests and must not run implicitly during unittest discovery.
 

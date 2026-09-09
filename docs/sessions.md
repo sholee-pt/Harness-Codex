@@ -57,4 +57,10 @@ Launches print `sha256:<digest>`, calculated from the canonical, key-sorted mani
 
 This release deliberately defers automatic session registry creation. Native [SessionStart hooks](https://learn.chatgpt.com/docs/hooks) provide a stable session ID, but the interactive process does not return that ID to this wrapper. Installing or replacing trusted user hooks is not implicit in starting a conversation. No IDs are invented, transcripts scraped or project harnesses copied. Consequently the original H1 revision is not automatically persisted per conversation in this release.
 
+Opt-in [maintenance](maintenance.md) separately keeps bounded, HMAC-referenced
+activity observations outside projects. It can correct existing skills at a later
+turn boundary, after an eligible concern and bounded review. This does not create
+a conversation registry or regenerate a harness on every turn. Explicit `config`
+refreshes an unchanged owned generator and reviews the existing project harness.
+
 `start` is a compatibility alias with a deprecation warning. `configure` remains an alias for `config`.

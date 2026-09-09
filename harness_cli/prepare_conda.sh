@@ -77,6 +77,21 @@ if [[ ${#owned_runtime[@]} -gt 0 && ! -f "$runtime_root/envs/harness/conda-meta/
 else
   printf '      Reusing the existing Harness environment.\n'
 fi
+if [[ ${#owned_runtime[@]} -gt 0 ]]; then
+  selected_prefix="$runtime_root/envs/harness"
+else
+  # Resolve the environment selected by Conda, never the caller's active base.
+  # An absolute shell remains reliable when system directories precede Conda.
+  selected_prefix=$("$conda_command" run --no-capture-output "${environment_selector[@]}" /bin/sh -c 'printf "%s\n" "$CONDA_PREFIX"' 2>> "$install_log")
+fi
+[[ "$selected_prefix" == /* && -f "$selected_prefix/conda-meta/history" ]] || { printf 'Unable to resolve the selected Harness environment.\n' >&2; exit 1; }
+selected_prefix=$(realpath -e -- "$selected_prefix")
+selected_python="$selected_prefix/bin/python"
+[[ -x "$selected_python" ]] || { printf 'Selected environment has no executable Python: %s\n' "$selected_python" >&2; exit 1; }
+resolved_python=$(realpath -e -- "$selected_python")
+[[ "$resolved_python" == "$selected_prefix/"* ]] || { printf 'Selected Python resolves outside its environment; installation stopped.\n' >&2; exit 1; }
+environment_selector=(--prefix "$selected_prefix")
+printf 'Expected interpreter: %s\nExpected prefix: %s\n' "$selected_python" "$selected_prefix" >> "$install_log"
 if ! command -v git >/dev/null 2>&1 && ! "$conda_command" run "${environment_selector[@]}" git --version >> "$install_log" 2>&1; then
   printf '      Preparing Git for tool updates...\n'
   "$conda_command" install "${environment_selector[@]}" --override-channels --channel conda-forge git --yes >> "$install_log" 2>&1

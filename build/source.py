@@ -12,6 +12,7 @@ import tarfile
 
 from harness_cli.distribution import _source_info
 from harness_cli.paths import checked_path as _checked_path
+from harness_cli.versions import VERSION_RE
 
 
 BOOTSTRAPS = ("install_harness_codex.sh", "install_harness_codex.ps1")
@@ -30,8 +31,8 @@ def release_version(root: Path) -> str:
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "HARNESS_VERSION" for t in node.targets):
             value = ast.literal_eval(node.value)
-            if not isinstance(value, str) or not re.fullmatch(r"[0-9]+\.[0-9]+", value):
-                raise ValueError("Release version must be a major.minor string")
+            if not isinstance(value, str) or not VERSION_RE.fullmatch(value):
+                raise ValueError("Release version must be N.N.N[-beta]")
             return value
     raise ValueError("Missing release version")
 
