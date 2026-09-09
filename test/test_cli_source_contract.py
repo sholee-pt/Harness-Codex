@@ -56,6 +56,11 @@ def contract_source(root, version):
 
 
 class SourceContractTests(unittest.TestCase):
+    def test_current_release_requires_the_native_runtime_cleanup_helper(self):
+        source = write_source(self.base / 'missing-cleanup', dist._snapshot(REPO))
+        (source / 'harness_cli/runtime_cleanup.ps1').unlink()
+        self.assert_rejected_before_writes(source, r'harness_cli/runtime_cleanup\.ps1')
+
     def test_refactored_source_requires_actual_imported_modules_before_writes(self):
         for name in ("project_installer.py", "paths.py"):
             with self.subTest(module=name):

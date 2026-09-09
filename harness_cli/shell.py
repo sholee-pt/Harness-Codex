@@ -49,7 +49,7 @@ def register_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = Fa
         return {'profile': str(profile), 'state': 'would-update', 'writes': 0}
     _replace_profile(profile, before, after)
     return {'profile': str(profile), 'state': 'updated', 'writes': 1,
-            'currentShell': 'Open a new terminal or run: . ~/.bashrc'}
+            'currentShell': 'Apply PATH in this Bash session: source ~/.bashrc'}
 
 
 def _replace_profile(profile: Path, before: bytes, after: bytes) -> None:
@@ -72,6 +72,28 @@ def _replace_profile(profile: Path, before: bytes, after: bytes) -> None:
         os.replace(temporary, profile)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def reset_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False) -> dict:
+    """Normalize only complete, exact Harness blocks; preserve all other bytes."""
+    home = _path(home or Path.home())
+    directory = str(_path(bin_dir))
+    if any(ord(c) < 32 or ord(c) == 127 for c in directory) or ':' in directory:
+        raise ValueError('Bash PATH directory contains unsupported characters')
+    profile = _path(home / '.bashrc')
+    if profile.exists() and (not profile.is_file() or profile.stat().st_size > 1024 * 1024):
+        raise ValueError('Bash startup file must be a regular file no larger than 1 MiB')
+    before = profile.read_bytes() if profile.exists() else b''
+    block = _block(directory)
+    remainder = before.replace(block, b'')
+    if START.encode() in remainder or END.encode() in remainder:
+        raise ValueError('Edited or unrelated Harness PATH block preserved; review it before resetting')
+    after = remainder + (b'\n' if remainder and not remainder.endswith(b'\n') else b'') + block
+    if not dry_run and after != before:
+        _replace_profile(profile, before, after)
+    return {'profile': str(profile), 'state': 'would-reset' if dry_run else 'reset',
+            'writes': int(not dry_run and after != before),
+            'currentShell': 'Apply PATH in this Bash session: source ~/.bashrc'}
 
 
 def unregister_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False, expected=None) -> dict:

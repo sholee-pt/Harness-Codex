@@ -41,6 +41,7 @@ REQUIRED = frozenset({"harness.py", "install.py", "harness_cli/__init__.py", "ha
 # Keep the original common set valid for complete v9.2 and v9.3 distributions.
 # Later releases inherit each dependency from its numeric introduction version.
 VERSION_REQUIRED = (
+    ((9, 9), frozenset({"harness_cli/runtime_cleanup.ps1"})),
     ((9, 8), frozenset({"harness_cli/windows_path.py"})),
     ((9, 7), frozenset({"harness_cli/shell.py", "harness_cli/prepare_conda.sh"})),
     ((9, 4), frozenset({"harness_cli/lifecycle.py"})),

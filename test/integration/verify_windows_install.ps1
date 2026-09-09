@@ -27,7 +27,7 @@ $oldPath = $registry.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptio
 $oldKind = if ($null -ne $oldPath) { $registry.GetValueKind('Path') } else { $null }
 $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
 $bootstrap = Join-Path $Dist 'install_harness_codex.ps1'
-$options = @{DataDir=$data; BinDir=$binary; AutoUpdate='off'}
+$options = @{DataDir=$data; BinDir=$binary; AutoUpdate='off'; Existing='reuse'}
 if ($Cold) { $options.CondaHome = Join-Path $base 'miniforge' }
 else { $options.CondaExe = $CondaExe; $options.NoModifyPath = $true }
 function Invoke-WebRequest {
@@ -59,7 +59,7 @@ try {
     }
     $command = Join-Path $binary 'harness-codex.cmd'
     $version = & $command --version
-    if ($LASTEXITCODE -ne 0 -or $version -notmatch '^Harness for Codex 9\.8$') { throw 'Installed Windows command version failed.' }
+    if ($LASTEXITCODE -ne 0 -or $version -notmatch '^Harness for Codex 9\.9$') { throw 'Installed Windows command version failed.' }
     & $command --help
     if ($LASTEXITCODE -ne 0) { throw 'Installed Windows command help failed.' }
     if (($originalLabels -join '|') -cne (@($env:CONDA_PREFIX, $env:CONDA_DEFAULT_ENV, $env:CONDA_ENVS_PATH) -join '|')) {
@@ -71,7 +71,7 @@ try {
         if ((Get-Command harness-codex).Source -ine $command) { throw 'Current PowerShell command discovery failed.' }
         $env:Path = "$binary;$env:SystemRoot\System32;$env:SystemRoot"
         $child = & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command 'harness-codex --version'
-        if ($LASTEXITCODE -ne 0 -or $child -notmatch 'Harness for Codex 9.8') { throw 'Fresh PowerShell command failed.' }
+        if ($LASTEXITCODE -ne 0 -or $child -notmatch 'Harness for Codex 9.9') { throw 'Fresh PowerShell command failed.' }
         $python = Join-Path $options.CondaHome 'envs\harness\python.exe'
         $active = Get-Content -LiteralPath (Join-Path $data 'active.json') -Raw | ConvertFrom-Json
         $releaseRoot = Join-Path $data ('releases\' + $active.releaseId)
@@ -146,14 +146,26 @@ raise SystemExit(result.returncode)
     $confirmationExit = $LASTEXITCODE
     if ($confirmationExit -ne 0 -or (Test-Path -LiteralPath $data) -or (Test-Path -LiteralPath $command)) { throw 'Confirmed installed CLI removal failed.' }
     $projectAfter = @(Get-ChildItem -LiteralPath $project -Recurse -File | ForEach-Object { $_.FullName + ':' + (Get-FileHash -LiteralPath $_.FullName).Hash }) -join '|'
-    if ($projectAfter -cne $projectBefore -or -not (Test-Path -LiteralPath $active.python)) { throw 'Uninstall changed the project or Conda interpreter.' }
+    if ($projectAfter -cne $projectBefore) { throw 'Uninstall changed the project.' }
+    if ($Cold) {
+        $cleanupDeadline = [DateTime]::UtcNow.AddMinutes(5)
+        while ((Test-Path -LiteralPath $options.CondaHome) -and [DateTime]::UtcNow -lt $cleanupDeadline) { Start-Sleep -Seconds 2 }
+        if (Test-Path -LiteralPath $options.CondaHome) {
+            Get-ChildItem -LiteralPath $options.CondaHome -Recurse -File | Select-Object -First 20 FullName | Out-Host
+            Get-ChildItem -Path ([IO.Path]::GetTempPath() + 'harness-codex-cleanup-*\error.txt') -ErrorAction SilentlyContinue | Get-Content | Out-Host
+            throw 'Owned Windows runtime cleanup did not complete.'
+        }
+    }
+    foreach ($file in $externalConda.Keys) {
+        if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -cne $externalConda[$file]) { throw 'Uninstall changed pre-existing Conda files.' }
+    }
     if (@($registry.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) -split ';' | Where-Object { $_ -ieq $binary }).Count) { throw 'Uninstall left the dedicated bin directory in user PATH.' }
     @{verified=$true; platform='Windows'; powershell=$PSVersionTable.PSVersion.ToString(); cold=[bool]$Cold;
       harnessTransport='exact local release assets'; miniforgeTransport=$(if ($Cold) {'real official HTTPS download'} else {'existing Conda'});
       version=$version; repeatBytesAndMtime=$true; callerEnvironmentPreserved=$true; projectDryRun=$true;
       realUserPathTest=[bool]$Cold; installedCliUninstall=$true; uninstallTerminalDetection='adapted for noninteractive CI';
       uninstallConfirmationTransport='Python subprocess byte pipe; input() answer observed unchanged';
-      uninstallKeptProjectAndConda=$true; existingCondaFilesPreserved=$externalConda.Count;
+      uninstallKeptProjectAndReusedConda=$true; ownedRuntimeRemoved=[bool]$Cold; existingCondaFilesPreserved=$externalConda.Count;
       nativeCodexExecuted=$false; evidenceDirectory=$base} | ConvertTo-Json
 } finally {
     if ($Cold) {

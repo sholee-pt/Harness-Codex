@@ -7,12 +7,13 @@ param(
     [string]$DataDir,
     [string]$BinDir,
     [ValidateSet('compatible', 'check', 'off')][string]$AutoUpdate = 'compatible',
+    [ValidateSet('ask', 'reuse', 'reset')][string]$Existing = 'ask',
     [switch]$NoModifyPath,
     [switch]$Help
 )
 $ErrorActionPreference = 'Stop'
 if ($Help) {
-    Write-Output 'Install Harness for Codex on Windows x64. Options: -CondaExe PATH, -CondaHome PATH (isolated Miniforge), -DataDir PATH, -BinDir PATH, -AutoUpdate compatible|check|off, -NoModifyPath.'
+    Write-Output 'Install Harness for Codex on Windows x64. Options: -CondaExe PATH, -CondaHome PATH (isolated Miniforge), -DataDir PATH, -BinDir PATH, -AutoUpdate compatible|check|off, -Existing ask|reuse|reset, -NoModifyPath.'
     return
 }
 if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitProcess -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
@@ -30,8 +31,18 @@ if (-not $DataDir) { $DataDir = Join-Path $env:LOCALAPPDATA 'HarnessCodex' }
 if (-not $BinDir) { $BinDir = Join-Path $env:LOCALAPPDATA 'Programs\HarnessCodex\bin' }
 $DataDir = [IO.Path]::GetFullPath($DataDir)
 $BinDir = [IO.Path]::GetFullPath($BinDir)
+function Assert-HarnessPath([string]$Path) {
+    $current = [IO.Path]::GetFullPath($Path)
+    while ($current) {
+        if ((Test-Path -LiteralPath $current) -and ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw "Installation path contains a reparse point; preserved: $current"
+        }
+        $current = Split-Path -Parent $current
+    }
+}
 foreach ($directory in @($BinDir, $DataDir)) {
     if ($directory -match '[%!";\r\n]') { throw 'Installation paths contain unsupported characters.' }
+    Assert-HarnessPath $directory
 }
 
 $installLog = Join-Path ([IO.Path]::GetTempPath()) ('harness-codex-install-log-' + [guid]::NewGuid().ToString('N') + '.txt')
@@ -40,15 +51,22 @@ $logStream.Dispose()
 function Start-HarnessStep([string]$Label) {
     $script:installStep = $Label
     $script:stepClock = [Diagnostics.Stopwatch]::StartNew()
-    Write-Host "$Label..."
+    Write-Host "`n$Label" -ForegroundColor Cyan
     [IO.File]::AppendAllText($installLog, "`n$Label`n")
 }
 function Complete-HarnessStep {
-    Write-Host ("{0}: done ({1}s)" -f $installStep, [int]$stepClock.Elapsed.TotalSeconds)
+    Write-Host ("  OK  {0}: done ({1}s)" -f $installStep, [int]$stepClock.Elapsed.TotalSeconds) -ForegroundColor Green
 }
-Write-Host "Harness for Codex installer`nDetailed log: $installLog"
+Write-Host "`nHarness for Codex installer`n================================`nDetailed log: $installLog"
 try {
 Start-HarnessStep '[1/3] Checking installation tools'
+$ownedRuntime = $null
+$runtimeReference = Join-Path $DataDir 'runtime.json'
+if (Test-Path -LiteralPath $runtimeReference -PathType Leaf) {
+    Assert-HarnessPath $runtimeReference
+    $ownedRuntime = (Get-Content -LiteralPath $runtimeReference -Raw | ConvertFrom-Json).root
+    Assert-HarnessPath $ownedRuntime
+}
 # Do not activate Conda or change the caller's project Python environment.
 $condaCommand = $null
 if ($CondaExe) {
@@ -57,6 +75,7 @@ if ($CondaExe) {
 } elseif (-not $CondaHome) {
     $found = Get-Command conda.exe -ErrorAction SilentlyContinue
     $candidates = @($env:CONDA_EXE)
+    if ($ownedRuntime) { $candidates = @((Join-Path $ownedRuntime 'Scripts\conda.exe')) + $candidates }
     if ($found) { $candidates += $found.Source }
     foreach ($name in @('miniforge3', 'miniconda3', 'anaconda3')) {
         $candidates += Join-Path $env:USERPROFILE "$name\Scripts\conda.exe"
@@ -67,8 +86,9 @@ if ($CondaExe) {
     }
 }
 if (-not $condaCommand) {
-    if (-not $CondaHome) { $CondaHome = Join-Path $env:LOCALAPPDATA 'HarnessCodexConda' }
+    if (-not $CondaHome) { $CondaHome = "$DataDir-runtime" }
     $CondaHome = [IO.Path]::GetFullPath($CondaHome)
+    Assert-HarnessPath $CondaHome
     if ($CondaHome -match '[%!"\r\n]') { throw 'Miniforge installation path contains unsupported characters.' }
     $condaCommand = Join-Path $CondaHome 'Scripts\conda.exe'
     if (-not (Test-Path -LiteralPath $condaCommand -PathType Leaf)) {
@@ -96,6 +116,7 @@ if (-not $condaCommand) {
             if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $condaCommand -PathType Leaf)) {
                 throw 'Miniforge installation failed; any partial directory is preserved for review.'
             }
+            $ownedRuntime = $CondaHome
         } finally {
             if (Test-Path -LiteralPath $download) { Remove-Item -LiteralPath $download -Force }
         }
@@ -125,20 +146,37 @@ $environmentJson = Invoke-HarnessConda info --json
 if ($condaExit -ne 0) { throw "Unable to inspect Conda environments (exit $condaExit)." }
 $environmentInfo = $environmentJson -join "`n" | ConvertFrom-Json
 # Registered environments from other Conda installations need not be resolvable by name.
-$existing = @($environmentInfo.envs_dirs | ForEach-Object { Join-Path $_ 'harness' } |
+$existingEnvironments = @($environmentInfo.envs_dirs | ForEach-Object { Join-Path $_ 'harness' } |
     Where-Object { Test-Path -LiteralPath (Join-Path $_ 'conda-meta\history') -PathType Leaf })
 $environmentSelector = @('--name', 'harness')
-if ($CondaHome) {
-    $expectedEnvironment = Join-Path $CondaHome 'envs\harness'
+if (-not $ownedRuntime -and -not $CondaHome -and -not (Test-Path -LiteralPath (Join-Path $DataDir 'active.json'))) {
+    $ownedRuntime = "$DataDir-runtime"
+    if (Test-Path -LiteralPath $ownedRuntime) { throw "Existing runtime directory preserved: $ownedRuntime" }
+    [void][IO.Directory]::CreateDirectory($ownedRuntime)
+}
+if ($ownedRuntime) {
+    Assert-HarnessPath $ownedRuntime
+    $ownerMarker = Join-Path $ownedRuntime '.harness-runtime-owner'
+    if (-not (Test-Path -LiteralPath $ownerMarker)) {
+        if (Test-Path -LiteralPath $runtimeReference) { throw 'Existing runtime ownership marker is missing' }
+        [IO.File]::WriteAllText($ownerMarker, "harness-codex runtime v1`n$DataDir`n", [Text.UTF8Encoding]::new($false))
+    }
+}
+if ($ownedRuntime -or $CondaHome) {
+    $environmentHome = if ($ownedRuntime) { $ownedRuntime } else { $CondaHome }
+    $expectedEnvironment = Join-Path $environmentHome 'envs\harness'
     # CONDA_ENVS_PATH adds a search directory; it does not exclude other Condas.
     # Creating by name can remove an existing same-named environment elsewhere.
     $environmentSelector = @('--prefix', $expectedEnvironment)
-    $existing = @($existing | Where-Object { [IO.Path]::GetFullPath($_) -ieq $expectedEnvironment })
-    if (-not $existing.Count -and (Test-Path -LiteralPath $expectedEnvironment)) {
+    $existingEnvironments = @()
+    if (Test-Path -LiteralPath (Join-Path $expectedEnvironment 'conda-meta\history') -PathType Leaf) {
+        $existingEnvironments = @($expectedEnvironment)
+    }
+    if (-not $existingEnvironments.Count -and (Test-Path -LiteralPath $expectedEnvironment)) {
         throw "Existing incomplete or unrelated environment preserved: $expectedEnvironment"
     }
 }
-if ($existing.Count -eq 0) {
+if ($existingEnvironments.Count -eq 0) {
     Write-Host '      First setup: preparing Python and Git; this may take a few minutes...'
     Invoke-HarnessConda create @environmentSelector --override-channels --channel conda-forge python=3.11 git --yes | Out-Null
     if ($condaExit -ne 0) { throw "Unable to create the harness Conda environment (exit $condaExit)." }
@@ -154,7 +192,8 @@ if ($existing.Count -eq 0) {
 }
 Complete-HarnessStep
 Start-HarnessStep '[3/3] Installing command and applying PATH preferences'
-$installArguments = @('run', '--no-capture-output') + $environmentSelector + @('python', '-B', (Join-Path $SourceRoot 'harness.py'), 'install', '--data-dir', $DataDir, '--bin-dir', $BinDir, '--auto-update', $AutoUpdate)
+$installArguments = @('run', '--no-capture-output') + $environmentSelector + @('python', '-B', (Join-Path $SourceRoot 'harness.py'), 'install', '--data-dir', $DataDir, '--bin-dir', $BinDir, '--auto-update', $AutoUpdate, '--existing', $Existing)
+if ($ownedRuntime) { $installArguments += @('--owned-runtime', $ownedRuntime) }
 if ($NoModifyPath) { $installArguments += '--no-modify-path' }
 $installOutput = Invoke-HarnessConda @installArguments
 if ($condaExit -ne 0) { throw "Harness installation failed (exit $condaExit)." }

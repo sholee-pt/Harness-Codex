@@ -33,7 +33,7 @@ while [ "$#" -gt 0 ]; do
 done
 case "$url" in
   */SHA256SUMS) cp "$TEST_SUMS" "$output" ;;
-  */harness-codex-9.8-linux.tar.gz) cp "$TEST_ARCHIVE" "$output" ;;
+  */harness-codex-9.9-linux.tar.gz) cp "$TEST_ARCHIVE" "$output" ;;
   *) exit 87 ;;
 esac
 ''')
@@ -44,7 +44,7 @@ esac
 
     def make_archive(self, *, unsafe=False, linked=False):
         with tarfile.open(self.archive, 'w:gz') as archive:
-            name = '../escape' if unsafe else 'harness-codex-9.8/install.sh'
+            name = '../escape' if unsafe else 'harness-codex-9.9/install.sh'
             data = b'#!/bin/sh\nprintf installed > "$TEST_MARKER"\n'
             info = tarfile.TarInfo(name)
             if linked:
@@ -53,7 +53,7 @@ esac
             else:
                 info.size = len(data)
             archive.addfile(info, None if linked else io.BytesIO(data))
-        self.sums.write_text(hashlib.sha256(self.archive.read_bytes()).hexdigest() + '  harness-codex-9.8-linux.tar.gz\n')
+        self.sums.write_text(hashlib.sha256(self.archive.read_bytes()).hexdigest() + '  harness-codex-9.9-linux.tar.gz\n')
 
     def invoke(self, *arguments):
         return subprocess.run(['/bin/sh', '-s', '--', *arguments], input=SCRIPT.read_text(),
@@ -71,7 +71,7 @@ esac
 
     def test_checksum_failure_never_executes_payload(self):
         self.make_archive()
-        self.sums.write_text('0' * 64 + '  harness-codex-9.8-linux.tar.gz\n')
+        self.sums.write_text('0' * 64 + '  harness-codex-9.9-linux.tar.gz\n')
         result = self.invoke()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('checksum mismatch', result.stderr)
@@ -105,6 +105,9 @@ class SourceInstallerTests(unittest.TestCase):
             with self.subTest(failure=failure, existing=existing), tempfile.TemporaryDirectory() as directory:
                 base = Path(directory)
                 fake_conda = base / "fake-conda"
+                if existing:
+                    (base / 'data').mkdir()
+                    (base / 'data/active.json').write_text('{}')  # Legacy installation selects its existing named environment.
                 fake_conda.write_text('''#!/usr/bin/env bash
 if [[ "$1" == "$HARNESS_TEST_FAIL" ]]; then
   printf 'dependency failure detail\\n' >&2
@@ -127,9 +130,13 @@ esac
                 environment = {**os.environ, "CONDA_EXE": fake_conda.as_posix(), "TMPDIR": base.as_posix(),
                                "HARNESS_TEST_FAIL": failure, "HARNESS_TEST_EXISTING": "yes" if existing else "no",
                                "HARNESS_TEST_ARGUMENTS": arguments.as_posix()}
+                if os.name == 'nt':
+                    # Exercise one coherent MSYS toolchain, not Anaconda's
+                    # native Windows coreutils with incompatible path syntax.
+                    environment['PATH'] = str(Path(BASH).parents[1] / 'usr/bin') + os.pathsep + environment['PATH']
                 for name in ("BASH_ENV", "ENV"):
                     environment.pop(name, None)
-                result = subprocess.run([BASH, str(ROOT / "installer/install.sh"), "--no-modify-path", "--auto-update", "off"],
+                result = subprocess.run([BASH, str(ROOT / "installer/install.sh"), "--data-dir", (base / 'data').as_posix(), "--no-modify-path", "--auto-update", "off"],
                                         env=environment, capture_output=True, text=True, timeout=30)
                 logs = list(base.glob("harness-codex-install-log.*"))
                 self.assertEqual(len(logs), 1, result.stdout + result.stderr)

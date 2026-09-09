@@ -462,7 +462,7 @@ class ProjectCliTests(unittest.TestCase):
         code, out, err = self.run_cli("status", tty=False)
         report = json.loads(out)
         self.assertEqual(report["state"], "stale-evidence", err)
-        self.assertEqual(report["nextCommand"], "harness-codex start --project PATH")
+        self.assertEqual(report["nextCommand"], "harness-codex new --project PATH")
         self.assertEqual(report["summary"]["managedArtifacts"], "passed")
         self.assertEqual(report["summary"]["sourceEvidence"], "failed")
         self.assertEqual(snapshot(self.root), before)

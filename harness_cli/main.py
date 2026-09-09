@@ -76,7 +76,7 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     parser.add_argument("--no-update-check", action="store_true", help="Skip automatic upstream checks for this invocation.")
     commands = parser.add_subparsers(dest="command")
     register_project_commands(commands)
-    for name in ("init", "start", "configure"):
+    for name in ("init", "new", "resume", "start", "configure"):
         commands.choices[name].add_argument("--no-update-check", action="store_true", default=argparse.SUPPRESS)
     install = commands.add_parser("install", help="Install this tool into user-local managed storage.")
     install.add_argument("--data-dir", type=Path, default=default_data_root(installer=True))
@@ -85,7 +85,10 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     install.add_argument("--repository", default=distribution.DEFAULT_REPOSITORY, help="HTTPS or SSH transport for sholee-pt/Harness.")
     install.add_argument("--auto-update", choices=("compatible", "check", "off"), default="compatible")
     install.add_argument("--no-modify-path", action="store_true", help="Skip user PATH registration (Bash startup on Linux; user registry on Windows).")
-    uninstall = commands.add_parser("uninstall", help="Remove the installed CLI after typing yes; keep project harnesses and Conda.")
+    install.add_argument("--existing", choices=("ask", "reuse", "reset"), default="ask",
+                         help="When installation traces exist, choose whether to reuse or reset Harness tool settings.")
+    install.add_argument("--owned-runtime", type=Path, help=argparse.SUPPRESS)
+    uninstall = commands.add_parser("uninstall", help="Remove the CLI and its owned runtime after typing yes; keep project harnesses and reused environments.")
     uninstall.add_argument("--data-dir", type=Path, default=default_data_root())
     uninstall.add_argument("--dry-run", action="store_true", help="Preview tool removal without confirmation or writes.")
     update = commands.add_parser("update", help="Check or install an upstream tool release without changing project files.")
@@ -115,7 +118,7 @@ def _launcher_environment_gate(args, source_root: Path) -> int | None:
                              "Repeat the installed harness command from the same parent terminal; Codex was not started.")
         return None
     args._launcher_environment_status = status
-    launches_codex = (args.command in {"init", "configure", "start", "reset"}
+    launches_codex = (args.command in {"init", "configure", "new", "resume", "start", "reset"}
                       and not getattr(args, "dry_run", False) and not getattr(args, "install_only", False)
                       and not getattr(args, "_existing_init_noop", False)
                       and (args.command != "reset" or getattr(args, "yes", False)))
@@ -136,7 +139,7 @@ def _launcher_environment_gate(args, source_root: Path) -> int | None:
 
 
 def _automatic_update(args, source_root: Path, argv: list[str]) -> int | None:
-    if (args.command not in {"init", "start", "configure"} or getattr(args, "dry_run", False)
+    if (args.command not in {"init", "new", "resume", "start", "configure"} or getattr(args, "dry_run", False)
             or getattr(args, "install_only", False) or getattr(args, "_existing_init_noop", False) or args.no_update_check
             or os.environ.get("HARNESS_NO_UPDATE_CHECK") == "1"
             or not os.environ.get("HARNESS_TOOL_HOME")
@@ -191,15 +194,27 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
             from .uninstall import run
             return run(args.data_dir, dry_run=args.dry_run)
         if args.command == "install":
+            from .setup import choose, path_registration, reset_check_cache
+            choice, previous = choose(args.data_dir, args.bin_dir, args.existing)
+            if args.owned_runtime:
+                from .footprint import validate_root
+                validate_root(args.owned_runtime, args.data_dir)
+            if previous is not None and choice == 'reuse':
+                args.branch, args.repository, args.auto_update = previous['branch'], previous['repository'], previous['auto_update']
             if not args.no_modify_path:
-                _register_path(args.bin_dir, dry_run=True)
+                path_registration(args.bin_dir, reset=choice == 'reset', dry_run=True)
             result = distribution.install_tool(source_root, args.data_dir, args.bin_dir,
                                                python_executable=sys.executable, branch=args.branch,
                                                repository=args.repository, auto_update=args.auto_update)
             print(json.dumps(result, indent=2))
+            if args.owned_runtime:
+                from .footprint import record
+                print(json.dumps(record(args.owned_runtime, args.data_dir), indent=2))
+            if choice == 'reset':
+                reset_check_cache(args.data_dir)
             if not args.no_modify_path:
-                print(json.dumps(_register_path(args.bin_dir), indent=2))
-            hint = "Open a new terminal." if os.name == "nt" else "Open a new terminal or run: . ~/.bashrc"
+                print(json.dumps(path_registration(args.bin_dir, reset=choice == 'reset'), indent=2))
+            hint = "Open a new terminal." if os.name == "nt" else "Apply PATH in this Bash session: source ~/.bashrc"
             if args.no_modify_path:
                 hint = "PATH registration skipped; invoke the command by its full path."
             print(f"Installed {result.get('command', 'harness')} in {args.bin_dir.expanduser().absolute()}. {hint}")

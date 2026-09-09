@@ -10,8 +10,8 @@ import tarfile
 import tempfile
 
 
-def run(arguments, **kwargs):
-    result = subprocess.run(list(map(str, arguments)), capture_output=True, text=True, encoding="utf-8", timeout=60, **kwargs)
+def run(arguments, *, timeout=60, **kwargs):
+    result = subprocess.run(list(map(str, arguments)), capture_output=True, text=True, encoding="utf-8", timeout=timeout, **kwargs)
     if result.returncode:
         raise AssertionError((arguments, result.returncode, result.stdout, result.stderr))
     return result.stdout
@@ -104,7 +104,7 @@ def verify(artifact: Path) -> dict:
         home.mkdir()
         env["HOME"] = str(home)
         run(["bash", source / "install.sh", "--agent", "codex", "--data-dir", data,
-             "--bin-dir", binary, "--auto-update", "off"], env=env)
+             "--bin-dir", binary, "--auto-update", "off"], env=env, timeout=900)
         executable = binary / "harness-codex"
         version = run([executable, "--agent", "codex", "--version"], env=env).strip()
         assert "Harness for Codex" in version

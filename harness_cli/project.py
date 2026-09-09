@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -27,7 +28,9 @@ def register_project_commands(subparsers) -> None:
     descriptions = {
         "init": "Install the generator and configure a project in interactive Codex.",
         "configure": "Review and configure an installed project harness in interactive Codex.",
-        "start": "Open interactive Codex with the project's harness selected.",
+        "new": "Start a new Codex conversation using the shared project harness.",
+        "resume": "Resume a Codex conversation with the current project harness.",
+        "start": "Deprecated alias for new.",
         "doctor": "Check project files and activation contracts without launching Codex.",
         "status": "Show whether a generator and project harness already exist.",
         "remove": "Preview or remove only unchanged Harness-owned project files.",
@@ -40,7 +43,7 @@ def register_project_commands(subparsers) -> None:
         parser.set_defaults(command=command)
         parser.add_argument("--project", type=Path, default=Path.cwd(),
                             help="Existing project directory (default: current directory).")
-        if command in {"init", "configure", "start", "reset"}:
+        if command in {"init", "configure", "new", "resume", "start", "reset"}:
             parser.add_argument("--codex-binary", default="codex",
                                 help="Codex executable name or path (default: codex on PATH).")
         if command in {"init", "configure", "reset"}:
@@ -53,8 +56,11 @@ def register_project_commands(subparsers) -> None:
                                 help="Preview generator installation; do not write or launch Codex.")
             parser.add_argument("--install-only", action="store_true",
                                 help="Install the generator without launching Codex.")
-        if command == "start":
+        if command in {"new", "start"}:
             parser.add_argument("prompt", nargs="?", help="Optional initial task, supplied as one quoted argument.")
+        if command == "resume":
+            parser.add_argument("session_id", nargs="?", help="Native Codex session ID or name; omit to open its picker.")
+            parser.add_argument("--last", action="store_true", help="Resume the latest Codex conversation in this project.")
         if command in {"remove", "reset"}:
             parser.add_argument("--yes", action="store_true", help="Apply the displayed ownership-checked operation.")
             parser.add_argument("--dry-run", action="store_true", help="Preview only, even when --yes is supplied.")
@@ -133,6 +139,16 @@ def preflight_project_command(args, *, source_root: Path) -> None:
     """Validate user input before automatic tool updates or project writes."""
     installer = load_installer(source_root)
     root = _project_path(args.project, installer)
+    if args.command == "start":
+        print("'harness-codex start' is deprecated; use 'harness-codex new'.", file=sys.stderr)
+        args.command = "new"
+    if args.command == "resume":
+        if args.last and args.session_id:
+            raise ProjectError("Choose a session ID or --last, not both.")
+        if args.session_id is not None and (not args.session_id.strip() or len(args.session_id) > 1024 or any(ord(c) < 32 or ord(c) == 127 for c in args.session_id)):
+            raise ProjectError("Session ID/name must be nonempty and contain no control characters.")
+    if args.command == 'new':
+        _validate_prompt_transport(root, _work_prompt(args.prompt))
     if args.command not in {"remove", "status", "doctor"}:
         _assert_no_transaction(root, installer)
     if args.command == "remove" and args.recover and args.include_generator:
@@ -357,13 +373,13 @@ def project_status(source_root: Path, root: Path, installer) -> dict:
         result["state"] = "invalid"
     can_reread = (result["state"] == "stale-evidence"
                   and _only_stale_evidence(report, root=root, source_root=source_root))
-    result["nextCommand"] = ("harness-codex start --project PATH" if result["state"] == "configured" or can_reread
+    result["nextCommand"] = ("harness-codex new --project PATH" if result["state"] == "configured" or can_reread
                              else "harness-codex config --project PATH" if result["state"] in {"generator-only", "stale-evidence", "upgrade-required"}
                              else "harness-codex init --project PATH" if result["state"] == "absent"
                              else "harness-codex doctor --project PATH")
     if result["state"] == "stale-evidence":
         result["guidance"] = (
-            "Start can re-read changed source without regenerating the harness. Review configuration only if responsibilities or verification risks changed."
+            "New conversations can re-read changed source without regenerating the harness. Review configuration only if responsibilities or verification risks changed."
             if can_reread else
             "Some source references require a configuration review before start. Preserve the current harness and inspect the detailed findings."
         )
@@ -379,7 +395,7 @@ def _configuration_prompt(goal: str | None) -> str:
         "If the work or goals are unclear, ask for the missing information instead of inventing a fixed agent team. "
         "Do not commit, push, or modify Git metadata as part of harness configuration. "
         "After configuration, explain the validation result. Confirm whether the new native components are available "
-        "before using them; if they are not visible, direct the user to a fresh harness-codex start session."
+        "before using them; if they are not visible, direct the user to a fresh harness-codex new session."
     )
     if goal:
         prompt += "\n\nThe user's project goal:\n" + goal
@@ -406,11 +422,23 @@ def _work_prompt(prompt: str | None, *, stale_evidence: bool = False) -> str:
     return instructions + "\n\nRead the routing instructions and wait for the user's next task."
 
 
-def _launch(command: list[str], root: Path, prompt: str) -> int:
+def _launch(command: list[str], root: Path, prompt: str, *, resume: bool = False,
+            session_id: str | None = None, last: bool = False) -> int:
     _validate_prompt_transport(root, prompt, command)
+    arguments = [*command, "--cd", str(root), prompt]
+    if resume:
+        # Codex keeps the root-level prompt when opening its native resume picker.
+        # A prompt after `resume` would instead be parsed as a session identifier.
+        arguments.append("resume")
+        if last:
+            arguments.append("--last")
+        elif session_id is not None:
+            arguments.extend(["--", session_id])
+    if os.name == 'nt' and len(subprocess.list2cmdline(arguments).encode('utf-16-le')) // 2 + 1 > 32767:
+        raise ProjectError('The combined native command exceeds the Windows command-line limit.')
     print("Opening interactive Codex with the project harness instructions. Exit Codex to return to Harness.", flush=True)
     try:
-        result = subprocess.run([*command, "--cd", str(root), prompt], cwd=root, check=False, env=codex_environment())
+        result = subprocess.run(arguments, cwd=root, check=False, env=codex_environment())
     except KeyboardInterrupt:
         return 130
     except OSError as exc:
@@ -431,7 +459,7 @@ def _finish_configuration(source_root: Path, root: Path, command: list[str], goa
               file=sys.stderr)
         return status or 1
     print("Project harness files validate. This check does not prove runtime loading, task quality, or token savings.")
-    print("Use harness-codex start --project PATH for your next project session.")
+    print("Use harness-codex new --project PATH for your next project session.")
     return 0
 
 
@@ -464,7 +492,7 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                 existing_status = project_status(source_root, root, installer)
                 print(f"A project harness already exists ({existing_status['state']}).")
                 if existing_status["state"] == "configured":
-                    print("Use harness-codex start to work, config to review it, or reset/remove to replace or remove its owned files.")
+                    print("Use harness-codex new to work, config to review it, or reset/remove to replace or remove its owned files.")
                 else:
                     print("Review harness-codex status/doctor before use. For a supported upgrade or stale evidence, supply --goal/--goal-file to init for a reviewed update.")
                 if args._existing_init_noop:
@@ -495,10 +523,21 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
             if installation["writes"] or installation["removes"] or installation["directoriesCreated"]:
                 raise ProjectError("The installed generator needs updating. Run harness-codex init --project PATH --install-only, then harness-codex config --project PATH.")
             return _finish_configuration(source_root, root, command, args._goal_text)
-        if args.command == "start":
+        if args.command in {"new", "resume"}:
             command = _interactive_codex(args.codex_binary)
             stale = _check_existing(source_root, root, required=True)
-            return _launch(command, root, _work_prompt(args.prompt, stale_evidence=stale))
+            revision = harness_revision(root)
+            print(f"Project harness revision: {revision}", flush=True)
+            prompt = _work_prompt(None, stale_evidence=stale)
+            prompt += ("\n\nUse the current canonical project harness at revision " + revision
+                       + ". Do not copy or regenerate its agents, skills, or manifest when starting/resuming a conversation.")
+            if args.command == "resume":
+                prompt += ("\nThe conversation history is retained. Re-read the current project harness; "
+                           "its configuration may differ from earlier messages in this conversation.")
+            if getattr(args, 'prompt', None):
+                prompt += "\n\nThe user's task:\n" + args.prompt
+            return _launch(command, root, prompt, resume=args.command == "resume",
+                           session_id=getattr(args, "session_id", None), last=getattr(args, "last", False))
         if args.command in {"remove", "reset"}:
             from . import lifecycle
             dry_run = args.dry_run or not args.yes
@@ -537,3 +576,14 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
     except (OSError, ValueError) as exc:
         print(f"harness: {exc}", file=sys.stderr)
         return 1
+
+
+def harness_revision(root: Path) -> str:
+    """Fingerprint the canonical manifest, including its recorded managed hashes.
+
+    Call only after ownership validation. Formatting, source drift and session
+    metadata do not create different configuration revisions.
+    """
+    manifest = json.loads((root / ".harness/manifest.json").read_text(encoding="utf-8"))
+    data = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return "sha256:" + hashlib.sha256(data).hexdigest()

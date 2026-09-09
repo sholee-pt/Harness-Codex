@@ -6,18 +6,19 @@ param(
     [string]$DataDir,
     [string]$BinDir,
     [ValidateSet('compatible', 'check', 'off')][string]$AutoUpdate = 'compatible',
+    [ValidateSet('ask', 'reuse', 'reset')][string]$Existing = 'ask',
     [switch]$NoModifyPath,
     [switch]$Help
 )
 $ErrorActionPreference = 'Stop'
 if ($Help) {
-    Write-Output 'Harness for Codex 9.8 Windows installer. Options: -CondaExe PATH, -CondaHome PATH, -DataDir PATH, -BinDir PATH, -AutoUpdate compatible|check|off, -NoModifyPath.'
+    Write-Output 'Harness for Codex 9.9 Windows installer. Options: -CondaExe PATH, -CondaHome PATH, -DataDir PATH, -BinDir PATH, -AutoUpdate compatible|check|off, -Existing ask|reuse|reset, -NoModifyPath.'
     return
 }
 if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitProcess -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
     throw 'This installer requires Windows x64 and a 64-bit PowerShell process.'
 }
-$version = '9.8'
+$version = '9.9'
 $name = "harness-codex-$version-windows.zip"
 $release = "https://github.com/sholee-pt/Harness/releases/download/codex-v$version"
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('harness-codex-install-' + [guid]::NewGuid().ToString('N'))
@@ -31,7 +32,7 @@ try {
         Invoke-WebRequest -UseBasicParsing -TimeoutSec 300 -Uri "$release/$name" -OutFile (Join-Path $temporary $name)
         Invoke-WebRequest -UseBasicParsing -TimeoutSec 300 -Uri "$release/SHA256SUMS" -OutFile (Join-Path $temporary 'SHA256SUMS')
     } catch {
-        throw 'Unable to download the public Harness release. Check network access, tag/assets, and repository visibility; private GitHub resources return 404 without authentication.'
+        throw 'Unable to download the Harness release. Check network access and the release URL.'
     }
     Write-Host 'Verifying checksum and extracting the release...'
     $lines = @(Get-Content -LiteralPath (Join-Path $temporary 'SHA256SUMS') | Where-Object { $_ -cmatch ('^[0-9a-f]{64}  ' + [regex]::Escape($name) + '$') })
@@ -69,7 +70,7 @@ try {
     } finally { $archive.Dispose() }
     [IO.Compression.ZipFile]::ExtractToDirectory($archivePath, $temporary)
     $source = Join-Path $temporary "harness-codex-$version"
-    $options = @{ SourceRoot = $source; AutoUpdate = $AutoUpdate; NoModifyPath = $NoModifyPath }
+    $options = @{ SourceRoot = $source; AutoUpdate = $AutoUpdate; Existing = $Existing; NoModifyPath = $NoModifyPath }
     foreach ($key in @('CondaExe', 'CondaHome', 'DataDir', 'BinDir')) {
         if ($PSBoundParameters.ContainsKey($key)) { $options[$key] = $PSBoundParameters[$key] }
     }

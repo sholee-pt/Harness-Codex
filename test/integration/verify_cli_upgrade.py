@@ -1,4 +1,4 @@
-"""Run real v9.2/v9.3/v9.4/v9.5 tool installer/updaters against v9.8 using local Git transport.
+"""Run real v9.2/v9.3/v9.4/v9.5 tool installer/updaters against v9.9 using local Git transport.
 
 Only the fixed upstream URL is replaced for this test. Git branch discovery,
 fetch, ancestry, archives, old installation code, and the new launcher are real.
@@ -101,7 +101,7 @@ def verify(baseline):
     assert current._source_info(old_snapshot)[0] == baseline_version, "Complete historical module layouts must remain readable"
     candidate_version = current._source_info(new_snapshot)[0]
     assert baseline_version in {"9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8"}
-    assert candidate_version == "9.8"
+    assert candidate_version == "9.9"
     optional_installers = {"install.sh", "install.ps1", "install_harness.sh", "install_harness_codex.sh", "install_harness_codex.ps1"}
     retired_installers = optional_installers & (old_snapshot.keys() - new_snapshot.keys())
     assert "install_harness.sh" not in new_snapshot

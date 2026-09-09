@@ -1,4 +1,4 @@
-"""Reproduce a real v7.6 through v9.5 install -> v9.8 update.
+"""Reproduce a real v7.6 through v9.5 install -> v9.9 update.
 
 Run with the harness Conda Python. No network or live Codex is used.
 """
@@ -47,7 +47,7 @@ def worker(source, root, stage):
         assert report['valid'], report['errors']
         (root.parent / (root.name + '-baseline-plan.json')).write_text(json.dumps(plan), encoding='utf-8')
         return {'generatorVersion': harness_metadata.HARNESS_VERSION, 'valid': report['valid'], 'instructionSizes': instruction_sizes(root), 'agentCount': len(plan['topology']['agents'])}
-    assert harness_metadata.HARNESS_VERSION == '9.8'
+    assert harness_metadata.HARNESS_VERSION == '9.9'
     before = snapshot(root)
     legacy = validate_harness.Validator(root).run()
     doctor = harness_doctor.diagnose(root)

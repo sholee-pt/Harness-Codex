@@ -109,6 +109,12 @@ def prepare(data_root: Path, *, locked=False) -> dict:
         if migration_lock.read_bytes() != b'Harness launcher migration lock v1\n':
             raise ValueError('Unrecognized launcher migration lock preserved')
         expected.add(migration_lock)
+    runtime = None
+    if (root / 'runtime.json').exists():
+        from .footprint import inspect
+        runtime = inspect(dist._read_json(root / 'runtime.json'), root)
+        verified[root / 'runtime.json'] = _fingerprint(root / 'runtime.json')[0]
+        expected.add(root / 'runtime.json')
     directories = {root, root / 'releases', root / 'receipts'}
     for path in expected:
         directories.update(parent for parent in path.parents if parent == root or root in parent.parents)
@@ -138,7 +144,7 @@ def prepare(data_root: Path, *, locked=False) -> dict:
         except (OSError, ValueError) as exc:
             path_change = {'state': 'preserved', 'reason': str(exc)}
     return {'root': root, 'binary': binary, 'version': state['version'], 'command': state.get('command', 'harness'),
-            'files': fingerprints, 'directories': directories, 'external': external, 'path': path_change}
+            'files': fingerprints, 'directories': directories, 'external': external, 'path': path_change, 'runtime': runtime}
 
 
 def _purge_files(files: dict[Path, tuple], directories: set[Path]) -> list[str]:
@@ -252,7 +258,12 @@ def run(data_root: Path, *, dry_run=False) -> int:
     print('Commands: ' + ', '.join(str(path) for path in sorted(plan['external'])))
     print(f"PATH registration: {plan['path']['state']}" +
           (f" ({plan['path']['reason']})" if 'reason' in plan['path'] else ''))
-    print('Project harnesses, Conda environments and other commands will be kept.')
+    print('Project harnesses, reused Conda environments and other commands will be kept.')
+    if plan['runtime']:
+        print('Installer-owned runtime: ' + plan['runtime']['root'])
+        print('Unchanged runtime files will also be removed. Added/modified files are preserved.')
+    else:
+        print('No runtime ownership receipt: existing/legacy Conda files are preserved.')
     if dry_run:
         print('Dry run. No files or PATH entries were changed.')
         return 0
@@ -265,7 +276,19 @@ def run(data_root: Path, *, dry_run=False) -> int:
     if answer != 'yes':
         print('Uninstall cancelled. Nothing was removed.')
         return 0
+    cleanup_source = None
+    if plan['runtime'] and os.name == 'nt':
+        cleanup_source = Path(__file__).with_name('runtime_cleanup.ps1').read_bytes()
     result = remove(plan)
+    if plan['runtime']:
+        from . import footprint
+        if os.name == 'nt':
+            location = footprint.defer_windows_cleanup(plan['runtime'], cleanup_source)
+            print('Runtime cleanup will finish after this process exits. Pending cleanup: ' + location)
+        else:
+            remaining = footprint.cleanup(plan['runtime'])
+            if remaining:
+                print('Added, modified or busy runtime files were preserved: ' + ', '.join(remaining))
     print(f"Uninstalled {plan['command']}. Open a new terminal to refresh command lookup and PATH.")
     if result['batchCleanup']:
         print('Windows batch cleanup is pending until its launcher returns: ' + ', '.join(result['batchCleanup']))

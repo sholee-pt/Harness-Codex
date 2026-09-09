@@ -77,22 +77,30 @@ else:
         assert located == str(executable), located
         data = home / 'share/harness-codex'
         before = snapshot(data), snapshot(home / '.local/bin'), (home / '.bashrc').read_bytes(), (home / '.bashrc').stat().st_mtime_ns
-        run(['/bin/bash', '-o', 'pipefail', '-c', pipeline], timeout=300)
+        run(['/bin/bash', '-o', 'pipefail', '-c', pipeline + ' -s -- --existing reuse'], timeout=300)
         after = snapshot(data), snapshot(home / '.local/bin'), (home / '.bashrc').read_bytes(), (home / '.bashrc').stat().st_mtime_ns
         assert before == after, 'Repeated installation changed owned tool or Bash profile bytes/mtime'
-        assert (home / 'share/harness-codex-conda/bin/conda').is_file()
+        runtime = home / 'share/harness-codex-runtime'
+        assert (runtime / 'conda/bin/conda').is_file()
         project = base / 'project'
         project.mkdir()
         (home / '.bashrc').unlink()
         run([executable, 'init', '--project', project, '--install-only', '--no-update-check'])
         assert 'harness-codex PATH' in (home / '.bashrc').read_text()
         assert (project / '.agents/skills/harness/SKILL.md').is_file()
+        project_before = snapshot(project)
+        from verify_cli_distribution import terminal_uninstall
+        assert 'Uninstalled harness-codex' in terminal_uninstall(executable, 'yes', env)
+        assert not runtime.exists(), 'Owned runtime cleanup left files: ' + str(list(runtime.rglob('*'))[:15])
+        assert not data.exists() and not executable.exists()
+        assert snapshot(project) == project_before
         return {'valid': True, 'version': version, 'pipelineExecuted': True,
                 'harnessAssetTransport': 'exact local build substituted for private release URLs',
                 'miniforgeDownload': 'real official HTTPS with pinned SHA-256',
                 'preexistingCondaOnPath': False,
                 'freshCondaEnvironmentCreated': True, 'freshBashFoundCommand': True,
                 'repeatBytesAndMtimesPreserved': True, 'initRepairedMissingProfileEntry': True,
+                'ownedRuntimeRemoved': True, 'projectKeptAfterUninstall': True,
                 'nativeCodexInvoked': False}
 
 

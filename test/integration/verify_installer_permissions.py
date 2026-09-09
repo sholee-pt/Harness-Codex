@@ -210,7 +210,7 @@ def main() -> int:
         bindings = {"baseline": source_binding(args.baseline), "candidate": source_binding(args.candidate)}
         report["sources"] = bindings
         assert bindings["baseline"]["version"] == "9.0", "baseline must be a pinned v9.0 source"
-        assert bindings["candidate"]["version"] == "9.8", "candidate must be v9.8"
+        assert bindings["candidate"]["version"] == "9.9", "candidate must be v9.9"
         if os.name != "posix":
             report.update(status="skipped", reason="POSIX directory mode semantics are unavailable; Windows ACL preservation is not verified.")
         else:

@@ -6,7 +6,7 @@ if [[ ! -f "$source_dir/harness.py" ]]; then
   source_dir="$(cd -- "$source_dir/.." && pwd -P)"
 fi
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  printf '%s\n' 'Usage: bash install.sh [--agent codex] [--bin-dir PATH] [--data-dir PATH] [--branch codex/vN.M] [--repository URL] [--auto-update compatible|check|off] [--no-modify-path]' 'Reuses Conda or installs checksum-pinned Miniforge on Linux. Prepares the dedicated harness environment.' 'Installs harness-codex without sudo; registers PATH in ~/.bashrc unless --no-modify-path is supplied.'
+  printf '%s\n' 'Usage: bash install.sh [--agent codex] [--bin-dir PATH] [--data-dir PATH] [--branch codex/vN.M] [--repository URL] [--auto-update compatible|check|off] [--existing ask|reuse|reset] [--no-modify-path]' 'Reuses Conda or installs checksum-pinned Miniforge on Linux. Prepares the dedicated harness environment.' 'Installs harness-codex without sudo; registers PATH in ~/.bashrc unless --no-modify-path is supplied.'
   exit 0
 fi
 runtime=codex
@@ -43,13 +43,17 @@ install_log=$(mktemp "${TMPDIR:-/tmp}/harness-codex-install-log.XXXXXXXX")
 conda_scratch=''
 step='Starting installer'
 step_started=$SECONDS
+accent='' success='' plain=''
+if [[ -t 1 && -z ${NO_COLOR:-} && ${TERM:-dumb} != dumb ]]; then
+  accent=$'\033[1;36m'; success=$'\033[1;32m'; plain=$'\033[0m'
+fi
 start_step() {
   step=$1
   step_started=$SECONDS
-  printf '%s...\n' "$step"
+  printf '\n%s%s%s\n' "$accent" "$step" "$plain"
   printf '\n%s\n' "$step" >> "$install_log"
 }
-finish_step() { printf '%s: done (%ss)\n' "$step" "$((SECONDS - step_started))"; }
+finish_step() { printf '  %sOK%s  %s: done (%ss)\n' "$success" "$plain" "$step" "$((SECONDS - step_started))"; }
 finish_install() {
   local result=$?
   if [[ -n "$conda_scratch" ]]; then rm -rf -- "$conda_scratch"; fi
@@ -63,11 +67,11 @@ finish_install() {
 trap finish_install EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-printf 'Harness for Codex installer\nDetailed log: %s\n' "$install_log"
+printf '\n%sHarness for Codex installer%s\n================================\nDetailed log: %s\n' "$accent" "$plain" "$install_log"
 start_step '[1/3] Checking installation tools'
 source "$source_dir/harness_cli/prepare_conda.sh"
 start_step '[3/3] Installing command and applying PATH preferences'
-"$conda_command" run --no-capture-output -n harness python -B "$source_dir/harness.py" install "$@" >> "$install_log" 2>&1
+"$conda_command" run --no-capture-output "${environment_selector[@]}" python -B "$source_dir/harness.py" install "$@" "${owned_runtime[@]}" >> "$install_log" 2>&1
 finish_step
 # Keep the CLI receipt contract intact; replay only its existing human summary.
 sed -n '/^Installed /p' "$install_log"

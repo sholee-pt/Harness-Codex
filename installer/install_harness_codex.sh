@@ -1,7 +1,7 @@
 #!/bin/sh
 # Public, version-bound bootstrap. This entire file also works through `| sh`.
 set -eu
-VERSION=9.8
+VERSION=9.9
 fail() { printf 'Harness for Codex installer: %s\n' "$*" >&2; exit 1; }
 usage() {
   printf '%s\n' 'Usage: sh install_harness_codex.sh [OPTIONS]' \
@@ -9,6 +9,7 @@ usage() {
     '  --bin-dir PATH          Command directory (default: ~/.local/bin)' \
     '  --data-dir PATH         Managed Codex tool storage' \
     '  --auto-update POLICY    compatible, check, or off' \
+    '  --existing MODE         ask (default), reuse, or reset Harness settings' \
     '  --no-modify-path        Do not register PATH in ~/.bashrc' \
     '  --help                  Offline help' \
     'Linux x86_64/aarch64. Requires curl, Bash, tar and sha256sum.' \
@@ -18,13 +19,14 @@ validate_options() {
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --no-modify-path) shift ;;
-      --bin-dir|--data-dir|--auto-update|--repository|--branch|--agent|--runtime)
+      --bin-dir|--data-dir|--auto-update|--existing|--repository|--branch|--agent|--runtime)
         [ "$#" -ge 2 ] && [ -n "$2" ] || fail "Missing value for $1"
         key=$1; value=$2; shift 2
         case "$key" in
           --agent|--runtime) [ "$value" = codex ] || fail 'This installer is for Codex only; Claude is not implemented.' ;;
           --branch) [ "$value" = "codex/v$VERSION" ] || fail "This installer is pinned to codex/v$VERSION." ;;
           --auto-update) case "$value" in compatible|check|off) ;; *) fail 'Invalid automatic update policy.' ;; esac ;;
+          --existing) case "$value" in ask|reuse|reset) ;; *) fail 'Invalid existing-installation choice.' ;; esac ;;
         esac ;;
       *) fail "Unknown option: $1. Use --help." ;;
     esac
@@ -49,7 +51,7 @@ main() {
   for name in "$archive" SHA256SUMS; do
     curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
       --connect-timeout 15 --max-time 300 --retry 2 "$base/$name" -o "$temporary/$name" </dev/null \
-      || fail 'Release download failed. The public one-line installer requires public release access; private repositories still need authentication.'
+      || fail 'Release download failed. Check network access and the release URL.'
   done
   printf 'Verifying checksum and extracting the release...\n'
   expected=$(awk -v name="$archive" '$2 == name {print $1}' "$temporary/SHA256SUMS")

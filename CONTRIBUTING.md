@@ -1,6 +1,6 @@
 # Contributing
 
-Harness is maintained as a private personal project. Changes should keep the generator small, runtime-native, and safe to rerun.
+Changes should keep Harness small, runtime-native, and safe to rerun. See the license before redistributing modifications.
 
 ## Branches
 
@@ -47,7 +47,7 @@ Keep each commit focused and use an imperative, descriptive subject.
 | `test/integration/` | Explicit release, installation, upgrade and parser-oracle checks |
 | `test/fixtures/` | Shared deterministic projects and expected results |
 
-The independent Git-download bootstrap `install_harness.sh` was retired after v9.8 publication. Use an authenticated clone followed by `bash installer/install.sh` on Linux or `./installer/install.ps1` on Windows. GitHub authentication and branch updates remain in the installed CLI; ordinary Git handles initial private source access.
+The independent Git-download bootstrap `install_harness.sh` was retired after v9.8 publication. Use a source clone followed by `bash installer/install.sh` on Linux or `./installer/install.ps1` on Windows. Release downloaders and source installers share the same installation implementation.
 
 The entire `build/` package is excluded from installed runtime payloads. Source completeness and path checks shared with installation remain in `harness_cli/`; build code reuses them so installation and build validation cannot diverge.
 
@@ -75,9 +75,10 @@ Integration checks run explicitly in CI on Linux and Windows. For example:
 conda run -n harness python test/integration/prepare_release_baselines.py --output /tmp/harness-baselines
 conda run -n harness python test/integration/verify_cli_upgrade.py --baseline /tmp/harness-baselines/v97 --output /tmp/cli-upgrade.json
 conda run -n harness python test/integration/verify_release_upgrade.py --baseline /tmp/harness-baselines/v97 --output /tmp/project-upgrade.json
-conda run -n harness python test/integration/verify_build_refactor.py --baseline /tmp/harness-baselines/v98_layout --output /tmp/build-comparison.json
 ```
 
-The build comparison runs the pinned pre-refactor builder and the current builder on identical release inputs, adapting only the source folder layout. Archives, standalone installers and checksums must match byte for byte; only output-directory fields are normalized in the reports. Historical update checks accept both `tests/` and `test/` fixture layouts without rewriting old source.
+Historical update checks accept both `tests/` and `test/` fixture layouts without rewriting old source. The old one-off layout comparison was retired when v9.9 introduced intentional runtime changes; reproducible builds and historical upgrade tests remain active.
 
 Parser differential checks require the pinned optional `test/requirements-validation.txt`. Cold installer checks download Miniforge and create an isolated environment; the Windows registry/cold check is restricted to disposable CI runners. These are distinct from unit tests and must not run implicitly during unittest discovery.
+
+Release bodies are extracted from the current version section with `build/release_notes.py`; see [distribution](docs/distribution.md). Source installer options and ownership are described in [installation](docs/installation.md).

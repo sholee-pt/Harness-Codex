@@ -1,5 +1,42 @@
 # Sourced by the unpacked installer; does not activate or initialize Conda.
+data_directory=${XDG_DATA_HOME:-$HOME/.local/share}/harness-codex
+data_pending=false
+for argument in "$@"; do
+  if [[ "$data_pending" == true ]]; then data_directory=$argument; data_pending=false
+  elif [[ "$argument" == --data-dir ]]; then data_pending=true
+  elif [[ "$argument" == --data-dir=* ]]; then data_directory=${argument#*=}; fi
+done
+[[ "$data_pending" == false && -n "$data_directory" ]] || { printf 'Missing --data-dir value\n' >&2; exit 1; }
+data_directory=$(realpath -ms -- "$data_directory")
+[[ "$data_directory" != *$'\n'* && "$data_directory" != *$'\r'* ]] || exit 1
+probe=$data_directory
+while [[ "$probe" != / ]]; do
+  [[ ! -L "$probe" ]] || { printf 'Installation path contains a symlink; preserved: %s\n' "$probe" >&2; exit 1; }
+  parent=$(dirname -- "$probe")
+  [[ "$parent" != "$probe" && "$parent" != . ]] || break
+  probe=$parent
+done
+runtime_root=$data_directory-runtime
+owned_runtime=()
+environment_selector=(-n harness)
+# A fresh tool gets an exact prefix. Never create by a name that could select
+# and remove an environment belonging to another Conda installation.
+if [[ ! -f "$data_directory/active.json" || -f "$data_directory/runtime.json" ]]; then
+  if [[ -e "$runtime_root" || -L "$runtime_root" ]]; then
+    [[ ! -L "$runtime_root" && -f "$runtime_root/.harness-runtime-owner" ]] || { printf 'Unowned runtime directory preserved: %s\n' "$runtime_root" >&2; exit 1; }
+    expected=$(printf 'harness-codex runtime v1\n%s\n' "$data_directory")
+    [[ $(cat -- "$runtime_root/.harness-runtime-owner") == "$expected" ]] || { printf 'Runtime belongs to another installation\n' >&2; exit 1; }
+  else
+    runtime_parent=$(dirname -- "$runtime_root")
+    if [[ ! -d "$runtime_parent" ]]; then mkdir -p -- "$runtime_parent"; fi
+    mkdir -- "$runtime_root"
+    printf 'harness-codex runtime v1\n%s\n' "$data_directory" > "$runtime_root/.harness-runtime-owner"
+  fi
+  environment_selector=(--prefix "$runtime_root/envs/harness")
+  owned_runtime=(--owned-runtime "$runtime_root")
+fi
 conda_command=${CONDA_EXE:-}
+if [[ -z "$conda_command" && -x "$runtime_root/conda/bin/conda" ]]; then conda_command=$runtime_root/conda/bin/conda; fi
 if [[ -z "$conda_command" ]]; then conda_command=$(command -v conda || true); fi
 if [[ -z "$conda_command" ]]; then
   for candidate in "$HOME/miniconda3/bin/conda" "$HOME/anaconda3/bin/conda" "$HOME/miniforge3/bin/conda" \
@@ -15,7 +52,7 @@ if [[ -z "$conda_command" ]]; then
     *) printf '%s\n' 'Automatic Conda setup supports x86_64 and aarch64.' >&2; exit 1 ;;
   esac
   for prerequisite in curl sha256sum mktemp; do command -v "$prerequisite" >/dev/null || exit 1; done
-  prefix="${XDG_DATA_HOME:-$HOME/.local/share}/harness-codex-conda"
+  prefix="$runtime_root/conda"
   [[ ! -e "$prefix" && ! -L "$prefix" ]] || { printf '%s\n' 'Conda setup directory already exists without a usable conda command; preserve and review it.' >&2; exit 1; }
   conda_scratch=$(mktemp -d "${TMPDIR:-/tmp}/harness-codex-conda.XXXXXXXX")
   printf '      Downloading and verifying the Python environment manager...\n'
@@ -33,14 +70,15 @@ finish_step
 start_step '[2/3] Preparing the isolated Harness environment'
 environments=$("$conda_command" env list --json 2>> "$install_log")
 printf '%s\n' "$environments" >> "$install_log"
-if ! printf '%s' "$environments" | grep -Eq '"[^"]*/harness"'; then
+if [[ ${#owned_runtime[@]} -gt 0 && ! -f "$runtime_root/envs/harness/conda-meta/history" ]]; then
+  [[ ! -e "$runtime_root/envs/harness" ]] || { printf 'Incomplete runtime environment preserved; inspect it before reinstalling.\n' >&2; exit 1; }
   printf '      First setup: preparing Python and Git; this may take a few minutes...\n'
-  "$conda_command" create --name harness --override-channels --channel conda-forge python=3.11 git --yes >> "$install_log" 2>&1
+  "$conda_command" create "${environment_selector[@]}" --override-channels --channel conda-forge python=3.11 git --yes >> "$install_log" 2>&1
 else
   printf '      Reusing the existing Harness environment.\n'
 fi
-if ! command -v git >/dev/null 2>&1 && ! "$conda_command" run -n harness git --version >> "$install_log" 2>&1; then
+if ! command -v git >/dev/null 2>&1 && ! "$conda_command" run "${environment_selector[@]}" git --version >> "$install_log" 2>&1; then
   printf '      Preparing Git for tool updates...\n'
-  "$conda_command" install --name harness --override-channels --channel conda-forge git --yes >> "$install_log" 2>&1
+  "$conda_command" install "${environment_selector[@]}" --override-channels --channel conda-forge git --yes >> "$install_log" 2>&1
 fi
 finish_step
