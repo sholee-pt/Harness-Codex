@@ -193,7 +193,7 @@ class SourceContractTests(unittest.TestCase):
             with self.subTest(command=command):
                 result = subprocess.run(
                     [sys.executable, "-B", str(Path(installed["dataRoot"]) / "launcher.py"),
-                     command, "--agent", "codex", "--project", str(project), "--dry-run"],
+                     command, "--json", "--agent", "codex", "--project", str(project), "--dry-run"],
                     capture_output=True, text=True, encoding="utf-8", env=environment, timeout=30,
                 )
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

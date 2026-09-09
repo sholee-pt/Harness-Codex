@@ -239,7 +239,13 @@ if __name__ == '__main__':
 class WindowsProgressClockTests(unittest.TestCase):
     def test_native_clock_ticks_and_pauses_for_questions(self):
         import re
-        policy = subprocess.check_output([POWERSHELL, '-NoProfile', '-NonInteractive', '-Command', 'Get-ExecutionPolicy'], text=True).strip()
+        native_environment = os.environ.copy()
+        # A PowerShell 7 parent can export incompatible module search paths to
+        # Windows PowerShell 5.1. Let this fixture host find its own modules.
+        native_environment.pop('PSModulePath', None)
+        native_environment.pop('PSMODULEPATH', None)
+        policy = subprocess.check_output([POWERSHELL, '-NoProfile', '-NonInteractive', '-Command', 'Get-ExecutionPolicy'],
+                                         text=True, env=native_environment, timeout=30).strip()
         if policy in {'Restricted', 'AllSigned'}:
             if os.environ.get('GITHUB_ACTIONS') == 'true':
                 self.fail('Windows CI must permit its local unsigned clock fixture under its existing policy: ' + policy)
@@ -269,7 +275,7 @@ try {
 }
 """, encoding='utf-8')
             result = subprocess.run([POWERSHELL, '-NoProfile', '-NonInteractive', '-File', str(runner)],
-                                    capture_output=True, text=True, timeout=30)
+                                    capture_output=True, text=True, timeout=30, env=native_environment)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn('Clock  1s', result.stdout)
             self.assertIn('PAUSE-BEGINPAUSE-END', result.stdout)
