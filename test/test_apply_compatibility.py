@@ -386,7 +386,7 @@ class PreviousReleaseCompatibilityTests(unittest.TestCase):
             root = Path(directory)
             plan = previous_plan(root)
             apply.apply_application(apply.build_application(root, plan))
-            set_metadata(root, '9.11', 2)
+            set_metadata(root, '9.9999', 2)
             before = preserved_state(root)
             self.assertEqual(validate_harness.Validator(root).run()['installationStatus'], 'invalid')
             with self.assertRaisesRegex(apply.PlanError, 'compatibility'):

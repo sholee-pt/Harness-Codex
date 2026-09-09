@@ -33,7 +33,7 @@ while [ "$#" -gt 0 ]; do
 done
 case "$url" in
   */SHA256SUMS) cp "$TEST_SUMS" "$output" ;;
-  */harness-codex-9.10-linux.tar.gz) cp "$TEST_ARCHIVE" "$output" ;;
+  */harness-codex-9.11-linux.tar.gz) cp "$TEST_ARCHIVE" "$output" ;;
   *) exit 87 ;;
 esac
 ''')
@@ -44,7 +44,7 @@ esac
 
     def make_archive(self, *, unsafe=False, linked=False):
         with tarfile.open(self.archive, 'w:gz') as archive:
-            name = '../escape' if unsafe else 'harness-codex-9.10/install.sh'
+            name = '../escape' if unsafe else 'harness-codex-9.11/install.sh'
             data = b'#!/bin/sh\nprintf installed > "$TEST_MARKER"\n'
             info = tarfile.TarInfo(name)
             if linked:
@@ -53,7 +53,7 @@ esac
             else:
                 info.size = len(data)
             archive.addfile(info, None if linked else io.BytesIO(data))
-        self.sums.write_text(hashlib.sha256(self.archive.read_bytes()).hexdigest() + '  harness-codex-9.10-linux.tar.gz\n')
+        self.sums.write_text(hashlib.sha256(self.archive.read_bytes()).hexdigest() + '  harness-codex-9.11-linux.tar.gz\n')
 
     def invoke(self, *arguments):
         return subprocess.run(['/bin/sh', '-s', '--', *arguments], input=SCRIPT.read_text(),
@@ -71,7 +71,7 @@ esac
 
     def test_checksum_failure_never_executes_payload(self):
         self.make_archive()
-        self.sums.write_text('0' * 64 + '  harness-codex-9.10-linux.tar.gz\n')
+        self.sums.write_text('0' * 64 + '  harness-codex-9.11-linux.tar.gz\n')
         result = self.invoke()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('checksum mismatch', result.stderr)
