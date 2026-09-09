@@ -83,7 +83,7 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     install = commands.add_parser("install", help="Install this tool into user-local managed storage.")
     install.add_argument("--data-dir", type=Path, default=default_data_root(installer=True))
     install.add_argument("--bin-dir", type=Path, default=default_bin_root())
-    install.add_argument("--branch", help="Pin a codex/vN[.M] branch; otherwise track the latest Codex branch.")
+    install.add_argument("--branch", help="Pin codex/vX.Y.Z[-beta]; otherwise follow the latest Codex branch. Legacy branches remain readable.")
     install.add_argument("--repository", default=distribution.DEFAULT_REPOSITORY, help="HTTPS or SSH transport for sholee-pt/Harness.")
     install.add_argument("--auto-update", choices=("compatible", "check", "off"), default="compatible")
     install.add_argument("--no-modify-path", action="store_true", help="Skip user PATH registration (Bash startup on Linux; user registry on Windows).")
@@ -97,7 +97,7 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     update.add_argument("--check", action="store_true", help="Only inspect upstream versions; write nothing.")
     update.add_argument("--repair-launcher", action="store_true", help="Repair an owned legacy launcher or interrupted migration offline, then exit.")
     update.add_argument("--data-dir", type=Path, default=default_data_root())
-    update.add_argument("--branch", help="Select a specific codex/vN[.M] branch.")
+    update.add_argument("--branch", help="Select codex/vX.Y.Z[-beta] or a legacy version branch.")
     update.add_argument("--repository", help="Choose HTTPS or SSH authentication transport for the same repository.")
     update.add_argument("--timeout", type=float, default=20)
     for command in dict.fromkeys(commands.choices.values()):

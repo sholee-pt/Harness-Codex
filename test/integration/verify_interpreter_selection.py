@@ -39,7 +39,9 @@ def verify():
     assert Path(legacy['prefix']).resolve() != target.resolve(), 'Fixture did not reproduce PATH selection failure'
     assert Path(exact['prefix']).resolve() == target.resolve(), exact
     with tempfile.TemporaryDirectory(prefix='harness-interpreter-install-') as directory:
-        scratch = Path(directory)
+        # The source installer receives the resolved native path. Use that same
+        # spelling for the initial fixture receipt (Windows temp may use 8.3).
+        scratch = Path(directory).resolve()
         data, binary = scratch / 'tool data', scratch / 'command bin'
         distribution.install_tool(ROOT, data, binary, python_executable=sys.executable, auto_update='off')
         before = distribution.installed_status(data)
