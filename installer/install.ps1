@@ -210,6 +210,7 @@ Write-Host "Installation complete. Detailed log: $installLog"
 } catch {
     [IO.File]::AppendAllText($installLog, "$_`n")
     Write-Host "`n${installStep}: failed. Last log lines:"
+    Select-String -LiteralPath $installLog -Pattern '^harness:' | ForEach-Object { Write-Host $_.Line }
     Get-Content -LiteralPath $installLog -Tail 15 | ForEach-Object { Write-Host $_ }
     throw "$_ Detailed log: $installLog"
 }

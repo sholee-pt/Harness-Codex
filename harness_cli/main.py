@@ -206,7 +206,7 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
             result = distribution.install_tool(source_root, args.data_dir, args.bin_dir,
                                                python_executable=sys.executable, branch=args.branch,
                                                repository=args.repository, auto_update=args.auto_update)
-            print(json.dumps(result, indent=2))
+            print(json.dumps(result, indent=2), flush=True)
             if args.owned_runtime:
                 from .footprint import record
                 print(json.dumps(record(args.owned_runtime, args.data_dir), indent=2))

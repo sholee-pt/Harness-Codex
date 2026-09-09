@@ -59,6 +59,7 @@ finish_install() {
   if [[ -n "$conda_scratch" ]]; then rm -rf -- "$conda_scratch"; fi
   if [[ "$result" -ne 0 ]]; then
     printf '\n%s: failed (exit %s). Last log lines:\n' "$step" "$result" >&2
+    sed -n '/^harness:/p' "$install_log" >&2
     tail -n 15 -- "$install_log" >&2
     printf 'Detailed log: %s\n' "$install_log" >&2
   fi
