@@ -67,10 +67,14 @@ using System.Threading;
 public static class HarnessInstallClock {
     static Thread worker;
     static volatile bool stopping;
+    static int Width() {
+        try { return Math.Max(40, Console.WindowWidth - 1); }
+        catch { return 80; }
+    }
     public static void Stop() {
         stopping = true;
         if (worker != null) { worker.Join(1000); worker = null; }
-        try { Console.Write("\r" + new string(' ', Math.Max(1, Console.WindowWidth - 1)) + "\r"); } catch {}
+        try { Console.Write("\r" + new string(' ', Width()) + "\r"); Console.Out.Flush(); } catch {}
     }
     public static void Start(string label, string pause) {
         Stop(); stopping = false;
@@ -80,8 +84,9 @@ public static class HarnessInstallClock {
                 try {
                     if (!File.ReadAllText(pause).Contains("\npaused\n")) {
                         string text = "  " + "|/-\\"[(frame++) % 4] + " " + label + "  " + (int)clock.Elapsed.TotalSeconds + "s";
-                        int width = Math.Max(40, Console.WindowWidth - 1);
+                        int width = Width();
                         Console.Write("\r" + (text.Length > width ? text.Substring(0, width) : text.PadRight(width)));
+                        Console.Out.Flush();
                     }
                 } catch {}
                 Thread.Sleep(200);
