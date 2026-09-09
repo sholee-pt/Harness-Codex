@@ -51,6 +51,9 @@ def register_project_commands(subparsers) -> None:
                                 help="Codex executable name or path (default: codex on PATH).")
         if command in {"init", "configure", "reset"}:
             parser.add_argument('--interactive', action='store_true', help='Use the native Codex conversation screen instead of progress output.')
+            parser.add_argument('--settings', choices=('ask', 'native'), default='ask',
+                                help='Choose model, reasoning and permissions before configuration (default: ask); native keeps current settings.')
+            parser.add_argument('--details', action='store_true', help='Show the model summary and native session ID after configuration.')
             parser.add_argument('--timeout', type=float, default=1800, help='Configuration time limit in seconds (default: 1800).')
             if command == 'configure':
                 parser.add_argument('--resume', metavar='SESSION_ID', help='Continue an unfinished native configuration session.')
@@ -459,9 +462,18 @@ def _launch(command: list[str], root: Path, prompt: str, *, resume: bool = False
 
 
 def _finish_configuration(source_root: Path, root: Path, command: list[str], goal: str | None, *, args=None) -> int:
+    outcome = None
     if args is not None and not args.interactive:
         from .configuration import run
-        status = run(command, root, _configuration_prompt(goal), timeout=args.timeout, resume_id=getattr(args, 'resume', None))
+        print('[1/3] Project generator ready.', flush=True)
+        outcome = run(command, root, _configuration_prompt(goal), timeout=args.timeout,
+                      resume_id=getattr(args, 'resume', None), settings=args.settings)
+        status = outcome.code
+        if outcome.needs_input:
+            print('Configuration needs your input:')
+            outcome.show_details()
+            outcome.show_resume()
+            return status
     else:
         status = _launch(command, root, _configuration_prompt(goal))
     if status:
@@ -469,18 +481,32 @@ def _finish_configuration(source_root: Path, root: Path, command: list[str], goa
               file=sys.stderr)
         return status
     if not os.path.lexists(root / '.harness/manifest.json'):
+        if outcome:
+            outcome.show_details()
+            outcome.show_resume()
         state = project_status(source_root, root, load_installer(source_root))
         ui.report(state, title='Configuration incomplete', error=True)
         print('A complete project harness was not created. Continue with harness-codex config; use --resume SESSION_ID to answer an earlier configuration question.', file=sys.stderr)
         return 1
-    status, report = _report(source_root, root)
+    with ui.Progress('[3/3] Validate project harness files', compact=True) as progress:
+        status, report = _report(source_root, root)
+        if status or not report['valid']:
+            progress.outcome = 'needs attention'
     if status or not report["valid"]:
+        if outcome:
+            outcome.show_details()
+            outcome.show_resume()
         ui.report(report, title='Configuration needs attention', error=True)
         print("Codex exited, but a valid project harness was not confirmed. Run harness-codex config --project PATH to continue.",
               file=sys.stderr)
         return status or 1
-    print("Project harness files validate. This check does not prove runtime loading, task quality, or token savings.")
-    print("Use harness-codex new --project PATH for your next project session.")
+    if outcome and args.details:
+        outcome.show_details()
+        outcome.show_resume()
+    if ui.JSON_MODE.get():
+        ui.report(report, title='Project harness validation')
+    print('Configuration complete. Project harness files validate.')
+    print('Next: harness-codex new (from this project).')
     return 0
 
 
@@ -526,7 +552,8 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
             if command is not None:
                 _validate_prompt_transport(root, _configuration_prompt(args._goal_text), command, native_argv=args.interactive)
             report = installer.install(root, source=source, dry_run=args.dry_run)
-            ui.report(report, title='Generator installation')
+            if args.dry_run or args.install_only or args.interactive or ui.JSON_MODE.get():
+                ui.report(report, title='Generator installation')
             if args.dry_run:
                 print("Dry-run only: no generator files were written and Codex was not launched.")
                 return 0

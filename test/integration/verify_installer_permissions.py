@@ -160,21 +160,19 @@ def apply_and_check(source: Path, project: Path, *, expected_modes: tuple[str, s
             "repeated": repeats, "dryRunUnchanged": True, "noOpUnchanged": True}
 
 
-def ordinary_update(source: Path, base: Path, *, baseline: bool) -> dict:
+def ordinary_update(source: Path, base: Path) -> dict:
     copied = copy_source(source, base / "source")
     project = base / "project"
     project.mkdir()
     initial = cli(copied, project)
     target = project / SKILL
     initial_observation = tree_state(target)["."]
-    if not baseline:
-        assert initial_observation["mode"] == f"{stat.S_IMODE((copied / SKILL).stat().st_mode):04o}"
+    assert initial_observation["mode"] == f"{stat.S_IMODE((copied / SKILL).stat().st_mode):04o}"
     prepare_user_metadata(target)
     probe = copied / SKILL / PROBE
     assert not probe.exists(), "probe path unexpectedly exists in the supplied source"
     probe.write_bytes(PROBE_DATA)
-    result = apply_and_check(copied, project, expected_modes=("0700", "0755") if baseline else ("0750", "0700"),
-                             preserve_root=not baseline)
+    result = apply_and_check(copied, project, expected_modes=("0750", "0700"), preserve_root=True)
     assert (target / PROBE).read_bytes() == PROBE_DATA
     result.update({"initialInstall": initial, "initialRoot": initial_observation,
                    "fixtureMutation": {"kind": "new-text-data-file", "path": PROBE, "sha256": sha256(PROBE_DATA)},
@@ -209,8 +207,8 @@ def main() -> int:
     try:
         bindings = {"baseline": source_binding(args.baseline), "candidate": source_binding(args.candidate)}
         report["sources"] = bindings
-        assert bindings["baseline"]["version"] == "9.0", "baseline must be a pinned v9.0 source"
-        assert bindings["candidate"]["version"] == "9.10", "candidate must be v9.10"
+        assert bindings["baseline"]["version"] == "9.10", "baseline must be the pinned v9.10 source"
+        assert bindings["candidate"]["version"] == "9.11", "candidate must be v9.11"
         if os.name != "posix":
             report.update(status="skipped", reason="POSIX directory mode semantics are unavailable; Windows ACL preservation is not verified.")
         else:
@@ -221,8 +219,8 @@ def main() -> int:
                     for name in ("baseline", "candidate", "upgrade"):
                         (base / name).mkdir()
                     report["umask"] = "0022"
-                    report["baselineDefect"] = ordinary_update(args.baseline, base / "baseline", baseline=True)
-                    report["candidateOrdinaryUpdate"] = ordinary_update(args.candidate, base / "candidate", baseline=False)
+                    report["previousReleaseOrdinaryUpdate"] = ordinary_update(args.baseline, base / "baseline")
+                    report["candidateOrdinaryUpdate"] = ordinary_update(args.candidate, base / "candidate")
                     report["actualVersionUpgrade"] = cross_version_update(args.baseline, args.candidate, base / "upgrade")
             finally:
                 os.umask(previous_umask)

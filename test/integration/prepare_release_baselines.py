@@ -1,4 +1,4 @@
-"""Materialize immutable local Git baselines without mixing shell temp roots."""
+"""Materialize only the immediately preceding published release for comparison."""
 import argparse
 import io
 from pathlib import Path, PurePosixPath
@@ -7,20 +7,7 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINES = {
-    'v99': 'cdccf4cab138f9b4ec5726c0b3fb0e80feb6d92d',
-    'v98_layout': 'fcb9a7d286efc4384c04802abeb6e17af3fda0be',
-    'v98': 'e3c8fc5676686215573befdd65570219dc26f7b1',
-    'v97': 'd5dba32bc1576e0e4e64624cf87986a03a35fa39',
-    'v76': 'd91f0a5ae261d44c86f4082ba5098d55b7e5cc4c',
-    'v80': 'ed2972555562c736496e8d90463f52efabf05305',
-    'v81': '2a920f9555df7270d8947b9e926654746aeb9247',
-    'v90': 'a1e12dadb1805e23df4c283eaa7a613e6b1b1b91',
-    'v91': '0d1e2bd885cd9ee4432918a19ec9839339af70e8',
-    'v92': '72e5cd82975aac838011d991a3e2e6da349ef4de',
-    'v93': 'fa9892cfaa4741edb2e843a4e890f246c5cf1fe3',
-    'v94': 'f80ed8b14e74720c2dc19d303d53300c19a1acaf',
-    'v95': '3b771abc19b64c473185b40d9217df0c6a0d4c76',
-    'v96': 'ee3791f6b6732c61bd6fa5e5e37ece362d808850',
+    'v910': 'd5b60e65b7f0282410494fd83dc3205574f65ac0',
 }
 
 

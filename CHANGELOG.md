@@ -6,6 +6,7 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 
 | Branch | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
+| [`codex/v9.11`](#harness-for-codex-v911) | Harness for Codex v9.11 | Schema 3 | Schema 7 | Schema 2 | Native model/reasoning/permission picker, compact progress and independently validated completion |
 | [`codex/v9.10`](#harness-for-codex-v910) | Harness for Codex v9.10 | Schema 3 | Schema 7 | Schema 2 | Native configuration progress, concise diagnostics, command-specific edition and live installer timers |
 | [`codex/v9.9`](#harness-for-codex-v99) | Harness for Codex v9.9 | Schema 3 | Schema 7 | Schema 2 | Shared project harness, native conversation lifecycle, guarded reinstall/uninstall and concise distribution docs |
 | [`codex/v9.8`](#harness-for-codex-v98) | Harness for Codex v9.8 | Schema 3 | Schema 7 | Schema 2 | Native Windows PowerShell bootstrap, reproducible ZIP, isolated Conda setup and idempotent user PATH registration |
@@ -51,6 +52,44 @@ Harness releases are maintained as runtime-specific branches. Names such as `cod
 | [`codex/v9`](#harness-for-codex-v90) | Harness for Codex v9.0 | Schema 3 | Schema 7 | Schema 2 | Project-local installer, user-selected folders independent of Git boundaries, Artifact Contract 2, no Git metadata writes |
 
 Only the latest Codex and latest Claude branches are retained. The default branch follows the latest verified release; earlier release history remains reachable through commits. Historical branch names in this table identify releases and are not a promise that those branches still exist.
+
+## Harness for Codex v9.11
+
+`init`, `config` and applied `reset` now offer a numbered model, reasoning and permissions menu. Models and supported reasoning levels come from the installed Codex catalog. Enter preserves current settings; changing models offers that model's supported default reasoning. The choice affects this native configuration conversation and its later resumed turns, without writing global settings or project session records. `--settings native` skips the menu.
+
+Permissions can retain the current policy or explicitly select read-only, workspace writes, or full access. Full access requires a separate literal `yes`; native managed restrictions still apply. Choosing read-only or workspace mode requests user-reviewed additional access. Existing hook trust is unchanged.
+
+Configuration has three concise stages with one live activity/timer line. Repeated tool commands no longer append phase logs. A successful run shows file validation and the next command. `--details` reveals the model summary and native session ID. Additional questions, approval previews, invalid final outcomes, interrupted work and validation failures remain visible. A valid existing manifest alone cannot turn an unanswered configuration question into success. The help overview uses `COMMAND` instead of repeating the complete command set; aliases remain compatible.
+
+### Installation
+
+Linux:
+
+```bash
+curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v9.11/install_harness_codex.sh | sh
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://github.com/sholee-pt/Harness/releases/download/codex-v9.11/install_harness_codex.ps1 | iex
+```
+
+Existing installation: `harness-codex update`. Install and sign in to Codex separately. From a project, run `harness-codex init --goal-file PROJECT.md`, choose settings, then use `harness-codex new`. For an existing project, update its generator with `init --install-only`, then use `config` when a configuration review is needed. Project artifact contracts stay compatible with v9.0–v9.10; regeneration is not required just to upgrade the CLI.
+
+### Assets
+
+| File | Purpose |
+| --- | --- |
+| `install_harness_codex.sh` / `.ps1` | Platform downloaders with automatic checksum verification |
+| `harness-codex-9.11-linux.tar.gz` | Linux distribution and source installer |
+| `harness-codex-9.11-windows.zip` | Windows distribution and source installer |
+| `SHA256SUMS` | Asset digests |
+| `build.json` | Exact source commit and reproducible build metadata |
+
+### Validation scope
+
+Publication requires the exact commit to pass Linux and Windows regression, v9.10-to-v9.11 upgrades, builds and cold installer checks. Release comparison now uses only the immediately preceding published version; the full historical source matrix is no longer part of CI. Protocol fixtures cover settings defaults and explicit choices, paginated model discovery, unsupported outcomes, approval handling, incomplete work and concise output. File validation establishes static integrity, not runtime discovery, model quality, task-time savings or token savings. Native connectivity/catalog checks do not run model generation.
 
 ## Harness for Codex v9.10
 

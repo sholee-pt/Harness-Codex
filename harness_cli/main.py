@@ -74,7 +74,7 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     parser.add_argument('--json', action='store_true', help='Show complete diagnostic reports as JSON.')
     _agent_options(parser, destination="_root_agent_choices")
     parser.add_argument("--no-update-check", action="store_true", help="Skip automatic upstream checks for this invocation.")
-    commands = parser.add_subparsers(dest="command")
+    commands = parser.add_subparsers(dest="command", title="commands", metavar="COMMAND")
     register_project_commands(commands)
     for name in ("init", "new", "resume", "start", "configure"):
         commands.choices[name].add_argument("--no-update-check", action="store_true", default=argparse.SUPPRESS)

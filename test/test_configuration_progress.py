@@ -29,7 +29,9 @@ def complete():
         from test_harness_tools import harness_apply, minimal_plan
         root = pathlib.Path.cwd()
         harness_apply.apply_application(harness_apply.build_application(root, minimal_plan(root)))
-    send({"method": "item/completed", "params": {"threadId": "native-thread", "item": {"id": "final", "type": "agentMessage", "text": "Configuration result from Codex."}}})
+    final = {"status": "needs-input" if mode == "needs-input" else "complete", "message": "Which dataset should be used?" if mode == "needs-input" else "Configuration result from Codex."}
+    text = json.dumps(final) if mode != "unstructured" else "Which dataset should be used?"
+    send({"method": "item/completed", "params": {"threadId": "native-thread", "item": {"id": "final", "type": "agentMessage", "text": text}}})
     send({"method": "turn/completed", "params": {"threadId": "native-thread", "turn": {"id": "turn-1", "status": "interrupted" if mode == "interrupted" else "completed"}}})
 for line in sys.stdin:
     value = json.loads(line)
@@ -38,8 +40,20 @@ for line in sys.stdin:
     if method == "initialize":
         send({"id": value["id"], "result": {"userAgent": "test"}})
     elif method in {"thread/start", "thread/resume"}:
-        send({"id": value["id"], "result": {"thread": {"id": "native-thread"}, "model": "native-configured-model"}})
+        send({"id": value["id"], "result": {"thread": {"id": "native-thread"}, "model": "native-configured-model", "reasoningEffort": "medium", "sandbox": {"type": "readOnly"}, "approvalPolicy": "on-request"}})
+    elif method == "model/list":
+        native = {"model": "native-configured-model", "defaultReasoningEffort": "medium", "supportedReasoningEfforts": [{"reasoningEffort": "medium"}, {"reasoningEffort": "high"}]}
+        alternate = {"model": "catalog-alternative", "defaultReasoningEffort": "low", "supportedReasoningEfforts": [{"reasoningEffort": "low"}, {"reasoningEffort": "ultra"}]}
+        data, cursor = ([native], "second") if not params.get("cursor") else ([alternate], None)
+        if mode == "bad-catalog":
+            data = None
+        if mode == "repeated-cursor":
+            cursor = "second"
+        send({"id": value["id"], "result": {"data": data, "nextCursor": cursor}})
     elif method == "turn/start":
+        if mode == "managed-rejection":
+            send({"id": value["id"], "error": {"code": -32600, "message": "Managed policy does not allow these permissions"}})
+            continue
         if mode == "malformed":
             print("not protocol json", flush=True)
             continue
@@ -99,7 +113,8 @@ class ConfigurationProgressTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {'TEST_SERVER_MODE': mode}), contextlib.redirect_stdout(self.output), \
                 contextlib.redirect_stderr(self.error), mock.patch.object(sys, 'stdin', Terminal()), \
                 mock.patch('builtins.input', side_effect=list(answers)):
-            return configuration.run(self.command, self.root, 'PRIVATE BOOTSTRAP TEXT', **kwargs)
+            self.result = configuration.run(self.command, self.root, 'PRIVATE BOOTSTRAP TEXT', **kwargs)
+            return self.result.code
 
     def records(self):
         return [json.loads(line) for line in self.log.read_text(encoding='utf-8').splitlines()]
@@ -110,12 +125,14 @@ class ConfigurationProgressTests(unittest.TestCase):
         start = next(r['params'] for r in records if r['method'] == 'thread/start')
         self.assertEqual(start, {'cwd': str(self.root)})
         turn = next(r['params'] for r in records if r['method'] == 'turn/start')
-        self.assertEqual(set(turn), {'threadId', 'input'})
+        self.assertEqual(set(turn), {'threadId', 'input', 'outputSchema'})
         output = self.output.getvalue() + self.error.getvalue()
         self.assertNotIn('PRIVATE BOOTSTRAP TEXT', output)
         self.assertNotIn('"method"', output)
         self.assertIn('native-configured-model', output)
-        self.assertIn('Configuration result from Codex.', output)
+        self.assertNotIn('Configuration result from Codex.', output)
+        self.assertNotIn('config --resume', output)
+        self.assertEqual(self.result.message, 'Configuration result from Codex.')
         self.assertEqual(list(self.root.iterdir()), [])
 
     def test_resume_uses_native_session_without_project_registry(self):
@@ -182,7 +199,7 @@ class ConfigurationProgressTests(unittest.TestCase):
     def test_default_init_validates_real_generated_artifacts_and_partial_configuration(self):
         parser = argparse.ArgumentParser()
         project.register_project_commands(parser.add_subparsers(dest='command'))
-        args = parser.parse_args(['init', '--project', str(self.root)])
+        args = parser.parse_args(['init', '--project', str(self.root), '--settings', 'native'])
         with mock.patch.object(project, '_codex_command', return_value=self.command), \
                 mock.patch.object(sys, 'stdin', Terminal()), contextlib.redirect_stdout(self.output), \
                 contextlib.redirect_stderr(self.error):
@@ -190,12 +207,107 @@ class ConfigurationProgressTests(unittest.TestCase):
             self.assertIn('generator-only', self.error.getvalue())
             self.assertNotIn('"validationLayers"', self.error.getvalue())
             with mock.patch.dict(os.environ, {'TEST_SERVER_MODE': 'generate'}):
-                args = parser.parse_args(['config', '--project', str(self.root)])
+                args = parser.parse_args(['config', '--project', str(self.root), '--settings', 'native'])
                 self.assertEqual(project.run_project_command(args, source_root=ROOT), 0, self.error.getvalue())
         self.assertTrue((self.root / '.harness/manifest.json').is_file())
         self.assertIn('Project harness files validate', self.output.getvalue())
 
+    def test_settings_preserve_defaults_and_use_only_catalog_efforts(self):
+        self.assertEqual(self.invoke(settings='ask', answers=['', '', '']), 0)
+        turn = next(r['params'] for r in self.records() if r['method'] == 'turn/start')
+        self.assertEqual(set(turn), {'threadId', 'input', 'outputSchema'})
+        self.log.unlink()
+        self.assertEqual(self.invoke(settings='ask', answers=['2', '2', '2']), 0)
+        turn = next(r['params'] for r in self.records() if r['method'] == 'turn/start')
+        self.assertEqual((turn['model'], turn['effort']), ('catalog-alternative', 'ultra'))
+        self.assertEqual(turn['sandboxPolicy']['type'], 'workspaceWrite')
+        self.assertEqual(turn['sandboxPolicy']['writableRoots'], [str(self.root)])
+        self.assertFalse(turn['sandboxPolicy']['networkAccess'])
+        self.assertEqual(turn['approvalPolicy'], 'on-request')
+        self.assertEqual(turn['approvalsReviewer'], 'user')
+        self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_changed_model_uses_its_advertised_default_and_invalid_choices_reprompt(self):
+        self.assertEqual(self.invoke(settings='ask', answers=['9999', 'no', '2', '', '1']), 0)
+        turn = next(r['params'] for r in self.records() if r['method'] == 'turn/start')
+        self.assertEqual(turn['effort'], 'low')
+        self.assertEqual(turn['sandboxPolicy'], {'type': 'readOnly', 'networkAccess': False})
+
+    def test_full_access_requires_exact_confirmation_and_is_never_default(self):
+        for answer in ('', 'y', 'yes'):
+            with self.subTest(answer=answer):
+                self.assertEqual(self.invoke(settings='ask', answers=['', '', '3', answer]), 0)
+                turn = [r['params'] for r in self.records() if r['method'] == 'turn/start'][-1]
+                if answer == 'yes':
+                    self.assertEqual(turn['sandboxPolicy'], {'type': 'dangerFullAccess'})
+                    self.assertEqual(turn['approvalPolicy'], 'never')
+                else:
+                    self.assertNotIn('sandboxPolicy', turn)
+                    self.assertNotIn('approvalPolicy', turn)
+
+    def test_setting_selection_interruption_never_starts_a_model_turn(self):
+        with mock.patch('harness_cli.presentation.Progress.ask', side_effect=KeyboardInterrupt):
+            self.assertEqual(self.invoke(settings='ask'), 130)
+        self.assertFalse(any(r['method'] == 'turn/start' for r in self.records()))
+
+    def test_invalid_catalog_stops_before_selection_or_generation(self):
+        for mode in ('bad-catalog', 'repeated-cursor'):
+            with self.subTest(mode=mode), self.assertRaisesRegex(ValueError, 'catalog'):
+                self.invoke(mode, settings='ask')
+            self.assertFalse(any(r['method'] == 'turn/start' for r in self.records()))
+
+    def test_managed_permission_rejection_is_not_retried_or_downgraded(self):
+        with self.assertRaisesRegex(ValueError, 'Managed policy'):
+            self.invoke('managed-rejection', settings='ask', answers=['', '', '2'])
+        turns = [r for r in self.records() if r['method'] == 'turn/start']
+        self.assertEqual(len(turns), 1)
+        self.assertNotIn(': finished', self.error.getvalue())
+
+    def test_unstructured_final_is_visible_and_not_reported_as_success(self):
+        with self.assertRaisesRegex(ValueError, 'confirmed configuration outcome'):
+            self.invoke('unstructured')
+        self.assertIn('Which dataset should be used?', self.error.getvalue())
+        self.assertNotIn(': finished', self.error.getvalue())
+
+    def test_completed_existing_harness_does_not_hide_a_new_question(self):
+        parser = argparse.ArgumentParser()
+        project.register_project_commands(parser.add_subparsers(dest='command'))
+        with mock.patch.object(project, '_codex_command', return_value=self.command), \
+                mock.patch.object(sys, 'stdin', Terminal()), contextlib.redirect_stdout(self.output), \
+                contextlib.redirect_stderr(self.error):
+            args = parser.parse_args(['init', '--project', str(self.root), '--settings', 'native'])
+            with mock.patch.dict(os.environ, {'TEST_SERVER_MODE': 'generate'}):
+                self.assertEqual(project.run_project_command(args, source_root=ROOT), 0)
+            clean_output = self.output.getvalue()
+            self.assertNotIn('Configuration result from Codex.', clean_output)
+            self.assertNotIn('config --resume', clean_output)
+            self.output.seek(0)
+            self.output.truncate()
+            args = parser.parse_args(['config', '--project', str(self.root), '--settings', 'native'])
+            with mock.patch.dict(os.environ, {'TEST_SERVER_MODE': 'needs-input'}):
+                self.assertEqual(project.run_project_command(args, source_root=ROOT), 1)
+            self.assertIn('Which dataset should be used?', self.output.getvalue())
+            self.assertIn('config --resume native-thread', self.output.getvalue())
+            self.assertNotIn('Configuration complete.', self.output.getvalue())
+            self.output.seek(0)
+            self.output.truncate()
+            args = parser.parse_args(['config', '--project', str(self.root), '--settings', 'native', '--details'])
+            self.assertEqual(project.run_project_command(args, source_root=ROOT), 0)
+            self.assertIn('Configuration result from Codex.', self.output.getvalue())
+            self.assertIn('config --resume native-thread', self.output.getvalue())
+
 class PresentationTests(unittest.TestCase):
+    def test_compact_progress_does_not_repeat_commands_or_wrap_narrow_terminals(self):
+        for stream in (io.StringIO(), Terminal()):
+            with mock.patch.dict(os.environ, {'TERM': 'xterm', 'COLUMNS': '40'}):
+                with presentation.Progress('Configure project', stream=stream, compact=True) as progress:
+                    for index in range(30):
+                        progress.phase('Inspect files' if index % 2 else 'Validate the generated project harness files')
+                    time.sleep(0.25)
+            lines = stream.getvalue().split('\n')
+            self.assertEqual(len(lines), 3)
+            self.assertEqual(stream.getvalue().count('Configure project'), 2)
+            self.assertNotIn('Inspect files\n', stream.getvalue())
     def test_progress_transport_accepts_large_brief_and_resume_requires_an_id(self):
         parser = argparse.ArgumentParser()
         project.register_project_commands(parser.add_subparsers(dest='command'))

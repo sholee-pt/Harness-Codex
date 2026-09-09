@@ -71,7 +71,7 @@ try {
         if ((Get-Command harness-codex).Source -ine $command) { throw 'Current PowerShell command discovery failed.' }
         $env:Path = "$binary;$env:SystemRoot\System32;$env:SystemRoot"
         $child = & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command 'harness-codex --version'
-        if ($LASTEXITCODE -ne 0 -or $child -notmatch 'Harness for Codex 9.10') { throw 'Fresh PowerShell command failed.' }
+        if ($LASTEXITCODE -ne 0 -or $child -notmatch 'Harness for Codex 9.11') { throw 'Fresh PowerShell command failed.' }
         $python = Join-Path $options.CondaHome 'envs\harness\python.exe'
         $active = Get-Content -LiteralPath (Join-Path $data 'active.json') -Raw | ConvertFrom-Json
         $releaseRoot = Join-Path $data ('releases\' + $active.releaseId)

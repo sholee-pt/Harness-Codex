@@ -1,7 +1,7 @@
 #!/bin/sh
 # Public, version-bound bootstrap. This entire file also works through `| sh`.
 set -eu
-VERSION=9.10
+VERSION=9.11
 fail() { printf 'Harness for Codex installer: %s\n' "$*" >&2; exit 1; }
 usage() {
   printf '%s\n' 'Usage: sh install_harness_codex.sh [OPTIONS]' \

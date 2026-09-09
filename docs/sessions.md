@@ -24,13 +24,21 @@ If a conversation was created with H1 and the project now has H2, resume preserv
 
 ## Configuration progress
 
-`init`, `config` and an applied `reset` use the [native Codex App Server](https://learn.chatgpt.com/docs/app-server) over local standard input/output. The configuration prompt and protocol JSON stay out of the terminal. The screen shows observed phases, elapsed seconds, the native session ID and the final Codex message. This is an indeterminate timer, not a predicted completion percentage.
+`init`, `config` and an applied `reset` use the [native Codex App Server](https://learn.chatgpt.com/docs/app-server) over local standard input/output. They offer a numbered model, reasoning and permissions menu before model work begins. The model list and reasoning options come from the installed Codex catalog. Enter keeps the current setting; when changing models, the default reasoning comes from the selected model. Use `--settings native` to skip selection. The choices apply to this configuration conversation and subsequent turns resumed in it. They do not change global Codex settings or the defaults of a separate `new` conversation.
 
-The bridge supplies the project directory and task text. It does not override the model, sandbox, approval policy or trusted hooks. Command/network approvals display the request, file approvals include the received diff, and only typing exactly `yes` accepts that request. Unfamiliar permission-profile or tool requests are declined/stopped with instructions to use `--interactive`; they are never silently granted. A terminal is required for questions and approvals. The protocol is checked against Codex CLI 0.153.4; older versions can use the native UI fallback.
+Permissions can preserve the exact current policy, allow read-only work, allow workspace/temp writes, or allow full access. The two restricted choices disable sandbox network access and request user review for additional access. Full access removes sandbox restrictions and command approval prompts, and requires a separate literal `yes`. Native managed restrictions still apply; a rejected choice stops without retrying under another policy. These presets do not enumerate custom permission profiles; keep the native policy or use `--interactive` for native profile controls. Harness does not modify trusted hooks.
+
+Three stages show generator readiness, Codex configuration and independent file validation. On a terminal, activity and elapsed seconds update on one line; redirected output keeps stage summaries. The timer does not predict a completion percentage. Successful configuration prints a short completion message and the next command. `--details` displays the model summary and native session ID. A final question or incomplete result remains visible even if an older project manifest still validates. Static file validation does not prove runtime discovery, task quality or token savings; `doctor --json` shows these distinctions.
+
+Command/network approvals display the request, file approvals include the received diff, and only typing exactly `yes` accepts that request. Unfamiliar permission-profile or tool requests stop with instructions to use `--interactive`; they are never silently granted. A terminal is required for settings, questions and approvals. The protocol is checked against Codex CLI 0.153.4; older versions can use the native UI fallback. Configuration prompts and transport JSON stay out of the terminal.
 
 ```bash
 harness-codex init --goal-file PROJECT.md
 harness-codex config --timeout 3600
+# Keep native settings without showing the settings menu:
+harness-codex config --settings native
+# Include the model's completion summary and native session ID:
+harness-codex config --details
 # Resume an incomplete configuration or answer a final Codex question:
 harness-codex config --resume SESSION_ID --goal "The project's purpose is ..."
 # Use the original native conversation screen when needed:

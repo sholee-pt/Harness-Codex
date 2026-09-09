@@ -4,6 +4,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 import json
 import os
+import shutil
 import sys
 import threading
 import time
@@ -63,9 +64,11 @@ def report(value: dict, *, title='Harness', error=False) -> None:
 
 class Progress:
     """An indeterminate timer, never an invented percentage of model work."""
-    def __init__(self, label: str, *, stream=None):
+    def __init__(self, label: str, *, stream=None, compact=False):
         self.stream = stream or sys.stderr
         self.label = label
+        self.activity = ''
+        self.compact = compact
         self.started = time.monotonic()
         self.lock = threading.RLock()
         self.stop = threading.Event()
@@ -88,7 +91,13 @@ class Progress:
             with self.lock:
                 if not self.paused:
                     elapsed = int(time.monotonic() - self.started)
-                    text = f'  {frames[index % 4]} {self.label}  {elapsed}s'
+                    activity = self.activity or self.label
+                    width = max(20, shutil.get_terminal_size(fallback=(80, 24)).columns - 1)
+                    budget = max(1, width - len(f'  |   {elapsed}s'))
+                    activity = clean(activity).replace('\n', ' ').replace('\t', ' ')
+                    if len(activity) > budget:
+                        activity = activity[:max(0, budget - 3)] + '...'
+                    text = f'  {frames[index % 4]} {activity}  {elapsed}s'
                     self.stream.write('\r\033[2K' + clean(text))
                     self.stream.flush()
             index += 1
@@ -104,6 +113,9 @@ class Progress:
 
     def phase(self, label: str):
         with self.lock:
+            if self.compact:
+                self.activity = label
+                return
             if label != self.label:
                 self.label = label
                 self.line(label)

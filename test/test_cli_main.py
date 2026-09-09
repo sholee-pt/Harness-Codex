@@ -61,6 +61,10 @@ class CliRoutingTests(unittest.TestCase):
         self.assertEqual(parsed.runtime, "codex")
 
     def test_help_is_codex_specific_and_hides_legacy_provider_aliases(self):
+        overview = cli.build_parser(REPO).format_help()
+        self.assertNotIn('{init,config,configure', overview)
+        self.assertIn('COMMAND', overview)
+        self.assertIn('commands:', overview)
         for arguments in (["--help"], *([command, "--help"] for command in self.command_names())):
             with self.subTest(arguments=arguments), redirect_stdout(io.StringIO()) as output:
                 with self.assertRaises(SystemExit) as exit_status:

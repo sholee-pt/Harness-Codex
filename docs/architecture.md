@@ -22,7 +22,7 @@ Simple projects may receive only `project-harness`. Harness does not create a fi
 Install the generator in the folder you selected for the project. GitHub membership, Git-root alignment, nested repositories, and registered worktree count do not determine whether that folder can host a harness. The target folder must already exist. Anaconda or Miniconda provides the dedicated standard-library-only Python environment.
 
 ```shell
-git clone --branch codex/v9.10 --single-branch https://github.com/sholee-pt/Harness.git Harness
+git clone --branch codex/v9.11 --single-branch https://github.com/sholee-pt/Harness.git Harness
 conda env create --file Harness/environment.yml
 conda run -n harness python Harness/install.py --root "TARGET_PROJECT" --dry-run
 conda run -n harness python Harness/install.py --root "TARGET_PROJECT"
@@ -53,7 +53,7 @@ The skill also recognizes direct requests such as “configure the harness” an
 
 Harness first creates a structured proposal and runs a no-write dry-run. It applies files only when all ownership, selected-folder path safety, and instruction-precedence checks pass. Changed outputs are staged with backups before a journaled apply, and the manifest is written last. Codex detects skill changes automatically. A newly created `AGENTS.md` pointer applies on a fresh run; if a new custom agent or skill is not visible, start one new task in the same directory. No task deletion or per-request restart is required.
 
-Harness for Codex v9.10 retains a strict shared skill-frontmatter parser and binds every generated agent's instruction contract to its structured topology. It does not ask the model to reproduce fixed change-discipline or runtime-teamplay contracts. Authoring Contract 3 drafts use path-specific placeholders, and `harness_plan_builder.py` deterministically materializes a normal Schema 3 plan before the existing apply validator runs. Every project router and generated agent receives its required canonical block exactly once; an old draft revision, unsafe output path, or missing, duplicate, or misplaced placeholder fails before any workspace write.
+Harness for Codex v9.11 retains a strict shared skill-frontmatter parser and binds every generated agent's instruction contract to its structured topology. It does not ask the model to reproduce fixed change-discipline or runtime-teamplay contracts. Authoring Contract 3 drafts use path-specific placeholders, and `harness_plan_builder.py` deterministically materializes a normal Schema 3 plan before the existing apply validator runs. Every project router and generated agent receives its required canonical block exactly once; an old draft revision, unsafe output path, or missing, duplicate, or misplaced placeholder fails before any workspace write.
 
 The installed skill includes `references/minimal-draft-plan.json`, so plan authoring does not depend on repository-only test fixtures.
 
@@ -84,7 +84,7 @@ Inventory Schema 5 and Root Context Schema 3 report known Git boundaries and bou
 
 ## Runtime Teamplay
 
-Harness for Codex v9.10 keeps persistent workspace topology separate from current-task execution. It creates no permanent team merely because multiple agents exist. A temporary runtime plan selects `direct`, `delegated`, or `coordinated` execution from interaction value: independent work delegates, one review pass uses delegated producer-reviewer, and only repeated feedback, conflicting expert judgment, cross-boundary agreement, or dynamic reassignment justifies coordination.
+Harness for Codex v9.11 keeps persistent workspace topology separate from current-task execution. It creates no permanent team merely because multiple agents exist. A temporary runtime plan selects `direct`, `delegated`, or `coordinated` execution from interaction value: independent work delegates, one review pass uses delegated producer-reviewer, and only repeated feedback, conflicting expert judgment, cross-boundary agreement, or dynamic reassignment justifies coordination.
 
 Runtime plans are bound to the exact manifest and canonical topology, validated before execution, and ephemeral by default. Their `participants` are the persistent agents activated for the current task. For delegated or coordinated work, Codex is instructed to spawn only those custom agents, collect parent-facing coordination packets, relay material evidence to affected agents, and keep final integration and task state under parent control. Parallel delegation uses `codex-subagent-relay`; unavailable delegation falls back to sequential relay or direct execution while preserving input, output, and verification contracts. Runtime roles and task state are never inserted into the persistent manifest.
 
@@ -104,7 +104,7 @@ conda run -n harness python .agents/skills/harness/scripts/harness_relay_receipt
   --receipt RELAY_RECEIPT.json
 ```
 
-See [teamplay-contract.md](../.agents/skills/harness/references/teamplay-contract.md), [runtime-plan.md](../.agents/skills/harness/references/runtime-plan.md), [native-subagent-relay.md](../.agents/skills/harness/references/native-subagent-relay.md), [runtime-observation.md](../.agents/skills/harness/references/runtime-observation.md), [relay-receipt.md](../.agents/skills/harness/references/relay-receipt.md), and [team-recipes.md](../.agents/skills/harness/references/team-recipes.md). v9.10 keeps Codex as the execution engine while using canonical receiver handles for bounded control, optional versioned public/local observation profiles for evidence, required-task accounting, and hash-bound offline review lineage. Capability policies use a small canonical registry so validated names cannot silently select a different fallback path. Missing observation evidence lowers confidence without cancelling a valid handle execution; verified binding or terminal-outcome contradictions fail closed.
+See [teamplay-contract.md](../.agents/skills/harness/references/teamplay-contract.md), [runtime-plan.md](../.agents/skills/harness/references/runtime-plan.md), [native-subagent-relay.md](../.agents/skills/harness/references/native-subagent-relay.md), [runtime-observation.md](../.agents/skills/harness/references/runtime-observation.md), [relay-receipt.md](../.agents/skills/harness/references/relay-receipt.md), and [team-recipes.md](../.agents/skills/harness/references/team-recipes.md). v9.11 keeps Codex as the execution engine while using canonical receiver handles for bounded control, optional versioned public/local observation profiles for evidence, required-task accounting, and hash-bound offline review lineage. Capability policies use a small canonical registry so validated names cannot silently select a different fallback path. Missing observation evidence lowers confidence without cancelling a valid handle execution; verified binding or terminal-outcome contradictions fail closed.
 
 
 ## Design Rules

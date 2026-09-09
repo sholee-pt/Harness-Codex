@@ -1,11 +1,12 @@
 """Stream native Codex app-server configuration without exposing bootstrap text.
 
-Use native settings and approvals unchanged. JSON-RPC is transport only: no
+Preserve native settings unless the user selects a conversation override. No
 transcripts, credentials or runtime records are written into the project.
 """
 from __future__ import annotations
 
 from collections import deque
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
@@ -19,6 +20,25 @@ from .environment import codex_environment
 from .presentation import Progress, clean
 
 MAX_MESSAGE = 4 * 1024 * 1024
+FINAL_SCHEMA = {'type': 'object', 'properties': {
+    'status': {'type': 'string', 'enum': ['complete', 'needs-input']},
+    'message': {'type': 'string'}}, 'required': ['status', 'message'], 'additionalProperties': False}
+
+
+@dataclass
+class Result:
+    code: int
+    session_id: str | None
+    message: str = ''
+    needs_input: bool = False
+
+    def show_details(self):
+        if self.message:
+            print(clean(self.message), flush=True)
+
+    def show_resume(self):
+        if self.session_id:
+            print(f'To continue in this project: harness-codex config --resume {clean(self.session_id)}', flush=True)
 
 
 class Server:
@@ -250,12 +270,14 @@ class Server:
             thread.join(timeout=1)
 
 
-def run(command: list[str], root: Path, prompt: str, *, timeout=1800, resume_id=None) -> int:
+def run(command: list[str], root: Path, prompt: str, *, timeout=1800, resume_id=None, settings='native') -> Result:
     deadline = time.monotonic() + timeout
-    with Progress('Connecting to Codex') as progress:
+    with Progress('[2/3] Configure the project harness', compact=True) as progress:
+        progress.phase('Connecting to Codex')
         server = Server(command, root, progress)
+        completed = False
         try:
-            server.call('initialize', {'clientInfo': {'name': 'harness_codex', 'title': 'Harness for Codex', 'version': '9.10'}}, timeout=min(30, deadline-time.monotonic()))
+            server.call('initialize', {'clientInfo': {'name': 'harness_codex', 'title': 'Harness for Codex', 'version': '9.11'}}, timeout=min(30, deadline-time.monotonic()))
             server.send({'method': 'initialized', 'params': {}})
             params = {'cwd': str(root)}
             if resume_id:
@@ -265,11 +287,18 @@ def run(command: list[str], root: Path, prompt: str, *, timeout=1800, resume_id=
             if not isinstance(thread, dict) or not isinstance(thread.get('id'), str) or not thread['id']:
                 raise ValueError('Codex did not return a native session ID; retry with --interactive.')
             server.thread_id = thread['id']
-            progress.line(f'Codex configuration session: {server.thread_id}')
-            if result.get('model'):
-                progress.line(f"Model: {result['model']} (native Codex settings)")
+            overrides = {}
+            if settings == 'ask':
+                from .session_settings import select
+                overrides = select(server, result, root, deadline)
+            progress.line(f"  Model: {clean(overrides.get('model', result.get('model', 'native default')))}"
+                          f" | Reasoning: {clean(overrides.get('effort', result.get('reasoningEffort') or 'native default'))}")
             progress.phase('Analyzing the project and configuring its harness')
-            server.call('turn/start', {'threadId': server.thread_id, 'input': [{'type': 'text', 'text': prompt}]}, timeout=min(30, deadline-time.monotonic()))
+            prompt += ('\n\nReturn the final response using the supplied schema. Set status to needs-input if you need '
+                       'a user answer or have not finished the requested configuration; put the question or blocker in message. '
+                       'Set status to complete only after finishing the requested work; summarize the result in message.')
+            server.call('turn/start', {'threadId': server.thread_id, 'input': [{'type': 'text', 'text': prompt}],
+                                      'outputSchema': FINAL_SCHEMA, **overrides}, timeout=min(30, deadline-time.monotonic()))
             while True:
                 if not server.completed:
                     server.event(deadline)
@@ -277,14 +306,27 @@ def run(command: list[str], root: Path, prompt: str, *, timeout=1800, resume_id=
                 turn = server.completed.popleft()
                 if server.turn_id and turn.get('id') != server.turn_id:
                     continue
-                if server.last_message:
-                    progress.line(server.last_message)
                 status = turn.get('status')
                 if status == 'completed':
-                    return 0
+                    try:
+                        final = json.loads(server.last_message)
+                    except ValueError:
+                        final = None
+                    valid = (isinstance(final, dict) and set(final) == {'status', 'message'}
+                             and final['status'] in {'complete', 'needs-input'} and isinstance(final['message'], str))
+                    if not valid:
+                        if isinstance(final, dict) and isinstance(final.get('message'), str):
+                            progress.line(final['message'])
+                        elif final is None and server.last_message:
+                            progress.line(server.last_message)
+                        raise ValueError('Codex did not return a confirmed configuration outcome. Inspect the native session with --interactive.')
+                    completed = True
+                    needs_input = final['status'] == 'needs-input'
+                    progress.outcome = 'needs input' if needs_input else 'finished'
+                    return Result(1 if needs_input else 0, server.thread_id, final['message'], needs_input)
                 if status == 'interrupted':
                     progress.outcome = 'interrupted'
-                    return 130
+                    return Result(130, server.thread_id)
                 detail = turn.get('error') or {}
                 raise ValueError('Codex configuration failed: ' + clean(detail.get('message', status)))
         except (KeyboardInterrupt, EOFError):
@@ -295,8 +337,8 @@ def run(command: list[str], root: Path, prompt: str, *, timeout=1800, resume_id=
                     pass
             progress.line('Configuration interrupted. Existing project files have been retained.')
             progress.outcome = 'interrupted'
-            return 130
+            return Result(130, server.thread_id)
         finally:
-            if server.thread_id:
+            if server.thread_id and not completed:
                 progress.line(f'To continue configuration: harness-codex config --resume {server.thread_id}')
             server.close()
