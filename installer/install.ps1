@@ -1,7 +1,7 @@
 # Install an unpacked Codex release using Windows PowerShell 5.1 or PowerShell 7.
 [CmdletBinding()]
 param(
-    [string]$SourceRoot = $PSScriptRoot,
+    [string]$SourceRoot,
     [string]$CondaExe,
     [string]$CondaHome,
     [string]$DataDir,
@@ -20,12 +20,13 @@ if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitProcess -or $env:PRO
     throw 'This installer requires Windows x64 and a 64-bit PowerShell process.'
 }
 if ($CondaExe -and $CondaHome) { throw 'Choose -CondaExe or -CondaHome, not both.' }
+if (-not $SourceRoot) { $SourceRoot = $PSScriptRoot }
 if ($SourceRoot -and -not (Test-Path -LiteralPath (Join-Path $SourceRoot 'harness.py') -PathType Leaf) -and
     (Split-Path -Leaf $SourceRoot) -eq 'installer') {
     $SourceRoot = Split-Path -Parent $SourceRoot
 }
 if (-not $SourceRoot -or -not (Test-Path -LiteralPath (Join-Path $SourceRoot 'harness.py') -PathType Leaf)) {
-    throw 'Run install.ps1 from a complete Harness source archive.'
+    throw "Run install.ps1 from a complete Harness source archive. Resolved source: '$SourceRoot'; script directory: '$PSScriptRoot'."
 }
 if (-not $DataDir) { $DataDir = Join-Path $env:LOCALAPPDATA 'HarnessCodex' }
 if (-not $BinDir) { $BinDir = Join-Path $env:LOCALAPPDATA 'Programs\HarnessCodex\bin' }

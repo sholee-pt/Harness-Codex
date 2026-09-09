@@ -45,6 +45,10 @@ jobs:
         shell: bash -el {0}
         run: conda run -n harness python install.py --root "${RUNNER_TEMP}" --dry-run
 
+      - name: Verify real Conda and installer with competing Python on PATH
+        shell: bash -el {0}
+        run: conda run --no-capture-output -n harness python -B test/integration/verify_interpreter_selection.py --output "${RUNNER_TEMP}/interpreter-selection.json"
+
       - name: Run unit tests
         timeout-minutes: 15
         shell: bash -el {0}
@@ -55,10 +59,6 @@ jobs:
         run: |
           conda run -n harness python -m pip install -r test/requirements-validation.txt
           conda run -n harness python test/integration/frontmatter_differential.py --seed 20260905 --count 11000 --output "${RUNNER_TEMP}/frontmatter-report.json"
-
-      - name: Verify real Conda and installer with competing Python on PATH
-        shell: bash -el {0}
-        run: conda run --no-capture-output -n harness python -B test/integration/verify_interpreter_selection.py --output "${RUNNER_TEMP}/interpreter-selection.json"
 
       - name: Cross-check the previous release v0.9.11-beta update to v0.10.0-beta
         shell: bash -el {0}
