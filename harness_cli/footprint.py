@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import stat
 import subprocess
@@ -20,6 +20,17 @@ from .shell import _replace_profile
 
 MARKER = '.harness-runtime-owner'
 RECEIPT = '.harness-runtime-files.json'
+
+
+def _relative(name: str) -> str:
+    # Native Conda package paths are platform-specific. The portable source
+    # archive validator must not reject valid Unix names such as `con`.
+    if os.name == 'nt':
+        return dist._relative(name)
+    if (not isinstance(name, str) or not name or '\0' in name or PurePosixPath(name).is_absolute()
+            or any(part in {'', '.', '..'} for part in name.split('/'))):
+        raise ValueError('Unsafe runtime receipt path: ' + repr(name))
+    return name
 
 
 def marker(data_root: Path) -> bytes:
@@ -74,13 +85,15 @@ def _windows_registration(root: Path) -> dict:
     return result
 
 
-def record(root: Path, data_root: Path) -> dict:
+def record(root: Path, data_root: Path, *, attach: bool = True) -> dict:
     root, data_root = validate_root(root, data_root), dist._storage_path(data_root).resolve()
     prefix = Path(sys.prefix).resolve()
     if root not in prefix.parents or prefix.name != 'harness':
         raise ValueError('Owned runtime must contain the running harness environment')
     receipt_path = dist._storage_path(root / RECEIPT)
     if not receipt_path.exists():
+        if os.path.lexists(data_root / 'runtime.json'):
+            raise ValueError('Recorded runtime receipt is missing; preserving files instead of claiming them again')
         files, directories = {}, ['.']
         for directory, dirs, names in os.walk(root, followlinks=False):
             parent = Path(directory)
@@ -108,9 +121,10 @@ def record(root: Path, data_root: Path) -> dict:
             output.write(payload)
     reference = {'schema': 1, 'root': str(root), 'receiptSha256': _entry(receipt_path)['sha256']}
     inspect(reference, data_root)
-    path = dist._storage_path(data_root / 'runtime.json')
-    if not path.exists() or dist._read_json(path) != reference:
-        dist._write_json(path, reference)
+    if attach:
+        path = dist._storage_path(data_root / 'runtime.json')
+        if not path.exists() or dist._read_json(path) != reference:
+            dist._write_json(path, reference)
     return reference
 
 
@@ -134,7 +148,7 @@ def inspect(reference: dict, data_root: Path) -> dict:
     if not isinstance(value.get('files'), dict) or not isinstance(value.get('directories'), list):
         raise ValueError('Invalid runtime file list')
     for name, expected in value['files'].items():
-        dist._relative(name)
+        _relative(name)
         if (not isinstance(expected, dict) or not (set(expected) == {'link'} or set(expected) == {'sha256', 'size'})):
             raise ValueError('Invalid runtime file fingerprint')
         if 'sha256' in expected and (not isinstance(expected['sha256'], str) or not re.fullmatch('[0-9a-f]{64}', expected['sha256'])
@@ -146,7 +160,7 @@ def inspect(reference: dict, data_root: Path) -> dict:
         raise ValueError('Runtime marker fingerprint mismatch')
     for name in value['directories']:
         if name != '.':
-            dist._relative(name)
+            _relative(name)
     return {**value, 'receiptSha256': reference['receiptSha256']}
 
 

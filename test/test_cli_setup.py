@@ -110,6 +110,23 @@ class RuntimeOwnershipTests(unittest.TestCase):
         self.assertEqual((files(self.data), (self.runtime / footprint.RECEIPT).read_bytes()), before)
         self.assertNotIn('envs/harness/user.txt', self.plan()['files'])
 
+    @unittest.skipUnless(os.name == 'posix', 'Native Unix package filenames')
+    def test_native_runtime_names_do_not_inherit_windows_archive_restrictions(self):
+        runtime, data = self.base / 'native-runtime', self.base / 'native-tool'
+        prefix = runtime / 'envs/harness'
+        prefix.mkdir(parents=True)
+        (runtime / footprint.MARKER).write_bytes(footprint.marker(data))
+        for name in ('con', 'native:package.'):
+            (prefix / name).write_bytes(b'native package file')
+        with mock.patch.object(sys, 'prefix', str(prefix)), mock.patch.object(Path, 'home', return_value=self.home):
+            reference = footprint.record(runtime, data, attach=False)
+        plan = footprint.inspect(reference, data)
+        self.assertIn('envs/harness/native:package.', plan['files'])
+        self.assertFalse(data.exists(), 'Runtime validation must precede CLI state creation')
+        for name in ('../outside', '/outside', 'envs/../../outside', 'envs//file'):
+            with self.assertRaises(ValueError):
+                footprint._relative(name)
+
     def test_cleanup_removes_owned_files_and_only_its_conda_registration(self):
         self.assertEqual(footprint.cleanup(self.plan()), [])
         self.assertFalse(self.runtime.exists())
@@ -129,6 +146,14 @@ class RuntimeOwnershipTests(unittest.TestCase):
         before = files(self.runtime)
         with self.assertRaises(ValueError):
             footprint.cleanup(plan)
+        self.assertEqual(files(self.runtime), before)
+
+    def test_missing_recorded_receipt_does_not_reclaim_user_files_on_reinstall(self):
+        (self.runtime / footprint.RECEIPT).unlink()
+        (self.prefix / 'user-added.txt').write_bytes(b'keep')
+        before = files(self.runtime)
+        with mock.patch.object(sys, 'prefix', str(self.prefix)), self.assertRaisesRegex(ValueError, 'missing'):
+            footprint.record(self.runtime, self.data)
         self.assertEqual(files(self.runtime), before)
 
     @unittest.skipUnless(os.name == 'nt', 'Native Windows deferred cleanup')

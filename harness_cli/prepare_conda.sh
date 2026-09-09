@@ -21,7 +21,7 @@ owned_runtime=()
 environment_selector=(-n harness)
 # A fresh tool gets an exact prefix. Never create by a name that could select
 # and remove an environment belonging to another Conda installation.
-if [[ ! -f "$data_directory/active.json" || -f "$data_directory/runtime.json" ]]; then
+if [[ ! -f "$data_directory/active.json" || -f "$data_directory/runtime.json" || -f "$runtime_root/.harness-runtime-owner" ]]; then
   if [[ -e "$runtime_root" || -L "$runtime_root" ]]; then
     [[ ! -L "$runtime_root" && -f "$runtime_root/.harness-runtime-owner" ]] || { printf 'Unowned runtime directory preserved: %s\n' "$runtime_root" >&2; exit 1; }
     expected=$(printf 'harness-codex runtime v1\n%s\n' "$data_directory")

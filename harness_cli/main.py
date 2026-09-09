@@ -203,6 +203,11 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
                 args.branch, args.repository, args.auto_update = previous['branch'], previous['repository'], previous['auto_update']
             if not args.no_modify_path:
                 path_registration(args.bin_dir, reset=choice == 'reset', dry_run=True)
+            if args.owned_runtime:
+                from .footprint import record
+                # Validate and seal native runtime ownership before creating or
+                # updating the CLI's active installation state.
+                record(args.owned_runtime, args.data_dir, attach=False)
             result = distribution.install_tool(source_root, args.data_dir, args.bin_dir,
                                                python_executable=sys.executable, branch=args.branch,
                                                repository=args.repository, auto_update=args.auto_update)
