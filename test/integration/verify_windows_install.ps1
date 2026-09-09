@@ -4,6 +4,9 @@ $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'Windows integration check only.' }
 if ($Cold -and $env:GITHUB_ACTIONS -ne 'true') { throw 'The real registry/cold check requires a disposable GitHub Actions runner.' }
 $Dist = [IO.Path]::GetFullPath($Dist)
+$buildInfo = Get-Content -LiteralPath (Join-Path $Dist 'build.json') -Raw | ConvertFrom-Json
+if ([string]$buildInfo.version -notmatch '^\d+\.\d+$') { throw 'Build version metadata is invalid.' }
+$expectedVersion = 'Harness for Codex ' + $buildInfo.version
 $base = Join-Path ([IO.Path]::GetTempPath()) ('harness-windows-check-' + [guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($base)
 $binary = Join-Path $base 'command bin'
@@ -59,7 +62,7 @@ try {
     }
     $command = Join-Path $binary 'harness-codex.cmd'
     $version = & $command --version
-    if ($LASTEXITCODE -ne 0 -or $version -notmatch '^Harness for Codex 9\.10$') { throw 'Installed Windows command version failed.' }
+    if ($LASTEXITCODE -ne 0 -or ($version -join [Environment]::NewLine).Trim() -cne $expectedVersion) { throw 'Installed Windows command version failed.' }
     & $command --help
     if ($LASTEXITCODE -ne 0) { throw 'Installed Windows command help failed.' }
     if (($originalLabels -join '|') -cne (@($env:CONDA_PREFIX, $env:CONDA_DEFAULT_ENV, $env:CONDA_ENVS_PATH) -join '|')) {
@@ -71,7 +74,7 @@ try {
         if ((Get-Command harness-codex).Source -ine $command) { throw 'Current PowerShell command discovery failed.' }
         $env:Path = "$binary;$env:SystemRoot\System32;$env:SystemRoot"
         $child = & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command 'harness-codex --version'
-        if ($LASTEXITCODE -ne 0 -or $child -notmatch 'Harness for Codex 9.11') { throw 'Fresh PowerShell command failed.' }
+        if ($LASTEXITCODE -ne 0 -or ($child -join [Environment]::NewLine).Trim() -cne $expectedVersion) { throw 'Fresh PowerShell command failed.' }
         $python = Join-Path $options.CondaHome 'envs\harness\python.exe'
         $active = Get-Content -LiteralPath (Join-Path $data 'active.json') -Raw | ConvertFrom-Json
         $releaseRoot = Join-Path $data ('releases\' + $active.releaseId)
