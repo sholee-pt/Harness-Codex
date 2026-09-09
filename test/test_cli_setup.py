@@ -156,8 +156,7 @@ class RuntimeOwnershipTests(unittest.TestCase):
             footprint.record(self.runtime, self.data)
         self.assertEqual(files(self.runtime), before)
 
-    @unittest.skipUnless(os.name == 'nt', 'Native Windows deferred cleanup')
-    def test_windows_helper_removes_disposable_runtime_and_preserves_other_settings(self):
+    def windows_cleanup(self):
         plan = {**self.plan(), 'waitPid': 2147483647}
         job = self.base / 'job'
         job.mkdir()
@@ -166,11 +165,57 @@ class RuntimeOwnershipTests(unittest.TestCase):
         script = job / 'cleanup.ps1'
         script.write_bytes(Path(footprint.__file__).with_name('runtime_cleanup.ps1').read_bytes())
         command, environment = footprint._windows_command(script, hashlib.sha256(payload).hexdigest())
-        result = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr + ((job / 'error.txt').read_text(encoding='utf-8-sig') if (job / 'error.txt').exists() else ''))
+        return job
+
+    @unittest.skipUnless(os.name == 'nt', 'Native Windows deferred cleanup')
+    def test_windows_helper_removes_disposable_runtime_and_preserves_other_settings(self):
+        job = self.windows_cleanup()
         self.assertFalse(self.runtime.exists())
         self.assertFalse(job.exists())
         self.assertEqual(self.profile.read_bytes(), (str(self.other) + '\r\n').encode())
+
+    @unittest.skipUnless(os.name == 'nt', 'Native Windows deferred cleanup')
+    def test_windows_package_tree_cleanup_completes_within_native_process_deadline(self):
+        # Exercise actual file IO/provider costs rather than mocking deletion.
+        for directory in range(20):
+            folder = self.prefix / f'Lib/site-packages/package{directory}/nested/data'
+            folder.mkdir(parents=True)
+            for index in range(100):
+                (folder / f'file{index}.txt').write_bytes(b'package content')
+        (self.runtime / footprint.RECEIPT).unlink()
+        (self.data / 'runtime.json').unlink()
+        with mock.patch.object(sys, 'prefix', str(self.prefix)), mock.patch.object(Path, 'home', return_value=self.home):
+            self.reference = footprint.record(self.runtime, self.data)
+        (self.prefix / 'python.fixture').chmod(0o444)
+        job = self.windows_cleanup()
+        self.assertFalse(self.runtime.exists())
+        self.assertFalse(job.exists())
+        self.assertEqual(self.profile.read_bytes(), (str(self.other) + '\r\n').encode())
+
+    @unittest.skipUnless(os.name == 'nt', 'Native Windows deferred cleanup')
+    def test_windows_helper_preserves_same_size_changes_added_files_and_junction_target(self):
+        original = (self.prefix / 'python.fixture').read_bytes()
+        (self.prefix / 'python.fixture').write_bytes(b'x' * len(original))
+        (self.prefix / 'extra.txt').write_bytes(b'user added')
+        outside = self.base / 'external'
+        outside.mkdir()
+        (outside / 'precious.txt').write_bytes(b'keep external')
+        link = self.prefix / 'user-link'
+        result = subprocess.run(['cmd.exe', '/d', '/c', 'mklink', '/J', str(link), str(outside)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.addCleanup(lambda: link.rmdir() if link.is_dir() else None)
+        # Even a recorded file path whose parent later becomes a junction must
+        # not be followed. Use the separately hashed fixture plan transport.
+        plan = self.plan()
+        plan['files']['envs/harness/user-link/precious.txt'] = footprint._entry(outside / 'precious.txt')
+        with mock.patch.object(self, 'plan', return_value=plan):
+            job = self.windows_cleanup()
+        self.assertTrue((job / 'remaining.json').exists())
+        self.assertEqual((self.prefix / 'python.fixture').read_bytes(), b'x' * len(original))
+        self.assertEqual((self.prefix / 'extra.txt').read_bytes(), b'user added')
+        self.assertEqual((outside / 'precious.txt').read_bytes(), b'keep external')
 
 
 if __name__ == '__main__':

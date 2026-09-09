@@ -13,12 +13,19 @@ $plan = Get-Content -LiteralPath (Join-Path $job 'plan.json') -Raw | ConvertFrom
 function Checked-Path([string]$Path) {
     $current = [IO.Path]::GetFullPath($Path)
     while ($current) {
-        if (Test-Path -LiteralPath $current) {
-            if ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Reparse point preserved' }
-        }
-        $current = Split-Path -Parent $current
+        try {
+            if ([IO.File]::GetAttributes($current) -band [IO.FileAttributes]::ReparsePoint) { throw 'Reparse point preserved' }
+        } catch [IO.FileNotFoundException] {} catch [IO.DirectoryNotFoundException] {}
+        $parentDirectory = [IO.Directory]::GetParent($current)
+        $current = if ($parentDirectory) { $parentDirectory.FullName } else { $null }
     }
     return [IO.Path]::GetFullPath($Path)
+}
+function File-Sha256([string]$Path) {
+    $stream = [IO.File]::OpenRead($Path)
+    $hasher = [Security.Cryptography.SHA256]::Create()
+    try { return [BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
+    finally { $hasher.Dispose(); $stream.Dispose() }
 }
 try {
     $parent = Get-Process -Id $plan.waitPid -ErrorAction SilentlyContinue
@@ -36,11 +43,14 @@ try {
         try {
             if (-not $path.StartsWith($root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Path outside runtime' }
             [void](Checked-Path $path)
-            if (-not (Test-Path -LiteralPath $path)) { continue }
-            $info = Get-Item -LiteralPath $path -Force
-            if ($null -eq $file.Value.sha256 -or $info.PSIsContainer -or $info.Length -ne $file.Value.size -or
-                (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $file.Value.sha256) { throw 'Changed file preserved' }
-            Remove-Item -LiteralPath $path -Force
+            if (-not [IO.File]::Exists($path) -and -not [IO.Directory]::Exists($path)) { continue }
+            $info = [IO.FileInfo]::new($path)
+            if ($null -eq $file.Value.sha256 -or ($info.Attributes -band [IO.FileAttributes]::Directory) -or $info.Length -ne $file.Value.size -or
+                (File-Sha256 $path) -cne $file.Value.sha256) { throw 'Changed file preserved' }
+            # Avoid per-file PowerShell provider overhead for tens of thousands
+            # of Conda files. Keep the same ancestor, type, size and hash checks.
+            if ($info.IsReadOnly) { $info.IsReadOnly = $false }
+            [IO.File]::Delete($path)
         } catch { $remaining.Add($path) }
     }
     foreach ($name in @($plan.directories | Where-Object { $_ -ne '.' } | Sort-Object { $_.Split('/').Count } -Descending)) {
@@ -48,7 +58,7 @@ try {
             $path = [IO.Path]::GetFullPath((Join-Path $root $name))
             if (-not $path.StartsWith($root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Path outside runtime' }
             [void](Checked-Path $path)
-            if (Test-Path -LiteralPath $path) { [IO.Directory]::Delete($path, $false) }
+            if ([IO.Directory]::Exists($path)) { [IO.Directory]::Delete($path, $false) }
         } catch { $remaining.Add($path) }
     }
     $names = @(Get-ChildItem -LiteralPath $root -Force | Select-Object -ExpandProperty Name)
