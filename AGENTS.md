@@ -32,10 +32,11 @@
 
 ## Git conventions
 
-- New Codex branches use `codex/vX.Y.Z-beta` during development, with X major, Y feature, Z bug fix/chore/refactoring. Preserve legacy versions in immutable receipts and compatibility tests.
+- New Codex branches use `codex/vX.Y.Z-beta` during development: X for major or large-scale changes; Y for minor features, improvements, refactoring and optimization; Z for bug fixes (`[Fix]`). Preserve legacy versions in immutable receipts and compatibility tests.
 - Historical display versions map `vN.M` to `v0.N.M-beta`; this is a label correction, not a claim that old source was rebuilt. Keep the current Claude branch untouched.
 - Public stable releases begin at `v1.0.0` after an explicit release decision; repository visibility alone does not publish a release.
-- Later commits use `[Feat]`, `[Fix]`, `[Docs]`, `[Refactor]`, `[Test]`, or `[Chore]`.
+- Use `[Doc]` for explanatory documentation-only changes that do not affect harness generation or runtime behavior, and do not increment the version for them. Generator instructions, templates and contracts are behavioral inputs even when written in Markdown; classify their changes by effect, not file extension.
+- Other commits use `[Feat]`, `[Fix]`, `[Refactor]`, `[Test]`, or `[Chore]`. Choose the version increment by the change's effect; refactoring and optimization use Y, not Z. See `docs/versioning.md`.
 - Do not commit, push, merge, or rewrite history unless the user has authorized it. An explicit implementation request from this repository owner includes commit and push. Keep the latest verified release as the default branch and retain only the latest Codex and latest Claude release branches, as authorized by the owner. This repository-maintenance convention does not authorize remote operations during generated-project configuration.
 
 ## CLI distribution

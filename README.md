@@ -1,4 +1,4 @@
-<h1 align="center">Harness for Codex</h1>
+<h1 align="center">Harness for Codex <img src="https://img.shields.io/badge/Beta-F59E0B.svg?style=flat-square" alt="Beta" height="24"></h1>
 
 <p align="center">
   Project-local orchestration with Codex-native agents and skills.
@@ -25,7 +25,7 @@
 
 Generate and maintain one shared project harness with Codex-native agents and skills. Use **`harness-codex`** to configure it, start new conversations, or resume existing ones. Plain folders, Git worktrees and workspaces containing multiple repositories are supported.
 
-**Development beta:** versions use `vX.Y.Z-beta`. Stable releases will begin at `v1.0.0`; see [versioning and migration](docs/versioning.md). Upgrading from the former `v9.11` or earlier requires running the current installer once and choosing `reuse`; those older updaters do not discover the new version format.
+**Development beta:** Harness is still under development and testing.
 
 ## Installation Guide
 

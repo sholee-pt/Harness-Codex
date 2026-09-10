@@ -1,6 +1,8 @@
 # Changelog
 
-Development releases use `vX.Y.Z-beta`: X for major changes, Y for features, Z for bug fixes, chores and refactoring. Historical `vN.M` labels are displayed as `v0.N.M-beta`; existing tags, installed receipts and evidence keep their original identifiers. Stable public releases will start at `v1.0.0`. See [versioning](docs/versioning.md).
+Development releases use `vX.Y.Z-beta`: X for major or large-scale changes, Y for minor features, improvements, refactoring and optimization, and Z for bug fixes. Explanatory documentation-only changes use `[Doc]` without a version bump. Stable public releases will start at `v1.0.0`. See [versioning](docs/versioning.md).
+
+Release and tag history starts at `v0.10.0-beta` after a one-time reset. Earlier entries below are archival notes with normalized display labels (`vN.M` becomes `v0.N.M-beta`); their old release download URLs are no longer supported. Historical commits, installed receipts and evidence retain their original identifiers.
 
 ## Harness for Codex releases
 
@@ -52,7 +54,7 @@ Development releases use `vX.Y.Z-beta`: X for major changes, Y for features, Z f
 | [`v0.8.1-beta`](#harness-for-codex-v081-beta) | Harness for Codex v0.8.1-beta | Schema 3 | Schema 6 | Schema 2 | Apply rejects unsupported existing artifact contracts while preserving supported v0.8.0-beta and legacy updates |
 | [`v0.9.0-beta`](#harness-for-codex-v090-beta) | Harness for Codex v0.9.0-beta | Schema 3 | Schema 7 | Schema 2 | Project-local installer, user-selected folders independent of Git boundaries, Artifact Contract 2, no Git metadata writes |
 
-Only the latest Codex and latest Claude branches are retained. The default branch follows the latest verified release; earlier release history remains reachable through commits. The table uses normalized display versions; it does not rename historical Git branches, tags or evidence identifiers.
+Only the latest Codex and latest Claude branches are retained. The default branch follows the latest verified release; earlier source history remains reachable through commits. The table uses normalized display versions and does not relabel historical commits or evidence identifiers.
 
 ## Harness for Codex v0.10.0-beta
 
@@ -63,6 +65,7 @@ Development prerelease. Existing project harnesses are preserved; Manifest Schem
 - `config` refreshes an unchanged owned generator before reviewing the existing project. Conflicts preserve user edits.
 - Linux and Windows installers execute the Python belonging to the dynamically selected Conda prefix, even when system Python precedes Conda in PATH. Prefix validation stays enabled and errors include expected/actual interpreter details.
 - Development versioning is `vX.Y.Z-beta`; legacy `v9.11` is displayed as `v0.9.11-beta`. A feature increment produces this `v0.10.0-beta`. Old receipt identifiers remain readable and are never silently relabelled.
+- Release and tag history restarts at this version. The README now labels the project as Beta; explanatory documentation-only changes use `[Doc]` without a version bump. Refactoring and optimization use the minor increment, and bug fixes use the patch increment. This documentation clarification keeps `v0.10.0-beta` and does not change generator instructions or executable code.
 
 ### Installation
 

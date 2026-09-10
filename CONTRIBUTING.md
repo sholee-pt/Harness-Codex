@@ -4,23 +4,25 @@ Changes should keep Harness small, runtime-native, and safe to rerun. See the li
 
 ## Branches
 
-- Harness for Codex releases use `codex/vN` or `codex/vN.M`; these are Harness versions, not Codex product versions.
-- Harness for Claude Code releases use runtime-specific `claude/vN` or `claude/vN.M` branches.
-- Release and generator versions use two components (`N.M`). A branch named `codex/vN` is the preserved `.0` major release.
-- Breaking changes start the next version branch from the latest branch for the same runtime.
+- Harness for Codex development branches use `codex/vX.Y.Z-beta`, with tags such as `codex-v0.10.0-beta`. These are Harness versions, not Codex product versions.
+- Claude development stays on its separate `claude/*` branch.
+- X marks major or large-scale changes; Y covers minor features, improvements, refactoring and optimization; Z covers bug fixes. Explanatory documentation-only changes do not increment the version.
+- Start a new version branch from the latest branch for the same edition. See [versioning](docs/versioning.md) for the full policy and release reset.
 
 ## Commit messages
 
-Use one of these prefixes after the initial version commit:
+Use one of these prefixes:
 
 - `[Feat]` for user-visible capability
 - `[Fix]` for incorrect behavior
-- `[Docs]` for documentation-only changes
+- `[Doc]` for explanatory documentation-only changes, without a version bump
 - `[Refactor]` for structural changes without intended behavior changes
 - `[Test]` for test changes
 - `[Chore]` for maintenance
 
 Keep each commit focused and use an imperative, descriptive subject.
+
+The `[Doc]` rule applies to repository explanations such as README, contribution rules and release documentation. Instructions, templates or contracts that directly affect harness generation or execution are behavioral inputs, even in Markdown; classify their changes as features, fixes or refactoring as appropriate. For mixed commits, classify the behavioral change and apply its version increment.
 
 ## Quality requirements
 
@@ -73,8 +75,8 @@ Integration checks run explicitly in CI on Linux and Windows. For example:
 
 ```bash
 conda run -n harness python test/integration/prepare_release_baselines.py --output /tmp/harness-baselines
-conda run -n harness python test/integration/verify_cli_upgrade.py --baseline /tmp/harness-baselines/v910 --output /tmp/cli-upgrade.json
-conda run -n harness python test/integration/verify_release_upgrade.py --baseline /tmp/harness-baselines/v910 --output /tmp/project-upgrade.json
+conda run -n harness python test/integration/verify_cli_upgrade.py --baseline /tmp/harness-baselines/v911 --output /tmp/cli-upgrade.json
+conda run -n harness python test/integration/verify_release_upgrade.py --baseline /tmp/harness-baselines/v911 --output /tmp/project-upgrade.json
 ```
 
 Release comparison runs only against the immediately preceding published release (v0.9.11-beta, originally tagged v9.11). CI does not recreate the entire historical version matrix. Functional regression tests still check supported contracts and failure cases. Add an older source comparison only for a concrete compatibility defect that requires it.
