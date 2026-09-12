@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/openai/codex.git",
+  "tag": "rust-v0.154.0",
+  "commit": "6b9826e3aa83b1a5947db50f4332cb9c65f1b340",
+  "version": "0.154.0",
+  "license": "Apache-2.0",
+  "scope": "Original Codex TUI with a Harness-only inference selector; original rendering and permission code retained"
+}

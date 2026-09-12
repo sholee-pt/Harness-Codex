@@ -1,0 +1,59 @@
+name: Native Codex UI candidate
+
+on:
+  push:
+    branches: [v0.12.0-beta]
+    paths: [build/native_ui/**, .github/workflows/native-ui.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-ui:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: conda-incubator/setup-miniconda@v4.0.1
+        with:
+          activate-environment: harness
+          auto-activate: false
+          environment-file: environment.yml
+      - name: Prepare pinned upstream with the bounded extension
+        shell: bash -el {0}
+        run: |
+          git -c core.longpaths=true clone --depth 1 --branch rust-v0.154.0 https://github.com/openai/codex.git "${RUNNER_TEMP}/codex-ui"
+          conda run -n harness python -B build/native_ui/prepare.py --root "${RUNNER_TEMP}/codex-ui"
+      - name: Install the pinned Rust toolchain
+        shell: bash -el {0}
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ runner.temp }}/codex-ui/codex-rs -> target
+          cache-on-failure: true
+      - name: Check and build the original CLI with the Harness menu hook
+        shell: bash -el {0}
+        working-directory: ${{ runner.temp }}/codex-ui/codex-rs
+        run: |
+          cargo fmt -- --config imports_granularity=Item
+          cargo build --locked --release -p codex-cli --bin codex
+      - name: Preserve build and patch review evidence
+        if: always()
+        shell: bash -el {0}
+        run: |
+          git -C "${RUNNER_TEMP}/codex-ui" diff > "${RUNNER_TEMP}/codex-ui-patch.diff"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-ui-${{ runner.os }}
+          path: |
+            ${{ runner.temp }}/codex-ui/codex-rs/target/release/codex
+            ${{ runner.temp }}/codex-ui/codex-rs/target/release/codex.exe
+            ${{ runner.temp }}/codex-ui-patch.diff
+            ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/harness_routing.rs
+          retention-days: 7
