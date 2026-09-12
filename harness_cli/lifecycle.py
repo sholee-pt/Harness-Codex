@@ -105,6 +105,8 @@ def _allowed(operation: dict, installer, transaction) -> bool:
         return False
     if kind == "manifest":
         return path == ".harness/manifest.json"
+    if kind == 'guide':
+        return path == '.harness/GUIDE.md'
     if kind == "managed-block":
         return path in {"AGENTS.md", "AGENTS.override.md"}
     if kind == "generator-receipt":
@@ -374,6 +376,13 @@ def _plan(root: Path, include_generator: bool, helpers) -> tuple[dict, list, lis
                                               if item.data is not None and name not in managed and name != installer.RECEIPT)
     for relative, replacement, current, entry in pointers:
         add(relative, "managed-block", replacement, expected=current, entry=entry)
+    from .project_guide import owned as owns_guide
+    try:
+        guide_owned = owns_guide(root)
+    except (OSError, ValueError):
+        guide_owned = False
+    if guide_owned:
+        add('.harness/GUIDE.md', 'guide')
     if manifest is not None:
         add(".harness/manifest.json", "manifest")
         if snapshots[-1] != manifest_snapshot:

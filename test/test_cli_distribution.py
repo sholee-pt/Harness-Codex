@@ -278,7 +278,7 @@ class DistributionTests(unittest.TestCase):
             check = dist.check_update(self.data)
         self.assertEqual(check["status"], "up-to-date")
         self.assertEqual(self.calls[0][-1], "refs/heads/codex/v9.2")
-        self.assertIn("git@github.com:sholee-pt/Harness.git", self.calls[0])
+        self.assertIn("git@github.com:sholee-pt/Harness-Codex.git", self.calls[0])
 
     def test_explicit_repo_and_branch_validation_precedes_mutation(self):
         for bad_repo in ("https://token@github.com/sholee-pt/Harness.git", "https://example.org/Harness.git", "/tmp/repo"):
@@ -323,7 +323,18 @@ class DistributionTests(unittest.TestCase):
         result = self.update(branch="codex/v9.2", repository="git@github.com:sholee-pt/Harness.git")
         self.assertFalse(result["updated"])
         self.assertEqual(result["installation"]["branch"], "codex/v9.2")
-        self.assertEqual(result["installation"]["repository"], "git@github.com:sholee-pt/Harness.git")
+        self.assertEqual(result["installation"]["repository"], "git@github.com:sholee-pt/Harness-Codex.git")
+
+    def test_new_branch_discovery_preserves_legacy_receipt_and_prefers_unprefixed_alias(self):
+        self.install(repository='https://github.com/sholee-pt/Harness.git')
+        self.heads = f'{A}\trefs/heads/claude/v100\n{B}\trefs/heads/v0.11.0-beta\n{C}\trefs/heads/codex/v0.11.0-beta\n'
+        before = files(self.data)
+        with mock.patch.object(dist, '_git', side_effect=self.fake_git):
+            result = dist.check_update(self.data)
+        self.assertEqual(result['branch'], 'v0.11.0-beta')
+        self.assertEqual(result['repository'], dist.DEFAULT_REPOSITORY)
+        self.assertEqual(self.calls[0][-2:], ['refs/heads/v*', 'refs/heads/codex/v*'])
+        self.assertEqual(files(self.data), before)
 
     def test_higher_version_branch_pointing_to_old_commit_is_not_up_to_date(self):
         self.install()
@@ -512,7 +523,7 @@ class DistributionTests(unittest.TestCase):
     def test_token_helper_answers_only_exact_https_repository_and_does_not_store(self):
         environment = isolated_credential_environment(self.base)
         command = credential_fill_command()
-        for protocol, host, path, expected in (("https", "github.com", "sholee-pt/Harness.git", True), ("https", "other.example", "sholee-pt/Harness.git", False), ("http", "github.com", "sholee-pt/Harness.git", False), ("https", "github.com", "another/project.git", False)):
+        for protocol, host, path, expected in (("https", "github.com", "sholee-pt/Harness.git", True), ("https", "github.com", "sholee-pt/Harness-Codex.git", True), ("https", "github.com", "sholee-pt/Harness-Codex-extra.git", False), ("https", "other.example", "sholee-pt/Harness.git", False), ("http", "github.com", "sholee-pt/Harness.git", False), ("https", "github.com", "another/project.git", False)):
             with self.subTest(protocol=protocol, host=host, path=path):
                 result = subprocess.run(command, input=f"protocol={protocol}\nhost={host}\npath={path}\n\n",
                                         cwd=self.base, env=environment, capture_output=True, text=True, timeout=20)

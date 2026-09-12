@@ -1,7 +1,7 @@
 #!/bin/sh
 # Public, version-bound bootstrap. This entire file also works through `| sh`.
 set -eu
-VERSION=0.10.0-beta
+VERSION=0.11.0-beta
 fail() { printf 'Harness for Codex installer: %s\n' "$*" >&2; exit 1; }
 usage() {
   printf '%s\n' 'Usage: sh install_harness_codex.sh [OPTIONS]' \
@@ -25,7 +25,7 @@ validate_options() {
         key=$1; value=$2; shift 2
         case "$key" in
           --agent|--runtime) [ "$value" = codex ] || fail 'This installer is for Codex only; Claude is not implemented.' ;;
-          --branch) [ "$value" = "codex/v$VERSION" ] || fail "This installer is pinned to codex/v$VERSION." ;;
+          --branch) [ "$value" = "v$VERSION" ] || fail "This installer is pinned to v$VERSION." ;;
           --auto-update) case "$value" in compatible|check|off) ;; *) fail 'Invalid automatic update policy.' ;; esac ;;
           --existing) case "$value" in ask|reuse|reset) ;; *) fail 'Invalid existing-installation choice.' ;; esac ;;
           --activate) case "$value" in ask|shell|skip) ;; *) fail 'Invalid activation choice.' ;; esac ;;
@@ -47,7 +47,7 @@ main() {
   trap 'rm -rf -- "$temporary"' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
-  base="https://github.com/sholee-pt/Harness/releases/download/codex-v$VERSION"
+  base="https://github.com/sholee-pt/Harness-Codex/releases/download/v$VERSION"
   archive="harness-codex-$VERSION-linux.tar.gz"
   printf 'Downloading Harness for Codex %s...\n' "$VERSION"
   for name in "$archive" SHA256SUMS; do

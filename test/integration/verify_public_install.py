@@ -32,7 +32,7 @@ def verify(dist):
         wrapper.write_text('#!' + sys.executable + '\n' + '''import json, os, pathlib, sys
 args = sys.argv[1:]
 url = next((a for a in args if a.startswith('https://')), '')
-if url.startswith('https://github.com/sholee-pt/Harness/releases/download/codex-v'):
+if url.startswith('https://github.com/sholee-pt/Harness-Codex/releases/download/v'):
     name = url.rsplit('/', 1)[1]
     source = pathlib.Path(json.loads(os.environ['TEST_ASSETS'])[name])
     with open(os.environ['TEST_DOWNLOAD_LOG'], 'a') as log: log.write(name + '\\n')
@@ -61,7 +61,7 @@ else:
         assert subprocess.run(['/bin/sh', '-c', 'command -v conda'], env=env,
                               capture_output=True, timeout=10).returncode != 0
         version = json.loads((dist / 'build.json').read_text())['version']
-        pipeline = f'curl -fsSL https://github.com/sholee-pt/Harness/releases/download/codex-v{version}/install_harness_codex.sh | sh'
+        pipeline = f'curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v{version}/install_harness_codex.sh | sh'
         def run(command, timeout=120):
             result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=timeout)
             if result.returncode:

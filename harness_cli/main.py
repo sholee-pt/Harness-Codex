@@ -83,8 +83,8 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     install = commands.add_parser("install", help="Install this tool into user-local managed storage.")
     install.add_argument("--data-dir", type=Path, default=default_data_root(installer=True))
     install.add_argument("--bin-dir", type=Path, default=default_bin_root())
-    install.add_argument("--branch", help="Pin codex/vX.Y.Z[-beta]; otherwise follow the latest Codex branch. Legacy branches remain readable.")
-    install.add_argument("--repository", default=distribution.DEFAULT_REPOSITORY, help="HTTPS or SSH transport for sholee-pt/Harness.")
+    install.add_argument("--branch", help="Pin vX.Y.Z[-beta]; otherwise follow the latest release branch. Legacy branches remain readable.")
+    install.add_argument("--repository", default=distribution.DEFAULT_REPOSITORY, help="HTTPS or SSH transport for sholee-pt/Harness-Codex.")
     install.add_argument("--auto-update", choices=("compatible", "check", "off"), default="compatible")
     install.add_argument("--no-modify-path", action="store_true", help="Skip user PATH registration (Bash startup on Linux; user registry on Windows).")
     install.add_argument("--existing", choices=("ask", "reuse", "reset"), default="ask",
@@ -97,7 +97,7 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     update.add_argument("--check", action="store_true", help="Only inspect upstream versions; write nothing.")
     update.add_argument("--repair-launcher", action="store_true", help="Repair an owned legacy launcher or interrupted migration offline, then exit.")
     update.add_argument("--data-dir", type=Path, default=default_data_root())
-    update.add_argument("--branch", help="Select codex/vX.Y.Z[-beta] or a legacy version branch.")
+    update.add_argument("--branch", help="Select vX.Y.Z[-beta] or a legacy version branch.")
     update.add_argument("--repository", help="Choose HTTPS or SSH authentication transport for the same repository.")
     update.add_argument("--timeout", type=float, default=20)
     for command in dict.fromkeys(commands.choices.values()):
@@ -206,9 +206,11 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
                 validate_root(args.owned_runtime, args.data_dir)
             if previous is not None and choice == 'reuse':
                 args.branch, args.repository, args.auto_update = previous['branch'], previous['repository'], previous['auto_update']
-                if args.branch and len(previous['version'].split('.')) == 2 and len(version(source_root).split('.')) == 3:
-                    args.branch = None
-                    print('Legacy branch pin retired for beta migration; updates now follow the newest compatible Codex release.')
+                if distribution.version_key(version(source_root)) >= distribution.version_key('0.11.0-beta'):
+                    args.repository = distribution.canonical_repository(args.repository)
+                    if args.branch and args.branch.startswith('codex/'):
+                        args.branch = None
+                        print('Legacy codex/ branch pin retired; updates now follow the newest compatible Harness-Codex release.')
             if not args.no_modify_path:
                 path_registration(args.bin_dir, reset=choice == 'reset', dry_run=True)
             if args.owned_runtime:

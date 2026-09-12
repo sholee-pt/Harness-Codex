@@ -36,8 +36,10 @@ def report(value: dict, *, title='Harness', error=False) -> None:
             print(f'  {label}: {clean(item)}', file=stream)
     for key, label in (('runtimeLoading', 'Runtime loading'), ('taskQuality', 'Task quality')):
         item = value.get('summary', {}).get(key)
-        if item:
+        if item and item not in {'not-tested', 'not-measured'}:
             print(f'  {label}: {clean(item)}', file=stream)
+    if value.get('summary'):
+        print('  Check scope: project files and contracts. Live loading and task quality require separate evaluation.', file=stream)
     for kind in ('errors', 'warnings', 'upgradeRequirements'):
         for entry in value.get(kind, [])[:12]:
             print(f'  - {clean(entry)}', file=stream)

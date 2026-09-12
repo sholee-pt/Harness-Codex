@@ -29,7 +29,8 @@ class ProjectInputTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         invocation = json.loads(self.log.read_text(encoding="utf-8"))["argv"]
         self.assertEqual(len(invocation), 3)
-        self.assertTrue(invocation[-1].endswith(text))
+        self.assertIn(json.dumps(str(brief), ensure_ascii=False), invocation[-1])
+        self.assertNotIn(text, invocation[-1])
         self.assertIn("reference material", invocation[-1])
         self.assertIn("do not independently authorize Git operations", invocation[-1])
         self.assertEqual((brief.read_bytes(), brief.stat().st_mtime_ns), before)
@@ -47,9 +48,25 @@ class ProjectInputTests(unittest.TestCase):
         self.assertEqual(list(self.root.iterdir()), [])
         self.codex.assert_not_called()
 
+    def test_large_brief_stays_out_of_argv_and_checks_encoding_after_first_chunk(self):
+        brief = self.base / 'large.md'
+        content = ('# 연구\n' + '유전자 순서와 데이터 분할을 확인할 것.\n' * 20000).encode('utf-8')
+        brief.write_bytes(content)
+        os.environ['FAKE_CODEX_MODE'] = 'generate'
+        code, _, err = self.run_cli('init', '--goal-file', str(brief))
+        self.assertEqual(code, 0, err)
+        argv = json.loads(self.log.read_text())['argv']
+        self.assertLess(len(argv[-1].encode('utf-8')), 4096)
+        self.assertEqual(brief.read_bytes(), content)
+        from harness_cli.project_brief import reference
+        for suffix in (b'\xff', b'\x00', b'\xf0\x9f'):
+            brief.write_bytes(content + suffix)
+            with self.subTest(suffix=suffix), self.assertRaises(ValueError):
+                reference(brief)
+
     def test_invalid_briefs_fail_before_generator_writes_or_codex(self):
         examples = [("empty.md", b" \n"), ("binary.md", b"# A\0B"), ("encoded.md", b"\xff\xfe\x00\x00"),
-                    ("large.md", b"x" * (project.MAX_GOAL_FILE_BYTES + 1)), ("wrong.txt", b"# Goal")]
+                    ("wrong.txt", b"# Goal")]
         for name, data in examples:
             brief = self.base / name
             brief.write_bytes(data)
@@ -211,7 +228,7 @@ class ProjectInputTests(unittest.TestCase):
         code, out, err = self.run_cli("reset", "--yes", "--goal-file", str(brief))
         self.assertEqual(code, 0, err)
         self.assertIn("Project harness files validate", out)
-        self.assertIn("# Revised responsibilities", json.loads(self.log.read_text())["argv"][-1])
+        self.assertIn(json.dumps(str(brief)), json.loads(self.log.read_text())["argv"][-1])
         self.assertFalse((self.root / ".harness/transaction.json").exists())
         self.assertEqual(json.loads(self.run_cli("status", tty=False)[1])["state"], "configured")
 

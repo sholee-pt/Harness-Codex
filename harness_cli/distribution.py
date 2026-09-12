@@ -27,8 +27,11 @@ from .paths import checked_path, is_link as _linked
 from .versions import BRANCH_RE, VERSION_RE, version_key, branch_version
 
 
-DEFAULT_REPOSITORY = "https://github.com/sholee-pt/Harness.git"
-REPOSITORIES = frozenset({DEFAULT_REPOSITORY, "git@github.com:sholee-pt/Harness.git", "ssh://git@github.com/sholee-pt/Harness.git"})
+DEFAULT_REPOSITORY = "https://github.com/sholee-pt/Harness-Codex.git"
+# Old receipts remain readable. Network operations use the renamed repository.
+REPOSITORIES = frozenset(prefix + name + '.git'
+                        for prefix in ('https://github.com/', 'git@github.com:', 'ssh://git@github.com/')
+                        for name in ('sholee-pt/Harness', 'sholee-pt/Harness-Codex'))
 COMMIT_RE = re.compile(r"[0-9a-f]{40}\Z")
 RELEASE_RE = re.compile(r"(?:[0-9a-f]{40}|content-[0-9a-f]{64})\Z")
 MAX_FILES = 10000
@@ -40,6 +43,7 @@ REQUIRED = frozenset({"harness.py", "install.py", "harness_cli/__init__.py", "ha
 # Keep the original common set valid for complete v9.2 and v9.3 distributions.
 # Later releases inherit each dependency from its numeric introduction version.
 VERSION_REQUIRED = (
+    (version_key("0.11.0-beta"), frozenset({"harness_cli/native_session.py", "harness_cli/project_brief.py", "harness_cli/project_guide.py", "harness_cli/terminal_menu.py"})),
     (version_key("9.10"), frozenset({"harness_cli/presentation.py", "harness_cli/configuration.py"})),
     (version_key("9.11"), frozenset({"harness_cli/session_settings.py"})),
     (version_key("9.9"), frozenset({"harness_cli/runtime_cleanup.ps1"})),
@@ -52,12 +56,13 @@ VERSION_REQUIRED = (
 # Retain historical optional installer names for old managed receipts. New source
 # checkouts keep installers outside the runtime; only archive setup needs them.
 TOP_FILES = frozenset({"harness.py", "install.py", "install.sh", "install_harness.sh", "install_harness_codex.sh", "install.ps1", "install_harness_codex.ps1", "environment.yml", "README.md", "LICENSE", "_release.json"})
+# Stable installation identity, independent of the GitHub repository display name.
 OWNER = {"schema": 1, "tool": "sholee-pt/Harness"}
 TOKEN_HELPER = ('!f() { if test "$1" != get; then return; fi; p=; h=; r=; '
                 'while IFS="=" read -r k v; do case "$k" in '
                 'protocol) p="$v";; host) h="$v";; path) r="$v";; esac; done; '
                 'if test "$p" = https && test "$h" = github.com '
-                '&& test "$r" = sholee-pt/Harness.git; then '
+                '&& { test "$r" = sholee-pt/Harness.git || test "$r" = sholee-pt/Harness-Codex.git; }; then '
                 'printf "username=x-access-token\\npassword=%s\\n" "$HARNESS_GITHUB_TOKEN"; '
                 'fi; }; f')
 
@@ -108,8 +113,12 @@ def _branch(value: str) -> tuple[int, int, int, int]:
 
 def _repository(value: str) -> str:
     if value not in REPOSITORIES:
-        raise DistributionError("source must be the sholee-pt/Harness GitHub repository using HTTPS or SSH")
+        raise DistributionError("source must be the sholee-pt/Harness-Codex GitHub repository using HTTPS or SSH")
     return value
+
+
+def canonical_repository(value: str) -> str:
+    return _repository(value).replace('sholee-pt/Harness.git', 'sholee-pt/Harness-Codex.git')
 
 
 def _read_json(path: Path) -> dict:
@@ -868,11 +877,12 @@ def _checkout_commit(source_root: Path, snapshot: dict[str, bytes]) -> str | Non
 def check_update(data_root, *, branch=None, repository=None, timeout=20, git_executable="git") -> dict:
     """Query branch heads. No cache, project, release, or pointer is modified."""
     active = installed_status(data_root)
-    repository = _repository(repository if repository is not None else active["repository"])
+    repository = canonical_repository(repository if repository is not None else active["repository"])
     selected = branch if branch is not None else active["branch"]
     if selected is not None:
         _branch(selected)
-    result = _git(["ls-remote", "--heads", repository, "refs/heads/" + (selected or "codex/v*")], timeout=timeout, git_executable=git_executable)
+    patterns = ['refs/heads/' + selected] if selected else ['refs/heads/v*', 'refs/heads/codex/v*']
+    result = _git(["ls-remote", "--heads", repository, *patterns], timeout=timeout, git_executable=git_executable)
     heads = {}
     try:
         for line in result.stdout.decode("utf-8").splitlines():

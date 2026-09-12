@@ -8,6 +8,7 @@ Release and tag history starts at `v0.10.0-beta` after a one-time reset. Earlier
 
 | Version | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
+| [`v0.11.0-beta`](#harness-for-codex-v0110-beta) | Harness for Codex v0.11.0-beta | Schema 3 | Schema 7 | Schema 2 | Lean resume, source-drift tolerance, one guide, native model modes and Harness-Codex distribution |
 | [`v0.10.0-beta`](#harness-for-codex-v0100-beta) | Harness for Codex v0.10.0-beta | Schema 3 | Schema 7 | Schema 2 | Bounded opt-in maintenance, exact Conda interpreter selection and beta versioning |
 | [`v0.9.11-beta`](#harness-for-codex-v0911-beta) | Harness for Codex v0.9.11-beta | Schema 3 | Schema 7 | Schema 2 | Native model/reasoning/permission picker, compact progress and independently validated completion |
 | [`v0.9.10-beta`](#harness-for-codex-v0910-beta) | Harness for Codex v0.9.10-beta | Schema 3 | Schema 7 | Schema 2 | Native configuration progress, concise diagnostics, command-specific edition and live installer timers |
@@ -54,7 +55,47 @@ Release and tag history starts at `v0.10.0-beta` after a one-time reset. Earlier
 | [`v0.8.1-beta`](#harness-for-codex-v081-beta) | Harness for Codex v0.8.1-beta | Schema 3 | Schema 6 | Schema 2 | Apply rejects unsupported existing artifact contracts while preserving supported v0.8.0-beta and legacy updates |
 | [`v0.9.0-beta`](#harness-for-codex-v090-beta) | Harness for Codex v0.9.0-beta | Schema 3 | Schema 7 | Schema 2 | Project-local installer, user-selected folders independent of Git boundaries, Artifact Contract 2, no Git metadata writes |
 
-Only the latest Codex and latest Claude branches are retained. The default branch follows the latest verified release; earlier source history remains reachable through commits. The table uses normalized display versions and does not relabel historical commits or evidence identifiers.
+Only the latest verified Codex release branch is retained in Harness-Codex. The default branch follows the latest verified release; earlier source history remains reachable through commits. The table uses normalized display versions and does not relabel historical commits or evidence identifiers.
+
+## Harness for Codex v0.11.0-beta
+
+Development prerelease. The repository is now **sholee-pt/Harness-Codex**, with branch and tag `v0.11.0-beta`. Existing project contracts remain Manifest Schema 7 / Artifact Contract 2; 0.10.0-beta project harnesses do not require reset.
+
+- Resume sends no repeated bootstrap turn by default. `--reload-harness` sends a short explicit re-read. An explicit UUID without `--project` locates its saved project through metadata only; project aliases include `--project-dir` and `--project_dir`.
+- Changed or deleted source evidence permits work with a review notice. Managed-file edits, unsafe paths, malformed contracts and interrupted transactions still block. Evidence hashes are not silently refreshed.
+- `.harness/GUIDE.md` is the single CLI guide. Config/new/resume refresh it only when needed, preserve user edits, and use recoverable removal for an unchanged owned guide.
+- Markdown briefs have no 64 KiB cap. Incremental validation checks the file while the prompt references relevant sections by path, avoiding a whole-file prompt copy.
+- Automatic/manual/native settings are available for init/config/new/resume, with arrow selection and color on supported terminals. Automatic uses the native recommended catalog default and preserves saved settings on resume; no optimal-efficiency claim or automatic permission expansion is made.
+- Successfully validated fresh setup conversations are archived from the active picker while keeping their history. Failed, incomplete, user-resumed and interactive setup sessions are preserved. Settings discovery creates no conversation.
+- Human diagnostics explain the static check scope. Machine output retains untested runtime loading and unmeasured quality. Configuration errors receive native sandbox/approval-limit guidance without bypassing either system.
+
+### Installation and migration
+
+Linux:
+
+```sh
+curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.11.0-beta/install_harness_codex.sh | sh
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://github.com/sholee-pt/Harness-Codex/releases/download/v0.11.0-beta/install_harness_codex.ps1 | iex
+```
+
+From 0.10.0-beta, run the installer once and choose `reuse`: the older updater cannot discover unprefixed branches. Existing project files remain in place; obsolete branch pins are retired, transport and automatic-update preferences retained. From an authenticated current checkout, use `bash installer/install.sh --existing reuse` or `./installer/install.ps1 -Existing reuse`. Run `harness-codex config` only when the project configuration needs review.
+
+### Release files and validation scope
+
+| Asset | Purpose |
+| --- | --- |
+| `install_harness_codex.sh` / `.ps1` | Download and verify the matching distribution, then prepare the isolated runtime and command |
+| `harness-codex-0.11.0-beta-linux.tar.gz` | Linux CLI, generator and local installer |
+| `harness-codex-0.11.0-beta-windows.zip` | Windows CLI, generator and local installer |
+| `SHA256SUMS` | Asset checksums |
+| `build.json` | Exact source commit and archive digests |
+
+Release publication requires Windows and Linux CI, including regression tests, installer execution and cross-validation against the immediately preceding 0.10.0-beta source. Protocol fixtures test session behavior without model calls. Static checks and metadata probes do not prove native agent selection quality, token savings, GPU results or resolution of a particular remote host's sandbox restrictions. The original resume error log was unavailable, so its exact cause is not claimed as reproduced.
 
 ## Harness for Codex v0.10.0-beta
 

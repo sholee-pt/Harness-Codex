@@ -4,10 +4,10 @@ Changes should keep Harness small, runtime-native, and safe to rerun. See the li
 
 ## Branches
 
-- Harness for Codex development branches use `codex/vX.Y.Z-beta`, with tags such as `codex-v0.10.0-beta`. These are Harness versions, not Codex product versions.
-- Claude development stays on its separate `claude/*` branch.
+- Harness for Codex development branches use `vX.Y.Z-beta`, with tags such as `v0.11.0-beta`. These are Harness versions, not Codex product versions.
+- This repository contains the Codex edition only.
 - X marks major or large-scale changes; Y covers minor features, improvements, refactoring and optimization; Z covers bug fixes. Explanatory documentation-only changes do not increment the version.
-- Start a new version branch from the latest branch for the same edition. See [versioning](docs/versioning.md) for the full policy and release reset.
+- Start a new version branch from the latest verified release branch. See [versioning](docs/versioning.md) for the full policy and release reset.
 
 ## Commit messages
 

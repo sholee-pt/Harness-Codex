@@ -47,7 +47,7 @@ def old_project(baseline, root, runtime_path):
     import test_runtime_teamplay
     import shutil
 
-    assert harness_metadata.HARNESS_VERSION == "9.11"
+    assert harness_metadata.HARNESS_VERSION == "0.10.0-beta"
     shutil.copytree(tests_root / "fixtures/coordinated-cross-contract", root)
     draft = test_runtime_teamplay.DeterministicPlanBuilderTests()._draft("coordinated-cross-contract-plan.json")
     plan = harness_plan_builder.materialize_plan(draft, root=root)
@@ -100,8 +100,8 @@ def verify(baseline):
     baseline_version = old._source_info(old_snapshot)[0]
     assert current._source_info(old_snapshot)[0] == baseline_version, "Complete historical module layouts must remain readable"
     candidate_version = current._source_info(new_snapshot)[0]
-    assert baseline_version == "9.11"
-    assert candidate_version == "0.10.0-beta"
+    assert baseline_version == "0.10.0-beta"
+    assert candidate_version == "0.11.0-beta"
     optional_installers = {"install.sh", "install.ps1", "install_harness.sh", "install_harness_codex.sh", "install_harness_codex.ps1"}
     retired_installers = optional_installers & (old_snapshot.keys() - new_snapshot.keys())
     assert "install_harness.sh" not in new_snapshot
@@ -148,7 +148,7 @@ def verify(baseline):
         project_before = state(project)
 
         if baseline_version != candidate_version:
-            git("checkout", "--quiet", "-b", "codex/v" + candidate_version)
+            git("checkout", "--quiet", "-b", "v" + candidate_version)
         populate(new_snapshot, old_snapshot)
         git("add", "--all")
         git("-c", "user.name=Harness fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Real v" + candidate_version + " runtime")
@@ -160,12 +160,12 @@ def verify(baseline):
             calls.append(list(arguments))
             for argument in arguments:
                 if argument.startswith(("https://", "http://", "ssh://", "git@")):
-                    assert argument == old.DEFAULT_REPOSITORY, "Unexpected network destination in fixture"
-            rewritten = [str(upstream) if argument == old.DEFAULT_REPOSITORY else argument for argument in arguments]
+                    assert argument in {old.DEFAULT_REPOSITORY, current.DEFAULT_REPOSITORY}, "Unexpected network destination in fixture"
+            rewritten = [str(upstream) if argument in {old.DEFAULT_REPOSITORY, current.DEFAULT_REPOSITORY} else argument for argument in arguments]
             # This allowance exists only in the injected test transport.
             return real_git(["-c", "protocol.file.allow=always", *rewritten], **kwargs)
 
-        # The old binary cannot discover beta branch names. The current
+        # The old binary cannot discover unprefixed release branches. The current
         # installer/migrator reads its immutable receipt and handles ordering.
         with mock.patch.dict(os.environ, environment, clear=True), mock.patch.object(old, "_git", side_effect=local_transport):
             legacy_check = old.check_update(data)

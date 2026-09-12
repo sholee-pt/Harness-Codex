@@ -20,14 +20,14 @@ class WindowsBootstrapTests(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         self.base = Path(temp.name)
         self.marker = self.base / 'executed.txt'
-        self.archive = self.base / 'harness-codex-0.10.0-beta-windows.zip'
+        self.archive = self.base / 'harness-codex-0.11.0-beta-windows.zip'
         self.sums = self.base / 'SHA256SUMS'
 
     def build(self, extra=()):
         self.marker.unlink(missing_ok=True)
         with zipfile.ZipFile(self.archive, 'w') as archive:
-            archive.writestr('harness-codex-0.10.0-beta/harness.py', '# fixture')
-            archive.writestr('harness-codex-0.10.0-beta/install.ps1',
+            archive.writestr('harness-codex-0.11.0-beta/harness.py', '# fixture')
+            archive.writestr('harness-codex-0.11.0-beta/install.ps1',
                              "param($SourceRoot, $AutoUpdate, $NoModifyPath, $BinDir)\n"
                              "[IO.File]::WriteAllText($env:TEST_MARKER, $BinDir + '|' + $AutoUpdate + '|' + $NoModifyPath)\n")
             for name, data in extra:
@@ -44,7 +44,7 @@ class WindowsBootstrapTests(unittest.TestCase):
 $ErrorActionPreference = 'Stop'
 function Invoke-WebRequest {
     param($Uri, $OutFile, [switch]$UseBasicParsing, $TimeoutSec)
-    if ($Uri -notlike 'https://github.com/sholee-pt/Harness/releases/download/codex-v0.10.0-beta/*') { throw 'Unexpected network request' }
+    if ($Uri -notlike 'https://github.com/sholee-pt/Harness-Codex/releases/download/v0.11.0-beta/*') { throw 'Unexpected network request' }
     Copy-Item -LiteralPath (Join-Path $env:TEST_ASSETS ([Uri]$Uri).Segments[-1]) -Destination $OutFile
 }
 try {
@@ -80,9 +80,9 @@ try {
         self.assertFalse(self.marker.exists())
 
     def test_unsafe_entries_are_refused_before_extraction_or_execution(self):
-        for name in ('harness-codex-0.10.0-beta/../outside', 'harness-codex-0.10.0-beta/INSTALL.PS1',
-                     'harness-codex-0.10.0-beta/CON.txt', 'harness-codex-0.10.0-beta/trailing. ',
-                     'harness-codex-0.10.0-beta/name:stream', 'harness-codex-0.10.0-beta/a\\b', '/absolute'):
+        for name in ('harness-codex-0.11.0-beta/../outside', 'harness-codex-0.11.0-beta/INSTALL.PS1',
+                     'harness-codex-0.11.0-beta/CON.txt', 'harness-codex-0.11.0-beta/trailing. ',
+                     'harness-codex-0.11.0-beta/name:stream', 'harness-codex-0.11.0-beta/a\\b', '/absolute'):
             with self.subTest(name=name):
                 self.build([(name, b'unsafe')])
                 result = self.run_bootstrap()
@@ -91,7 +91,7 @@ try {
                 self.assertFalse(self.marker.exists())
 
     def test_symlink_entry_is_refused(self):
-        info = zipfile.ZipInfo('harness-codex-0.10.0-beta/link')
+        info = zipfile.ZipInfo('harness-codex-0.11.0-beta/link')
         info.create_system = 3
         info.external_attr = 0o120777 << 16
         self.build([(info, b'outside')])
@@ -103,7 +103,7 @@ try {
     def test_help_is_offline_without_release_assets(self):
         result = self.run_bootstrap('-Help')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('0.10.0-beta Windows installer', result.stdout)
+        self.assertIn('0.11.0-beta Windows installer', result.stdout)
         self.assertFalse(self.marker.exists())
 
 

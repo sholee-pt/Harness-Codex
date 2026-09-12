@@ -31,6 +31,7 @@ class Result:
     session_id: str | None
     message: str = ''
     needs_input: bool = False
+    created_session: bool = False
 
     def show_details(self):
         if self.message:
@@ -60,6 +61,12 @@ class Server:
         self.readers = [threading.Thread(target=self._read, daemon=True), threading.Thread(target=self._errors, daemon=True)]
         for thread in self.readers:
             thread.start()
+
+    def initialize(self, timeout=30):
+        from .main import version
+        self.call('initialize', {'clientInfo': {'name': 'harness_codex', 'title': 'Harness for Codex',
+                  'version': version(Path(__file__).resolve().parents[1])}}, timeout=timeout)
+        self.send({'method': 'initialized', 'params': {}})
 
     def _put(self, item):
         while not self.stop.is_set():
@@ -174,6 +181,11 @@ class Server:
                 self.progress.phase('Updating project harness files')
             elif kind == 'agentMessage' and method == 'item/completed':
                 self.last_message = clean(value.get('text', ''))
+            if kind == 'commandExecution' and method == 'item/completed' and value.get('exitCode'):
+                from .native_session import execution_diagnostic
+                diagnostic = execution_diagnostic(value.get('aggregatedOutput', ''))
+                if diagnostic:
+                    self.progress.line(diagnostic)
             if method == 'item/completed':
                 self.items.pop(item_id, None)
         elif method == 'error':
@@ -277,9 +289,15 @@ def run(command: list[str], root: Path, prompt: str, *, timeout=1800, resume_id=
         server = Server(command, root, progress)
         completed = False
         try:
-            from .main import version
-            server.call('initialize', {'clientInfo': {'name': 'harness_codex', 'title': 'Harness for Codex', 'version': version(Path(__file__).resolve().parents[1])}}, timeout=min(30, deadline-time.monotonic()))
-            server.send({'method': 'initialized', 'params': {}})
+            server.initialize(timeout=min(30, deadline-time.monotonic()))
+            from .session_settings import automatic, current_settings, mode_choice, select
+            mode = mode_choice(progress, settings)
+            overrides = {}
+            if mode == 'manual':
+                overrides = select(server, {} if resume_id else current_settings(server, root, deadline), root, deadline)
+            elif mode == 'auto':
+                overrides = automatic(server, deadline, resume=bool(resume_id))
+            # Selecting/cancelling settings must not create an empty stored thread.
             params = {'cwd': str(root)}
             if resume_id:
                 params['threadId'] = resume_id
@@ -288,10 +306,6 @@ def run(command: list[str], root: Path, prompt: str, *, timeout=1800, resume_id=
             if not isinstance(thread, dict) or not isinstance(thread.get('id'), str) or not thread['id']:
                 raise ValueError('Codex did not return a native session ID; retry with --interactive.')
             server.thread_id = thread['id']
-            overrides = {}
-            if settings == 'ask':
-                from .session_settings import select
-                overrides = select(server, result, root, deadline)
             progress.line(f"  Model: {clean(overrides.get('model', result.get('model', 'native default')))}"
                           f" | Reasoning: {clean(overrides.get('effort', result.get('reasoningEffort') or 'native default'))}")
             progress.phase('Analyzing the project and configuring its harness')
@@ -324,7 +338,8 @@ def run(command: list[str], root: Path, prompt: str, *, timeout=1800, resume_id=
                     completed = True
                     needs_input = final['status'] == 'needs-input'
                     progress.outcome = 'needs input' if needs_input else 'finished'
-                    return Result(1 if needs_input else 0, server.thread_id, final['message'], needs_input)
+                    return Result(1 if needs_input else 0, server.thread_id, final['message'], needs_input,
+                                  created_session=not bool(resume_id))
                 if status == 'interrupted':
                     progress.outcome = 'interrupted'
                     return Result(130, server.thread_id)

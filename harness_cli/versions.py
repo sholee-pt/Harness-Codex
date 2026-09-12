@@ -5,7 +5,7 @@ import re
 
 NUMBER = r'(?:0|[1-9][0-9]*)'
 VERSION_RE = re.compile(rf'({NUMBER})\.({NUMBER})(?:\.({NUMBER})(-beta)?)?\Z')
-BRANCH_RE = re.compile(rf'codex/v{NUMBER}(?:\.{NUMBER}(?:\.{NUMBER}(?:-beta)?)?)?\Z')
+BRANCH_RE = re.compile(rf'(?:codex/)?v{NUMBER}(?:\.{NUMBER}(?:\.{NUMBER}(?:-beta)?)?)?\Z')
 
 
 def version_key(value: str) -> tuple[int, int, int, int]:
@@ -25,6 +25,6 @@ def display_version(value: str) -> str:
 
 def branch_version(value: str) -> str:
     if not isinstance(value, str) or not BRANCH_RE.fullmatch(value):
-        raise ValueError('Branch must be codex/vN.N.N[-beta] (legacy version branches remain readable)')
-    raw = value[len('codex/v'):]
+        raise ValueError('Branch must be vN.N.N[-beta] (legacy codex/v branches remain readable)')
+    raw = value.removeprefix('codex/')[1:]
     return raw if '.' in raw else raw + '.0'

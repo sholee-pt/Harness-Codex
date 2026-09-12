@@ -1,6 +1,6 @@
 # Release assets and verification
 
-Each [GitHub Release](https://github.com/sholee-pt/Harness/releases) contains its installation instructions and changes directly in the release body.
+Each [GitHub Release](https://github.com/sholee-pt/Harness-Codex/releases) contains its installation instructions and changes directly in the release body.
 
 | Asset | Purpose |
 | --- | --- |

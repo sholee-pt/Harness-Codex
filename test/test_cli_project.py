@@ -69,7 +69,8 @@ class ProjectCliTests(unittest.TestCase):
     def run_cli(self, command, *extra, tty=True):
         output = TerminalBuffer() if tty else io.StringIO()
         error = io.StringIO()
-        options = ["--interactive"] if command in {"init", "configure", "config", "reset"} else []
+        options = ["--interactive", "--settings", "native"] if command in {"init", "configure", "config", "reset"} else (
+            ['--settings', 'native'] if command in {'new', 'start', 'resume'} else [])
         args = self.parser.parse_args([command, "--json", "--project", str(self.root), *options, *extra])
         with mock.patch.object(sys, "stdin", TerminalBuffer() if tty else io.StringIO()), contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
             status = project.run_project_command(args, source_root=REPO_ROOT)
@@ -77,6 +78,7 @@ class ProjectCliTests(unittest.TestCase):
 
     def generate(self):
         harness_apply.apply_application(harness_apply.build_application(self.root, minimal_plan(self.root)))
+        project._sync_guide(REPO_ROOT, self.root)
 
     def test_dry_run_does_not_need_codex_or_terminal_and_does_not_write(self):
         (self.root / "user.txt").write_text("keep", encoding="utf-8")
@@ -244,7 +246,10 @@ class ProjectCliTests(unittest.TestCase):
         prompt = json.loads(self.log.read_text(encoding="utf-8"))["argv"][2]
         self.assertIn("Re-read the current workspace", prompt)
         self.assertIn("Do not automatically regenerate", prompt)
-        self.assertEqual(snapshot(self.root), before)
+        after = snapshot(self.root)
+        self.assertEqual({k: v for k, v in after.items() if k != '.harness/GUIDE.md'},
+                         {k: v for k, v in before.items() if k != '.harness/GUIDE.md'})
+        self.assertIn('review current source', (self.root / '.harness/GUIDE.md').read_text())
         # The launcher does not rewrite evidence hashes or turn doctor green.
         status, report = project._report(REPO_ROOT, self.root)
         self.assertEqual(status, 1)
@@ -300,23 +305,22 @@ class ProjectCliTests(unittest.TestCase):
                 self.assertFalse(self.log.exists())
                 self.assertEqual(snapshot(self.root), before)
 
-    def test_missing_evidence_file_still_blocks_normal_start(self):
+    def test_missing_evidence_allows_start_without_refreshing_the_manifest(self):
         self.generate()
         (self.root / "pyproject.toml").unlink()
         before = snapshot(self.root)
-        for command in ("start",):
-            with self.subTest(command=command):
-                code, out, err = self.run_cli(command)
-                self.assertEqual(code, 1)
-                self.assertNotIn("evidence is stale", err)
-                self.assertFalse(self.log.exists())
-                self.assertEqual(snapshot(self.root), before)
+        code, out, err = self.run_cli('start')
+        self.assertEqual(code, 0, err)
+        self.assertIn('evidence is stale', err)
+        after = snapshot(self.root)
+        self.assertEqual({k: v for k, v in after.items() if k != '.harness/GUIDE.md'},
+                         {k: v for k, v in before.items() if k != '.harness/GUIDE.md'})
 
     def test_configure_repairs_deleted_evidence_through_reviewed_generation(self):
         self.assertEqual(self.run_cli("init", "--install-only")[0], 0)
         self.generate()
         (self.root / "pyproject.toml").unlink()
-        self.assertEqual(self.run_cli("start")[0], 1)
+        self.assertEqual(self.run_cli("start")[0], 0)
         os.environ["FAKE_CODEX_MODE"] = "generate"
         code, out, err = self.run_cli("configure", "--goal", "Review the current files and refresh evidence")
         self.assertEqual(code, 0, err)
@@ -470,14 +474,14 @@ class ProjectCliTests(unittest.TestCase):
         self.assertEqual(snapshot(self.root), before)
         self.assertFalse(self.log.exists())
 
-    def test_status_missing_source_requires_configuration_review(self):
+    def test_status_missing_source_permits_work_with_review_notice(self):
         self.generate()
         (self.root / "pyproject.toml").unlink()
         before = snapshot(self.root)
         code, out, err = self.run_cli("status", tty=False)
         report = json.loads(out)
         self.assertEqual(report["state"], "stale-evidence", err)
-        self.assertEqual(report["nextCommand"], "harness-codex config --project PATH")
+        self.assertEqual(report["nextCommand"], "harness-codex new --project PATH")
         self.assertEqual(snapshot(self.root), before)
         self.assertFalse(self.log.exists())
 

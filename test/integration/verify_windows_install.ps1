@@ -35,7 +35,7 @@ if ($Cold) { $options.CondaHome = Join-Path $base 'miniforge' }
 else { $options.CondaExe = $CondaExe; $options.NoModifyPath = $true }
 function Invoke-WebRequest {
     param($Uri, $OutFile, [switch]$UseBasicParsing, $TimeoutSec)
-    if ($Uri -like 'https://github.com/sholee-pt/Harness/releases/download/codex-v*/*') {
+    if ($Uri -like 'https://github.com/sholee-pt/Harness-Codex/releases/download/v*/*') {
         $asset = Join-Path $Dist ([Uri]$Uri).Segments[-1]
         if (-not (Test-Path -LiteralPath $asset -PathType Leaf)) { throw 'Unexpected Harness asset request.' }
         Copy-Item -LiteralPath $asset -Destination $OutFile

@@ -2,19 +2,47 @@
 from __future__ import annotations
 
 import time
+from .terminal_menu import choose
 
 
-def choose(progress, title, labels):
-    progress.line('\n' + title)
-    for index, label in enumerate(labels):
-        progress.line(f'  {index}. {label}')
-    while True:
-        answer = progress.ask('Select a number [0]: ').strip()
-        if not answer:
-            return 0
-        if answer.isascii() and answer.isdecimal() and len(answer) < 5 and int(answer) < len(labels):
-            return int(answer)
-        progress.line(f'Enter a number from 0 to {len(labels) - 1}.')
+def mode_choice(progress, mode):
+    if mode != 'ask':
+        return mode
+    return ('auto', 'manual', 'native')[choose(progress, 'Model selection', [
+        'Automatic — use Codex recommended defaults; preserve a resumed session',
+        'Manual — choose model, reasoning and permissions',
+        'Keep native settings',
+    ])]
+
+
+def current_settings(server, root, deadline):
+    result = server.call('config/read', {'cwd': str(root), 'includeLayers': False},
+                         timeout=min(30, deadline - time.monotonic()))
+    config = result.get('config', {})
+    if not isinstance(config, dict):
+        raise ValueError('Codex returned invalid configuration settings')
+    return {'model': config.get('model'), 'reasoningEffort': config.get('model_reasoning_effort'),
+            'approvalPolicy': config.get('approval_policy'),
+            'sandbox': {'type': config.get('sandbox_mode') or 'native profile'}}
+
+
+def automatic(server, deadline, *, resume=False):
+    if resume:
+        server.progress.line('Automatic: keep the resumed conversation model and reasoning.')
+        return {}
+    models = model_catalog(server, deadline)
+    model = next((m for m in models if m.get('isDefault') is True), None)
+    if model is None:
+        server.progress.line('No recommended model in the catalog; keeping native settings.')
+        return {}
+    effort = model.get('defaultReasoningEffort')
+    efforts = model.get('supportedReasoningEfforts')
+    supported = [e.get('reasoningEffort') for e in efforts if isinstance(e, dict)] if isinstance(efforts, list) else []
+    if not isinstance(effort, str) or effort not in supported:
+        server.progress.line('No supported default reasoning level; keeping native settings.')
+        return {}
+    server.progress.line(f"Automatic: {model['model']} / {effort} (Codex recommended default).")
+    return {'model': model['model'], 'effort': effort}
 
 
 def model_catalog(server, deadline):

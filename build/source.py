@@ -86,6 +86,6 @@ def collect_source(root: Path, *, allow_dirty: bool = False):
     # Completeness is independent of hashes and syntax of files that happen to
     # exist. Reject missing version-specific runtime modules before output writes.
     _source_info(files)
-    files["_release.json"] = (json.dumps({"runtime": "codex", "version": version, "commit": commit, "branch": f"codex/v{version}"}, sort_keys=True, indent=2) + "\n").encode()
+    files["_release.json"] = (json.dumps({"runtime": "codex", "version": version, "commit": commit, "branch": f"v{version}"}, sort_keys=True, indent=2) + "\n").encode()
     files["CONTENTS.sha256"] = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in sorted(files.items())).encode()
     return version, commit, files, bootstraps

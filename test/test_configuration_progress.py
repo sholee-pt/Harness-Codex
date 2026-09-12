@@ -41,8 +41,14 @@ for line in sys.stdin:
         send({"id": value["id"], "result": {"userAgent": "test"}})
     elif method in {"thread/start", "thread/resume"}:
         send({"id": value["id"], "result": {"thread": {"id": "native-thread"}, "model": "native-configured-model", "reasoningEffort": "medium", "sandbox": {"type": "readOnly"}, "approvalPolicy": "on-request"}})
+    elif method == 'config/read':
+        send({'id': value['id'], 'result': {'config': {'model': 'native-configured-model', 'model_reasoning_effort': 'medium', 'sandbox_mode': 'read-only', 'approval_policy': 'on-request'}}})
+    elif method == 'thread/archive':
+        send({'id': value['id'], 'result': {}})
+    elif method == 'thread/read':
+        send({'id': value['id'], 'result': {'thread': {'cwd': os.environ['TEST_THREAD_CWD']}}})
     elif method == "model/list":
-        native = {"model": "native-configured-model", "defaultReasoningEffort": "medium", "supportedReasoningEfforts": [{"reasoningEffort": "medium"}, {"reasoningEffort": "high"}]}
+        native = {"model": "native-configured-model", "isDefault": True, "defaultReasoningEffort": "medium", "supportedReasoningEfforts": [{"reasoningEffort": "medium"}, {"reasoningEffort": "high"}]}
         alternate = {"model": "catalog-alternative", "defaultReasoningEffort": "low", "supportedReasoningEfforts": [{"reasoningEffort": "low"}, {"reasoningEffort": "ultra"}]}
         data, cursor = ([native], "second") if not params.get("cursor") else ([alternate], None)
         if mode == "bad-catalog":
@@ -211,13 +217,20 @@ class ConfigurationProgressTests(unittest.TestCase):
                 self.assertEqual(project.run_project_command(args, source_root=ROOT), 0, self.error.getvalue())
         self.assertTrue((self.root / '.harness/manifest.json').is_file())
         self.assertIn('Project harness files validate', self.output.getvalue())
+        self.assertEqual(sum(r['method'] == 'thread/archive' for r in self.records()), 1)
+        args = parser.parse_args(['config', '--project', str(self.root), '--settings', 'native', '--resume', 'owned-by-user'])
+        with mock.patch.object(project, '_codex_command', return_value=self.command), \
+                mock.patch.object(sys, 'stdin', Terminal()), contextlib.redirect_stdout(self.output), \
+                contextlib.redirect_stderr(self.error):
+            self.assertEqual(project.run_project_command(args, source_root=ROOT), 0)
+        self.assertEqual(sum(r['method'] == 'thread/archive' for r in self.records()), 1)
 
     def test_settings_preserve_defaults_and_use_only_catalog_efforts(self):
-        self.assertEqual(self.invoke(settings='ask', answers=['', '', '']), 0)
+        self.assertEqual(self.invoke(settings='manual', answers=['', '', '']), 0)
         turn = next(r['params'] for r in self.records() if r['method'] == 'turn/start')
         self.assertEqual(set(turn), {'threadId', 'input', 'outputSchema'})
         self.log.unlink()
-        self.assertEqual(self.invoke(settings='ask', answers=['2', '2', '2']), 0)
+        self.assertEqual(self.invoke(settings='manual', answers=['2', '2', '2']), 0)
         turn = next(r['params'] for r in self.records() if r['method'] == 'turn/start')
         self.assertEqual((turn['model'], turn['effort']), ('catalog-alternative', 'ultra'))
         self.assertEqual(turn['sandboxPolicy']['type'], 'workspaceWrite')
@@ -228,7 +241,7 @@ class ConfigurationProgressTests(unittest.TestCase):
         self.assertEqual(list(self.root.iterdir()), [])
 
     def test_changed_model_uses_its_advertised_default_and_invalid_choices_reprompt(self):
-        self.assertEqual(self.invoke(settings='ask', answers=['9999', 'no', '2', '', '1']), 0)
+        self.assertEqual(self.invoke(settings='manual', answers=['9999', 'no', '2', '', '1']), 0)
         turn = next(r['params'] for r in self.records() if r['method'] == 'turn/start')
         self.assertEqual(turn['effort'], 'low')
         self.assertEqual(turn['sandboxPolicy'], {'type': 'readOnly', 'networkAccess': False})
@@ -236,7 +249,7 @@ class ConfigurationProgressTests(unittest.TestCase):
     def test_full_access_requires_exact_confirmation_and_is_never_default(self):
         for answer in ('', 'y', 'yes'):
             with self.subTest(answer=answer):
-                self.assertEqual(self.invoke(settings='ask', answers=['', '', '3', answer]), 0)
+                self.assertEqual(self.invoke(settings='manual', answers=['', '', '3', answer]), 0)
                 turn = [r['params'] for r in self.records() if r['method'] == 'turn/start'][-1]
                 if answer == 'yes':
                     self.assertEqual(turn['sandboxPolicy'], {'type': 'dangerFullAccess'})
@@ -247,18 +260,45 @@ class ConfigurationProgressTests(unittest.TestCase):
 
     def test_setting_selection_interruption_never_starts_a_model_turn(self):
         with mock.patch('harness_cli.presentation.Progress.ask', side_effect=KeyboardInterrupt):
-            self.assertEqual(self.invoke(settings='ask'), 130)
+            self.assertEqual(self.invoke(settings='manual'), 130)
         self.assertFalse(any(r['method'] == 'turn/start' for r in self.records()))
+        self.assertFalse(any(r['method'] == 'thread/start' for r in self.records()))
+
+    def test_auto_uses_recommended_supported_defaults_without_permission_overrides(self):
+        self.assertEqual(self.invoke(settings='ask', answers=['']), 0)
+        records = self.records()
+        turn = next(r['params'] for r in records if r['method'] == 'turn/start')
+        self.assertEqual((turn['model'], turn['effort']), ('native-configured-model', 'medium'))
+        self.assertNotIn('sandboxPolicy', turn)
+        self.assertNotIn('approvalPolicy', turn)
+        methods = [r['method'] for r in records]
+        self.assertLess(methods.index('model/list'), methods.index('thread/start'))
+        self.assertTrue(self.result.created_session)
+        self.log.unlink()
+        self.assertEqual(self.invoke(settings='auto', resume_id='saved'), 0)
+        self.assertFalse(self.result.created_session)
+        self.assertNotIn('model/list', [r['method'] for r in self.records()])
+        turn = next(r['params'] for r in self.records() if r['method'] == 'turn/start')
+        self.assertNotIn('model', turn)
+
+    def test_native_menu_discovery_never_creates_threads_and_resume_auto_starts_no_server(self):
+        from harness_cli.native_session import settings_arguments
+        with contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.error):
+            self.assertEqual(settings_arguments(self.command, self.root, 'auto', resume=True), [])
+            self.assertFalse(self.log.exists())
+            arguments = settings_arguments(self.command, self.root, 'auto')
+        self.assertEqual(arguments, ['--model', 'native-configured-model', '-c', 'model_reasoning_effort="medium"'])
+        self.assertFalse(any(r['method'].startswith(('thread/', 'turn/')) for r in self.records()))
 
     def test_invalid_catalog_stops_before_selection_or_generation(self):
         for mode in ('bad-catalog', 'repeated-cursor'):
             with self.subTest(mode=mode), self.assertRaisesRegex(ValueError, 'catalog'):
-                self.invoke(mode, settings='ask')
+                self.invoke(mode, settings='manual')
             self.assertFalse(any(r['method'] == 'turn/start' for r in self.records()))
 
     def test_managed_permission_rejection_is_not_retried_or_downgraded(self):
         with self.assertRaisesRegex(ValueError, 'Managed policy'):
-            self.invoke('managed-rejection', settings='ask', answers=['', '', '2'])
+            self.invoke('managed-rejection', settings='manual', answers=['', '', '2'])
         turns = [r for r in self.records() if r['method'] == 'turn/start']
         self.assertEqual(len(turns), 1)
         self.assertNotIn(': finished', self.error.getvalue())
@@ -286,6 +326,7 @@ class ConfigurationProgressTests(unittest.TestCase):
             args = parser.parse_args(['config', '--project', str(self.root), '--settings', 'native'])
             with mock.patch.dict(os.environ, {'TEST_SERVER_MODE': 'needs-input'}):
                 self.assertEqual(project.run_project_command(args, source_root=ROOT), 1)
+            self.assertEqual(sum(r['method'] == 'thread/archive' for r in self.records()), 1)
             self.assertIn('Which dataset should be used?', self.output.getvalue())
             self.assertIn('config --resume native-thread', self.output.getvalue())
             self.assertNotIn('Configuration complete.', self.output.getvalue())
@@ -294,7 +335,69 @@ class ConfigurationProgressTests(unittest.TestCase):
             args = parser.parse_args(['config', '--project', str(self.root), '--settings', 'native', '--details'])
             self.assertEqual(project.run_project_command(args, source_root=ROOT), 0)
             self.assertIn('Configuration result from Codex.', self.output.getvalue())
-            self.assertIn('config --resume native-thread', self.output.getvalue())
+            self.assertIn('Completed setup session: native-thread', self.output.getvalue())
+
+    def test_explicit_uuid_locates_saved_project_without_turns_and_project_flag_takes_precedence(self):
+        from harness_cli.main import build_parser
+        session = '01a085f7-ab6b-7241-a715-62b2baab5d73'
+        args = build_parser(ROOT).parse_args(['resume', session])
+        with mock.patch.object(project, '_codex_command', return_value=self.command), \
+                mock.patch.object(sys, 'stdin', Terminal()), contextlib.redirect_stdout(self.output), \
+                contextlib.redirect_stderr(self.error), mock.patch.dict(os.environ, {'TEST_THREAD_CWD': str(self.root)}):
+            project.preflight_project_command(args, source_root=ROOT)
+        self.assertEqual(args.project, self.root)
+        records = self.records()
+        self.assertEqual([r['method'] for r in records], ['initialize', 'initialized', 'thread/read'])
+        self.assertEqual(records[-1]['params'], {'threadId': session, 'includeTurns': False})
+        self.log.unlink()
+        args = build_parser(ROOT).parse_args(['resume', session, '--project', str(self.root)])
+        project.preflight_project_command(args, source_root=ROOT)
+        self.assertFalse(self.log.exists())
+
+    def test_sandbox_diagnostics_do_not_classify_generic_failures_as_permission_errors(self):
+        from harness_cli.native_session import execution_diagnostic
+        self.assertIn('host/container', execution_diagnostic('bwrap RTM_NEWADDR operation not permitted'))
+        self.assertIn('reviewer', execution_diagnostic('Approval budget limit exceeded'))
+        self.assertIsNone(execution_diagnostic('pytest failed: assertion mismatch'))
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX terminal; Windows ConPTY is checked separately')
+    def test_arrow_menu_over_real_pseudoterminal(self):
+        import pty
+        import select
+        import subprocess
+        master, slave = pty.openpty()
+        environment = dict(os.environ, TERM='xterm-256color')
+        environment.pop('NO_COLOR', None)
+        script = ('from harness_cli.presentation import Progress; from harness_cli.terminal_menu import choose; '
+                  'p=Progress("probe", compact=True); '
+                  'print("SELECTED:", choose(p, "Model selection", ["Auto", "Manual", "Native"]))')
+        process = subprocess.Popen([sys.executable, '-B', '-c', script], cwd=ROOT, env=environment,
+                                   stdin=slave, stdout=slave, stderr=slave)
+        os.close(slave)
+        data, sent, deadline = b'', False, time.monotonic() + 10
+        try:
+            while time.monotonic() < deadline:
+                if select.select([master], [], [], .1)[0]:
+                    try:
+                        chunk = os.read(master, 8192)
+                    except OSError:
+                        break
+                    if not chunk:
+                        break
+                    data += chunk
+                    if not sent and b'Esc: cancel' in data:
+                        os.write(master, b'\x1b[A\x1b[B\x1b[B\r')
+                        sent = True
+                if process.poll() is not None and b'SELECTED:' in data:
+                    break
+            self.assertEqual(process.wait(timeout=2), 0)
+            self.assertIn(b'SELECTED: 1', data)
+            self.assertIn(b'\x1b[1;36m> Manual', data)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            os.close(master)
 
 class PresentationTests(unittest.TestCase):
     def test_compact_progress_does_not_repeat_commands_or_wrap_narrow_terminals(self):

@@ -6,7 +6,7 @@ if [[ ! -f "$source_dir/harness.py" ]]; then
   source_dir="$(cd -- "$source_dir/.." && pwd -P)"
 fi
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  printf '%s\n' 'Usage: bash install.sh [--bin-dir PATH] [--data-dir PATH] [--branch codex/vN.M] [--repository URL] [--auto-update compatible|check|off] [--existing ask|reuse|reset] [--no-modify-path] [--activate ask|shell|skip]' 'Reuses Conda or installs checksum-pinned Miniforge on Linux. Prepares the dedicated harness environment.' 'Installs harness-codex without sudo; registers PATH in ~/.bashrc unless --no-modify-path is supplied.'
+  printf '%s\n' 'Usage: bash install.sh [--bin-dir PATH] [--data-dir PATH] [--branch vX.Y.Z-beta] [--repository URL] [--auto-update compatible|check|off] [--existing ask|reuse|reset] [--no-modify-path] [--activate ask|shell|skip]' 'Reuses Conda or installs checksum-pinned Miniforge on Linux. Prepares the dedicated harness environment.' 'Installs harness-codex without sudo; registers PATH in ~/.bashrc unless --no-modify-path is supplied.'
   exit 0
 fi
 activate=ask

@@ -37,10 +37,7 @@ reset, not a requirement to recreate releases for later `[Doc]` commits. Histori
 changelog entries remain as an archive; their old download URLs are no longer
 supported. Use the current README installation links.
 
-New branches and tags are `codex/v0.10.0-beta` and `codex-v0.10.0-beta`. GitHub
-releases are explicitly marked prerelease. Prereleases are not GitHub's stable
-`releases/latest`; use the pinned installation URL in README. The current Claude
-branch is preserved independently.
+From `v0.11.0-beta`, the repository is `sholee-pt/Harness-Codex`. New branches and tags use `vX.Y.Z-beta`, without `codex/` or `codex-`. This repository contains only the Codex edition; the Claude branch is removed. The latest verified branch is the default. GitHub releases are marked prerelease, so installation uses the pinned README URL rather than the stable `releases/latest` endpoint.
 
 Once the repository is made public and a stable release is explicitly published,
 stable versioning starts at `v1.0.0`. Changing GitHub visibility alone does not build
@@ -49,16 +46,7 @@ contracts; feature and patch changes must preserve documented compatibility.
 
 ## One-time migration from legacy installations
 
-The previous updater recognizes only branches such as `codex/v9.11`; it cannot
-discover `codex/v0.10.0-beta`. Run the new installer once with existing-installation
-mode `reuse`. This keeps owned preferences, recognizes the earlier installation and
-preserves project harnesses. Thereafter `harness-codex update` understands beta and
-stable release names. A legacy pinned branch is retired during this one-time
-`reuse` migration so the installation can follow new releases; the installer reports
-that change. Repository transport and automatic-update preference are retained.
-Thereafter it compares normalized beta and
-stable versions and refuses genuine downgrades. The tool update policy follows the
-normalized major component; project artifact compatibility is checked separately.
+The 0.10.0-beta updater recognizes only `codex/v*` branches and cannot discover the new unprefixed release branches. Run the current installer once with `reuse`. It preserves project harnesses and the automatic-update preference, maps the old repository address to Harness-Codex while preserving HTTPS/SSH transport, and retires an obsolete `codex/` branch pin. The installer reports this change. Immutable old receipts and the tool ownership identity remain readable. Subsequent updates understand both legacy receipt versions and current branch names; downgrade checks and project artifact compatibility remain separate.
 
 From a current authenticated checkout:
 
