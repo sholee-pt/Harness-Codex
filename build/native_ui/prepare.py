@@ -79,7 +79,7 @@ def prepare(root):
     tests = root / 'codex-rs/tui/src/chatwidget/tests.rs'
     tests.write_text(tests.read_text(encoding='utf-8') + '\nmod harness_routing_tests;\n', encoding='utf-8', newline='\n')
     (root / 'codex-rs/tui/src/chatwidget/tests/harness_routing_tests.rs').write_bytes((HERE / 'harness_routing_tests.rs').read_bytes())
-    print(json.dumps({'upstream': revision, 'modified': list(edits),
+    print(json.dumps({'upstream': revision, 'modified': ['codex-rs/Cargo.lock', *edits],
         'extensionSha256': hashlib.sha256((HERE / 'harness_routing.rs').read_bytes()).hexdigest(),
         'rendererModified': False}, indent=2))
 

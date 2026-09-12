@@ -14,7 +14,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     steps:
@@ -31,7 +35,30 @@ jobs:
           conda run -n harness python -B build/native_ui/prepare.py --root "${RUNNER_TEMP}/codex-ui"
       - name: Install the pinned Rust toolchain
         shell: bash -el {0}
-        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy --target ${{ matrix.target }}
+      - if: runner.os == 'Linux'
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.0
+          use-cache: false
+      - name: Prepare the upstream Linux toolchain
+        if: runner.os == 'Linux'
+        shell: bash -el {0}
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          bash "${RUNNER_TEMP}/codex-ui/.github/scripts/install-musl-build-tools.sh"
+          echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
+      - name: Verify the pinned upstream V8 dependencies
+        shell: bash -el {0}
+        run: conda run --no-capture-output -n harness python -B build/native_ui/dependencies.py --root "${RUNNER_TEMP}/codex-ui" --target ${{ matrix.target }} --output "${RUNNER_TEMP}/harness-v8"
+      - name: Use the upstream MSVC environment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP/codex-ui/.github/actions/setup-msvc-env/setup-msvc-env.ps1" -Target '${{ matrix.target }}'
+          'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> $env:GITHUB_ENV
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ runner.temp }}/codex-ui/codex-rs -> target
@@ -40,8 +67,9 @@ jobs:
         shell: bash -el {0}
         working-directory: ${{ runner.temp }}/codex-ui/codex-rs
         run: |
+          conda run --no-capture-output -n harness python -B "${GITHUB_WORKSPACE}/build/native_ui/lockfile.py" --root "${RUNNER_TEMP}/codex-ui"
           cargo fmt -- --config imports_granularity=Item
-          cargo build --locked --release -p codex-cli --bin codex
+          cargo build --locked --target ${{ matrix.target }} --release -p codex-cli --bin codex
       - name: Preserve build and patch review evidence
         if: always()
         shell: bash -el {0}
@@ -52,8 +80,8 @@ jobs:
         with:
           name: native-ui-${{ runner.os }}
           path: |
-            ${{ runner.temp }}/codex-ui/codex-rs/target/release/codex
-            ${{ runner.temp }}/codex-ui/codex-rs/target/release/codex.exe
+            ${{ runner.temp }}/codex-ui/codex-rs/target/${{ matrix.target }}/release/codex
+            ${{ runner.temp }}/codex-ui/codex-rs/target/${{ matrix.target }}/release/codex.exe
             ${{ runner.temp }}/codex-ui-patch.diff
             ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/harness_routing.rs
           retention-days: 7
