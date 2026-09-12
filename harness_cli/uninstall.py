@@ -26,12 +26,13 @@ def _io_path(path: Path) -> Path:
     return dist._storage_path(value)
 
 
-def _fingerprint(path: Path) -> tuple:
+def _fingerprint(path: Path, *, max_bytes=dist.MAX_FILE_BYTES) -> tuple:
     path = _io_path(path)
     info = path.stat()
-    if not stat.S_ISREG(info.st_mode) or info.st_size > dist.MAX_FILE_BYTES:
+    if not stat.S_ISREG(info.st_mode) or info.st_size > max_bytes:
         raise ValueError(f'Expected a bounded regular file: {path}')
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    with path.open('rb') as stream:
+        digest = hashlib.file_digest(stream, 'sha256').hexdigest()
     after = path.stat()
     if (info.st_size, info.st_mtime_ns, info.st_ino) != (after.st_size, after.st_mtime_ns, after.st_ino):
         raise ValueError('Installation changed while preparing removal')
@@ -115,6 +116,10 @@ def prepare(data_root: Path, *, locked=False) -> dict:
         runtime = inspect(dist._read_json(root / 'runtime.json'), root)
         verified[root / 'runtime.json'] = _fingerprint(root / 'runtime.json')[0]
         expected.add(root / 'runtime.json')
+    from .native_ui import removal_files
+    native_files = removal_files(root)
+    expected.update(native_files)
+    verified.update({path: entry['sha256'] for path, entry in native_files.items()})
     directories = {root, root / 'releases', root / 'receipts'}
     for path in expected:
         directories.update(parent for parent in path.parents if parent == root or root in parent.parents)
@@ -132,7 +137,8 @@ def prepare(data_root: Path, *, locked=False) -> dict:
     if not expected.issubset(seen):
         raise ValueError('Managed files disappeared during uninstall inspection')
     external = {dist._storage_path(path) for path in state['launchers'] if Path(path).parent == binary}
-    fingerprints = {path: _fingerprint(path) for path in sorted(expected | external)}
+    fingerprints = {path: _fingerprint(path, max_bytes=max(dist.MAX_FILE_BYTES, native_files.get(path, {}).get('size', 0)))
+                    for path in sorted(expected | external)}
     if any(value[0] != verified[path] for path, value in fingerprints.items()):
         raise ValueError('Managed files changed during uninstall inspection')
     shared = any(path not in external for path in binary.iterdir())
@@ -152,7 +158,7 @@ def _purge_files(files: dict[Path, tuple], directories: set[Path]) -> list[str]:
     leftovers = []
     for path, expected in files.items():
         try:
-            if _fingerprint(path) != expected:
+            if _fingerprint(path, max_bytes=max(dist.MAX_FILE_BYTES, expected[1])) != expected:
                 raise ValueError('Changed staged file')
             _io_path(path).unlink()
         except (OSError, ValueError):
@@ -204,7 +210,7 @@ def remove(plan: dict) -> dict:
             for path, fingerprint in plan['files'].items():
                 target = next(destination / path.relative_to(original) for original, destination in moved
                               if original == path or original in path.parents)
-                if _fingerprint(target) != fingerprint:
+                if _fingerprint(target, max_bytes=max(dist.MAX_FILE_BYTES, fingerprint[1])) != fingerprint:
                     raise ValueError('Installation changed during uninstall staging')
                 staged[target] = fingerprint
             if plan['path']['state'] == 'would-remove':

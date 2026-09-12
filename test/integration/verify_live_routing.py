@@ -17,10 +17,29 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from harness_cli.chat import _thread, _turn
-from harness_cli.chat_transport import ChatServer, Console
+from harness_cli.configuration import Server
+from harness_cli.presentation import Progress
 from harness_cli.model_routing import Context, choose
 from harness_cli.session_settings import model_catalog
+
+
+class ObservedServer(Server):
+    usage = None
+
+    def observe(self, method, params):
+        if method == 'thread/tokenUsage/updated':
+            self.usage = params.get('tokenUsage')
+
+
+def turn(server, text, decision):
+    server.completed.clear()
+    result = server.call('turn/start', {'threadId': server.thread_id,
+        'input': [{'type': 'text', 'text': text}], 'model': decision.model, 'effort': decision.effort})
+    server.turn_id = result['turn']['id']
+    deadline = time.monotonic() + 90
+    while not server.completed:
+        server.event(deadline)
+    return server.completed.popleft()['status']
 
 
 def verify(output, codex):
@@ -30,10 +49,10 @@ def verify(output, codex):
     report = {'scope': 'two-turn-native-model-switch', 'modelTurns': 0,
               'taskQuality': 'not-measured', 'costBenefit': 'not-measured'}
     report['codexVersion'] = subprocess.check_output([executable, '--version'], text=True, timeout=15).strip()
-    with tempfile.TemporaryDirectory(prefix='harness-native-routing-') as temporary, Console() as console:
+    with tempfile.TemporaryDirectory(prefix='harness-native-routing-') as temporary, Progress('Observe two native model turns') as console:
         root = Path(temporary)
         # Test-specific read-only sandbox; the production client does not set it.
-        server = ChatServer([executable, '-c', 'sandbox_mode="read-only"', '-c', 'approval_policy="on-request"'], root, console)
+        server = ObservedServer([executable, '-c', 'sandbox_mode="read-only"', '-c', 'approval_policy="on-request"'], root, console)
         try:
             server.initialize()
             catalog = model_catalog(server, time.monotonic() + 30)
@@ -41,16 +60,16 @@ def verify(output, codex):
             second = choose('Review a concurrency architecture.', catalog, new_task=True)
             if not first.model or not second.model or first.model == second.model:
                 raise ValueError('Two distinct policy models are not available; model-switch smoke cannot be claimed.')
-            _thread(server, root)
+            server.thread_id = server.call('thread/start', {'cwd': str(root)})['thread']['id']
             session_id = server.thread_id
             marker = 'HARNESS_ROUTING_SMOKE_0_12'
             report['selections'] = [first.report(), second.report()]
             report['modelTurns'] += 1
-            assert _turn(server, 'Do not use tools or edit any files. Remember the marker ' + marker + '. Reply exactly ACK.', first, timeout=90) == 'completed'
+            assert turn(server, 'Do not use tools or edit any files. Remember the marker ' + marker + '. Reply exactly ACK.', first) == 'completed'
             assert 'ACK' in server.last_message
             report['firstUsage'] = server.usage
             report['modelTurns'] += 1
-            assert _turn(server, 'Do not use tools. What exact marker did I ask you to remember earlier in this conversation? Reply only with that marker.', second, timeout=90) == 'completed'
+            assert turn(server, 'Do not use tools. What exact marker did I ask you to remember earlier in this conversation? Reply only with that marker.', second) == 'completed'
             assert marker in server.last_message
             assert server.thread_id == session_id
             report['secondUsage'] = server.usage

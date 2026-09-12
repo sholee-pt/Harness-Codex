@@ -1,9 +1,9 @@
 # Project and conversation lifecycle
 
-`new` and `resume` default to the original Codex screen. The opt-in
-`--ui harness` client adds an Auto-first `/model` menu and per-request routing;
-see [Harness conversation UI](routing.md). Its settings behavior and supported
-slash commands differ from the original native screen described below.
+`new` and `resume` default to your installed Codex CLI. `--ui harness` uses
+a pinned build of the original Codex screen with Harness Auto added to `/model`.
+Native session, permission and UI behavior is retained; the optional per-request
+selection policy is described in [native UI and routing](routing.md).
 
 One project has one canonical harness: `.codex/agents/`, `.agents/skills/`, managed root instructions and `.harness/manifest.json`. All conversations share it, regardless of Git repository layout.
 

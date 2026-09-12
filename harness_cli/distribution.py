@@ -43,7 +43,7 @@ REQUIRED = frozenset({"harness.py", "install.py", "harness_cli/__init__.py", "ha
 # Keep the original common set valid for complete v9.2 and v9.3 distributions.
 # Later releases inherit each dependency from its numeric introduction version.
 VERSION_REQUIRED = (
-    (version_key("0.12.0-beta"), frozenset({"harness_cli/model_routing.py", "harness_cli/routing.py", "harness_cli/chat.py", "harness_cli/chat_transport.py"})),
+    (version_key("0.12.0-beta"), frozenset({"harness_cli/model_routing.py", "harness_cli/routing.py", "harness_cli/native_ui.py", "harness_cli/native_router.py", "harness_cli/native_package.py"})),
     (version_key("0.11.0-beta"), frozenset({"harness_cli/native_session.py", "harness_cli/project_brief.py", "harness_cli/project_guide.py", "harness_cli/terminal_menu.py"})),
     (version_key("9.10"), frozenset({"harness_cli/presentation.py", "harness_cli/configuration.py"})),
     (version_key("9.11"), frozenset({"harness_cli/session_settings.py"})),

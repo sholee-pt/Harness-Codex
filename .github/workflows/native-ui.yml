@@ -3,7 +3,7 @@ name: Native Codex UI candidate
 on:
   push:
     branches: [v0.12.0-beta]
-    paths: [build/native_ui/**, .github/workflows/native-ui.yml]
+    paths: [build/native_ui/**, harness_cli/native_*.py, .github/workflows/native-ui.yml]
   workflow_dispatch:
 
 permissions:
@@ -17,10 +17,16 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
+            platform: linux-x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            platform: windows-x86_64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: 2
+      CARGO_PROFILE_RELEASE_DEBUG: 0
+      CARGO_PROFILE_RELEASE_LTO: 'false'
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: conda-incubator/setup-miniconda@v4.0.1
@@ -37,6 +43,16 @@ jobs:
         shell: bash -el {0}
         run: |
           rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy --target ${{ matrix.target }}
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: just@1.51.0,nextest
+      - uses: facebook/install-dotslash@1e4e7b3e07eaca387acb98f1d4720e0bee8dbb6a
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: '0.11.3'
+      - name: Verify original native execution resources
+        shell: bash -el {0}
+        run: conda run --no-capture-output -n harness python -B build/native_ui/package.py prepare --root "${RUNNER_TEMP}/native-package" --platform ${{ matrix.platform }}
       - if: runner.os == 'Linux'
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
         with:
@@ -68,8 +84,22 @@ jobs:
         working-directory: ${{ runner.temp }}/codex-ui/codex-rs
         run: |
           conda run --no-capture-output -n harness python -B "${GITHUB_WORKSPACE}/build/native_ui/lockfile.py" --root "${RUNNER_TEMP}/codex-ui"
-          cargo fmt -- --config imports_granularity=Item
+          conda run --no-capture-output -n harness just fix -p codex-tui --release --target ${{ matrix.target }}
+          conda run --no-capture-output -n harness just fmt
+          conda run --no-capture-output -n harness python -B "${GITHUB_WORKSPACE}/build/native_ui/review.py" --root "${RUNNER_TEMP}/codex-ui"
           cargo build --locked --target ${{ matrix.target }} --release -p codex-cli --bin codex
+      - name: Check the original TUI and extension tests
+        shell: bash -el {0}
+        working-directory: ${{ runner.temp }}/codex-ui/codex-rs
+        run: conda run --no-capture-output -n harness just test -p codex-tui --release --target ${{ matrix.target }} --locked
+      - name: Assemble the verified native package
+        shell: bash -el {0}
+        run: |
+          suffix=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then suffix=".exe"; fi
+          conda run --no-capture-output -n harness python -B build/native_ui/package.py assemble --root "${RUNNER_TEMP}/native-package" --platform ${{ matrix.platform }} --binary "${RUNNER_TEMP}/codex-ui/codex-rs/target/${{ matrix.target }}/release/codex${suffix}" --output "${RUNNER_TEMP}/native-dist"
+          "${RUNNER_TEMP}/native-package/bin/codex${suffix}" --version
+          "${RUNNER_TEMP}/native-package/bin/codex${suffix}" --help
       - name: Preserve build and patch review evidence
         if: always()
         shell: bash -el {0}
@@ -84,4 +114,7 @@ jobs:
             ${{ runner.temp }}/codex-ui/codex-rs/target/${{ matrix.target }}/release/codex.exe
             ${{ runner.temp }}/codex-ui-patch.diff
             ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/harness_routing.rs
+            ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/tests/snapshots/*harness*
+            ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/snapshots/*harness*
+            ${{ runner.temp }}/native-dist/*
           retention-days: 7

@@ -94,7 +94,10 @@ impl ChatWidget {
             actions: vec![Box::new(move |tx| {
                 if let Ok(mut state) = state_for_action.lock() {
                     state.active = true;
-                    state.context = None;
+                    state.context = Some(serde_json::json!({
+                        "tier": "balanced", "model": null, "effort": null,
+                        "failures": 0, "active_task": false,
+                    }));
                 }
                 tx.send(AppEvent::InsertHistoryCell(Box::new(history_cell::new_info_event(
                     "Harness Auto enabled for this conversation.".into(),

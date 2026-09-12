@@ -68,12 +68,13 @@ Choose **Automatic** or **Manual** with the arrow keys and Enter. Automatic uses
 
 ### Conversations and project maintenance
 
-For the experimental Harness conversation screen with per-request model/reasoning
-selection, use `harness-codex new --ui harness --settings auto` or
-`harness-codex resume --ui harness`. Its `/model` menu offers **Auto** first and
-manual fixed settings. `/native` returns the same conversation to the original
-Codex CLI. This is a separate terminal client, not a modification of the native
-`/model` menu. See [routing, supported commands and limits](docs/routing.md).
+For the original Codex CLI screen with Harness Auto, use
+`harness-codex new --ui harness --settings auto` or
+`harness-codex resume --ui harness`. This downloads a pinned Codex CLI 0.154.0
+extension on first use. Its original composer, colors, effects, menus, shortcuts,
+attachments and approval screens are retained. `/model` adds **Auto** as its first
+item; manual model/reasoning selection remains available. Your separately installed
+`codex` is unchanged. See [native UI and routing](docs/routing.md).
 
 | Command | Purpose and example |
 | --- | --- |

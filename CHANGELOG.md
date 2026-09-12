@@ -64,26 +64,28 @@ Development prerelease. Existing v0.11.0-beta project harnesses remain compatibl
 Manifest Schema 7 and Artifact Contract 2 are unchanged. Ordinary native sessions
 retain their previous behavior.
 
-### Conversation UI and model routing
+### Original Codex UI and model routing
 
-- `new --ui harness` and `resume --ui harness` open an optional Harness terminal
-  client backed by the native Codex App Server. Its `/model` menu offers Auto first,
-  followed by native settings and manual model/reasoning selection. This does not
-  modify the original Codex CLI menu.
-- Auto selects before each actual request using a bounded English/Korean rule
-  policy and the visible native catalog, without an extra selection-model call.
-  Active-task continuations retain their pair; `/task` and `/done` permit a lower
-  tier for separate work. `/failed` records verified failure feedback without
-  automatically retrying. Manual choices stay fixed until Auto is selected.
-- Replies stream live. Approval requests and questions remain visible. The UI
-  preserves native permissions and conversation history, sends activation with
-  the first real task rather than a standalone bootstrap turn, and creates no
-  empty conversation just for opening a menu. `/native` continues the same thread
-  in the original CLI when native-only features are needed.
-- `routing` previews a decision without running a model or changing a session.
-  Custom profile JSON can replace preferred model IDs; availability and effort
-  support are always checked. No raw routing transcript or persistent task state
-  is written by Harness.
+- `new --ui harness` and `resume --ui harness` use a pinned original Codex CLI
+  0.154.0 build with an Auto-first `/model` menu. Composer rendering, colors,
+  animations, keyboard handling, attachments, native menus and permission screens
+  remain upstream code. Ordinary `new`/`resume` still use your installed Codex.
+- Auto uses a bounded English/Korean policy and the actual visible native model
+  catalog before new requests, without calling another model. Continuations keep
+  their pair; reselect Auto to explicitly start a separate task that may use a
+  lower tier. Manual model choices disable Auto. Steering a running turn never
+  changes its settings. Selection failure keeps native settings without retrying.
+- The extension changes only the parent model and supported reasoning effort.
+  Native permissions, project files, approval settings, subagent contracts and
+  conversation history remain under their existing controls. Ordinary resume
+  adds no repeated activation prompt. Auto mode/context are not global settings.
+- The matching native package is fetched on first use, checked against release
+  checksums and retained in owned tool storage. Official helper binaries remain
+  byte-identical; Linux's bundled sandbox helper hash is embedded at build time.
+  Uninstall includes unchanged owned UI packages. Modified packages are preserved.
+- `routing` previews a decision without executing a model. Profiles may change
+  preferred model IDs, but cannot bypass actual catalog/effort availability.
+  Harness stores no raw routing transcript and claims no measured cost saving.
 
 ### Installation and usage
 
@@ -106,7 +108,7 @@ or `./installer/install.ps1 -Existing reuse`. Project harnesses need no reset.
 ```sh
 harness-codex new --ui harness --settings auto
 harness-codex resume --ui harness
-# Inside the Harness screen: /model, /status, /task TEXT, /native, /quit
+# Inside the original Codex screen: /model -> Auto, or a manual model
 ```
 
 ### Assets and validation scope
@@ -119,16 +121,19 @@ harness-codex resume --ui harness
 | `SHA256SUMS` | Asset checksums |
 | `build.json` | Exact source commit and archive digests |
 
-Release publication requires Linux and Windows regression/installer CI and
-cross-validation against v0.11.0-beta only. Routing scenarios and subprocess
-protocol tests cover task continuation, manual pinning, permissions, interruption
-and single-thread history. An opt-in live smoke script tests two real model turns
-and history retention; it is not part of automatic CI. These checks do not establish
-task quality, token savings, billing savings or optimal model selection.
+The additional `harness-codex-ui-0.12.0-beta-linux-x86_64.tar.gz` and
+`harness-codex-ui-0.12.0-beta-windows-x86_64.tar.gz` assets contain the original
+Codex UI extension, official execution resources, upstream license/notice and
+file-level provenance. These are optional; the small generator distribution
+remains separate. First use fetches only the selected platform. Offline use can
+pass a downloaded archive with `--native-ui-archive PATH`.
 
-The first UI supports text and multiline paste. Native attachments, hook trust,
-plan/personality menus and background-thread navigation remain available through
-`/native`. See [UI commands, routing policy and limitations](docs/routing.md).
+Release publication requires Linux and Windows regression/installer CI, native
+build/integration checks and cross-validation against v0.11.0-beta only. Native
+UI snapshots and routing/ownership tests cover the extension boundary. An opt-in
+live two-model smoke observes conversation continuity; it is not a quality or
+cost benchmark. See [UI, routing policy and validation limits](docs/routing.md).
+
 
 ## Harness for Codex v0.11.0-beta
 
