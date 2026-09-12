@@ -4,7 +4,7 @@ Changes should keep Harness small, runtime-native, and safe to rerun. See the li
 
 ## Branches
 
-- Harness for Codex development branches use `vX.Y.Z-beta`, with tags such as `v0.11.0-beta`. These are Harness versions, not Codex product versions.
+- Harness for Codex development branches use `vX.Y.Z-beta`, with tags such as `v0.12.0-beta`. These are Harness versions, not Codex product versions.
 - This repository contains the Codex edition only.
 - X marks major or large-scale changes; Y covers minor features, improvements, refactoring and optimization; Z covers bug fixes. Explanatory documentation-only changes do not increment the version.
 - Start a new version branch from the latest verified release branch. See [versioning](docs/versioning.md) for the full policy and release reset.
@@ -75,11 +75,11 @@ Integration checks run explicitly in CI on Linux and Windows. For example:
 
 ```bash
 conda run -n harness python test/integration/prepare_release_baselines.py --output /tmp/harness-baselines
-conda run -n harness python test/integration/verify_cli_upgrade.py --baseline /tmp/harness-baselines/v911 --output /tmp/cli-upgrade.json
-conda run -n harness python test/integration/verify_release_upgrade.py --baseline /tmp/harness-baselines/v911 --output /tmp/project-upgrade.json
+conda run -n harness python test/integration/verify_cli_upgrade.py --baseline /tmp/harness-baselines/v0110 --output /tmp/cli-upgrade.json
+conda run -n harness python test/integration/verify_release_upgrade.py --baseline /tmp/harness-baselines/v0110 --output /tmp/project-upgrade.json
 ```
 
-Release comparison runs only against the immediately preceding published release (v0.9.11-beta, originally tagged v9.11). CI does not recreate the entire historical version matrix. Functional regression tests still check supported contracts and failure cases. Add an older source comparison only for a concrete compatibility defect that requires it.
+Release comparison runs only against the immediately preceding published release (v0.11.0-beta). CI does not recreate the entire historical version matrix. Functional regression tests still check supported contracts and failure cases. Add an older source comparison only for a concrete compatibility defect that requires it.
 
 Parser differential checks require the pinned optional `test/requirements-validation.txt`. Cold installer checks download Miniforge and create an isolated environment; the Windows registry/cold check is restricted to disposable CI runners. These are distinct from unit tests and must not run implicitly during unittest discovery.
 

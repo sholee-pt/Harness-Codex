@@ -8,6 +8,7 @@ Release and tag history starts at `v0.10.0-beta` after a one-time reset. Earlier
 
 | Version | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
+| [`v0.12.0-beta`](#harness-for-codex-v0120-beta) | Harness for Codex v0.12.0-beta | Schema 3 | Schema 7 | Schema 2 | Opt-in conversation UI, Auto-first model menu and bounded per-request model/reasoning routing |
 | [`v0.11.0-beta`](#harness-for-codex-v0110-beta) | Harness for Codex v0.11.0-beta | Schema 3 | Schema 7 | Schema 2 | Lean resume, source-drift tolerance, one guide, native model modes and Harness-Codex distribution |
 | [`v0.10.0-beta`](#harness-for-codex-v0100-beta) | Harness for Codex v0.10.0-beta | Schema 3 | Schema 7 | Schema 2 | Bounded opt-in maintenance, exact Conda interpreter selection and beta versioning |
 | [`v0.9.11-beta`](#harness-for-codex-v0911-beta) | Harness for Codex v0.9.11-beta | Schema 3 | Schema 7 | Schema 2 | Native model/reasoning/permission picker, compact progress and independently validated completion |
@@ -56,6 +57,78 @@ Release and tag history starts at `v0.10.0-beta` after a one-time reset. Earlier
 | [`v0.9.0-beta`](#harness-for-codex-v090-beta) | Harness for Codex v0.9.0-beta | Schema 3 | Schema 7 | Schema 2 | Project-local installer, user-selected folders independent of Git boundaries, Artifact Contract 2, no Git metadata writes |
 
 Only the latest verified Codex release branch is retained in Harness-Codex. The default branch follows the latest verified release; earlier source history remains reachable through commits. The table uses normalized display versions and does not relabel historical commits or evidence identifiers.
+
+## Harness for Codex v0.12.0-beta
+
+Development prerelease. Existing v0.11.0-beta project harnesses remain compatible;
+Manifest Schema 7 and Artifact Contract 2 are unchanged. Ordinary native sessions
+retain their previous behavior.
+
+### Conversation UI and model routing
+
+- `new --ui harness` and `resume --ui harness` open an optional Harness terminal
+  client backed by the native Codex App Server. Its `/model` menu offers Auto first,
+  followed by native settings and manual model/reasoning selection. This does not
+  modify the original Codex CLI menu.
+- Auto selects before each actual request using a bounded English/Korean rule
+  policy and the visible native catalog, without an extra selection-model call.
+  Active-task continuations retain their pair; `/task` and `/done` permit a lower
+  tier for separate work. `/failed` records verified failure feedback without
+  automatically retrying. Manual choices stay fixed until Auto is selected.
+- Replies stream live. Approval requests and questions remain visible. The UI
+  preserves native permissions and conversation history, sends activation with
+  the first real task rather than a standalone bootstrap turn, and creates no
+  empty conversation just for opening a menu. `/native` continues the same thread
+  in the original CLI when native-only features are needed.
+- `routing` previews a decision without running a model or changing a session.
+  Custom profile JSON can replace preferred model IDs; availability and effort
+  support are always checked. No raw routing transcript or persistent task state
+  is written by Harness.
+
+### Installation and usage
+
+Linux:
+
+```sh
+curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.12.0-beta/install_harness_codex.sh | sh
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://github.com/sholee-pt/Harness-Codex/releases/download/v0.12.0-beta/install_harness_codex.ps1 | iex
+```
+
+Existing v0.11.0-beta users can run `harness-codex update`. Authenticated source
+installation is also supported with `bash installer/install.sh --existing reuse`
+or `./installer/install.ps1 -Existing reuse`. Project harnesses need no reset.
+
+```sh
+harness-codex new --ui harness --settings auto
+harness-codex resume --ui harness
+# Inside the Harness screen: /model, /status, /task TEXT, /native, /quit
+```
+
+### Assets and validation scope
+
+| Asset | Purpose |
+| --- | --- |
+| `install_harness_codex.sh` / `.ps1` | Download and verify the matching distribution, then prepare its isolated runtime and command |
+| `harness-codex-0.12.0-beta-linux.tar.gz` | Linux CLI, generator and source installer |
+| `harness-codex-0.12.0-beta-windows.zip` | Windows CLI, generator and source installer |
+| `SHA256SUMS` | Asset checksums |
+| `build.json` | Exact source commit and archive digests |
+
+Release publication requires Linux and Windows regression/installer CI and
+cross-validation against v0.11.0-beta only. Routing scenarios and subprocess
+protocol tests cover task continuation, manual pinning, permissions, interruption
+and single-thread history. An opt-in live smoke script tests two real model turns
+and history retention; it is not part of automatic CI. These checks do not establish
+task quality, token savings, billing savings or optimal model selection.
+
+The first UI supports text and multiline paste. Native attachments, hook trust,
+plan/personality menus and background-thread navigation remain available through
+`/native`. See [UI commands, routing policy and limitations](docs/routing.md).
 
 ## Harness for Codex v0.11.0-beta
 

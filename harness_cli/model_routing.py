@@ -1,0 +1,169 @@
+"""Conservative, in-memory next-turn routing; never runs a model or changes files.
+
+Profile preferences are explicit policy, not benchmark results or pricing claims.
+Only visible catalog entries and their advertised reasoning options are selected.
+"""
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+import re
+
+TIERS = ('fast', 'balanced', 'deep')
+EFFORTS = ('none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra')
+PROFILE_CANDIDATES = {
+    'fast': ('gpt-5.6-luna', 'gpt-5.3-codex-spark'),
+    'balanced': (),
+    'deep': ('gpt-6-astra',),
+}
+MAX_PROMPT = 32 * 1024
+
+
+@dataclass(frozen=True)
+class Context:
+    """Caller-owned task state. No prompt, transcript, path, or agent identifier."""
+    tier: str = 'balanced'
+    model: str | None = None
+    effort: str | None = None
+    failures: int = 0
+    active_task: bool = False
+
+
+@dataclass(frozen=True)
+class Decision:
+    tier: str
+    model: str | None
+    effort: str | None
+    reason: str
+    selection: str
+    changed: bool
+
+    def report(self):
+        return asdict(self)
+
+    def turn_overrides(self):
+        """Only inference settings; no permission, tool, Git, or cwd overrides."""
+        return {key: value for key, value in (('model', self.model), ('effort', self.effort)) if value is not None}
+
+
+def validate_context(context):
+    if (context.tier not in TIERS or type(context.failures) is not int
+            or not 0 <= context.failures <= 100 or type(context.active_task) is not bool
+            or context.effort is not None and context.effort not in EFFORTS
+            or context.model is not None and (not isinstance(context.model, str) or not context.model.strip())):
+        raise ValueError('Invalid routing task context.')
+
+
+def catalog_entries(catalog):
+    if not isinstance(catalog, list) or len(catalog) > 1000:
+        raise ValueError('Routing requires a bounded model catalog list.')
+    result = {}
+    for entry in catalog:
+        if not isinstance(entry, dict) or not isinstance(entry.get('model'), str) or not entry['model'].strip():
+            raise ValueError('Invalid model catalog entry.')
+        if entry.get('hidden'):
+            continue
+        name = entry['model']
+        if name in result:
+            raise ValueError('Duplicate visible model catalog entry.')
+        options = entry.get('supportedReasoningEfforts', [])
+        if not isinstance(options, list) or any(not isinstance(item, dict) or item.get('reasoningEffort') not in EFFORTS for item in options):
+            raise ValueError('Invalid supported reasoning options.')
+        result[name] = entry
+    return result
+
+
+def classify(prompt, context, *, new_task=False):
+    validate_context(context)
+    if not isinstance(prompt, str) or not prompt.strip() or '\0' in prompt or len(prompt.encode('utf-8')) > MAX_PROMPT:
+        raise ValueError('Provide a nonempty routing prompt of at most 32 KiB without NUL characters.')
+    text = re.sub(r'\s+', ' ', prompt.casefold()).strip()
+    # Continuations inherit their task even when the new message is very short.
+    if context.active_task and not new_task:
+        if context.failures >= 2:
+            return 'deep', 'repeated-failure'
+        if _complex(text):
+            return 'deep', 'complex-change'
+        return context.tier, 'continue-task'
+    if _complex(text):
+        return 'deep', 'complex-change'
+    # A narrow edit is the only automatic downgrade. Unknown work stays balanced.
+    edit = re.search(r'\b(typo|spelling|punctuation)\b|오탈자|오타|맞춤법', text)
+    documentation = re.search(r'\breadme\b|문서|documentation', text)
+    local_edit = re.search(r'\b(sentence|word|heading|wording)\b|문장|단어|제목|문구', text)
+    code_work = re.search(r'\b(code|function|bug|logic|algorithm|refactor|implement)\b|코드|함수|버그|로직|알고리즘|리팩|구현', text)
+    if (edit or documentation and local_edit) and not code_work and len(text) <= 700:
+        return 'fast', 'narrow-text-edit'
+    return 'balanced', 'uncertain-scope'
+
+
+def _complex(text):
+    return bool(re.search(
+        r'\b(architecture|concurrency|race condition|deadlock|data leakage|security|authentication|authorization|migration)\b'
+        r'|아키텍처|동시성|교착|데이터\s*누수|보안|인증|권한|마이그레이션|여러\s*(모듈|저장소)|반복.{0,12}실패'
+        r'|\b(cross[- ]module|multi[- ]repository|distributed)\b', text))
+
+
+def choose(prompt, catalog, *, context=Context(), new_task=False, profiles=None, fixed=None):
+    """Plan one future turn. A fixed (model, effort) selection disables routing.
+
+    Keep an active task's valid selection, unless repeated failures/complexity
+    justify escalation. Explicit new-task boundaries allow downgrades. Missing
+    model metadata retains native settings instead of guessing a valid model.
+    """
+    tier, reason = classify(prompt, context, new_task=new_task)
+    entries = catalog_entries(catalog)
+    preferences = dict(PROFILE_CANDIDATES)
+    if profiles is not None:
+        if not isinstance(profiles, dict) or set(profiles) - set(TIERS):
+            raise ValueError('Routing profiles accept only fast, balanced, and deep.')
+        for key, value in profiles.items():
+            if not isinstance(value, list) or len(value) > 20 or any(not isinstance(name, str) or not name.strip() for name in value):
+                raise ValueError('Each routing profile must be a bounded list of model IDs.')
+            preferences[key] = tuple(value)
+    if fixed is not None:
+        if not isinstance(fixed, tuple) or len(fixed) != 2:
+            raise ValueError('A fixed selection requires a model and reasoning effort.')
+        model, effort = fixed
+        entry = entries.get(model)
+        if entry is None or effort not in _efforts(entry):
+            raise ValueError('The fixed model/reasoning combination is not supported by the visible catalog.')
+        return Decision(context.tier, model, effort, 'manual-fixed', 'manual', (model, effort) != (context.model, context.effort))
+    if reason == 'continue-task' and context.model in entries and context.effort in _efforts(entries[context.model]):
+        return Decision(tier, context.model, context.effort, reason, 'retained', False)
+    default = next((entry for entry in entries.values() if entry.get('isDefault') is True), None)
+    selected = next((entries[name] for name in preferences[tier] if name in entries), None)
+    selection = 'profile'
+    if selected is None:
+        selected = entries.get(context.model) if context.active_task and not new_task else default
+        selected = selected or default
+        selection = 'available-default'
+    if selected is None:
+        return Decision(tier, None, None, reason, 'native-unresolved', False)
+    effort = _effort(selected, tier)
+    if effort is None:
+        # Do not switch models while accidentally inheriting incompatible effort.
+        return Decision(tier, None, None, reason, 'native-unresolved', False)
+    model = selected['model']
+    return Decision(tier, model, effort, reason, selection, (model, effort) != (context.model, context.effort))
+
+
+def _efforts(entry):
+    return [item['reasoningEffort'] for item in entry.get('supportedReasoningEfforts', [])]
+
+
+def _effort(entry, tier):
+    options = _efforts(entry)
+    desired = {'fast': 'low', 'balanced': 'medium', 'deep': 'high'}[tier]
+    if desired in options:
+        return desired
+    default = entry.get('defaultReasoningEffort')
+    return default if default in options else None
+
+
+def advance(context, decision, *, succeeded, task_complete=False):
+    """Explicit execution feedback, never inferred from reassuring model prose."""
+    validate_context(context)
+    if type(succeeded) is not bool or type(task_complete) is not bool:
+        raise ValueError('Execution feedback must use explicit boolean outcomes.')
+    return Context(decision.tier, decision.model or context.model, decision.effort or context.effort,
+                   0 if succeeded else min(context.failures + 1, 100), not task_complete)

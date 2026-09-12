@@ -12,13 +12,13 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if ($Help) {
-    Write-Output 'Harness for Codex 0.11.0-beta Windows installer. Options: -CondaExe PATH, -CondaHome PATH, -DataDir PATH, -BinDir PATH, -AutoUpdate compatible|check|off, -Existing ask|reuse|reset, -NoModifyPath.'
+    Write-Output 'Harness for Codex 0.12.0-beta Windows installer. Options: -CondaExe PATH, -CondaHome PATH, -DataDir PATH, -BinDir PATH, -AutoUpdate compatible|check|off, -Existing ask|reuse|reset, -NoModifyPath.'
     return
 }
 if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitProcess -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
     throw 'This installer requires Windows x64 and a 64-bit PowerShell process.'
 }
-$version = '0.11.0-beta'
+$version = '0.12.0-beta'
 $name = "harness-codex-$version-windows.zip"
 $release = "https://github.com/sholee-pt/Harness-Codex/releases/download/v$version"
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('harness-codex-install-' + [guid]::NewGuid().ToString('N'))

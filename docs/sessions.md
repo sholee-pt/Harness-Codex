@@ -1,5 +1,10 @@
 # Project and conversation lifecycle
 
+`new` and `resume` default to the original Codex screen. The opt-in
+`--ui harness` client adds an Auto-first `/model` menu and per-request routing;
+see [Harness conversation UI](routing.md). Its settings behavior and supported
+slash commands differ from the original native screen described below.
+
 One project has one canonical harness: `.codex/agents/`, `.agents/skills/`, managed root instructions and `.harness/manifest.json`. All conversations share it, regardless of Git repository layout.
 
 `init` installs the generator and configures a project. Repeated `init` reports an existing harness; a brief explicitly requests review. `config` refreshes an unchanged owned generator and reviews the existing harness. `new` starts a work conversation; `resume` retains an existing conversation. Neither regenerates the harness.

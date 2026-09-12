@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.11.0-beta"><img src="https://img.shields.io/badge/Version-v0.11.0--beta-2563EB.svg?style=flat-square" alt="Version: v0.11.0-beta"></a>
+  <a href="https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.12.0-beta"><img src="https://img.shields.io/badge/Version-v0.12.0--beta-2563EB.svg?style=flat-square" alt="Version: v0.12.0-beta"></a>
   <a href="#agent-editions"><img src=".github/badges/agent-codex.svg" alt="Agent: Codex"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Proprietary-64748B.svg?style=flat-square" alt="License: Proprietary"></a>
 </p>
@@ -19,7 +19,7 @@
   <a href="#for-linux">Linux install</a> &middot;
   <a href="#for-windows">Windows install</a> &middot;
   <a href="#quick-start">Quick start</a> &middot;
-  <a href="https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.11.0-beta">Release</a> &middot;
+  <a href="https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.12.0-beta">Release</a> &middot;
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
@@ -32,7 +32,7 @@ Generate and maintain one shared project harness with Codex-native agents and sk
 ### For Linux
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.11.0-beta/install_harness_codex.sh | sh
+curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.12.0-beta/install_harness_codex.sh | sh
 harness-codex --version
 ```
 
@@ -43,13 +43,13 @@ Supports Linux x86_64 and aarch64. Requires curl, Bash, tar and sha256sum. The i
 Run in **64-bit Windows PowerShell 5.1 or PowerShell 7** on Windows x64:
 
 ```powershell
-irm https://github.com/sholee-pt/Harness-Codex/releases/download/v0.11.0-beta/install_harness_codex.ps1 | iex
+irm https://github.com/sholee-pt/Harness-Codex/releases/download/v0.12.0-beta/install_harness_codex.ps1 | iex
 harness-codex --version
 ```
 
 The installer verifies the ZIP checksum, prepares an isolated Python 3.11 environment and Git, and adds the command to your user PATH. It also updates PATH in the current PowerShell session. Administrator access is not required.
 
-When migrating from 0.10.0-beta, run this installer once: its updater cannot discover the new unprefixed branches. If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness-Codex/blob/v0.11.0-beta/docs/installation.md).
+When migrating from 0.10.0-beta, run this installer once: its updater cannot discover the new unprefixed branches. If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness-Codex/blob/v0.12.0-beta/docs/installation.md).
 
 ## Quick Start
 
@@ -67,6 +67,13 @@ harness-codex resume
 Choose **Automatic** or **Manual** with the arrow keys and Enter. Automatic uses the recommended default from your Codex catalog; resume keeps the saved model. Manual offers the available models, reasoning levels and permissions. `--settings auto|manual|native` selects a mode directly. Three concise stages show configuration progress and file validation. Questions and approvals stay visible. See [session settings](docs/sessions.md#session-settings).
 
 ### Conversations and project maintenance
+
+For the experimental Harness conversation screen with per-request model/reasoning
+selection, use `harness-codex new --ui harness --settings auto` or
+`harness-codex resume --ui harness`. Its `/model` menu offers **Auto** first and
+manual fixed settings. `/native` returns the same conversation to the original
+Codex CLI. This is a separate terminal client, not a modification of the native
+`/model` menu. See [routing, supported commands and limits](docs/routing.md).
 
 | Command | Purpose and example |
 | --- | --- |
@@ -126,18 +133,19 @@ After reinstalling, run `status` in a project to recognize its retained harness.
 
 ## Documentation
 
-- [Installation, reinstall choices and troubleshooting](https://github.com/sholee-pt/Harness-Codex/blob/v0.11.0-beta/docs/installation.md)
-- [Project and conversation lifecycle](https://github.com/sholee-pt/Harness-Codex/blob/v0.11.0-beta/docs/sessions.md)
+- [Harness conversation UI and automatic model routing](docs/routing.md)
+- [Installation, reinstall choices and troubleshooting](https://github.com/sholee-pt/Harness-Codex/blob/v0.12.0-beta/docs/installation.md)
+- [Project and conversation lifecycle](https://github.com/sholee-pt/Harness-Codex/blob/v0.12.0-beta/docs/sessions.md)
 - [Bounded maintenance and local records](docs/maintenance.md)
 - [Beta versioning and migration](docs/versioning.md)
-- [Generated structure and design](https://github.com/sholee-pt/Harness-Codex/blob/v0.11.0-beta/docs/architecture.md)
-- [Quality evaluation and optional local evidence](https://github.com/sholee-pt/Harness-Codex/blob/v0.11.0-beta/docs/evaluation.md)
-- [Release assets and verification](https://github.com/sholee-pt/Harness-Codex/blob/v0.11.0-beta/docs/distribution.md)
+- [Generated structure and design](https://github.com/sholee-pt/Harness-Codex/blob/v0.12.0-beta/docs/architecture.md)
+- [Quality evaluation and optional local evidence](https://github.com/sholee-pt/Harness-Codex/blob/v0.12.0-beta/docs/evaluation.md)
+- [Release assets and verification](https://github.com/sholee-pt/Harness-Codex/blob/v0.12.0-beta/docs/distribution.md)
 - [Changelog](CHANGELOG.md) · [GitHub Releases](https://github.com/sholee-pt/Harness-Codex/releases) · [Contributing](CONTRIBUTING.md)
 
 ## Agent editions
 
-This edition provides **`harness-codex`** and needs no `--agent` option. The future Claude command is `harness-claude`. Hidden legacy Codex selectors remain accepted for older scripts. Claude development is maintained separately on `claude/*` branches; this command does not implement Claude sessions.
+This repository provides **`harness-codex`** and needs no `--agent` option. Hidden legacy Codex selectors remain accepted for older scripts. Claude integration is outside this repository; this command does not implement Claude sessions.
 
 ## License
 

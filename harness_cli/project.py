@@ -67,6 +67,11 @@ def register_project_commands(subparsers) -> None:
                                 help="Install the generator without launching Codex.")
         if command in {"new", "start"}:
             parser.add_argument("prompt", nargs="?", help="Optional initial task, supplied as one quoted argument.")
+        if command in {'new', 'resume'}:
+            parser.add_argument('--ui', choices=('native', 'harness'), default='native',
+                                help='Keep the native screen (default), or use the experimental Harness UI with per-request Auto.')
+            parser.add_argument('--routing-profiles', type=Path, help='Optional JSON model preferences for the Harness UI.')
+            parser.add_argument('--turn-timeout', type=float, default=1800, help='Harness UI turn deadline in seconds (default: 1800).')
         if command == "resume":
             parser.add_argument("session_id", nargs="?", help="Native Codex session ID or name; omit to open its picker.")
             parser.add_argument("--last", action="store_true", help="Resume the latest Codex conversation in this project.")
@@ -130,6 +135,17 @@ def _validate_prompt_transport(root: Path, prompt: str, command: list[str] | Non
 
 def preflight_project_command(args, *, source_root: Path) -> None:
     """Validate user input before automatic tool updates or project writes."""
+    if args.command in {'new', 'resume'}:
+        if getattr(args, 'ui', 'native') != 'harness' and getattr(args, 'routing_profiles', None):
+            raise ProjectError('--routing-profiles requires --ui harness.')
+        timeout = getattr(args, 'turn_timeout', 1800)
+        if not 0 < timeout <= 86400:
+            raise ProjectError('--turn-timeout must be greater than zero and at most 86400 seconds.')
+        if getattr(args, 'routing_profiles', None):
+            from .routing import read_json
+            from .model_routing import choose
+            args._routing_profiles = read_json(args.routing_profiles)
+            choose('Validate the routing configuration', [], profiles=args._routing_profiles)
     installer = load_installer(source_root)
     if args.command == 'resume' and args.project is None:
         session_id = getattr(args, 'session_id', None)
@@ -615,6 +631,15 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                 if not prompt:
                     print('Existing conversation and native project instructions are retained. '
                           'Use --reload-harness when an explicit re-read is needed.')
+            if getattr(args, 'ui', 'native') == 'harness':
+                from .chat import run
+                status, native_session = run(command, root, prompt, initial_task=getattr(args, 'prompt', None),
+                    resume=args.command == 'resume', session_id=getattr(args, 'session_id', None),
+                    last=getattr(args, 'last', False), settings=args.settings,
+                    profiles=getattr(args, '_routing_profiles', None), timeout=args.turn_timeout)
+                if native_session:
+                    return _launch(command, root, None, resume=True, session_id=native_session, settings='native')
+                return status
             if getattr(args, 'prompt', None):
                 prompt += "\n\nThe user's task:\n" + args.prompt
             return _launch(command, root, prompt, resume=args.command == "resume",

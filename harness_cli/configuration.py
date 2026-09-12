@@ -117,10 +117,13 @@ class Server:
         self.waiting.add(request)
         self.send({'id': request, 'method': method, 'params': params})
         deadline = time.monotonic() + timeout
-        while request not in self.pending:
-            self.event(deadline)
-        answer = self.pending.pop(request)
-        self.waiting.discard(request)
+        try:
+            while request not in self.pending:
+                self.event(deadline)
+            answer = self.pending.pop(request)
+        finally:
+            self.waiting.discard(request)
+            self.pending.pop(request, None)
         if 'error' in answer:
             message = answer['error'].get('message', 'Unknown protocol error') if isinstance(answer['error'], dict) else 'Invalid protocol error'
             raise ValueError(f'Codex {method}: {clean(message)}. Retry with --interactive if your Codex version needs its native UI.')
@@ -156,6 +159,7 @@ class Server:
         if self.thread_id and params.get('threadId', self.thread_id) != self.thread_id:
             return None
         method = item['method']
+        self.observe(method, params)
         if method in {'turn/started', 'turn/completed'} and not isinstance(params.get('turn'), dict):
             raise ValueError('Codex sent an invalid turn event.')
         if method in {'item/started', 'item/completed'} and not isinstance(params.get('item'), dict):
@@ -194,6 +198,9 @@ class Server:
         elif method == 'turn/completed':
             self.completed.append(params.get('turn', {}))
         return None
+
+    def observe(self, method, params):
+        """Optional client presentation; protocol state/approvals remain shared."""
 
     def detail(self, value, prefix=''):
         """Render approval data completely without raw JSON or silent truncation."""
