@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from pathlib import Path
 import platform
@@ -109,10 +110,10 @@ def fetch(version, name, temporary):
 
 def ensure(data_root, version, *, archive=None):
     data_root = dist._storage_path(data_root)
-    dist.installed_status(data_root)
     platform_name = platform_key()
     destination = dist._storage_path(data_root / 'native-ui' / ('v' + version) / platform_name)
     with dist._lock(data_root):
+        dist.installed_status(data_root)
         if destination.exists():
             package.verify(destination, version, platform_name)
         else:
@@ -124,6 +125,7 @@ def ensure(data_root, version, *, archive=None):
                 package.verify(temporary / 'unpacked', version, platform_name)
                 # Stage on the destination volume, so the final rename is atomic.
                 import shutil
+                created = [path for path in (destination.parent.parent, destination.parent) if not path.exists()]
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 staging = Path(tempfile.mkdtemp(prefix='.pending-', dir=destination.parent))
                 try:
@@ -134,6 +136,11 @@ def ensure(data_root, version, *, archive=None):
                     # Only our newly created staging directory, never a computed user tree.
                     if staging.exists():
                         shutil.rmtree(staging)
+                    for path in reversed(created):
+                        try:
+                            path.rmdir()
+                        except OSError:
+                            pass  # Retain installed content or anything added concurrently.
         return destination / ('bin/codex.exe' if platform_name.startswith('windows-') else 'bin/codex')
 
 
@@ -171,6 +178,8 @@ def run(args, root, source_root, prompt):
                HARNESS_ROUTER_SCRIPT=str(Path(__file__).with_name('native_router.py').resolve()),
                HARNESS_ROUTER_MODE='auto' if mode == 'auto' else 'manual',
                HARNESS_ROUTER_RESUME='1' if args.command == 'resume' else '0')
+    if prompt:
+        env['HARNESS_ROUTER_INITIAL_PROMPT_SHA256'] = hashlib.sha256(prompt.encode('utf-8')).hexdigest()
     if args.routing_profiles:
         env['HARNESS_ROUTER_PROFILES'] = str(args.routing_profiles.resolve())
     return _launch([str(binary)], root, prompt, resume=args.command == 'resume',

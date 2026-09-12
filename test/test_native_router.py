@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -59,3 +60,14 @@ class NativeRouterTests(unittest.TestCase):
         result = subprocess.run(command, input='PRIVATE INVALID INPUT', capture_output=True, text=True, timeout=5)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual((result.stdout, result.stderr), ('', ''))
+
+    def test_activation_does_not_anchor_an_empty_session_to_a_deep_task(self):
+        value = request('Read the security architecture instructions and wait.')
+        with mock.patch.dict(os.environ, {'HARNESS_ROUTER_INITIAL_PROMPT_SHA256': hashlib.sha256(value['prompt'].encode()).hexdigest()}):
+            result = select(value)
+        self.assertFalse(result['context']['active_task'])
+        value.update(prompt='Fix README wording.', context=result['context'])
+        self.assertEqual(select(value)['model'], 'gpt-5.6-luna')
+        value = request("Read the security architecture instructions.\n\nThe user's task:\nFix README wording.")
+        with mock.patch.dict(os.environ, {'HARNESS_ROUTER_INITIAL_PROMPT_SHA256': hashlib.sha256(value['prompt'].encode()).hexdigest()}):
+            self.assertEqual(select(value)['model'], 'gpt-5.6-luna')

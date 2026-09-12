@@ -144,9 +144,13 @@ jobs:
           git diff --exit-code
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
 
+  native-release:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/v0.12.0-beta'
+    uses: ./.github/workflows/native-ui.yml
+
   release:
     if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/v0.12.0-beta'
-    needs: verify
+    needs: [verify, native-release]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -162,6 +166,14 @@ jobs:
       - name: Build the verified release assets
         shell: bash -el {0}
         run: conda run -n harness python build/build_release.py --output "${RUNNER_TEMP}/harness-dist"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: native-ui-*
+          path: ${{ runner.temp }}/native-delivery
+          merge-multiple: true
+      - name: Attach exact-commit native UI packages
+        shell: bash -el {0}
+        run: conda run -n harness python -B build/native_ui/attach.py --dist "${RUNNER_TEMP}/harness-dist" --artifacts "${RUNNER_TEMP}/native-delivery"
       - name: Publish the GitHub Release
         shell: bash -el {0}
         env:
@@ -170,4 +182,4 @@ jobs:
         run: |
           test "$GITHUB_REF_NAME" = "v0.12.0-beta"
           conda run -n harness python build/release_notes.py --output "${RUNNER_TEMP}/release-body.md"
-          gh release create "$RELEASE_TAG" "${RUNNER_TEMP}/harness-dist/harness-codex-0.12.0-beta-linux.tar.gz" "${RUNNER_TEMP}/harness-dist/SHA256SUMS" "${RUNNER_TEMP}/harness-dist/build.json" "${RUNNER_TEMP}/harness-dist/install_harness_codex.sh" "${RUNNER_TEMP}/harness-dist/harness-codex-0.12.0-beta-windows.zip" "${RUNNER_TEMP}/harness-dist/install_harness_codex.ps1" --target "$GITHUB_SHA" --title "Harness for Codex v0.12.0-beta" --notes-file "${RUNNER_TEMP}/release-body.md" --prerelease
+          gh release create "$RELEASE_TAG" "${RUNNER_TEMP}/harness-dist/"* --target "$GITHUB_SHA" --title "Harness for Codex v0.12.0-beta" --notes-file "${RUNNER_TEMP}/release-body.md" --prerelease

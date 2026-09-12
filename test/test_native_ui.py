@@ -112,6 +112,16 @@ class NativeUiTests(unittest.TestCase):
         self.assertEqual(binary.read_text(), 'user-modified')
         self.assertEqual((data / 'active.json').read_bytes(), before)
 
+    def test_staging_failure_removes_only_new_empty_parents(self):
+        data = self.root / 'tool'
+        dist.install_tool(source(self.root / 'source', VERSION, commit=None), data, self.root / 'commands', sys.executable)
+        with mock.patch.object(native_ui, 'platform_key', return_value='windows-x86_64'), \
+                mock.patch('shutil.copytree', side_effect=OSError('copy interrupted')):
+            with self.assertRaisesRegex(OSError, 'interrupted'):
+                native_ui.ensure(data, VERSION, archive=self.archive)
+        self.assertFalse((data / 'native-ui').exists())
+        self.assertEqual(dist.installed_status(data)['version'], VERSION)
+
     def test_native_resume_argument_and_environment_are_preserved(self):
         env = {'PATH': 'original project environment', 'HARNESS_ROUTER_MODE': 'auto'}
         with mock.patch.object(project.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as run:

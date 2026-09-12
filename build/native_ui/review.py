@@ -15,6 +15,15 @@ ALLOWED = {
 
 
 def review(root):
+    # just 1.51 removes empty lines in the upstream justfile. Retain that
+    # unrelated file byte-for-byte, only after proving all nonblank lines match.
+    original = subprocess.check_output(['git', '-C', str(root), 'show', 'HEAD:justfile'])
+    current = (root / 'justfile').read_bytes()
+    if current != original:
+        lines = lambda value: [line for line in value.decode('utf-8').splitlines() if line.strip()]
+        if lines(current) != lines(original):
+            raise ValueError('Unexpected non-formatting change to the upstream justfile')
+        (root / 'justfile').write_bytes(original)
     changed = set(subprocess.check_output(['git', '-C', str(root), 'diff', '--name-only'], text=True).splitlines())
     unexpected = sorted(changed - ALLOWED)
     print(json.dumps({'changedTrackedFiles': sorted(changed), 'unexpectedChanges': unexpected,

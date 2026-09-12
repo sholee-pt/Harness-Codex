@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, replace
 import json
+import hashlib
 import os
 from pathlib import Path
 import sys
@@ -44,12 +45,20 @@ def select(value):
     else:
         raise ValueError('Invalid native routing context')
     validate_context(context)
+    prompt = value['prompt']
+    initial = os.environ.get('HARNESS_ROUTER_INITIAL_PROMPT_SHA256')
+    if isinstance(prompt, str) and initial == hashlib.sha256(prompt.encode('utf-8')).hexdigest():
+        # Do not treat generated activation text as evidence of task complexity.
+        marker = "\n\nThe user's task:\n"
+        if marker not in prompt:
+            return {'model': value['model'], 'effort': value['effort'], 'context': asdict(context)}
+        prompt = prompt.split(marker, 1)[1]
     profiles = None
     profile = os.environ.get('HARNESS_ROUTER_PROFILES')
     if profile:
         from harness_cli.routing import read_json
         profiles = read_json(Path(profile))
-    decision = choose(value['prompt'], catalog, context=context, profiles=profiles)
+    decision = choose(prompt, catalog, context=context, profiles=profiles)
     next_context = replace(context, tier=decision.tier, model=decision.model or context.model,
                            effort=decision.effort or context.effort, active_task=True)
     return {'model': decision.model, 'effort': decision.effort,

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tarfile
 
@@ -39,6 +40,9 @@ def prepare(output, platform):
 
 
 def assemble(root, binary, platform, output):
+    git = ['git', '-c', 'safe.directory=' + ROOT.as_posix()]
+    if subprocess.check_output([*git, 'status', '--porcelain'], cwd=ROOT, text=True).strip():
+        raise ValueError('Native release packages require a clean Harness source commit')
     suffix = '.exe' if platform.startswith('windows-') else ''
     original, _ = package.inventory(root)
     shutil.copyfile(binary, root / ('bin/codex' + suffix))
@@ -51,6 +55,7 @@ def assemble(root, binary, platform, output):
             raise ValueError('An original Codex helper was modified')
     metadata = {'schema': 1, 'version': version(ROOT), 'platform': platform,
                 'target': package.TARGETS[platform], 'upstreamCommit': package.UPSTREAM,
+                'harnessSourceCommit': subprocess.check_output([*git, 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                 'officialPackageSha256': OFFICIAL[platform],
                 'extensionSha256': hashlib.sha256(Path(__file__).with_name('harness_routing.rs').read_bytes()).hexdigest(),
                 'files': files, 'directories': sorted(directories)}

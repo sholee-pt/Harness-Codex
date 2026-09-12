@@ -31,6 +31,14 @@ impl Routing {
 fn invoke(payload: Value) -> Result<Value, String> {
     let python = std::env::var_os("HARNESS_ROUTER_PYTHON").ok_or("Missing Harness interpreter")?;
     let script = std::env::var_os("HARNESS_ROUTER_SCRIPT").ok_or("Missing Harness selector")?;
+    invoke_with_paths(payload, python, script)
+}
+
+pub(super) fn invoke_with_paths(
+    payload: Value,
+    python: std::ffi::OsString,
+    script: std::ffi::OsString,
+) -> Result<Value, String> {
     if !Path::new(&python).is_absolute() || !Path::new(&script).is_absolute() {
         return Err("Harness selector paths must be absolute".into());
     }
@@ -40,13 +48,18 @@ fn invoke(payload: Value) -> Result<Value, String> {
     }
     let mut command = Command::new(python);
     command.args(["-I", "-B"]).arg(script);
-    command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000);
     }
-    let mut child = command.spawn().map_err(|_| "Cannot start the Harness selector")?;
+    let mut child = command
+        .spawn()
+        .map_err(|_| "Cannot start the Harness selector")?;
     let mut input = child.stdin.take().ok_or("Missing selector input pipe")?;
     let writer = std::thread::spawn(move || input.write_all(&bytes));
     let deadline = Instant::now() + Duration::from_secs(3);
@@ -67,8 +80,13 @@ fn invoke(payload: Value) -> Result<Value, String> {
         return Err("Harness selector could not choose a supported model".into());
     }
     let mut result = Vec::new();
-    child.stdout.take().ok_or("Missing selector output pipe")?
-        .take(8193).read_to_end(&mut result).map_err(|_| "Cannot read selector result")?;
+    child
+        .stdout
+        .take()
+        .ok_or("Missing selector output pipe")?
+        .take(8193)
+        .read_to_end(&mut result)
+        .map_err(|_| "Cannot read selector result")?;
     if result.len() > 8192 {
         return Err("Harness selector returned too much data".into());
     }
@@ -77,7 +95,9 @@ fn invoke(payload: Value) -> Result<Value, String> {
 
 impl ChatWidget {
     pub(super) fn add_harness_auto_choice(&self, items: &mut Vec<SelectionItem>) {
-        let Ok(state) = self.harness_routing.lock() else { return; };
+        let Ok(state) = self.harness_routing.lock() else {
+            return;
+        };
         if !state.enabled || self.restrict_model_picker_to_luna_reserve() {
             return;
         }
@@ -110,6 +130,15 @@ impl ChatWidget {
     }
 
     pub(super) fn apply_harness_routing(&mut self, text: &str, has_images: bool) {
+        self.route_with_selector(text, has_images, invoke);
+    }
+
+    pub(super) fn route_with_selector(
+        &mut self,
+        text: &str,
+        has_images: bool,
+        selector: impl FnOnce(Value) -> Result<Value, String>,
+    ) {
         let (active, context) = match self.harness_routing.lock() {
             Ok(state) => (state.enabled && state.active, state.context.clone()),
             Err(_) => return,
@@ -127,22 +156,42 @@ impl ChatWidget {
             "model": self.current_model(), "effort": self.effective_reasoning_effort(),
             "hasImages": has_images,
         });
-        match invoke(payload) {
+        match selector(payload) {
             Ok(value) => {
-                let Some(model) = value.get("model").and_then(Value::as_str) else { return; };
-                let effort = value.get("effort").cloned()
+                let Some(model) = value.get("model").and_then(Value::as_str) else {
+                    return;
+                };
+                let effort = value
+                    .get("effort")
+                    .cloned()
                     .and_then(|value| serde_json::from_value::<ReasoningEffortConfig>(value).ok());
-                let Some(effort) = effort else { return; };
+                let Some(effort) = effort else {
+                    return;
+                };
                 // Validate the response against this native catalog independently.
-                let valid = models.iter().any(|preset| preset.show_in_picker && preset.model == model
-                    && preset.supported_reasoning_efforts.iter().any(|option| option.effort == effort)
-                    && (!has_images || serde_json::to_value(&preset.input_modalities)
-                        .is_ok_and(|values| values.as_array().is_some_and(|values| values.contains(&Value::String("image".into()))))));
+                let valid = models.iter().any(|preset| {
+                    preset.show_in_picker
+                        && preset.model == model
+                        && preset
+                            .supported_reasoning_efforts
+                            .iter()
+                            .any(|option| option.effort == effort)
+                        && (!has_images
+                            || serde_json::to_value(&preset.input_modalities).is_ok_and(|values| {
+                                values.as_array().is_some_and(|values| {
+                                    values.contains(&Value::String("image".into()))
+                                })
+                            }))
+                });
                 if !valid {
-                    self.add_error_message("Harness Auto returned an unsupported selection; keeping native settings.".into());
+                    self.add_error_message(
+                        "Harness Auto returned an unsupported selection; keeping native settings."
+                            .into(),
+                    );
                     return;
                 }
-                let changed = self.current_model() != model || self.effective_reasoning_effort() != Some(effort.clone());
+                let changed = self.current_model() != model
+                    || self.effective_reasoning_effort() != Some(effort.clone());
                 self.set_model(model);
                 if self.active_mode_kind() == ModeKind::Plan {
                     self.set_plan_mode_reasoning_effort(Some(effort.clone()));
@@ -156,7 +205,9 @@ impl ChatWidget {
                     self.add_info_message(format!("Auto: {model} {effort}"), /*hint*/ None);
                 }
             }
-            Err(error) => self.add_error_message(format!("Harness Auto: {error}. Keeping native settings.")),
+            Err(error) => {
+                self.add_error_message(format!("Harness Auto: {error}. Keeping native settings."))
+            }
         }
     }
 }

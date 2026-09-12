@@ -5,6 +5,7 @@ on:
     branches: [v0.12.0-beta]
     paths: [build/native_ui/**, harness_cli/native_*.py, .github/workflows/native-ui.yml]
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -37,7 +38,7 @@ jobs:
       - name: Prepare pinned upstream with the bounded extension
         shell: bash -el {0}
         run: |
-          git -c core.longpaths=true clone --depth 1 --branch rust-v0.154.0 https://github.com/openai/codex.git "${RUNNER_TEMP}/codex-ui"
+          git clone --config core.longpaths=true --config core.autocrlf=false --depth 1 --branch rust-v0.154.0 https://github.com/openai/codex.git "${RUNNER_TEMP}/codex-ui"
           conda run -n harness python -B build/native_ui/prepare.py --root "${RUNNER_TEMP}/codex-ui"
       - name: Install the pinned Rust toolchain
         shell: bash -el {0}
@@ -88,10 +89,6 @@ jobs:
           conda run --no-capture-output -n harness just fmt
           conda run --no-capture-output -n harness python -B "${GITHUB_WORKSPACE}/build/native_ui/review.py" --root "${RUNNER_TEMP}/codex-ui"
           cargo build --locked --target ${{ matrix.target }} --release -p codex-cli --bin codex
-      - name: Check the original TUI and extension tests
-        shell: bash -el {0}
-        working-directory: ${{ runner.temp }}/codex-ui/codex-rs
-        run: conda run --no-capture-output -n harness just test -p codex-tui --release --target ${{ matrix.target }} --locked
       - name: Assemble the verified native package
         shell: bash -el {0}
         run: |
@@ -100,6 +97,12 @@ jobs:
           conda run --no-capture-output -n harness python -B build/native_ui/package.py assemble --root "${RUNNER_TEMP}/native-package" --platform ${{ matrix.platform }} --binary "${RUNNER_TEMP}/codex-ui/codex-rs/target/${{ matrix.target }}/release/codex${suffix}" --output "${RUNNER_TEMP}/native-dist"
           "${RUNNER_TEMP}/native-package/bin/codex${suffix}" --version
           "${RUNNER_TEMP}/native-package/bin/codex${suffix}" --help
+      - name: Check the original TUI and extension tests
+        env:
+          HARNESS_SELECTOR_TEST_SCRIPT: ${{ github.workspace }}/harness_cli/native_router.py
+        shell: bash -el {0}
+        working-directory: ${{ runner.temp }}/codex-ui/codex-rs
+        run: conda run --no-capture-output -n harness just test -p codex-tui --release --target ${{ matrix.target }} --locked
       - name: Preserve build and patch review evidence
         if: always()
         shell: bash -el {0}
