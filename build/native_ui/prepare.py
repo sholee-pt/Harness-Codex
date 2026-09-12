@@ -6,8 +6,36 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import tomllib
 
 HERE = Path(__file__).resolve().parent
+
+
+def normalize_workspace_versions(root):
+    """The upstream tag bumps workspace version but retains 0.0.0 path locks.
+
+    Normalize only local workspace package versions; keep every external source,
+    version and checksum untouched, then let Cargo enforce --locked as usual.
+    """
+    cargo = root / 'codex-rs'
+    workspace = tomllib.loads((cargo / 'Cargo.toml').read_text(encoding='utf-8'))['workspace']
+    version = workspace['package']['version']
+    names = set()
+    for member in workspace['members']:
+        package = tomllib.loads((cargo / member / 'Cargo.toml').read_text(encoding='utf-8')).get('package', {})
+        if package.get('version') == {'workspace': True}:
+            names.add(package['name'])
+    path = cargo / 'Cargo.lock'
+    content = path.read_text(encoding='utf-8')
+    blocks = content.split('[[package]]')
+    for index, block in enumerate(blocks[1:], 1):
+        item = tomllib.loads(block)
+        if item.get('name') in names and 'source' not in item and item.get('version') == '0.0.0':
+            blocks[index] = block.replace('version = "0.0.0"', f'version = "{version}"', 1)
+    content = '[[package]]'.join(blocks)
+    for name in names:
+        content = content.replace(f'"{name} 0.0.0"', f'"{name} {version}"')
+    path.write_text(content, encoding='utf-8', newline='\n')
 
 
 def prepare(root):
@@ -16,6 +44,7 @@ def prepare(root):
     revision = subprocess.check_output([*git, 'rev-parse', 'HEAD'], text=True).strip()
     if revision != metadata['commit'] or subprocess.check_output([*git, 'status', '--porcelain'], text=True).strip():
         raise ValueError('Native UI builds require the pinned clean upstream source')
+    normalize_workspace_versions(root)
     edits = {
         'codex-rs/tui/src/chatwidget.rs': [
             ('mod model_popups;', 'mod model_popups;\nmod harness_routing;'),
