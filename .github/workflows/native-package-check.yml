@@ -1,0 +1,46 @@
+name: Native package preflight
+
+on:
+  push:
+    branches: ['v0.12.0-beta']
+    paths:
+      - '.github/workflows/native-package-check.yml'
+      - 'build/native_ui/package.py'
+      - 'build/native_ui/source.py'
+      - 'harness_cli/native_package.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-ui-package-check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            suffix: ''
+          - os: windows-latest
+            platform: windows-x86_64
+            suffix: '.exe'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: conda-incubator/setup-miniconda@v4.0.1
+        with:
+          activate-environment: harness
+          auto-activate: false
+          environment-file: environment.yml
+      - name: Check package assembly independently of compilation
+        shell: bash -el {0}
+        run: |
+          conda run --no-capture-output -n harness python -B build/native_ui/source.py
+          conda run --no-capture-output -n harness python -B build/native_ui/package.py prepare --root "${RUNNER_TEMP}/package-fixture" --platform ${{ matrix.platform }}
+          git status --porcelain --untracked-files=all
+          cp "${RUNNER_TEMP}/package-fixture/bin/codex${{ matrix.suffix }}" "${RUNNER_TEMP}/fixture-codex${{ matrix.suffix }}"
+          # The official executable is a packaging fixture, never a release asset.
+          conda run --no-capture-output -n harness python -B build/native_ui/package.py assemble --root "${RUNNER_TEMP}/package-fixture" --platform ${{ matrix.platform }} --binary "${RUNNER_TEMP}/fixture-codex${{ matrix.suffix }}" --output "${RUNNER_TEMP}/package-fixture-output"
+          conda run --no-capture-output -n harness python -B build/native_ui/source.py
