@@ -80,7 +80,11 @@ jobs:
         with:
           workspaces: ${{ runner.temp }}/codex-ui/codex-rs -> target
           cache-on-failure: true
-      - name: Check and build the original CLI with the Harness menu hook
+          cache-workspace-crates: true
+      - name: Verify clean Harness source before native compilation
+        shell: bash -el {0}
+        run: conda run --no-capture-output -n harness python -B build/native_ui/source.py
+      - name: Check the extension and preserve original UI source
         shell: bash -el {0}
         working-directory: ${{ runner.temp }}/codex-ui/codex-rs
         run: |
@@ -88,7 +92,12 @@ jobs:
           conda run --no-capture-output -n harness just fix -p codex-tui --release --target ${{ matrix.target }}
           conda run --no-capture-output -n harness just fmt
           conda run --no-capture-output -n harness python -B "${GITHUB_WORKSPACE}/build/native_ui/review.py" --root "${RUNNER_TEMP}/codex-ui"
-          cargo build --locked --target ${{ matrix.target }} --release -p codex-cli --bin codex
+          conda run --no-capture-output -n harness python -B "${GITHUB_WORKSPACE}/build/native_ui/source.py"
+      - name: Build the original CLI with the Harness menu hook
+        id: native-build
+        shell: bash -el {0}
+        working-directory: ${{ runner.temp }}/codex-ui/codex-rs
+        run: cargo build --locked --target ${{ matrix.target }} --release -p codex-cli --bin codex
       - name: Assemble the verified native package
         shell: bash -el {0}
         run: |
@@ -98,6 +107,7 @@ jobs:
           "${RUNNER_TEMP}/native-package/bin/codex${suffix}" --version
           "${RUNNER_TEMP}/native-package/bin/codex${suffix}" --help
       - name: Check the original TUI and extension tests
+        if: ${{ !cancelled() && steps.native-build.outcome == 'success' }}
         env:
           HARNESS_SELECTOR_TEST_SCRIPT: ${{ github.workspace }}/harness_cli/native_router.py
         shell: bash -el {0}
@@ -117,6 +127,7 @@ jobs:
             ${{ runner.temp }}/codex-ui/codex-rs/target/${{ matrix.target }}/release/codex.exe
             ${{ runner.temp }}/codex-ui-patch.diff
             ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/harness_routing.rs
+            ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/tests/harness_routing_tests.rs
             ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/tests/snapshots/*harness*
             ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/snapshots/*harness*
             ${{ runner.temp }}/native-dist/*

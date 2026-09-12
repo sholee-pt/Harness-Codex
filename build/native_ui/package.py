@@ -6,7 +6,6 @@ import json
 import os
 from pathlib import Path
 import shutil
-import subprocess
 import sys
 import tarfile
 
@@ -15,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 from harness_cli import native_package as package
 from harness_cli.main import version
 from build.native_ui.dependencies import download
+from build.native_ui.source import source_commit
 
 OFFICIAL = {
     'linux-x86_64': 'fc6e3e3b85f2cf7d664520ee5c66a7fe4aa12bae7d46834f47e2f165fd0d6f78',
@@ -40,9 +40,7 @@ def prepare(output, platform):
 
 
 def assemble(root, binary, platform, output):
-    git = ['git', '-c', 'safe.directory=' + ROOT.as_posix()]
-    if subprocess.check_output([*git, 'status', '--porcelain'], cwd=ROOT, text=True).strip():
-        raise ValueError('Native release packages require a clean Harness source commit')
+    commit = source_commit()
     suffix = '.exe' if platform.startswith('windows-') else ''
     original, _ = package.inventory(root)
     shutil.copyfile(binary, root / ('bin/codex' + suffix))
@@ -55,7 +53,7 @@ def assemble(root, binary, platform, output):
             raise ValueError('An original Codex helper was modified')
     metadata = {'schema': 1, 'version': version(ROOT), 'platform': platform,
                 'target': package.TARGETS[platform], 'upstreamCommit': package.UPSTREAM,
-                'harnessSourceCommit': subprocess.check_output([*git, 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+                'harnessSourceCommit': commit,
                 'officialPackageSha256': OFFICIAL[platform],
                 'extensionSha256': hashlib.sha256(Path(__file__).with_name('harness_routing.rs').read_bytes()).hexdigest(),
                 'files': files, 'directories': sorted(directories)}
