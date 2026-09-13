@@ -1,8 +1,7 @@
-"""Launch the pinned original Codex screen with the Harness Auto extension."""
+"""Fetch and verify pinned native Codex packages; no conversation launcher."""
 from __future__ import annotations
 
 import json
-import hashlib
 import os
 from pathlib import Path
 import platform
@@ -14,7 +13,6 @@ import urllib.error
 import urllib.request
 
 from . import distribution as dist, native_package as package
-from .environment import codex_environment
 from .presentation import Progress
 
 API = 'https://api.github.com/repos/sholee-pt/Harness-Codex'
@@ -146,42 +144,17 @@ def ensure(data_root, version, *, archive=None):
 
 def removal_files(data_root):
     root = dist._storage_path(data_root / 'native-ui')
-    files = {}
+    from .codex_integration import removal_files as integration_files
+    files = integration_files(data_root)
     if not root.exists():
         return files
     for release in root.iterdir():
         version = release.name.removeprefix('v')
         dist._version(version)
         for platform_path in dist._storage_path(release).iterdir():
+            if platform_path in files:
+                continue
             metadata = package.verify(platform_path, version, platform_path.name)
             files.update({platform_path / name: value for name, value in metadata['files'].items()})
             files[platform_path / 'harness-ui.json'] = package.fingerprint(platform_path / 'harness-ui.json')
     return files
-
-
-def run(args, root, source_root, prompt):
-    from .main import default_data_root, version
-    from .project import _launch
-    binary = ensure(default_data_root(), version(source_root), archive=args.native_ui_archive)
-    mode = args.settings
-    if mode == 'ask':
-        from .terminal_menu import choose
-        with Progress('Choose conversation inference', compact=True) as progress:
-            selection = choose(progress, 'Conversation inference', ['Auto — select model and reasoning for new requests',
-                               'Manual — use the original /model menu'])
-        mode = 'auto' if selection == 0 else 'native'
-    env = codex_environment()
-    for key in list(env):
-        if key.startswith('HARNESS_ROUTER_'):
-            del env[key]
-    env.update(HARNESS_ROUTER_PYTHON=str(Path(sys.executable).resolve()),
-               HARNESS_ROUTER_SCRIPT=str(Path(__file__).with_name('native_router.py').resolve()),
-               HARNESS_ROUTER_MODE='auto' if mode == 'auto' else 'manual',
-               HARNESS_ROUTER_RESUME='1' if args.command == 'resume' else '0')
-    if prompt:
-        env['HARNESS_ROUTER_INITIAL_PROMPT_SHA256'] = hashlib.sha256(prompt.encode('utf-8')).hexdigest()
-    if args.routing_profiles:
-        env['HARNESS_ROUTER_PROFILES'] = str(args.routing_profiles.resolve())
-    return _launch([str(binary)], root, prompt, resume=args.command == 'resume',
-                   session_id=getattr(args, 'session_id', None), last=getattr(args, 'last', False),
-                   settings='native', environment=env)

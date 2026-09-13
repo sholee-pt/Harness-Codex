@@ -81,7 +81,7 @@ class LegacyLauncherGateTests(unittest.TestCase):
                     self.assertFalse(report["codexInvoked"])
 
     def test_legacy_launch_requires_repair_and_a_fresh_preserved_invocation(self):
-        arguments = ["start", "--project", str(self.project)]
+        arguments = ["config", "--project", str(self.project)]
         project_before = snapshot(self.project)
         # The installed launcher starts Python with -B. This in-process probe
         # must match that setting even when unittest itself runs without -B;
@@ -126,7 +126,7 @@ class UpdateEnvironmentHandoffTests(unittest.TestCase):
     def test_update_reexec_preserves_present_or_absent_marker_without_fabricating_it(self):
         current_version = cli.version(REPO)
         next_source = REPO.parent / "next-release-fixture"
-        args = SimpleNamespace(command="start", dry_run=False, install_only=False, no_update_check=False)
+        args = SimpleNamespace(command="init", dry_run=False, install_only=False, no_update_check=False)
         for preserved in (False, True):
             caller = {**os.environ, "HARNESS_TOOL_HOME": "unused-managed-tool",
                       "CONDA_PREFIX": "/project/environment", "CONDA_DEFAULT_ENV": "project"}

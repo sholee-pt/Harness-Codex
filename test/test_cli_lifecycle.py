@@ -119,12 +119,12 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(pointer.stat().st_mode), stat.S_IMODE(before.st_mode))
 
     def test_user_owned_explicit_skill_instruction_is_untouched(self):
-        pointer = self.root / "AGENTS.md"
-        pointer.write_bytes(b"# User instructions\r\nDo not replace these.\r\n")
-        self.generate()
-        before = files(self.root)["AGENTS.md"]
-        self.remove(dry_run=False)
-        self.assertEqual(files(self.root)["AGENTS.md"], before)
+        pointer = self.root / 'AGENTS.md'
+        for content in (b'# User instructions\r\nDo not replace these.\r\n', b'No final newline', b''):
+            pointer.write_bytes(content)
+            self.generate()
+            self.remove(dry_run=False)
+            self.assertEqual(pointer.read_bytes(), content)
 
     def test_include_generator_removes_only_receipt_owned_files(self):
         self.install()

@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 
 ALLOWED = {
+    'codex-rs/tui/src/main.rs', 'codex-rs/tui/src/chatwidget/replay.rs',
+    'codex-rs/tui/src/chatwidget/session_flow.rs',
     'codex-rs/Cargo.lock', 'codex-rs/tui/src/chatwidget.rs',
     'codex-rs/tui/src/chatwidget/constructor.rs',
     'codex-rs/tui/src/chatwidget/input_submission.rs',

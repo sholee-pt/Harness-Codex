@@ -1,28 +1,49 @@
-# Original Codex UI with Harness Auto
+# Native Codex with Harness Auto
 
-The optional Harness UI is a pinned build of **Codex CLI 0.154.0**, using the
-original composer, text rendering, colors, animations, menus, shortcuts and
-permission screens. Harness adds Auto to `/model` and a selector before new
-requests. It does not maintain an imitation renderer. Terminal font, theme,
-dimensions and native settings still determine the rendered appearance.
+`codex` resolves directly to a verified, Harness-managed build of the original
+Codex CLI 0.154.0. A bounded extension adds Auto to the original `/model` menu.
+There is no separate conversation UI, session manager or Python launcher.
 
 ```bash
-harness-codex new --ui harness --settings auto
-harness-codex resume --ui harness --settings auto
-harness-codex resume SESSION_ID --ui harness --settings native
+harness-codex init --goal-file PROJECT.md
+# Open a fresh terminal to load PATH, then:
+codex
+codex resume
+codex resume --last
 ```
 
-The first launch fetches the matching native extension package, verifies release
-checksums and stores it under the managed Harness tool directory. Subsequent
-launches check the retained package and reuse it. Linux/Windows x86_64 are
-supported by the extension; `--ui native` continues to use your installed Codex
-on other architectures. No separate API key is introduced. Codex's existing
-authentication, model access, project trust and approval settings apply.
+The original renderer, composer, animations, colors, shortcuts, slash commands,
+attachments, permissions, authentication and native history remain Codex-owned.
+The integration supports Linux x86_64 and Windows x64. Other architectures can
+use a separately installed Codex with `init --no-codex-integration`, without Auto.
 
-Your separately installed `codex` command is unchanged. Without `--ui harness`,
-Harness uses that installed command. The extension is not automatically rebased
-onto future Codex releases: each upstream change requires a reviewed build and
-tests, so its pinned version may differ from your standalone Codex.
+## Integration design and original Codex preservation
+
+The documented plugin and hook interfaces provide skills, tools and additional
+context, but no documented model-picker item registration plus per-turn model
+setter. The pinned original build therefore supplies the menu/inference extension.
+See [Codex plugins](https://learn.chatgpt.com/docs/plugins) and
+[hooks](https://learn.chatgpt.com/docs/hooks).
+
+`init/config` verify the matching package and register its versioned `bin`
+directory on PATH. The native executable discovers a bounded routing sidecar
+beside its package. The sidecar names the isolated interpreter and hash-bound
+selector; the management tool records its ownership. Ordinary `codex` invocation
+does not launch the Harness CLI or inspect the complete project manifest.
+Auto invokes the local selector only before eligible turns.
+
+No original Codex executable is overwritten. Its detected location is recorded.
+No credentials, settings or conversation history are copied into a Harness home.
+On Bash, one exact managed block is registered in `.bashrc`. On Windows, one
+owned directory is prepended to the user PATH. Apply the change in a fresh
+terminal; `doctor` reports when PATH still resolves another Codex. A shell alias,
+function or Windows machine PATH entry can take precedence over this registration;
+review that precedence explicitly instead of overwriting an original installation.
+
+There is no argv forwarding layer: native `codex resume`, `exec`, other commands,
+standard streams, terminal ownership and exit status go directly to that executable.
+The pinned version may lag a separately installed upstream Codex; updating upstream
+requires review and testing of a new extension build.
 
 ## Auto and manual selection
 
@@ -31,11 +52,11 @@ selection menu. Use the original arrow-key navigation and Enter to choose it.
 Choosing a regular model and reasoning level disables Auto. Selecting Auto does
 not change global Codex defaults, permissions or subagent configuration.
 
-`--settings auto` enables per-request selection immediately. `--settings native`
-and `--settings manual` begin with native saved/default inference settings; use
-the original `/model` picker to select a pair. Omit the flag for an initial
-Auto/Manual choice. Configuration commands retain their prior behavior:
-`init/config --settings auto` selects initial defaults, not this per-request mode.
+`init/config --auto-model auto` enables selection on subsequent native launches.
+`--auto-model manual` retains native saved/default settings until Auto is selected.
+This is a Harness-owned default, not a global Codex preference change. Manual
+selection in `/model` disables Auto for that widget. `--settings` continues to
+control initial settings of the separate generation operation only.
 
 The selector reads the current request and bounded in-memory context. It does
 not call a routing model, scan project files or process the whole transcript.
@@ -72,37 +93,36 @@ Optional preference file:
 ```
 
 ```bash
-harness-codex new --ui harness --settings auto --routing-profiles models.json
+harness-codex config --auto-model auto --routing-profiles models.json
 ```
 
 Preferences cannot select hidden models or unsupported reasoning levels.
 
-## Session behavior and package maintenance
+## Native history, updates and removal
 
-Native slash commands, attachments, history, streaming, interruption, keyboard
-shortcuts and approval interfaces stay in the original TUI. There is no separate
-Harness `/task`, `/done`, `/failed`, `/paste` or `/native` command. To use your
-standalone Codex later, exit and run `harness-codex resume SESSION_ID --ui native`.
-Do not operate the same conversation concurrently in two terminals.
+Native history replay initializes continuation context from the saved native
+model and reasoning level. It never inserts a Harness activation message. Reselect
+Auto to begin an independent task. Auto state remains in memory, and the installed
+manual/auto default governs a newly opened widget. It does not create a second
+session database or guarantee that an old Auto toggle persists across processes.
 
-Ordinary resume adds no activation turn. `--reload-harness` and source drift can
-add the same bounded re-read request used by native Harness sessions. New
-conversations retain the existing project activation workflow; this extension
-does not claim that opening native Codex creates no session or no initial turn.
-The generator, project harness and native UI component have separate lifecycles.
-Updating the tool never resets a project harness.
+`harness-codex update` updates the tool and an existing integration to the matching
+native package. Project harness changes require `config`. Verified older native
+packages are retained so existing processes are not replaced in place. Unknown or
+changed files block destructive updates/removal. If integration setup fails after
+a tool update, the previous registered native package remains available; retry the
+update or use `config` after resolving the reported issue.
 
-`harness-codex update` updates the generator/CLI. The next `--ui harness` launch
-fetches that release's native component if needed. Unknown or changed package
-files are preserved and reported. Confirmed `harness-codex uninstall` removes
-unchanged owned components along with the tool; project harnesses and standalone
-Codex remain available.
+Confirmed `harness-codex uninstall` removes unchanged owned packages, sidecars and
+their PATH registration. A fresh shell then resolves the original Codex again,
+provided it remains installed and on the user's independent PATH. Project harnesses,
+native history, credentials and original binaries are preserved. An edited PATH
+block or concurrent PATH change is preserved and can block removal for review.
 
-For offline or authenticated release downloads, verify `SHA256SUMS`, then use:
+For verified offline packages:
 
 ```bash
-harness-codex new --ui harness --settings auto \
-  --native-ui-archive harness-codex-ui-0.12.0-beta-linux-x86_64.tar.gz
+harness-codex config --native-ui-archive harness-codex-ui-0.13.0-beta-linux-x86_64.tar.gz
 ```
 
 The component includes official same-version helper binaries, file fingerprints,

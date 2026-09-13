@@ -69,7 +69,7 @@ class ProjectCliTests(unittest.TestCase):
     def run_cli(self, command, *extra, tty=True):
         output = TerminalBuffer() if tty else io.StringIO()
         error = io.StringIO()
-        options = ["--interactive", "--settings", "native"] if command in {"init", "configure", "config", "reset"} else (
+        options = ["--interactive", "--settings", "native", "--no-codex-integration"] if command in {"init", "configure", "config", "reset"} else (
             ['--settings', 'native'] if command in {'new', 'start', 'resume'} else [])
         args = self.parser.parse_args([command, "--json", "--project", str(self.root), *options, *extra])
         with mock.patch.object(sys, "stdin", TerminalBuffer() if tty else io.StringIO()), contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
@@ -178,15 +178,18 @@ class ProjectCliTests(unittest.TestCase):
         self.assertFalse(self.log.exists())
 
     def test_configure_preserves_user_agents_and_uses_explicit_skill(self):
-        (self.root / "AGENTS.md").write_bytes(b"user-owned instructions\r\n")
-        self.assertEqual(self.run_cli("init", "--install-only")[0], 0)
-        os.environ["FAKE_CODEX_MODE"] = "generate"
-        code, out, err = self.run_cli("configure", "--goal", "A focused project")
+        original = b'user-owned instructions\r\n'
+        (self.root / 'AGENTS.md').write_bytes(original)
+        self.assertEqual(self.run_cli('init', '--install-only')[0], 0)
+        os.environ['FAKE_CODEX_MODE'] = 'generate'
+        code, out, err = self.run_cli('configure', '--goal', 'A focused project')
         self.assertEqual(code, 0, err)
-        self.assertEqual((self.root / "AGENTS.md").read_bytes(), b"user-owned instructions\r\n")
+        content = (self.root / 'AGENTS.md').read_bytes()
+        block = harness_apply.harness_state.extract_managed_block(content.decode()).encode()
+        self.assertEqual(content.replace(block, b''), original)
         status, report = project._report(REPO_ROOT, self.root)
         self.assertEqual(status, 0)
-        self.assertEqual(report["activation"]["mode"], "explicit-skill")
+        self.assertEqual(report['activation']['mode'], 'managed-pointer')
 
     def test_configure_refuses_modified_managed_generator(self):
         self.assertEqual(self.run_cli("init", "--install-only")[0], 0)
@@ -200,33 +203,27 @@ class ProjectCliTests(unittest.TestCase):
     def test_start_passes_literal_task_without_model_or_approval_overrides(self):
         self.generate()
         before = snapshot(self.root)
-        task = "Fix 'quotes' and $HOME; $(never execute) & `literal`\n다음 줄"
-        code, out, err = self.run_cli("start", task)
+        task = 'literal $HOME; "task" & `command`'
+        code, out, err = self.run_cli('start', task)
         self.assertEqual(code, 0, err)
-        record = json.loads(self.log.read_text(encoding="utf-8"))
-        self.assertEqual(record["argv"][:2], ["--cd", str(self.root)])
-        self.assertEqual(len(record["argv"]), 3)
-        self.assertTrue(record["argv"][2].startswith("$project-harness "))
-        self.assertTrue(record["argv"][2].endswith(task))
+        self.assertEqual(json.loads(self.log.read_text())['argv'], ['--cd', str(self.root), '--', task])
         self.assertEqual(snapshot(self.root), before)
 
     def test_start_without_task_waits_for_next_task(self):
         self.generate()
-        code, out, err = self.run_cli("start")
+        code, out, err = self.run_cli('start')
         self.assertEqual(code, 0, err)
-        prompt = json.loads(self.log.read_text(encoding="utf-8"))["argv"][2]
-        self.assertIn("wait for the user's next task", prompt)
+        self.assertEqual(json.loads(self.log.read_text())['argv'], ['--cd', str(self.root)])
+        self.assertIn('deprecated', err)
 
     def test_start_refuses_missing_or_corrupt_manifest(self):
-        code, out, err = self.run_cli("start", "Do something")
-        self.assertEqual(code, 1)
+        self.assertEqual(self.run_cli('doctor')[0], 1)
         self.assertFalse(self.log.exists())
         self.generate()
-        (self.root / ".agents/skills/project-harness/SKILL.md").write_text("edited", encoding="utf-8")
+        (self.root / '.agents/skills/project-harness/SKILL.md').write_text('edited', encoding='utf-8')
         before = snapshot(self.root)
-        code, out, err = self.run_cli("start", "Do something")
-        self.assertEqual(code, 1)
-        self.assertFalse(self.log.exists())
+        self.assertEqual(self.run_cli('doctor')[0], 1)
+        self.assertEqual(self.run_cli('start', 'Do something')[0], 0)
         self.assertEqual(snapshot(self.root), before)
 
     def test_start_propagates_nonzero_child_exit(self):
@@ -236,24 +233,17 @@ class ProjectCliTests(unittest.TestCase):
 
     def test_normal_source_edit_allows_start_with_fresh_evidence_instructions(self):
         self.generate()
-        source = self.root / "pyproject.toml"
-        source.write_text("[project]\nname = 'changed-project'\n", encoding="utf-8")
+        (self.root / 'pyproject.toml').write_text("[project]\nname = 'changed-project'\n", encoding='utf-8')
         before = snapshot(self.root)
-        code, out, err = self.run_cli("start", "Continue the project work")
+        code, out, err = self.run_cli('start', 'Continue the project work')
         self.assertEqual(code, 0, err)
-        self.assertIn("evidence is stale", err)
-        self.assertNotIn("Project harness files validate", out)
-        prompt = json.loads(self.log.read_text(encoding="utf-8"))["argv"][2]
-        self.assertIn("Re-read the current workspace", prompt)
-        self.assertIn("Do not automatically regenerate", prompt)
-        after = snapshot(self.root)
-        self.assertEqual({k: v for k, v in after.items() if k != '.harness/GUIDE.md'},
-                         {k: v for k, v in before.items() if k != '.harness/GUIDE.md'})
-        self.assertIn('review current source', (self.root / '.harness/GUIDE.md').read_text())
-        # The launcher does not rewrite evidence hashes or turn doctor green.
+        self.assertEqual(json.loads(self.log.read_text())['argv'][2:], ['--', 'Continue the project work'])
+        self.assertEqual(snapshot(self.root), before)
         status, report = project._report(REPO_ROOT, self.root)
         self.assertEqual(status, 1)
-        self.assertFalse(report["valid"])
+        self.assertTrue(project._only_stale_evidence(report, root=self.root, source_root=REPO_ROOT))
+        pointer = (self.root / 'AGENTS.md').read_text()
+        self.assertIn('source evidence requires reading current source', pointer)
 
     def test_readme_evidence_edit_allows_reviewed_configure_refresh(self):
         self.assertEqual(self.run_cli("init", "--install-only")[0], 0)
@@ -284,20 +274,19 @@ class ProjectCliTests(unittest.TestCase):
 
     def test_shortened_valid_source_evidence_range_is_stale_not_corrupt(self):
         self.generate()
-        (self.root / "pyproject.toml").write_text("# shortened to one line\n", encoding="utf-8")
-        code, out, err = self.run_cli("start")
-        self.assertEqual(code, 0, err)
-        self.assertIn("evidence is stale", err)
+        (self.root / 'pyproject.toml').write_text('# shortened to one line\n', encoding='utf-8')
+        self.assertEqual(self.run_cli('start')[0], 0)
         status, report = project._report(REPO_ROOT, self.root)
         self.assertEqual(status, 1)
-        self.assertTrue(any(".lines exceeds " in finding for finding in report["errors"]))
+        self.assertTrue(any('.lines exceeds ' in finding for finding in report['errors']))
+        self.assertTrue(project._only_stale_evidence(report, root=self.root, source_root=REPO_ROOT))
 
     def test_stale_evidence_plus_managed_tampering_still_blocks_all_entrypoints(self):
         self.generate()
         (self.root / "pyproject.toml").write_text("[project]\nname = 'edited'\n", encoding="utf-8")
         (self.root / ".agents/skills/project-harness/SKILL.md").write_text("tampered", encoding="utf-8")
         before = snapshot(self.root)
-        for command in ("init", "configure", "start"):
+        for command in ("init", "configure", "doctor"):
             with self.subTest(command=command):
                 code, out, err = self.run_cli(command)
                 self.assertEqual(code, 1)
@@ -307,14 +296,13 @@ class ProjectCliTests(unittest.TestCase):
 
     def test_missing_evidence_allows_start_without_refreshing_the_manifest(self):
         self.generate()
-        (self.root / "pyproject.toml").unlink()
+        (self.root / 'pyproject.toml').unlink()
         before = snapshot(self.root)
-        code, out, err = self.run_cli('start')
-        self.assertEqual(code, 0, err)
-        self.assertIn('evidence is stale', err)
-        after = snapshot(self.root)
-        self.assertEqual({k: v for k, v in after.items() if k != '.harness/GUIDE.md'},
-                         {k: v for k, v in before.items() if k != '.harness/GUIDE.md'})
+        self.assertEqual(self.run_cli('start')[0], 0)
+        self.assertEqual(snapshot(self.root), before)
+        report = json.loads(self.run_cli('status')[1])
+        self.assertEqual(report['state'], 'stale-evidence')
+        self.assertEqual(report['nextCommand'], 'codex')
 
     def test_configure_repairs_deleted_evidence_through_reviewed_generation(self):
         self.assertEqual(self.run_cli("init", "--install-only")[0], 0)
@@ -427,7 +415,7 @@ class ProjectCliTests(unittest.TestCase):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest["project"]["evidence"][0]["lines"]["end"] = 10000
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-        code, out, err = self.run_cli("start")
+        code, out, err = self.run_cli("doctor")
         self.assertEqual(code, 1)
         self.assertNotIn("evidence is stale", err)
         self.assertFalse(self.log.exists())
@@ -439,7 +427,7 @@ class ProjectCliTests(unittest.TestCase):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest["project"]["evidence"][0]["lines"]["start"] = 0
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-        code, out, err = self.run_cli("start")
+        code, out, err = self.run_cli("doctor")
         self.assertEqual(code, 1)
         self.assertNotIn("evidence is stale", err)
         self.assertFalse(self.log.exists())
@@ -468,7 +456,7 @@ class ProjectCliTests(unittest.TestCase):
         code, out, err = self.run_cli("status", tty=False)
         report = json.loads(out)
         self.assertEqual(report["state"], "stale-evidence", err)
-        self.assertEqual(report["nextCommand"], "harness-codex new --project PATH")
+        self.assertEqual(report["nextCommand"], "codex")
         self.assertEqual(report["summary"]["managedArtifacts"], "passed")
         self.assertEqual(report["summary"]["sourceEvidence"], "failed")
         self.assertEqual(snapshot(self.root), before)
@@ -481,7 +469,7 @@ class ProjectCliTests(unittest.TestCase):
         code, out, err = self.run_cli("status", tty=False)
         report = json.loads(out)
         self.assertEqual(report["state"], "stale-evidence", err)
-        self.assertEqual(report["nextCommand"], "harness-codex new --project PATH")
+        self.assertEqual(report["nextCommand"], "codex")
         self.assertEqual(snapshot(self.root), before)
         self.assertFalse(self.log.exists())
 

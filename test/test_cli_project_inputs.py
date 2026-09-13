@@ -141,7 +141,7 @@ class ProjectInputTests(unittest.TestCase):
         folder.mkdir()
         (folder / "transaction.json").write_text('{"operation":"remove","removalSchemaVersion":1}', encoding="utf-8")
         before = fixtures.snapshot(self.root)
-        for command in ("init", "configure", "start", "reset"):
+        for command in ("init", "configure", "reset"):
             with self.subTest(command=command):
                 code, out, err = self.run_cli(command, tty=False)
                 self.assertEqual(code, 1)
@@ -166,7 +166,7 @@ class ProjectInputTests(unittest.TestCase):
                 backup.mkdir(parents=True)
                 (backup / "original.txt").write_bytes(b"original recovery bytes")
                 before = fixtures.snapshot(self.root)
-                for command in ("init", "configure", "start", "reset"):
+                for command in ("init", "configure", "reset"):
                     code, out, err = self.run_cli(command, tty=False)
                     self.assertEqual(code, 1)
                     self.assertIn("without its journal", err)

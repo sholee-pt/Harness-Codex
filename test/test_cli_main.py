@@ -154,11 +154,11 @@ class AutomaticUpdateTests(unittest.TestCase):
             yield SimpleNamespace(**values)
 
     def arguments(self, **overrides):
-        return SimpleNamespace(**{"command": "start", "dry_run": False, "install_only": False, "no_update_check": False, **overrides})
+        return SimpleNamespace(**{"command": "init", "dry_run": False, "install_only": False, "no_update_check": False, **overrides})
 
     def test_dry_run_install_only_doctor_and_opt_out_never_touch_update_state(self):
         for overrides in ({"command": "init", "dry_run": True}, {"command": "init", "install_only": True},
-                          {"command": "init", "_existing_init_noop": True}, {"command": "doctor"},
+                          {"command": "init", "_existing_init_noop": True}, {"command": "doctor"}, {"command": "new"}, {"command": "resume"}, {"command": "start"},
                           {"command": "reset"}, {"command": "remove"}, {"command": "status"}, {"no_update_check": True}):
             with self.subTest(overrides=overrides), self.fixtures() as mocks:
                 self.assertIsNone(cli._automatic_update(self.arguments(**overrides), REPO, ["start"]))

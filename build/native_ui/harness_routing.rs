@@ -3,6 +3,7 @@
 //! Added to the pinned Apache-2.0 Codex source by the Harness distribution build.
 use super::*;
 use serde_json::Value;
+use sha2::Digest as _;
 use std::io::Read;
 use std::io::Write;
 use std::process::Command;
@@ -14,31 +15,84 @@ pub(super) struct Routing {
     pub(super) enabled: bool,
     pub(super) active: bool,
     pub(super) context: Option<Value>,
+    selector: Option<Selector>,
+    startup_error: Option<String>,
+}
+
+#[derive(Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct Selector {
+    schema: u32,
+    python: PathBuf,
+    script: PathBuf,
+    script_sha256: String,
+    mode: String,
+    profiles: Option<PathBuf>,
+}
+
+impl Selector {
+    pub(super) fn read(path: &Path) -> Result<Self, String> {
+        let mut bytes = Vec::new();
+        std::fs::File::open(path).map_err(|_| "Cannot read Harness integration settings")?
+            .take(16385).read_to_end(&mut bytes).map_err(|_| "Cannot read Harness integration settings")?;
+        if bytes.len() > 16384 {
+            return Err("Oversized Harness integration settings".into());
+        }
+        let value: Self = serde_json::from_slice(&bytes).map_err(|_| "Invalid Harness integration settings")?;
+        if value.schema != 1 || !value.python.is_absolute() || !value.script.is_absolute()
+            || !matches!(value.mode.as_str(), "auto" | "manual")
+            || value.profiles.as_ref().is_some_and(|path| !path.is_absolute()) {
+            return Err("Unsupported Harness integration settings".into());
+        }
+        value.verify()?;
+        Ok(value)
+    }
+
+    fn verify(&self) -> Result<(), String> {
+        let file = std::fs::File::open(&self.script).map_err(|_| "Missing Harness selector")?;
+        let mut bytes = Vec::new();
+        file.take(262145).read_to_end(&mut bytes).map_err(|_| "Cannot read Harness selector")?;
+        if bytes.len() > 262144 || format!("{:x}", sha2::Sha256::digest(&bytes)) != self.script_sha256 {
+            return Err("Harness selector changed; run harness-codex doctor".into());
+        }
+        Ok(())
+    }
 }
 
 impl Routing {
-    pub(super) fn from_environment() -> Self {
-        let enabled = std::env::var_os("HARNESS_ROUTER_PYTHON").is_some()
-            && std::env::var_os("HARNESS_ROUTER_SCRIPT").is_some();
+    pub(super) fn from_installation() -> Self {
+        let path = std::env::current_exe().ok().and_then(|exe| {
+            let package = exe.parent()?.parent()?;
+            Some(package.with_extension("routing.json"))
+        });
+        let result = path.filter(|path| path.exists()).map(|path| Selector::read(&path));
+        let (selector, startup_error) = match result {
+            Some(Ok(value)) => (Some(value), None),
+            Some(Err(error)) => (None, Some(error)),
+            None => (None, None),
+        };
+        let enabled = selector.is_some();
         Self {
             enabled,
-            active: enabled && std::env::var("HARNESS_ROUTER_MODE").as_deref() == Ok("auto"),
+            active: selector.as_ref().is_some_and(|value| value.mode == "auto"),
             context: None,
+            selector,
+            startup_error,
         }
     }
 }
 
-fn invoke(payload: Value) -> Result<Value, String> {
-    let python = std::env::var_os("HARNESS_ROUTER_PYTHON").ok_or("Missing Harness interpreter")?;
-    let script = std::env::var_os("HARNESS_ROUTER_SCRIPT").ok_or("Missing Harness selector")?;
-    invoke_with_paths(payload, python, script)
-}
-
+#[cfg(test)]
 pub(super) fn invoke_with_paths(
     payload: Value,
     python: std::ffi::OsString,
     script: std::ffi::OsString,
 ) -> Result<Value, String> {
+    invoke_with_profiles(payload, python, script, None)
+}
+
+fn invoke_with_profiles(payload: Value, python: std::ffi::OsString, script: std::ffi::OsString,
+                        profiles: Option<PathBuf>) -> Result<Value, String> {
     if !Path::new(&python).is_absolute() || !Path::new(&script).is_absolute() {
         return Err("Harness selector paths must be absolute".into());
     }
@@ -48,6 +102,10 @@ pub(super) fn invoke_with_paths(
     }
     let mut command = Command::new(python);
     command.args(["-I", "-B"]).arg(script);
+    command.env_remove("HARNESS_ROUTER_PROFILES");
+    if let Some(profiles) = profiles {
+        command.env("HARNESS_ROUTER_PROFILES", profiles);
+    }
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -94,6 +152,13 @@ pub(super) fn invoke_with_paths(
 }
 
 impl ChatWidget {
+    pub(super) fn report_harness_integration_problem(&mut self) {
+        let error = self.harness_routing.lock().ok().and_then(|mut state| state.startup_error.take());
+        if let Some(error) = error {
+            self.add_error_message(format!("Harness Auto unavailable: {error}. Run harness-codex doctor. Native settings are retained."));
+        }
+    }
+
     pub(super) fn add_harness_auto_choice(&self, items: &mut Vec<SelectionItem>) {
         let Ok(state) = self.harness_routing.lock() else {
             return;
@@ -130,7 +195,24 @@ impl ChatWidget {
     }
 
     pub(super) fn apply_harness_routing(&mut self, text: &str, has_images: bool) {
-        self.route_with_selector(text, has_images, invoke);
+        let selector = self.harness_routing.lock().ok().and_then(|state| state.selector.clone());
+        self.route_with_selector(text, has_images, move |payload| {
+            let selector = selector.ok_or("Missing Harness integration settings")?;
+            selector.verify()?;
+            invoke_with_profiles(payload, selector.python.into_os_string(), selector.script.into_os_string(), selector.profiles)
+        });
+    }
+
+    pub(super) fn inherit_harness_task_from_native_history(&mut self) {
+        if let Ok(mut state) = self.harness_routing.lock() {
+            if state.context.is_none() {
+                let effort = self.effective_reasoning_effort();
+                let encoded = serde_json::to_value(&effort).unwrap_or_default();
+                let tier = if matches!(encoded.as_str(), Some("high" | "xhigh" | "max" | "ultra")) { "deep" } else { "balanced" };
+                state.context = Some(serde_json::json!({"tier": tier, "model": self.current_model(),
+                    "effort": effort, "failures": 0, "active_task": true}));
+            }
+        }
     }
 
     pub(super) fn route_with_selector(
@@ -213,5 +295,5 @@ impl ChatWidget {
 }
 
 pub(super) fn new_state() -> Arc<Mutex<Routing>> {
-    Arc::new(Mutex::new(Routing::from_environment()))
+    Arc::new(Mutex::new(Routing::from_installation()))
 }

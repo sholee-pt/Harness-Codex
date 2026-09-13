@@ -117,6 +117,8 @@ def prepare(data_root: Path, *, locked=False) -> dict:
         verified[root / 'runtime.json'] = _fingerprint(root / 'runtime.json')[0]
         expected.add(root / 'runtime.json')
     from .native_ui import removal_files
+    from . import codex_integration, integration_path
+    integration = codex_integration.read(root)
     native_files = removal_files(root)
     expected.update(native_files)
     verified.update({path: entry['sha256'] for path, entry in native_files.items()})
@@ -149,8 +151,13 @@ def prepare(data_root: Path, *, locked=False) -> dict:
             path_change = _path_action(binary)
         except (OSError, ValueError) as exc:
             path_change = {'state': 'preserved', 'reason': str(exc)}
+    integration_change = None
+    if integration:
+        integration_change = integration_path.plan(previous=integration['directory'],
+            remove_tool=binary if path_change['state'] == 'would-remove' else None)
     return {'root': root, 'binary': binary, 'version': state['version'], 'command': state.get('command', 'harness'),
-            'files': fingerprints, 'directories': directories, 'external': external, 'path': path_change, 'runtime': runtime}
+            'files': fingerprints, 'directories': directories, 'external': external, 'path': path_change,
+            'integrationPath': integration_change, 'runtime': runtime}
 
 
 def _purge_files(files: dict[Path, tuple], directories: set[Path]) -> list[str]:
@@ -217,7 +224,11 @@ def remove(plan: dict) -> dict:
                 staged_commands = {target for original, target in moved if original in plan['external']} | set(batch_cleanup)
                 if set(plan['binary'].iterdir()) != staged_commands:
                     raise ValueError('Command directory changed during uninstall; preserving PATH')
-                _path_action(plan['binary'], dry_run=False, expected=plan['path'])
+                if plan['integrationPath'] is None:
+                    _path_action(plan['binary'], dry_run=False, expected=plan['path'])
+            if plan['integrationPath'] is not None:
+                from .integration_path import apply
+                apply(plan['integrationPath'])
         except BaseException:
             # Rename back without overwriting a file created concurrently. Keep
             # the staged original if restoration cannot be completed safely.

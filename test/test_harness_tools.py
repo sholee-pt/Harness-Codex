@@ -580,7 +580,7 @@ class StateTests(unittest.TestCase):
                             "project.evidence",
                         )
 
-    def test_configured_instruction_fallback_is_preserved_as_explicit_skill(self) -> None:
+    def test_configured_instruction_fallback_is_preserved_as_explicit_skill(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             config = root / ".codex" / "config.toml"
@@ -597,10 +597,10 @@ class StateTests(unittest.TestCase):
 
             self.assertEqual(
                 application["report"]["workspace"]["instructionMode"],
-                "explicit-skill",
+                "managed-pointer",
             )
             manifest = json.loads(application["manifestText"])
-            self.assertIsNone(manifest["instructionFile"])
+            self.assertEqual(manifest["instructionFile"], "PROJECT_GUIDE.md")
             self.assertFalse(
                 any(
                     item["path"] == "AGENTS.md"
@@ -1147,7 +1147,7 @@ class ApplyTests(unittest.TestCase):
             self.assertFalse(skill.exists())
             self.assertTrue((root / ".harness" / "transaction.json").is_file())
 
-    def test_apply_uses_active_agents_override(self) -> None:
+    def test_apply_uses_active_agents_override(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "AGENTS.md").write_text("base instructions\n", encoding="utf-8")
@@ -1158,14 +1158,14 @@ class ApplyTests(unittest.TestCase):
 
             self.assertEqual((root / "AGENTS.md").read_text(encoding="utf-8"), "base instructions\n")
             self.assertEqual(
-                (root / "AGENTS.override.md").read_text(encoding="utf-8"),
+                (root / "AGENTS.override.md").read_text(encoding="utf-8").split("<!-- harness:begin -->")[0],
                 "override instructions\n",
             )
             manifest = json.loads((root / ".harness" / "manifest.json").read_text(encoding="utf-8"))
-            self.assertIsNone(manifest["instructionFile"])
-            self.assertEqual(manifest["workspace"]["instructionMode"], "explicit-skill")
+            self.assertEqual(manifest["instructionFile"], "AGENTS.override.md")
+            self.assertEqual(manifest["workspace"]["instructionMode"], "managed-pointer")
 
-    def test_git_workspace_preserves_metadata_and_tracked_user_instructions(self) -> None:
+    def test_git_workspace_preserves_metadata_and_tracked_user_instructions(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
@@ -1200,14 +1200,14 @@ class ApplyTests(unittest.TestCase):
             )
 
             self.assertEqual(
-                (root / "AGENTS.md").read_text(encoding="utf-8"),
+                (root / "AGENTS.md").read_text(encoding="utf-8").split("<!-- harness:begin -->")[0],
                 "tracked project instructions\n",
             )
             manifest = json.loads((root / ".harness" / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["workspace"]["scope"], "project-local")
             self.assertEqual(manifest["workspace"]["kind"], "git-repository")
-            self.assertEqual(manifest["workspace"]["instructionMode"], "explicit-skill")
-            self.assertIsNone(manifest["instructionFile"])
+            self.assertEqual(manifest["workspace"]["instructionMode"], "managed-pointer")
+            self.assertEqual(manifest["instructionFile"], "AGENTS.md")
             status = subprocess.run(
                 ["git", "-C", str(root), "status", "--porcelain=v1", "--untracked-files=all"],
                 check=True,
@@ -1216,7 +1216,7 @@ class ApplyTests(unittest.TestCase):
             )
             self.assertEqual(
                 set(status.stdout.splitlines()),
-                {"?? .agents/skills/project-harness/SKILL.md", "?? .harness/manifest.json"},
+                {" M AGENTS.md", "?? .agents/skills/project-harness/SKILL.md", "?? .harness/manifest.json"},
             )
             self.assertTrue(validate_harness.Validator(root).run()["valid"])
 

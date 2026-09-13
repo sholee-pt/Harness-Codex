@@ -8,6 +8,7 @@ Release and tag history starts at `v0.10.0-beta` after a one-time reset. Earlier
 
 | Version | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
+| [`v0.13.0-beta`](#harness-for-codex-v0130-beta) | Harness for Codex v0.13.0-beta | Schema 3 | Schema 7 | Schema 2 | Native Codex conversations, persistent project activation and direct Auto integration |
 | [`v0.12.0-beta`](#harness-for-codex-v0120-beta) | Harness for Codex v0.12.0-beta | Schema 3 | Schema 7 | Schema 2 | Opt-in conversation UI, Auto-first model menu and bounded per-request model/reasoning routing |
 | [`v0.11.0-beta`](#harness-for-codex-v0110-beta) | Harness for Codex v0.11.0-beta | Schema 3 | Schema 7 | Schema 2 | Lean resume, source-drift tolerance, one guide, native model modes and Harness-Codex distribution |
 | [`v0.10.0-beta`](#harness-for-codex-v0100-beta) | Harness for Codex v0.10.0-beta | Schema 3 | Schema 7 | Schema 2 | Bounded opt-in maintenance, exact Conda interpreter selection and beta versioning |
@@ -57,6 +58,26 @@ Release and tag history starts at `v0.10.0-beta` after a one-time reset. Earlier
 | [`v0.9.0-beta`](#harness-for-codex-v090-beta) | Harness for Codex v0.9.0-beta | Schema 3 | Schema 7 | Schema 2 | Project-local installer, user-selected folders independent of Git boundaries, Artifact Contract 2, no Git metadata writes |
 
 Only the latest verified Codex release branch is retained in Harness-Codex. The default branch follows the latest verified release; earlier source history remains reachable through commits. The table uses normalized display versions and does not relabel historical commits or evidence identifiers.
+
+## Harness for Codex v0.13.0-beta
+
+Development candidate. Harness manages the project harness; `codex` owns all work
+conversations. Manifest Schema 7 and Artifact Contract 2 remain unchanged.
+
+- Root activation is an owned block in native project instructions; existing user
+  text is preserved. New/resumed work has no artificial Harness user turn.
+- Verified pinned Codex packages are registered directly on PATH, preserving the
+  original executable, native settings, history, permissions and terminal behavior.
+- Auto remains first in the original model menu. Native history seeds continuation
+  context; manual choices disable Auto and reselecting Auto resets task context.
+- `new/resume/start` are hidden one-release compatibility commands. They perform no
+  project validation, GUIDE refresh, metadata lookup or bootstrap injection.
+- Management commands keep strong checks. Explicit diagnostics separate static
+  integrity, evidence drift, integration state and unmeasured runtime/task quality.
+- Tool updates refresh an installed integration; confirmed uninstall reverses its
+  owned PATH registration and preserves projects and the original Codex.
+- Candidate verification and outstanding runtime checks are recorded separately;
+  source changes alone are not evidence that both native builds have passed.
 
 ## Harness for Codex v0.12.0-beta
 

@@ -52,14 +52,14 @@ class ActivationDiagnosticsTests(unittest.TestCase):
                     report = harness_doctor.diagnose(root)
                 self.assertTrue(report["valid"], report["errors"])
                 activation = report["activation"]
-                self.assertEqual(activation["mode"], "explicit-skill" if instruction else "managed-pointer")
+                self.assertEqual(activation["mode"], "managed-pointer")
                 self.assertEqual(activation["runtimeLoaded"], "not-tested")
                 self.assertEqual(activation["invocation"], "$project-harness")
                 self.assertFalse(report["codexInvoked"])
                 self.assertFalse(report["environment"]["codexCliOnPath"])
                 self.assertEqual(before, snapshot(root))
                 if instruction:
-                    self.assertEqual((root / instruction).read_bytes(), b"User-owned instructions\r\n")
+                    self.assertTrue((root / instruction).read_bytes().startswith(b"User-owned instructions\r\n<!-- harness:begin -->"))
 
     def test_modified_router_blocks_activation_without_repairing_it(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

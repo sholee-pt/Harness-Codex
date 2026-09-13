@@ -205,7 +205,7 @@ class ConfigurationProgressTests(unittest.TestCase):
     def test_default_init_validates_real_generated_artifacts_and_partial_configuration(self):
         parser = argparse.ArgumentParser()
         project.register_project_commands(parser.add_subparsers(dest='command'))
-        args = parser.parse_args(['init', '--project', str(self.root), '--settings', 'native'])
+        args = parser.parse_args(['init', '--no-codex-integration', '--project', str(self.root), '--settings', 'native'])
         with mock.patch.object(project, '_codex_command', return_value=self.command), \
                 mock.patch.object(sys, 'stdin', Terminal()), contextlib.redirect_stdout(self.output), \
                 contextlib.redirect_stderr(self.error):
@@ -213,12 +213,12 @@ class ConfigurationProgressTests(unittest.TestCase):
             self.assertIn('generator-only', self.error.getvalue())
             self.assertNotIn('"validationLayers"', self.error.getvalue())
             with mock.patch.dict(os.environ, {'TEST_SERVER_MODE': 'generate'}):
-                args = parser.parse_args(['config', '--project', str(self.root), '--settings', 'native'])
+                args = parser.parse_args(['config', '--no-codex-integration', '--project', str(self.root), '--settings', 'native'])
                 self.assertEqual(project.run_project_command(args, source_root=ROOT), 0, self.error.getvalue())
         self.assertTrue((self.root / '.harness/manifest.json').is_file())
         self.assertIn('Project harness files validate', self.output.getvalue())
         self.assertEqual(sum(r['method'] == 'thread/archive' for r in self.records()), 1)
-        args = parser.parse_args(['config', '--project', str(self.root), '--settings', 'native', '--resume', 'owned-by-user'])
+        args = parser.parse_args(['config', '--no-codex-integration', '--project', str(self.root), '--settings', 'native', '--resume', 'owned-by-user'])
         with mock.patch.object(project, '_codex_command', return_value=self.command), \
                 mock.patch.object(sys, 'stdin', Terminal()), contextlib.redirect_stdout(self.output), \
                 contextlib.redirect_stderr(self.error):
@@ -281,10 +281,10 @@ class ConfigurationProgressTests(unittest.TestCase):
         turn = next(r['params'] for r in self.records() if r['method'] == 'turn/start')
         self.assertNotIn('model', turn)
 
-    def test_native_menu_discovery_never_creates_threads_and_resume_auto_starts_no_server(self):
+    def test_configuration_menu_discovery_never_creates_threads_and_native_starts_no_server(self):
         from harness_cli.native_session import settings_arguments
         with contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.error):
-            self.assertEqual(settings_arguments(self.command, self.root, 'auto', resume=True), [])
+            self.assertEqual(settings_arguments(self.command, self.root, 'native'), [])
             self.assertFalse(self.log.exists())
             arguments = settings_arguments(self.command, self.root, 'auto')
         self.assertEqual(arguments, ['--model', 'native-configured-model', '-c', 'model_reasoning_effort="medium"'])
@@ -315,7 +315,7 @@ class ConfigurationProgressTests(unittest.TestCase):
         with mock.patch.object(project, '_codex_command', return_value=self.command), \
                 mock.patch.object(sys, 'stdin', Terminal()), contextlib.redirect_stdout(self.output), \
                 contextlib.redirect_stderr(self.error):
-            args = parser.parse_args(['init', '--project', str(self.root), '--settings', 'native'])
+            args = parser.parse_args(['init', '--no-codex-integration', '--project', str(self.root), '--settings', 'native'])
             with mock.patch.dict(os.environ, {'TEST_SERVER_MODE': 'generate'}):
                 self.assertEqual(project.run_project_command(args, source_root=ROOT), 0)
             clean_output = self.output.getvalue()
@@ -323,7 +323,7 @@ class ConfigurationProgressTests(unittest.TestCase):
             self.assertNotIn('config --resume', clean_output)
             self.output.seek(0)
             self.output.truncate()
-            args = parser.parse_args(['config', '--project', str(self.root), '--settings', 'native'])
+            args = parser.parse_args(['config', '--no-codex-integration', '--project', str(self.root), '--settings', 'native'])
             with mock.patch.dict(os.environ, {'TEST_SERVER_MODE': 'needs-input'}):
                 self.assertEqual(project.run_project_command(args, source_root=ROOT), 1)
             self.assertEqual(sum(r['method'] == 'thread/archive' for r in self.records()), 1)
@@ -332,7 +332,7 @@ class ConfigurationProgressTests(unittest.TestCase):
             self.assertNotIn('Configuration complete.', self.output.getvalue())
             self.output.seek(0)
             self.output.truncate()
-            args = parser.parse_args(['config', '--project', str(self.root), '--settings', 'native', '--details'])
+            args = parser.parse_args(['config', '--no-codex-integration', '--project', str(self.root), '--settings', 'native', '--details'])
             self.assertEqual(project.run_project_command(args, source_root=ROOT), 0)
             self.assertIn('Configuration result from Codex.', self.output.getvalue())
             self.assertIn('Completed setup session: native-thread', self.output.getvalue())
@@ -341,17 +341,12 @@ class ConfigurationProgressTests(unittest.TestCase):
         from harness_cli.main import build_parser
         session = '01a085f7-ab6b-7241-a715-62b2baab5d73'
         args = build_parser(ROOT).parse_args(['resume', session])
-        with mock.patch.object(project, '_codex_command', return_value=self.command), \
-                mock.patch.object(sys, 'stdin', Terminal()), contextlib.redirect_stdout(self.output), \
-                contextlib.redirect_stderr(self.error), mock.patch.dict(os.environ, {'TEST_THREAD_CWD': str(self.root)}):
-            project.preflight_project_command(args, source_root=ROOT)
-        self.assertEqual(args.project, self.root)
-        records = self.records()
-        self.assertEqual([r['method'] for r in records], ['initialize', 'initialized', 'thread/read'])
-        self.assertEqual(records[-1]['params'], {'threadId': session, 'includeTurns': False})
-        self.log.unlink()
+        project.preflight_project_command(args, source_root=ROOT)
+        self.assertIsNone(args.project)
+        self.assertFalse(self.log.exists())
         args = build_parser(ROOT).parse_args(['resume', session, '--project', str(self.root)])
         project.preflight_project_command(args, source_root=ROOT)
+        self.assertEqual(args.project, self.root)
         self.assertFalse(self.log.exists())
 
     def test_sandbox_diagnostics_do_not_classify_generic_failures_as_permission_errors(self):
@@ -415,10 +410,10 @@ class PresentationTests(unittest.TestCase):
         parser = argparse.ArgumentParser()
         project.register_project_commands(parser.add_subparsers(dest='command'))
         with tempfile.TemporaryDirectory() as directory:
-            args = parser.parse_args(['config', '--project', directory, '--goal', 'x' * 50000])
+            args = parser.parse_args(['config', '--no-codex-integration', '--project', directory, '--goal', 'x' * 50000])
             project.preflight_project_command(args, source_root=ROOT)
             for session in ('', '   ', '\n'):
-                args = parser.parse_args(['config', '--project', directory, '--resume', session])
+                args = parser.parse_args(['config', '--no-codex-integration', '--project', directory, '--resume', session])
                 with self.assertRaisesRegex(project.ProjectError, '--resume'):
                     project.preflight_project_command(args, source_root=ROOT)
 

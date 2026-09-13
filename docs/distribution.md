@@ -8,6 +8,7 @@ Each [GitHub Release](https://github.com/sholee-pt/Harness-Codex/releases) conta
 | `install_harness_codex.ps1` | Windows PowerShell downloader and checksum verifier |
 | `harness-codex-VERSION-linux.tar.gz` | Linux source distribution, including `install.sh` |
 | `harness-codex-VERSION-windows.zip` | Windows source distribution, including `install.ps1` |
+| `harness-codex-ui-VERSION-PLATFORM.tar.gz` | Pinned native Codex with Auto, official helper resources, fingerprints and upstream license/notice; installed by init/config |
 | `SHA256SUMS` | SHA-256 digests of the release assets |
 | `build.json` | Source commit and reproducible-build metadata |
 

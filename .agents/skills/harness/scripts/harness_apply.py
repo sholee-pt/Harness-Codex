@@ -361,6 +361,26 @@ def validate_instruction(plan: dict) -> str:
         raise PlanError("instruction.managedBlock must contain only the managed block")
     if "$project-harness" not in managed_block:
         raise PlanError("instruction.managedBlock must explicitly reference $project-harness")
+    # Native project instructions replace per-conversation activation prompts.
+    guidance = (
+        "Read `.agents/skills/project-harness/SKILL.md` before project work and follow its routing contract. "
+        "Use generated skills and agents only when their responsibilities fit the task; handle simple work directly. "
+        "Reuse this project harness in new and resumed Codex conversations without inserting a bootstrap user turn.\n\n"
+        "At first use or after a change notice, check the needed managed component against `.harness/manifest.json`; "
+        "reuse that verified revision during the conversation instead of auditing every turn. "
+        "If managed files are missing, altered, or a Harness transaction is pending, report the problem and use "
+        "`harness-codex doctor`; do not silently use damaged components or repair their hashes. "
+        "Changed or deleted source evidence requires reading current source, not blocking ordinary work or regenerating the harness. "
+        "Use `harness-codex config` when persistent responsibilities need review.\n\n"
+        "Follow existing project instructions and native Codex permission, sandbox and approval settings. "
+        "Editing files does not authorize commit or push; honor only explicit authorization within its stated scope. "
+        "Do not change Git metadata during harness configuration.\n\n"
+        "Maintenance is opt-in. Follow trusted native maintenance-hook notices and "
+        "`.agents/skills/harness/references/maintenance.md` only for eligible bounded reviews. "
+        "Do not review or rewrite the harness every turn or add agents merely because scope grows."
+    )
+    if guidance not in extracted:
+        extracted = extracted.replace(harness_state.END_MARKER, guidance + "\n" + harness_state.END_MARKER)
     return extracted
 
 
@@ -378,8 +398,9 @@ def merge_managed_block(existing: str, managed_block: str) -> str:
     begin_count = existing.count(harness_state.BEGIN_MARKER)
     end_count = existing.count(harness_state.END_MARKER)
     if begin_count == 0 and end_count == 0:
-        separator = "" if not existing else ("\n" if existing.endswith("\n") else "\n\n")
-        return f"{existing}{separator}{managed_block.rstrip()}\n"
+        # All new bytes belong inside the delimiters. Removal can therefore
+        # recover even an empty file or a user file without a final newline.
+        return existing + managed_block.rstrip()
     if begin_count != 1 or end_count != 1:
         raise PlanError("active instruction file contains incomplete or duplicate Harness markers")
     old_block = harness_state.extract_managed_block(existing)
@@ -547,7 +568,7 @@ def build_application(root: Path, plan: dict) -> dict:
     instruction_path = harness_state.resolve_inside(root, instruction_relative)
     if instruction_path.exists() and not instruction_path.is_file():
         raise PlanError(f"instruction path is not a regular file: {instruction_relative}")
-    existing_instruction = instruction_path.read_text(encoding="utf-8") if instruction_path.is_file() else ""
+    existing_instruction = instruction_path.read_bytes().decode("utf-8") if instruction_path.is_file() else ""
     has_markers = (
         harness_state.BEGIN_MARKER in existing_instruction or harness_state.END_MARKER in existing_instruction
     )
@@ -556,17 +577,17 @@ def build_application(root: Path, plan: dict) -> dict:
         managed_instruction is None or managed_instruction.get("kind") != "managed-block"
     ):
         raise PlanError(f"instruction block in {instruction_relative} is not owned by Harness")
-    if managed_instruction is not None:
-        instruction_mode = "managed-pointer"
-    elif instruction_path.exists():
-        instruction_mode = "explicit-skill"
-    else:
-        instruction_mode = "managed-pointer"
+    # Configuration authorizes adding our delimited pointer; never replace the
+    # user's surrounding instructions or claim ownership of their content.
+    instruction_mode = "managed-pointer"
 
     merged_instruction: str | None = None
     if instruction_mode == "managed-pointer":
         merged_instruction = merge_managed_block(existing_instruction, managed_block)
         if not instruction_path.exists():
+            # Preserve the established generated-only file shape. Existing user
+            # files receive no bytes outside the owned block, including newline.
+            merged_instruction += "\n"
             instruction_action = "create"
         else:
             instruction_action = "unchanged" if merged_instruction == existing_instruction else "update"

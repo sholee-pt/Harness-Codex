@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v0.12.0-beta, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
+- This branch contains Harness for Codex v0.13.0-beta, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add telemetry or marketplace dependencies. The separately authorized CLI distribution layer may check/fetch this repository and publish verified GitHub release assets; project generation never performs those operations.
 - Keep evaluation default-off, user-local, and isolated from generation/apply failure handling.
@@ -44,5 +44,5 @@
 - Keep the Linux/Windows command and updater separate from native project generation. Upstream fetches use only tool-owned storage and never inspect project remotes or reset project Git state.
 - Preserve native Codex model, sandbox, permission, and hook-trust settings by default. The explicitly authorized configuration picker may pass the user's selected model, reasoning and permissions for that native conversation; never persist global overrides or retry a rejected choice with broader permissions. CLI convenience is not an approval bypass or an independent agent engine.
 - Keep help, version, doctor, and dry-run offline. Updates occur between sessions and preserve edits in managed installations.
-- The owner-authorized `--ui harness` terminal uses the native Codex App Server. Keep native UI as the default, preserve the same native thread across turns, and treat per-request model/effort selection as explicit inference policy rather than permission changes. Do not add a separate routing model, persist raw routing transcripts, or claim measured cost/quality benefits from deterministic routing tests.
+- Harness owns project management; native `codex` owns conversations. Use the pinned native Codex executable directly, without a Harness work-session launcher or bootstrap user turn. Treat per-request model/effort selection as explicit inference policy rather than permission changes. Do not add a separate routing model, persist raw routing transcripts, or claim measured cost/quality benefits from deterministic routing tests.
 - The owner's exact-UI requirement supersedes the separate terminal renderer: use a pinned upstream Codex CLI build with a bounded Auto-menu/inference extension. Preserve its original renderer, theme, input handling and permission code. Keep third-party license/notice material separate from the proprietary Harness generator, and publish only after both native builds and the integration checks pass.

@@ -2,7 +2,7 @@ name: Native package preflight
 
 on:
   push:
-    branches: ['v0.12.0-beta']
+    branches: ['v0.13.0-beta', 'candidate/v0.13.0-beta']
     paths:
       - '.github/workflows/native-package-check.yml'
       - 'build/native_ui/package.py'

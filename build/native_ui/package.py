@@ -53,7 +53,7 @@ def assemble(root, binary, platform, output):
             raise ValueError('An original Codex helper was modified')
     metadata = {'schema': 1, 'version': version(ROOT), 'platform': platform,
                 'target': package.TARGETS[platform], 'upstreamCommit': package.UPSTREAM,
-                'harnessSourceCommit': commit,
+                'harnessSourceCommit': commit, 'directIntegrationVersion': 1,
                 'officialPackageSha256': OFFICIAL[platform],
                 'extensionSha256': hashlib.sha256(Path(__file__).with_name('harness_routing.rs').read_bytes()).hexdigest(),
                 'files': files, 'directories': sorted(directories)}

@@ -1,6 +1,61 @@
 use super::*;
 
 #[tokio::test]
+async fn native_manual_choice_disables_auto_and_reselection_resets_only_this_widget() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(None).await;
+    let (other, _other_rx, _other_ops) = make_chatwidget_manual(None).await;
+    {
+        let mut state = chat.harness_routing.lock().expect("state");
+        state.enabled = true;
+        state.active = true;
+    }
+    let preset = chat.model_catalog.try_list_models().expect("catalog")
+        .into_iter().find(|preset| preset.show_in_picker && !preset.supported_reasoning_efforts.is_empty())
+        .expect("visible model");
+    chat.open_reasoning_popup(preset);
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(!chat.harness_routing.lock().expect("state").active);
+    let mut items = Vec::new();
+    chat.add_harness_auto_choice(&mut items);
+    (items[0].actions[0])(&chat.app_event_tx);
+    let state = chat.harness_routing.lock().expect("state");
+    assert!(state.active);
+    assert_eq!(state.context.as_ref().expect("new task")["active_task"], false);
+    assert!(!other.harness_routing.lock().expect("other state").active);
+}
+
+#[tokio::test]
+async fn native_history_preserves_saved_pair_without_a_bootstrap_turn() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(None).await;
+    while rx.try_recv().is_ok() {}
+    let model = chat.current_model().to_owned();
+    let effort = chat.effective_reasoning_effort();
+    chat.inherit_harness_task_from_native_history();
+    let context = chat.harness_routing.lock().expect("state").context.clone().expect("history context");
+    assert_eq!(context["model"], model);
+    assert_eq!(context["effort"], serde_json::to_value(effort).expect("effort"));
+    assert_eq!(context["active_task"], true);
+    assert!(rx.try_recv().is_err());
+}
+
+#[test]
+fn direct_installation_settings_are_bounded_and_bind_the_selector() {
+    use sha2::Digest as _;
+    let temporary = tempfile::tempdir().expect("temporary fixture");
+    let script = temporary.path().join("selector.py");
+    std::fs::write(&script, b"pass\n").expect("fixture selector");
+    let path = temporary.path().join("linux-x86_64.routing.json");
+    let value = serde_json::json!({"schema": 1, "python": std::env::current_exe().expect("absolute path"),
+        "script": script, "scriptSha256": format!("{:x}", sha2::Sha256::digest(b"pass\n")), "mode": "auto"});
+    std::fs::write(&path, serde_json::to_vec(&value).expect("settings")).expect("fixture settings");
+    assert!(super::super::harness_routing::Selector::read(&path).is_ok());
+    std::fs::write(&script, b"changed\n").expect("changed selector");
+    assert!(super::super::harness_routing::Selector::read(&path).is_err());
+    std::fs::write(&path, vec![b' '; 16385]).expect("oversized settings");
+    assert!(super::super::harness_routing::Selector::read(&path).is_err());
+}
+
+#[tokio::test]
 async fn harness_auto_model_picker_uses_original_view() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     {

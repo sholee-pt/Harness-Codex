@@ -1,40 +1,58 @@
-# Project and conversation lifecycle
+# Project management and native conversations
 
-`new` and `resume` default to your installed Codex CLI. `--ui harness` uses
-a pinned build of the original Codex screen with Harness Auto added to `/model`.
-Native session, permission and UI behavior is retained; the optional per-request
-selection policy is described in [native UI and routing](routing.md).
-
-One project has one canonical harness: `.codex/agents/`, `.agents/skills/`, managed root instructions and `.harness/manifest.json`. All conversations share it, regardless of Git repository layout.
-
-`init` installs the generator and configures a project. Repeated `init` reports an existing harness; a brief explicitly requests review. `config` refreshes an unchanged owned generator and reviews the existing harness. `new` starts a work conversation; `resume` retains an existing conversation. Neither regenerates the harness.
+Harness creates and maintains one project-local harness. Codex uses it through
+its native root instructions, agents and skills. Harness keeps no work-session
+registry and adds no bootstrap user turn.
 
 ```bash
+cd /path/to/project
 harness-codex init --goal-file PROJECT.md
+# Open a new terminal after initial integration setup.
+codex
+codex resume
+codex resume --last
+codex resume SESSION_ID
+# Review changed project responsibilities when needed:
 harness-codex config --goal-file UPDATED_PROJECT.md
-harness-codex new "Implement the requested change"
-harness-codex resume
-harness-codex resume --last
-harness-codex resume SESSION_ID
-harness-codex resume --project_dir /path/to/project
-harness-codex resume SESSION_ID --reload-harness
+harness-codex status
+harness-codex doctor --json
 ```
 
-`--project`, `--project-dir` and `--project_dir` are equivalent. Without a project argument, resume with an explicit UUID reads that thread's saved directory through `thread/read`, without turns. An explicit project path takes precedence. Session names, the picker and `--last` use the current directory. Failed metadata lookup asks for an explicit project path; it does not guess another project.
+`init/config` preserve user text and place a separately owned block in the active
+root instruction file (`AGENTS.override.md` before `AGENTS.md`). They do not
+create an override to bypass existing guidance. Existing explicit-skill projects
+remain readable and migrate to a managed pointer on reviewed `config`.
 
-Ordinary resume passes no activation prompt and creates no Harness bootstrap turn. To re-read changed instructions, use `--reload-harness`; source drift also adds a short re-read request. This is a bounded prompt, not proof of instruction compliance or native agent hot reload. Resume after a configuration change can use `--reload-harness`; if a newly added native component is unavailable, use a fresh `new` session. These semantics follow [Codex CLI resume](https://learn.chatgpt.com/docs/developer-commands?surface=cli) and the [App Server protocol](https://learn.chatgpt.com/docs/app-server).
+Codex builds the instruction chain when starting a conversation. A resumed
+conversation retains native history and model state. If configuration has changed,
+ask Codex to re-read the project instructions; use a fresh conversation when a
+new native component is unavailable. No automatic user turn is inserted to do this.
 
-Changed or deleted source references allow work to continue after a review notice. No evidence hash is silently rewritten. Malformed evidence, unsafe paths, modified managed files, unsupported contracts and unfinished transactions still block. `doctor --json` retains the full static findings; continuing a session does not mean stale evidence has become valid.
+Strong integrity and compatibility checks run in `init/config/status/doctor`.
+Plain `codex` has no pre-launch Python validation step. Generated instructions
+require reporting detected managed corruption, preserving the manifest and
+consulting `doctor`; ordinary source drift requires a current source read.
+These instructions do not constitute a deterministic command gate or proof of
+compliance. Inspect questionable installations explicitly before relying on them.
+
+## Migration from v0.12
+
+Run `harness-codex update`, then `harness-codex config` in each project you want to
+migrate to native instruction activation. Apply the PATH change in a fresh terminal.
+The old `new`, `resume` and `start` commands remain hidden for this release only.
+They forward to native Codex with a deprecation notice, without project validation,
+GUIDE updates, metadata lookup or activation prompts. Legacy `--ui`, `--settings`
+and `--reload-harness` flags do not configure native work sessions; use `/model`.
 
 ## Session settings
 
-`init`, `config`, `new` and `resume` first offer Automatic, Manual or Keep native settings. Use Up/Down and Enter on an interactive terminal; redirected or limited terminals use numbered choices. `NO_COLOR` disables selection color. Esc/Ctrl+C cancels before starting a configuration conversation.
+`init` and `config` first offer Automatic, Manual or Keep native settings. Use Up/Down and Enter on an interactive terminal; redirected or limited terminals use numbered choices. `NO_COLOR` disables selection color. Esc/Ctrl+C cancels before starting a configuration conversation.
 
 ```bash
 harness-codex init --settings auto --goal-file PROJECT.md
 harness-codex config --settings manual
-harness-codex new --settings auto "Implement a feature"
-harness-codex resume SESSION_ID --settings native
+# Work-session settings are selected in native Codex:
+codex
 ```
 
 Automatic selects the catalog's recommended model and its advertised supported default reasoning level for new/configuration work. It preserves the saved model and effort for resume. It does not run a separate model to choose a model, infer pricing, or claim command-specific optimal performance. If the catalog supplies no supported recommendation, native settings are retained; a catalog connection failure reports an error with the `--settings native` fallback.
@@ -54,7 +72,7 @@ harness-codex config --resume SESSION_ID --goal "The dataset is ..."
 harness-codex config --interactive
 ```
 
-A fresh setup conversation is archived only after a completed model outcome and independently valid project files. Archiving keeps its history but removes it from the ordinary active picker. Interrupted, failed and question-waiting setup conversations stay available. A session explicitly supplied to `config --resume` is never automatically archived. Interactive fallback sessions also stay under native control. Settings discovery uses metadata APIs only and creates no conversation. Normal `new` creates one work conversation; resume reuses the selected one. Existing historical duplicates are not automatically removed.
+A fresh setup conversation is archived only after a completed model outcome and independently valid project files. Archiving keeps its history but removes it from the ordinary active picker. Interrupted, failed and question-waiting setup conversations stay available. A session explicitly supplied to `config --resume` is never automatically archived. Interactive fallback sessions also stay under native control. Settings discovery uses metadata APIs only and creates no conversation. Native `codex` creates work conversations and native resume reuses them. Existing historical duplicates are not automatically removed.
 
 The default configuration deadline is 1,800 seconds. Ctrl+C, connection failure and timeout close the child connection and preserve project files for inspection. Continue incomplete setup with `config --resume SESSION_ID`. Harness keeps no transport transcript or project session registry.
 
@@ -62,7 +80,7 @@ The default configuration deadline is 1,800 seconds. Ctrl+C, connection failure 
 
 `--goal-file` accepts a regular UTF-8 Markdown file, with optional BOM. The old 64 KiB cap is removed. Validation streams the file; the model receives its path and instructions to inspect relevant sections in bounded chunks. Large files are not copied wholesale into the initial prompt. Native access rules still apply to files outside the project. Inline `--goal` and native argument transport retain their finite limits; use a file for a large brief.
 
-The CLI maintains `.harness/GUIDE.md` after successful config and when starting/resuming work. The same path is refreshed for the current tool/harness revision; unchanged content is not rewritten. A checksum marker distinguishes the unchanged CLI guide from user edits. Edited or unrelated guides are preserved, not overwritten or deleted. Existing unknown guide copies are not treated as owned. `remove` and `reset` include an unchanged owned guide in the ordinary recoverable removal transaction.
+The CLI maintains `.harness/GUIDE.md` after successful init/config. The same path is refreshed for the current tool/harness revision; unchanged content is not rewritten. A checksum marker distinguishes the unchanged CLI guide from user edits. Edited or unrelated guides are preserved, not overwritten or deleted. Existing unknown guide copies are not treated as owned. `remove` and `reset` include an unchanged owned guide in the ordinary recoverable removal transaction.
 
 ## Diagnostics and execution restrictions
 

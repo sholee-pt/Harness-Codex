@@ -45,11 +45,11 @@ class NativeRouterTests(unittest.TestCase):
         self.assertEqual(select(value)['model'], 'gpt-6-astra')
 
     def test_resume_and_feedback_are_not_replaced_by_invented_task_success(self):
-        with mock.patch.dict(os.environ, {'HARNESS_ROUTER_RESUME': '1'}):
-            self.assertEqual(select(request())['effort'], 'high')
         value = request()
         value['context'] = {'tier': 'deep', 'model': 'gpt-6-astra', 'effort': 'high', 'failures': 2, 'active_task': True}
         self.assertEqual(select(value)['context']['failures'], 2)
+        value['context']['failures'] = 0
+        self.assertEqual(select(value)['effort'], 'high')
 
     def test_real_isolated_stdio_process_returns_no_prompt_or_provider_data(self):
         command = [sys.executable, '-I', '-B', str(ROOT / 'harness_cli/native_router.py')]
@@ -61,13 +61,12 @@ class NativeRouterTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual((result.stdout, result.stderr), ('', ''))
 
-    def test_activation_does_not_anchor_an_empty_session_to_a_deep_task(self):
+    def test_obsolete_launcher_environment_cannot_rewrite_the_users_task(self):
         value = request('Read the security architecture instructions and wait.')
         with mock.patch.dict(os.environ, {'HARNESS_ROUTER_INITIAL_PROMPT_SHA256': hashlib.sha256(value['prompt'].encode()).hexdigest()}):
             result = select(value)
-        self.assertFalse(result['context']['active_task'])
-        value.update(prompt='Fix README wording.', context=result['context'])
+        self.assertTrue(result['context']['active_task'])
+        self.assertEqual(result['model'], 'gpt-6-astra')
+        # Explicit Auto reselection supplies a fresh context, native resume a retained one.
+        value.update(prompt='Fix README wording.', context=None)
         self.assertEqual(select(value)['model'], 'gpt-5.6-luna')
-        value = request("Read the security architecture instructions.\n\nThe user's task:\nFix README wording.")
-        with mock.patch.dict(os.environ, {'HARNESS_ROUTER_INITIAL_PROMPT_SHA256': hashlib.sha256(value['prompt'].encode()).hexdigest()}):
-            self.assertEqual(select(value)['model'], 'gpt-5.6-luna')

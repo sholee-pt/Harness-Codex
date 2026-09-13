@@ -18,7 +18,7 @@ Treat `environment.yml`, `environment.yaml`, and Conda lock files as dependency 
 
 Use the selected folder as the project boundary even when it is Git-contained or holds multiple independent repositories. Known nested repositories are candidate responsibility boundaries, not mandatory separate harnesses or automatic write prohibitions. Derive scopes from the user task and evidence, keep them inside the selected root, and report incomplete scan coverage without claiming it is complete. Checkpoint, dataset, log, run, cache, result, and output directories remain excluded from content inference by default; use `--include-artifacts` only when relevant to the requested responsibility.
 
-`existingActiveRootInstruction` reports the instruction file that currently exists and wins precedence, or `null`. `plannedRootInstruction` reports the candidate path only; apply may preserve an existing user-owned file and select explicit `$project-harness` activation instead. Do not treat a candidate target as evidence that instructions already exist or may be modified.
+`existingActiveRootInstruction` reports the instruction file that currently exists and wins precedence, or `null`. `plannedRootInstruction` reports the candidate path only; reviewed apply may append a separately owned activation block to the active file while preserving existing user text. Do not treat a candidate target as evidence that instructions already exist or may be modified.
 
 ## Boundary model
 

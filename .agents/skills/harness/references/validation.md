@@ -51,7 +51,7 @@ Test the applicable cases, using an isolated temporary repository when possible:
 6. A user-modified managed file is preserved and reported.
 7. A second run over unchanged inputs performs no file write or replacement.
 8. Missing tools, post-freeze mutation, and non-retryable failures are surfaced.
-9. Existing user-owned root instructions remain byte-identical and activate explicit `$project-harness`; a clean Harness-owned pointer block may be updated independently of tracking.
+9. Existing user text outside the appended root activation block remains byte-identical; a clean Harness-owned pointer block may be updated independently of tracking. Legacy explicit-skill state remains readable.
 10. Generating inside a Git workspace leaves Git metadata unchanged and does not promise clean status or automatic exclusion.
 11. A plain directory workspace needs no Git executable or remote and a non-Git directory workspace may preserve nested repositories as boundaries.
 12. A modified managed file makes both dry-run and apply refuse all writes.

@@ -181,7 +181,7 @@ The builder requires authoring contract 3 and every target exactly once, validat
 - Evidence paths may not also be planned outputs.
 - If an agent lists a skill dependency, mention that skill in its generated `developer_instructions`.
 - Do not include `.harness/manifest.json`; the apply script derives Manifest Schema 7.
-- Do not specify the root instruction path. Harness selects the active path and writes a pointer only when the path is absent or its block is already Harness-managed. Existing user-owned instructions are preserved and Manifest Schema 7 records `explicit-skill` activation.
+- Do not specify the root instruction path. Harness selects the active path and creates or appends an owned pointer block. Existing user text outside that block is preserved byte-for-byte. Modified or unowned Harness markers block apply. Manifest Schema 7 records `managed-pointer` activation; legacy `explicit-skill` installations remain readable.
 - Do not specify Git or GitHub state in the plan. Manifest Schema 7 records the selected workspace context and `not-managed` Git protection; generation does not edit Git metadata.
 - Do not include `taskExecution`, `taskExecutionClass`, the current task's selected agent list, or runtime-only quality decisions.
 - Keep the plan in a temporary location. It is a proposal, not managed project state.

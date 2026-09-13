@@ -30,7 +30,7 @@ Git-tracked project files remain editable within a requested task. Commit, push 
 
 - If the active root instruction path is absent, Harness may create a managed pointer.
 - If a clean manifest already owns its marker block, Harness may update that block while preserving surrounding user content.
-- Otherwise preserve user-owned instructions byte-for-byte and record `explicit-skill` activation; invoke `$project-harness` explicitly.
+- If no Harness markers exist, append a separately owned activation block to the active file while preserving its existing bytes. Modified or unowned markers require review. Legacy `explicit-skill` state migrates during reviewed config.
 - Do not create an override merely to bypass existing project guidance.
 
 Codex builds root guidance when a run starts. If a new pointer, skill, or custom agent is not visible, start one fresh task in the same selected folder; do not restart after each request.

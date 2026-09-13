@@ -46,6 +46,8 @@ def prepare(root):
         raise ValueError('Native UI builds require the pinned clean upstream source')
     normalize_workspace_versions(root)
     edits = {
+        'codex-rs/tui/src/main.rs': [
+            ('use clap::Parser;', '#![recursion_limit = "256"]\n\nuse clap::Parser;')],
         'codex-rs/tui/src/chatwidget.rs': [
             ('mod model_popups;', 'mod model_popups;\nmod harness_routing;'),
             ('    model_popup_request_id: Option<uuid::Uuid>,',
@@ -62,6 +64,12 @@ def prepare(root):
         'codex-rs/tui/src/chatwidget/input_submission.rs': [
             ('        let effective_mode = self.effective_collaboration_mode();',
              '        self.apply_harness_routing(&text, !local_images.is_empty() || !remote_image_urls.is_empty());\n        let effective_mode = self.effective_collaboration_mode();')],
+        'codex-rs/tui/src/chatwidget/replay.rs': [
+            ('    pub(crate) fn replay_thread_turns(&mut self, turns: Vec<Turn>, replay_kind: ReplayKind) {',
+             '    pub(crate) fn replay_thread_turns(&mut self, turns: Vec<Turn>, replay_kind: ReplayKind) {\n        if !turns.is_empty() { self.inherit_harness_task_from_native_history(); }')],
+        'codex-rs/tui/src/chatwidget/session_flow.rs': [
+            ('    pub(crate) fn handle_thread_session(&mut self, session: ThreadSessionState) {',
+             '    pub(crate) fn handle_thread_session(&mut self, session: ThreadSessionState) {\n        self.report_harness_integration_problem();')],
         'codex-rs/tui/src/chatwidget/tests.rs': [
             ('//! Exercises `ChatWidget` event handling and rendering invariants.',
              '//! Exercises `ChatWidget` event handling and rendering invariants.')],

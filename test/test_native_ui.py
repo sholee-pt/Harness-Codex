@@ -15,7 +15,7 @@ import urllib.error
 from harness_cli import distribution as dist, native_package as package, native_ui, project, uninstall
 from test_cli_distribution import source
 
-VERSION = '0.12.0-beta'
+VERSION = '0.13.0-beta'
 
 
 def fixture(root, platform='windows-x86_64'):
@@ -31,7 +31,7 @@ def fixture(root, platform='windows-x86_64'):
     (root / 'codex-package.json').write_text(json.dumps({'layoutVersion': 1, 'target': package.TARGETS[platform],
         'entrypoint': 'bin/codex' + suffix, 'resourcesDir': 'codex-resources', 'pathDir': 'codex-path'}))
     files, directories = package.inventory(root)
-    (root / 'harness-ui.json').write_text(json.dumps({'schema': 1, 'version': VERSION,
+    (root / 'harness-ui.json').write_text(json.dumps({'schema': 1, 'version': VERSION, 'directIntegrationVersion': 1,
         'platform': platform, 'target': package.TARGETS[platform], 'upstreamCommit': package.UPSTREAM,
         'extensionSha256': 'a' * 64, 'files': files, 'directories': sorted(directories)}))
 
@@ -69,7 +69,7 @@ class NativeUiTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             package.verify(self.bundle, VERSION, 'windows-x86_64')
         with self.assertRaises(ValueError):
-            package.verify(self.bundle, '0.13.0-beta', 'windows-x86_64')
+            package.verify(self.bundle, '0.14.0-beta', 'windows-x86_64')
 
     def test_unsafe_tar_members_never_escape_staging(self):
         for index, (name, kind) in enumerate([('../escape', tarfile.REGTYPE), ('C:/escape', tarfile.REGTYPE),
@@ -123,26 +123,22 @@ class NativeUiTests(unittest.TestCase):
         self.assertEqual(dist.installed_status(data)['version'], VERSION)
 
     def test_native_resume_argument_and_environment_are_preserved(self):
+        from types import SimpleNamespace
         env = {'PATH': 'original project environment', 'HARNESS_ROUTER_MODE': 'auto'}
-        with mock.patch.object(project.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as run:
-            self.assertEqual(project._launch(['codex'], self.root, None, resume=True,
-                             session_id='example-id', settings='native', environment=env), 0)
+        args = SimpleNamespace(command='resume', project=self.root, codex_binary=None,
+                               last=False, session_id='example-id', reload_harness=False)
+        with mock.patch.object(project.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as run, \
+             mock.patch.object(project, '_codex_command', return_value=['codex']), \
+             mock.patch.object(project, 'codex_environment', return_value=env):
+            self.assertEqual(project._compat_conversation(args), 0)
         self.assertEqual(run.call_args.args[0], ['codex', '--cd', str(self.root), 'resume', '--', 'example-id'])
         self.assertEqual(run.call_args.kwargs['env'], env)
         self.assertNotIn('--sandbox', run.call_args.args[0])
 
-    def test_auto_launch_uses_child_only_selector_environment(self):
-        args = Namespace(command='resume', settings='auto', native_ui_archive=None,
-                         routing_profiles=None, session_id='saved-id', last=False)
-        before = dict(os.environ)
-        with mock.patch.object(native_ui, 'ensure', return_value=self.bundle / 'bin/codex.exe'), \
-                mock.patch.object(project, '_launch', return_value=0) as launch:
-            self.assertEqual(native_ui.run(args, self.root, Path(__file__).resolve().parents[1], None), 0)
-        env = launch.call_args.kwargs['environment']
-        self.assertEqual(env['HARNESS_ROUTER_MODE'], 'auto')
-        self.assertEqual(env['HARNESS_ROUTER_RESUME'], '1')
-        self.assertEqual(os.environ, before)
-        self.assertEqual(launch.call_args.kwargs['session_id'], 'saved-id')
+    def test_native_package_module_no_longer_launches_conversations(self):
+        self.assertFalse(hasattr(native_ui, 'run'))
+        # Registration and interpreter settings are tested through the owned
+        # sidecar transaction in test_codex_integration, not launch mocks.
 
     def test_release_redirect_does_not_forward_the_credential(self):
         redirect = urllib.error.HTTPError(native_ui.API + '/releases/assets/1', 302, 'redirect',

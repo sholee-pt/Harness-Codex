@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import asdict, replace
 import json
-import hashlib
 import os
 from pathlib import Path
 import sys
@@ -38,21 +37,13 @@ def select(value):
     if previous is None:
         effort = value['effort']
         tier = 'deep' if effort in {'high', 'xhigh', 'max', 'ultra'} else 'balanced'
-        context = Context(tier=tier, model=value['model'], effort=effort,
-                          active_task=os.environ.get('HARNESS_ROUTER_RESUME') == '1')
+        context = Context(tier=tier, model=value['model'], effort=effort)
     elif isinstance(previous, dict) and set(previous) == set(asdict(Context())):
         context = Context(**previous)
     else:
         raise ValueError('Invalid native routing context')
     validate_context(context)
     prompt = value['prompt']
-    initial = os.environ.get('HARNESS_ROUTER_INITIAL_PROMPT_SHA256')
-    if isinstance(prompt, str) and initial == hashlib.sha256(prompt.encode('utf-8')).hexdigest():
-        # Do not treat generated activation text as evidence of task complexity.
-        marker = "\n\nThe user's task:\n"
-        if marker not in prompt:
-            return {'model': value['model'], 'effort': value['effort'], 'context': asdict(context)}
-        prompt = prompt.split(marker, 1)[1]
     profiles = None
     profile = os.environ.get('HARNESS_ROUTER_PROFILES')
     if profile:

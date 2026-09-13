@@ -1,4 +1,4 @@
-"""Project commands that reuse the installer and the native interactive Codex CLI."""
+"""Project harness management; conversations belong to native Codex."""
 
 from __future__ import annotations
 
@@ -39,8 +39,8 @@ def register_project_commands(subparsers) -> None:
                                       help=description, description=description)
         parser.set_defaults(command=command)
         parser.add_argument("--project", "--project-dir", "--project_dir", dest="project", type=Path,
-                            default=None if command == 'resume' else Path.cwd(),
-                            help="Existing project directory (default: current directory; resume UUID uses its saved directory).")
+                            default=None if command in {"new", "resume", "start"} else Path.cwd(),
+                            help="Project directory (default: current directory; native resume controls its own directory when omitted).")
         parser.add_argument('--json', action='store_true', default=argparse.SUPPRESS,
                             help='Show the complete diagnostic report as JSON.')
         if command in {"init", "configure", "new", "resume", "start", "reset"}:
@@ -49,6 +49,10 @@ def register_project_commands(subparsers) -> None:
             parser.add_argument('--settings', choices=('ask', 'auto', 'manual', 'native'), default='ask',
                                 help='Ask for automatic/manual selection (default), select a mode directly, or keep native settings.')
         if command in {"init", "configure", "reset"}:
+            parser.add_argument('--routing-profiles', type=Path, help='Optional JSON model preferences for the native Auto extension.')
+            parser.add_argument('--native-ui-archive', type=Path, help='Verified native Codex extension archive for offline integration setup.')
+            parser.add_argument('--auto-model', choices=('manual', 'auto'), help='Default inference choice for new Codex launches; existing Codex preferences stay unchanged.')
+            parser.add_argument('--no-codex-integration', action='store_true', help='Configure project files only; do not install the optional native Auto extension.')
             parser.add_argument('--maintenance', choices=('off', 'suggest', 'auto'),
                                 help='Opt into bounded maintenance after configuration; auto may update existing skills only.')
             parser.add_argument('--interactive', action='store_true', help='Use the native Codex conversation screen instead of progress output.')
@@ -83,6 +87,10 @@ def register_project_commands(subparsers) -> None:
         if command == "remove":
             parser.add_argument("--include-generator", action="store_true", help="Also remove unchanged files owned by the generator installer.")
             parser.add_argument("--recover", action="store_true", help="Preview or recover an interrupted CLI removal instead of starting a new removal.")
+
+    # argparse keeps these parsers for one-release compatibility, but not in public help.
+    subparsers._choices_actions[:] = [action for action in subparsers._choices_actions
+                                     if action.dest not in {'new', 'resume', 'start'}]
 
 
 def _pending_transaction(root: Path, installer) -> str | None:
@@ -135,35 +143,13 @@ def _validate_prompt_transport(root: Path, prompt: str, command: list[str] | Non
 
 def preflight_project_command(args, *, source_root: Path) -> None:
     """Validate user input before automatic tool updates or project writes."""
-    if args.command in {'new', 'resume'}:
-        if getattr(args, 'ui', 'native') != 'harness' and getattr(args, 'routing_profiles', None):
-            raise ProjectError('--routing-profiles requires --ui harness.')
-        if getattr(args, 'ui', 'native') != 'harness' and getattr(args, 'native_ui_archive', None):
-            raise ProjectError('--native-ui-archive requires --ui harness.')
-        if getattr(args, 'routing_profiles', None):
-            from .routing import read_json
-            from .model_routing import choose
-            args._routing_profiles = read_json(args.routing_profiles)
-            choose('Validate the routing configuration', [], profiles=args._routing_profiles)
+    if args.command in {'new', 'resume', 'start'}:
+        if args.command == 'resume' and args.last and args.session_id:
+            raise ProjectError('Choose a session ID or --last, not both.')
+        args._project_preflight_complete = True
+        return
     installer = load_installer(source_root)
-    if args.command == 'resume' and args.project is None:
-        session_id = getattr(args, 'session_id', None)
-        if session_id and not args.last and re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}', session_id):
-            from .native_session import project_directory
-            args.project = project_directory(_interactive_codex(args.codex_binary), Path.cwd(), session_id)
-        else:
-            args.project = Path.cwd()
     root = _project_path(args.project, installer)
-    if args.command == "start":
-        print("'harness-codex start' is deprecated; use 'harness-codex new'.", file=sys.stderr)
-        args.command = "new"
-    if args.command == "resume":
-        if args.last and args.session_id:
-            raise ProjectError("Choose a session ID or --last, not both.")
-        if args.session_id is not None and (not args.session_id.strip() or len(args.session_id) > 1024 or any(ord(c) < 32 or ord(c) == 127 for c in args.session_id)):
-            raise ProjectError("Session ID/name must be nonempty and contain no control characters.")
-    if args.command == 'new':
-        _validate_prompt_transport(root, _work_prompt(args.prompt))
     if args.command not in {"remove", "status", "doctor"}:
         _assert_no_transaction(root, installer)
     if args.command == "remove" and args.recover and args.include_generator:
@@ -392,7 +378,7 @@ def project_status(source_root: Path, root: Path, installer) -> dict:
         result["state"] = "invalid"
     can_reread = (result["state"] == "stale-evidence"
                   and _only_stale_evidence(report, root=root, source_root=source_root))
-    result["nextCommand"] = ("harness-codex new --project PATH" if result["state"] == "configured" or can_reread
+    result["nextCommand"] = ("codex" if result["state"] == "configured" or can_reread
                              else "harness-codex config --project PATH" if result["state"] in {"generator-only", "stale-evidence", "upgrade-required"}
                              else "harness-codex init --project PATH" if result["state"] == "absent"
                              else "harness-codex doctor --project PATH")
@@ -414,7 +400,7 @@ def _configuration_prompt(goal: str | None) -> str:
         "If the work or goals are unclear, ask for the missing information instead of inventing a fixed agent team. "
         "Do not commit, push, or modify Git metadata as part of harness configuration. "
         "After configuration, explain the validation result. Confirm whether the new native components are available "
-        "before using them; if they are not visible, direct the user to a fresh harness-codex new session."
+        "before using them; if they are not visible, direct the user to a fresh native codex session."
         " The CLI maintains .harness/GUIDE.md as the single project harness guide. "
         "Do not create dated/versioned Harness guide copies or edit that CLI-owned guide; "
         "keep project-specific routing instructions in the managed project harness."
@@ -424,49 +410,52 @@ def _configuration_prompt(goal: str | None) -> str:
     return prompt
 
 
-def _work_prompt(prompt: str | None, *, stale_evidence: bool = False) -> str:
-    instructions = (
-        "$project-harness Read and use this project's harness for this session. "
-        "Follow existing project instructions and Codex permission settings. "
-        "Editing files does not authorize commit or push; require separate authorization for each, "
-        "honoring any explicit existing authorization within its stated scope."
-    )
-    if stale_evidence:
-        instructions += (
-            "\n\nSome recorded source evidence changed after generation. Re-read the current workspace and "
-            "the relevant source files before relying on stale project claims or choosing agents. "
-            "Do not automatically regenerate or rewrite the harness merely because source files changed. "
-            "If current evidence shows that the task needs a different persistent design, explain the finding "
-            "and propose a reviewed harness-codex config update."
-        )
-    if prompt:
-        return instructions + "\n\nThe user's task:\n" + prompt
-    return instructions + "\n\nRead the routing instructions and wait for the user's next task."
+def _compat_conversation(args):
+    """One-release forwarding only: no project validation, metadata query or injected turn."""
+    print(f"'harness-codex {args.command}' is deprecated. Run 'codex"
+          + (" resume" if args.command == 'resume' else "")
+          + "' directly from the configured project.", file=sys.stderr)
+    command = _codex_command(args.codex_binary)
+    arguments = list(command)
+    if args.project is not None:
+        arguments += ['--cd', str(args.project.expanduser().absolute())]
+    if args.command == 'resume':
+        arguments.append('resume')
+        if args.last:
+            arguments.append('--last')
+        elif args.session_id is not None:
+            arguments += ['--', args.session_id]
+        if args.reload_harness:
+            print('--reload-harness no longer inserts a user turn. Ask Codex to re-read project instructions when needed.', file=sys.stderr)
+    elif args.prompt is not None:
+        arguments += ['--', args.prompt]
+    result = subprocess.run(arguments, env=codex_environment(), check=False)
+    return result.returncode if result.returncode >= 0 else 128 - result.returncode
 
 
-def _launch(command: list[str], root: Path, prompt: str | None, *, resume: bool = False,
-            session_id: str | None = None, last: bool = False, settings: str = 'native', environment=None) -> int:
+def _configure_integration(args, source_root):
+    if getattr(args, 'no_codex_integration', False):
+        return
+    from .main import default_data_root
+    from .codex_integration import install
+    report = install(default_data_root(), source_root,
+                     archive=getattr(args, 'native_ui_archive', None), mode=getattr(args, 'auto_model', None),
+                     profiles=getattr(args, 'routing_profiles', None))
+    ui.report(report, title='Native Codex integration')
+    print(report['nextStep'])
+
+
+def _launch(command: list[str], root: Path, prompt: str, *, settings: str = 'native', environment=None) -> int:
+    """Interactive configuration fallback; work conversations never enter here."""
     if prompt:
         _validate_prompt_transport(root, prompt, command)
     from .native_session import settings_arguments
-    arguments = [*command, "--cd", str(root), *settings_arguments(command, root, settings, resume=resume)]
-    if resume:
-        # With no ID, only the root positional can carry an optional reload prompt.
-        if prompt and session_id is None:
-            arguments.append(prompt)
-        arguments.append("resume")
-        if last:
-            arguments.append("--last")
-        elif session_id is not None:
-            arguments.extend(["--", session_id])
-            if prompt:
-                arguments.append(prompt)
-    elif prompt:
+    arguments = [*command, "--cd", str(root), *settings_arguments(command, root, settings)]
+    if prompt:
         arguments.append(prompt)
     if os.name == 'nt' and len(subprocess.list2cmdline(arguments).encode('utf-16-le')) // 2 + 1 > 32767:
         raise ProjectError('The combined native command exceeds the Windows command-line limit.')
-    print("Resuming Codex without an extra activation turn." if resume and not prompt else
-          "Opening interactive Codex. Exit Codex to return to Harness.", flush=True)
+    print("Opening interactive Codex configuration. Exit Codex to return to Harness.", flush=True)
     try:
         result = subprocess.run(arguments, cwd=root, check=False, env=codex_environment() if environment is None else environment)
     except KeyboardInterrupt:
@@ -542,7 +531,8 @@ def _finish_configuration(source_root: Path, root: Path, command: list[str], goa
     if getattr(args, 'maintenance', None) is not None:
         from .maintenance import enable
         enable(source_root, root, args.maintenance)
-    print('Next: harness-codex new (from this project).')
+    _configure_integration(args, source_root)
+    print('Next: codex (from this project).')
     return 0
 
 
@@ -551,13 +541,18 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
     try:
         ui.JSON_MODE.set(getattr(args, 'json', False))
         source_root = Path(source_root).absolute()
-        installer = load_installer(source_root)
         if not getattr(args, "_project_preflight_complete", False):
             preflight_project_command(args, source_root=source_root)
+        if args.command in {'new', 'resume', 'start'}:
+            return _compat_conversation(args)
+        installer = load_installer(source_root)
         root = _project_path(args.project, installer)
         source = source_root / ".agents/skills/harness"
         if args.command == "status":
             report = project_status(source_root, root, installer)
+            from .codex_integration import status as integration_status
+            from .main import default_data_root
+            report['codexIntegration'] = integration_status(default_data_root())
             if hasattr(args, "_launcher_environment_status"):
                 report["cliLauncher"] = args._launcher_environment_status
             ui.report(report, title='Project harness')
@@ -565,6 +560,11 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                                             "orphaned-removal-workspace", "orphaned-transaction-workspace"} else 0
         if args.command == "doctor":
             status, report = _report(source_root, root, doctor=True)
+            from .codex_integration import status as integration_status
+            from .main import default_data_root
+            report['codexIntegration'] = integration_status(default_data_root())
+            if report['codexIntegration']['state'] == 'invalid':
+                status = 1
             if hasattr(args, "_launcher_environment_status"):
                 report["cliLauncher"] = args._launcher_environment_status
             ui.report(report, title='Project harness diagnosis')
@@ -576,10 +576,11 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                 existing_status = project_status(source_root, root, installer)
                 print(f"A project harness already exists ({existing_status['state']}).")
                 if existing_status["state"] == "configured":
-                    print("Use harness-codex new to work, config to review it, or reset/remove to replace or remove its owned files.")
+                    print("Use codex to work, harness-codex config to review it, or reset/remove to replace or remove its owned files.")
                 else:
                     print("Review harness-codex status/doctor before use. For a supported upgrade or stale evidence, supply --goal/--goal-file to init for a reviewed update.")
                 if args._existing_init_noop:
+                    _configure_integration(args, source_root)
                     if getattr(args, 'maintenance', None) is not None:
                         from .maintenance import enable
                         enable(source_root, root, args.maintenance)
@@ -613,30 +614,6 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                 print('Updating the owned project generator before reviewing the existing harness.')
                 installer.install(root, source=source)
             return _finish_configuration(source_root, root, command, args._goal_text, args=args)
-        if args.command in {"new", "resume"}:
-            command = _interactive_codex(args.codex_binary)
-            stale = _check_existing(source_root, root, required=True)
-            revision = harness_revision(root)
-            _sync_guide(source_root, root, stale=stale)
-            print(f"Project harness revision: {revision}", flush=True)
-            prompt = _work_prompt(None, stale_evidence=stale)
-            from .maintenance import activation
-            prompt += activation(source_root, root)
-            prompt += ("\n\nUse the current canonical project harness at revision " + revision
-                       + ". Do not copy or regenerate its agents, skills, or manifest when starting/resuming a conversation.")
-            if args.command == "resume":
-                prompt = ("$project-harness Re-read the current project harness and source before the next task. "
-                          "Retain this conversation; do not regenerate the harness.") if args.reload_harness or stale else None
-                if not prompt:
-                    print('Existing conversation and native project instructions are retained. '
-                          'Use --reload-harness when an explicit re-read is needed.')
-            if getattr(args, 'prompt', None):
-                prompt += "\n\nThe user's task:\n" + args.prompt
-            if getattr(args, 'ui', 'native') == 'harness':
-                from .native_ui import run
-                return run(args, root, source_root, prompt)
-            return _launch(command, root, prompt, resume=args.command == "resume",
-                           session_id=getattr(args, "session_id", None), last=getattr(args, "last", False), settings=args.settings)
         if args.command in {"remove", "reset"}:
             from . import lifecycle
             dry_run = args.dry_run or not args.yes

@@ -26,6 +26,11 @@ def report(value: dict, *, title='Harness', error=False) -> None:
     if state is None:
         state = 'valid' if value.get('valid') is True else 'needs attention' if value.get('valid') is False else value.get('mode', 'complete')
     print(f'{title}: {clean(state)}', file=stream)
+    integration = value.get('codexIntegration')
+    if isinstance(integration, dict):
+        print('Codex integration: ' + clean(integration.get('state', 'unknown')), file=stream)
+        if integration.get('state') not in {'configured', 'not-installed'}:
+            print('  ' + clean(integration.get('error') or 'Open a fresh terminal and check Codex PATH precedence; use config to repair integration.'), file=stream)
     labels = {'version': 'Version', 'currentVersion': 'Current version', 'generatorVersion': 'Generator version', 'generator': 'Generator',
               'availableVersion': 'Available version', 'updateAvailable': 'Update available',
               'dryRun': 'Preview only', 'writes': 'Planned file writes', 'removes': 'Planned removals',

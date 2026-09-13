@@ -124,7 +124,7 @@ def _launcher_environment_gate(args, source_root: Path) -> int | None:
                              "Repeat the installed harness command from the same parent terminal; Codex was not started.")
         return None
     args._launcher_environment_status = status
-    launches_codex = (args.command in {"init", "configure", "new", "resume", "start", "reset"}
+    launches_codex = (args.command in {"init", "configure", "reset"}
                       and not getattr(args, "dry_run", False) and not getattr(args, "install_only", False)
                       and not getattr(args, "_existing_init_noop", False)
                       and (args.command != "reset" or getattr(args, "yes", False)))
@@ -145,7 +145,7 @@ def _launcher_environment_gate(args, source_root: Path) -> int | None:
 
 
 def _automatic_update(args, source_root: Path, argv: list[str]) -> int | None:
-    if (args.command not in {"init", "new", "resume", "start", "configure"} or getattr(args, "dry_run", False)
+    if (args.command not in {"init", "configure"} or getattr(args, "dry_run", False)
             or getattr(args, "install_only", False) or getattr(args, "_existing_init_noop", False) or args.no_update_check
             or os.environ.get("HARNESS_NO_UPDATE_CHECK") == "1"
             or not os.environ.get("HARNESS_TOOL_HOME")
@@ -252,6 +252,10 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
                 result = action(args.data_dir, branch=args.branch, repository=args.repository, timeout=args.timeout)
             ui.report(result, title='Tool update')
             if not args.check:
+                from .codex_integration import read as integration_read, install as integration_install
+                if integration_read(args.data_dir) is not None:
+                    active = distribution.installed_status(args.data_dir)
+                    ui.report(integration_install(args.data_dir, Path(active['release_root'])), title='Native Codex integration')
                 print("Tool update complete. Use harness-codex config --project PATH to refresh the owned generator and review the existing project harness.")
             return 0
         if args.command == 'maintenance':

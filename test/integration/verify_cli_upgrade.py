@@ -47,7 +47,7 @@ def old_project(baseline, root, runtime_path):
     import test_runtime_teamplay
     import shutil
 
-    assert harness_metadata.HARNESS_VERSION == "0.11.0-beta"
+    assert harness_metadata.HARNESS_VERSION == "0.12.0-beta"
     shutil.copytree(tests_root / "fixtures/coordinated-cross-contract", root)
     draft = test_runtime_teamplay.DeterministicPlanBuilderTests()._draft("coordinated-cross-contract-plan.json")
     plan = harness_plan_builder.materialize_plan(draft, root=root)
@@ -100,8 +100,8 @@ def verify(baseline):
     baseline_version = old._source_info(old_snapshot)[0]
     assert current._source_info(old_snapshot)[0] == baseline_version, "Complete historical module layouts must remain readable"
     candidate_version = current._source_info(new_snapshot)[0]
-    assert baseline_version == "0.11.0-beta"
-    assert candidate_version == "0.12.0-beta"
+    assert baseline_version == "0.12.0-beta"
+    assert candidate_version == "0.13.0-beta"
     optional_installers = {"install.sh", "install.ps1", "install_harness.sh", "install_harness_codex.sh", "install_harness_codex.ps1"}
     retired_installers = optional_installers & (old_snapshot.keys() - new_snapshot.keys())
     assert "install_harness.sh" not in new_snapshot
@@ -166,7 +166,7 @@ def verify(baseline):
             return real_git(["-c", "protocol.file.allow=always", *rewritten], **kwargs)
 
         # Execute the immediately preceding updater itself, including discovery.
-        # The repository rename transition was completed in v0.11.0-beta.
+        # The repository rename transition was completed in v0.12.0-beta.
         with mock.patch.dict(os.environ, environment, clear=True), mock.patch.object(old, "_git", side_effect=local_transport):
             legacy_check = old.check_update(data)
             assert legacy_check['updateAvailable'] and legacy_check['availableCommit'] == next_commit
