@@ -70,6 +70,7 @@ Only the latest development version branch is retained in Harness-Codex and used
 - Adds the missing reviewed Auto menu snapshot. Runs original UI assertions using the upstream CI profile and development-version fixture, then restores release manifest bytes before compiling the shipped Codex 0.154.0 executable. This avoids release-version padding conflicts and unnecessary optimized test compilation without accepting snapshots automatically.
 - Reconciles the test fixture lock through Cargo so implicit nested workspace packages receive the correct version. Rejects external dependency drift and validates the real locked graph before compilation; full tests still require `--locked`.
 - Retries transient V8 dependency download failures up to five attempts with bounded backoff, discarding partial downloads between attempts. Permanent HTTP errors, download size limits and pinned checksum failures still stop the build.
+- Prevents native CI disk exhaustion by disabling incremental builds, isolating and reclaiming test output before restoring the release cache, and checking free space before compilation. Removes only unused SDKs from disposable GitHub-hosted Linux runners and preserves available test reports before cleanup; full TUI/extension checks remain required.
 - Retains v0.13.1-beta project and tool compatibility. Cross-validation targets the immediately preceding version; existing project agents and skills do not need to be recreated.
 
 ### Linux installation

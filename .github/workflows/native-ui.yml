@@ -24,10 +24,27 @@ jobs:
     timeout-minutes: 300
     env:
       CARGO_BUILD_JOBS: 2
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_CI_TEST_DEBUG: '0'
       CARGO_PROFILE_RELEASE_DEBUG: 0
       CARGO_PROFILE_RELEASE_LTO: 'false'
     steps:
       - uses: actions/checkout@v7.0.1
+      - name: Reserve disk space on the disposable Linux runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          df -h "$RUNNER_TEMP"
+          # Fixed, unused hosted-image SDKs only; keep Rust, Conda and source.
+          sudo rm -rf -- /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup /opt/ghc
+          df -h "$RUNNER_TEMP"
+          available_kib=$(df -Pk "$RUNNER_TEMP" | awk 'NR == 2 {print $4}')
+          if [ "$available_kib" -lt 26214400 ]; then
+            echo '::error::Native verification requires at least 25 GiB free before compilation.'
+            exit 1
+          fi
       - uses: conda-incubator/setup-miniconda@v4.0.1
         with:
           activate-environment: harness
@@ -74,11 +91,6 @@ jobs:
       - name: Verify the pinned upstream V8 dependencies
         shell: bash -el {0}
         run: conda run --no-capture-output -n harness python -B build/native_ui/dependencies.py --root "${RUNNER_TEMP}/codex-ui" --target ${{ matrix.target }} --output "${RUNNER_TEMP}/harness-v8"
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ${{ runner.temp }}/codex-ui/codex-rs -> target
-          cache-on-failure: true
-          cache-workspace-crates: true
       - name: Verify clean Harness source before native compilation
         shell: bash -el {0}
         run: conda run --no-capture-output -n harness python -B build/native_ui/source.py
@@ -88,21 +100,59 @@ jobs:
           conda run --no-capture-output -n harness python -B build/native_ui/lockfile.py --root "${RUNNER_TEMP}/codex-ui"
           conda run --no-capture-output -n harness python -B build/native_ui/run_tests.py --root "${RUNNER_TEMP}/codex-ui" --target ${{ matrix.target }} --metadata-only
       - name: Check the extension and preserve original UI source
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/harness-native-tests
         shell: bash -el {0}
         working-directory: ${{ runner.temp }}/codex-ui/codex-rs
         run: |
-          conda run --no-capture-output -n harness just fix -p codex-tui --release --target ${{ matrix.target }}
+          conda run --no-capture-output -n harness just fix -p codex-tui --profile ci-test --target ${{ matrix.target }}
           conda run --no-capture-output -n harness just fmt
           conda run --no-capture-output -n harness python -B "${GITHUB_WORKSPACE}/build/native_ui/review.py" --root "${RUNNER_TEMP}/codex-ui"
           conda run --no-capture-output -n harness python -B "${GITHUB_WORKSPACE}/build/native_ui/source.py"
       - name: Check the original TUI and extension tests
         env:
           HARNESS_SELECTOR_TEST_SCRIPT: ${{ github.workspace }}/harness_cli/native_router.py
+          CARGO_TARGET_DIR: ${{ runner.temp }}/harness-native-tests
         shell: bash -el {0}
         run: |
           conda run --no-capture-output -n harness python -B build/native_ui/run_tests.py --root "${RUNNER_TEMP}/codex-ui" --target ${{ matrix.target }}
           conda run --no-capture-output -n harness python -B build/native_ui/review.py --root "${RUNNER_TEMP}/codex-ui"
           conda run --no-capture-output -n harness python -B build/native_ui/source.py
+      - name: Preserve test results and reclaim test build storage
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          test_root="${RUNNER_TEMP:?}/harness-native-tests"
+          # Never follow a replacement link when deleting build output.
+          test ! -L "$test_root"
+          if [ -d "$test_root" ]; then
+            if [ -f "$test_root/nextest/default/junit.xml" ]; then
+              cp "$test_root/nextest/default/junit.xml" "$RUNNER_TEMP/harness-native-tests-junit.xml"
+            fi
+            du -sh "$test_root"
+            rm -rf -- "$test_root"
+          fi
+          df -h "$RUNNER_TEMP"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Restore release output only after removing the separate test build.
+          workspaces: ${{ runner.temp }}/codex-ui/codex-rs -> target
+          prefix-key: harness-linux-release-v2
+          cache-on-failure: true
+          cache-workspace-crates: true
+      - name: Check free space before the release build
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h "$RUNNER_TEMP"
+          available_kib=$(df -Pk "$RUNNER_TEMP" | awk 'NR == 2 {print $4}')
+          if [ "$available_kib" -lt 15728640 ]; then
+            echo '::error::Native release compilation requires at least 15 GiB free after cache restoration.'
+            exit 1
+          fi
       - name: Build the original CLI with the Harness menu hook
         id: native-build
         shell: bash -el {0}
@@ -130,6 +180,6 @@ jobs:
             ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/tests/harness_routing_tests.rs
             ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/tests/snapshots/*harness*
             ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/snapshots/*harness*
-            ${{ runner.temp }}/codex-ui/codex-rs/target/nextest/default/junit.xml
+            ${{ runner.temp }}/harness-native-tests-junit.xml
             ${{ runner.temp }}/native-dist/*
           retention-days: 7
