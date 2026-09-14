@@ -8,6 +8,7 @@ Release and tag history starts at `v0.10.0-beta` after a one-time reset. Earlier
 
 | Version | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
+| [`v0.13.2-beta`](#harness-for-codex-v0132-beta) | Harness for Codex v0.13.2-beta | Schema 3 | Schema 7 | Schema 2 | Bind standalone installers to the built release version |
 | [`v0.13.1-beta`](#harness-for-codex-v0131-beta) | Harness for Codex v0.13.1-beta | Schema 3 | Schema 7 | Schema 2 | Remove the first-setup message from installer progress |
 | [`v0.13.0-beta`](#harness-for-codex-v0130-beta) | Harness for Codex v0.13.0-beta | Schema 3 | Schema 7 | Schema 2 | Native Codex conversations, persistent project activation and direct Auto integration |
 | [`v0.12.0-beta`](#harness-for-codex-v0120-beta) | Harness for Codex v0.12.0-beta | Schema 3 | Schema 7 | Schema 2 | Opt-in conversation UI, Auto-first model menu and bounded per-request model/reasoning routing |
@@ -60,10 +61,15 @@ Release and tag history starts at `v0.10.0-beta` after a one-time reset. Earlier
 
 Only the latest development version branch is retained in Harness-Codex and used as the default. Release publication separately requires verified artifacts; earlier source history remains reachable through commits. The table uses normalized display versions and does not relabel historical commits or evidence identifiers.
 
+## Harness for Codex v0.13.2-beta
+
+- Binds both standalone downloaders and Windows help text to the built archive version, preventing an older template version from requesting missing release files.
+- Verifies downloader versions and checksums during release-build tests; ambiguous version declarations fail before creating build output.
+- Retains v0.13.1-beta project and tool compatibility. Cross-validation targets the immediately preceding version; existing project agents and skills do not need to be recreated.
+
 ## Harness for Codex v0.13.1-beta
 
 - Removes the extra first-setup message from Linux and Windows installer progress. Environment creation, elapsed timers and detailed Conda logs are unchanged.
-- Binds both standalone downloaders and Windows help text to the built archive version, preventing an older template version from requesting missing release files.
 - Keeps v0.13.0-beta project and tool compatibility; cross-validation targets that immediately preceding version.
 - Native Auto build and release verification remain pending from v0.13.0-beta. A branch update does not publish verified release assets.
 

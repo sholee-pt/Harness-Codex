@@ -2,7 +2,7 @@ name: Native Codex UI candidate
 
 on:
   push:
-    branches: [v0.13.1-beta]
+    branches: [v0.13.2-beta]
     paths: [build/native_ui/**, harness_cli/native_*.py, .github/workflows/native-ui.yml]
   workflow_dispatch:
   workflow_call:
