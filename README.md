@@ -27,7 +27,7 @@ Generate and maintain one shared project harness with Codex-native agents and sk
 
 **Development beta:** Harness is still under development and testing.
 
-**v0.13.2-beta candidate:** Release installation below becomes available after Linux and Windows native builds and integration checks pass. Release assets are not yet published.
+Installers and native Codex packages are published together after Linux and Windows builds and integration checks pass.
 
 ## Installation Guide
 
