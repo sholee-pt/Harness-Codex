@@ -11,7 +11,7 @@ import tomllib
 HERE = Path(__file__).resolve().parent
 
 
-def normalize_workspace_versions(root, previous='0.0.0'):
+def normalize_workspace_versions(root):
     """The upstream tag bumps workspace version but retains 0.0.0 path locks.
 
     Normalize only local workspace package versions; keep every external source,
@@ -30,11 +30,11 @@ def normalize_workspace_versions(root, previous='0.0.0'):
     blocks = content.split('[[package]]')
     for index, block in enumerate(blocks[1:], 1):
         item = tomllib.loads(block)
-        if item.get('name') in names and 'source' not in item and item.get('version') == previous:
-            blocks[index] = block.replace(f'version = "{previous}"', f'version = "{version}"', 1)
+        if item.get('name') in names and 'source' not in item and item.get('version') == '0.0.0':
+            blocks[index] = block.replace('version = "0.0.0"', f'version = "{version}"', 1)
     content = '[[package]]'.join(blocks)
     for name in names:
-        content = content.replace(f'"{name} {previous}"', f'"{name} {version}"')
+        content = content.replace(f'"{name} 0.0.0"', f'"{name} {version}"')
     path.write_text(content, encoding='utf-8', newline='\n')
 
 

@@ -68,6 +68,7 @@ Only the latest development version branch is retained in Harness-Codex and used
 - Keeps Linux native compiler caches in runner temporary storage so build output does not invalidate the clean-source release check.
 - Limits CI and release assets to Linux while Windows work is paused. The release still requires Linux management, installation, upgrade, native build and full TUI/extension checks.
 - Adds the missing reviewed Auto menu snapshot. Runs original UI assertions using the upstream CI profile and development-version fixture, then restores release manifest bytes before compiling the shipped Codex 0.154.0 executable. This avoids release-version padding conflicts and unnecessary optimized test compilation without accepting snapshots automatically.
+- Reconciles the test fixture lock through Cargo so implicit nested workspace packages receive the correct version. Rejects external dependency drift and validates the real locked graph before compilation; full tests still require `--locked`.
 - Retains v0.13.1-beta project and tool compatibility. Cross-validation targets the immediately preceding version; existing project agents and skills do not need to be recreated.
 
 ### Linux installation

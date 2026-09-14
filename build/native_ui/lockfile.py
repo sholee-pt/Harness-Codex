@@ -11,16 +11,21 @@ def external(path):
             for p in tomllib.loads(path.read_text())['package'] if 'source' in p}
 
 
-def reconcile(root):
+def reconcile(root, *, test_target=None):
     path = root / 'codex-rs/Cargo.lock'
     before = external(path)
-    subprocess.run(['cargo', 'metadata', '--format-version', '1'],
+    command = ['cargo', 'metadata', '--format-version', '1', '--all-features']
+    if test_target:
+        # Cargo includes implicit path members (including nested test helpers).
+        # Resolve the same graph nextest requests, without fetching new inputs.
+        command += ['--filter-platform', test_target, '--offline']
+    subprocess.run(command,
                    cwd=path.parent, stdout=subprocess.DEVNULL, check=True)
     after = external(path)
     added = sorted(after - before)
     print(json.dumps({'addedExternalDependencies': added,
                       'removedUnusedExternalDependencies': sorted(before - after)}, indent=2))
-    if added:
+    if added or (test_target and before != after):
         raise ValueError('Refusing an unreviewed external dependency change')
 
 
