@@ -1,21 +1,62 @@
 """Use the pinned upstream's checked V8 artifacts, without changing dependencies."""
 import argparse
 import hashlib
+import http.client
 import os
 from pathlib import Path
+import socket
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.request
+
+DOWNLOAD_ATTEMPTS = 5
+MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024
+TRANSIENT_HTTP_STATUS = {408, 429, 500, 502, 503, 504}
+
+
+def _download_once(url, path):
+    # Exclusive creation protects existing files; clean up only this attempt.
+    output = path.open('xb')
+    try:
+        with output, urllib.request.urlopen(url, timeout=60) as incoming:
+            size = 0
+            while block := incoming.read(1024 * 1024):
+                size += len(block)
+                if size > MAX_DOWNLOAD_BYTES:
+                    raise ValueError('Native dependency exceeds the download bound')
+                output.write(block)
+            length = incoming.headers.get('Content-Length')
+            if length is not None and size != int(length):
+                raise http.client.IncompleteRead(b'', int(length) - size)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
 
 
 def download(url, path):
-    with urllib.request.urlopen(url, timeout=60) as incoming, path.open('xb') as output:
-        size = 0
-        while block := incoming.read(1024 * 1024):
-            size += len(block)
-            if size > 512 * 1024 * 1024:
-                raise ValueError('Native dependency exceeds the download bound')
-            output.write(block)
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        try:
+            _download_once(url, path)
+            return
+        except urllib.error.HTTPError as exc:
+            transient = exc.code in TRANSIENT_HTTP_STATUS
+            reason = f'HTTP {exc.code}'
+            exc.close()
+            if not transient or attempt == DOWNLOAD_ATTEMPTS:
+                raise
+        except urllib.error.URLError as exc:
+            if not isinstance(exc.reason, (TimeoutError, ConnectionError, socket.gaierror)) or attempt == DOWNLOAD_ATTEMPTS:
+                raise
+            reason = type(exc.reason).__name__
+        except (TimeoutError, ConnectionError, http.client.IncompleteRead) as exc:
+            if attempt == DOWNLOAD_ATTEMPTS:
+                raise
+            reason = type(exc).__name__
+        delay = 2 ** (attempt - 1)
+        print(f'V8 download {path.name}: {reason}; retry {attempt + 1}/{DOWNLOAD_ATTEMPTS} in {delay}s.', flush=True)
+        time.sleep(delay)
 
 
 def setup(root, target, output):
