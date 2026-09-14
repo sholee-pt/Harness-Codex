@@ -236,7 +236,6 @@ if ($ownedRuntime -or $CondaHome) {
     }
 }
 if ($existingEnvironments.Count -eq 0) {
-    Write-Host '      First setup: preparing Python and Git; this may take a few minutes...'
     Invoke-HarnessConda create @environmentSelector --override-channels --channel conda-forge python=3.11 git --yes | Out-Null
     if ($condaExit -ne 0) { throw "Unable to create the harness Conda environment (exit $condaExit)." }
 } else {

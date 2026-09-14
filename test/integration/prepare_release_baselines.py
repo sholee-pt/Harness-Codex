@@ -1,4 +1,4 @@
-"""Materialize only the immediately preceding published release for comparison."""
+"""Materialize only the immediately preceding version for comparison."""
 import argparse
 import io
 from pathlib import Path, PurePosixPath
@@ -7,7 +7,7 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINES = {
-    'v0120': '733676a46935b45b215c6574049058d717ec14ec',
+    'v0130': 'cf981b4eb2c90d76368135b9807709744c22b84d',
 }
 
 

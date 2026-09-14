@@ -8,6 +8,7 @@ Release and tag history starts at `v0.10.0-beta` after a one-time reset. Earlier
 
 | Version | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
+| [`v0.13.1-beta`](#harness-for-codex-v0131-beta) | Harness for Codex v0.13.1-beta | Schema 3 | Schema 7 | Schema 2 | Remove the first-setup message from installer progress |
 | [`v0.13.0-beta`](#harness-for-codex-v0130-beta) | Harness for Codex v0.13.0-beta | Schema 3 | Schema 7 | Schema 2 | Native Codex conversations, persistent project activation and direct Auto integration |
 | [`v0.12.0-beta`](#harness-for-codex-v0120-beta) | Harness for Codex v0.12.0-beta | Schema 3 | Schema 7 | Schema 2 | Opt-in conversation UI, Auto-first model menu and bounded per-request model/reasoning routing |
 | [`v0.11.0-beta`](#harness-for-codex-v0110-beta) | Harness for Codex v0.11.0-beta | Schema 3 | Schema 7 | Schema 2 | Lean resume, source-drift tolerance, one guide, native model modes and Harness-Codex distribution |
@@ -57,7 +58,13 @@ Release and tag history starts at `v0.10.0-beta` after a one-time reset. Earlier
 | [`v0.8.1-beta`](#harness-for-codex-v081-beta) | Harness for Codex v0.8.1-beta | Schema 3 | Schema 6 | Schema 2 | Apply rejects unsupported existing artifact contracts while preserving supported v0.8.0-beta and legacy updates |
 | [`v0.9.0-beta`](#harness-for-codex-v090-beta) | Harness for Codex v0.9.0-beta | Schema 3 | Schema 7 | Schema 2 | Project-local installer, user-selected folders independent of Git boundaries, Artifact Contract 2, no Git metadata writes |
 
-Only the latest verified Codex release branch is retained in Harness-Codex. The default branch follows the latest verified release; earlier source history remains reachable through commits. The table uses normalized display versions and does not relabel historical commits or evidence identifiers.
+Only the latest development version branch is retained in Harness-Codex and used as the default. Release publication separately requires verified artifacts; earlier source history remains reachable through commits. The table uses normalized display versions and does not relabel historical commits or evidence identifiers.
+
+## Harness for Codex v0.13.1-beta
+
+- Removes the extra first-setup message from Linux and Windows installer progress. Environment creation, elapsed timers and detailed Conda logs are unchanged.
+- Keeps v0.13.0-beta project and tool compatibility; cross-validation targets that immediately preceding version.
+- Native Auto build and release verification remain pending from v0.13.0-beta. A branch update does not publish verified release assets.
 
 ## Harness for Codex v0.13.0-beta
 

@@ -72,7 +72,6 @@ environments=$("$conda_command" env list --json 2>> "$install_log")
 printf '%s\n' "$environments" >> "$install_log"
 if [[ ${#owned_runtime[@]} -gt 0 && ! -f "$runtime_root/envs/harness/conda-meta/history" ]]; then
   [[ ! -e "$runtime_root/envs/harness" ]] || { printf 'Incomplete runtime environment preserved; inspect it before reinstalling.\n' >&2; exit 1; }
-  printf '      First setup: preparing Python and Git; this may take a few minutes...\n'
   "$conda_command" create "${environment_selector[@]}" --override-channels --channel conda-forge python=3.11 git --yes >> "$install_log" 2>&1
 else
   printf '      Reusing the existing Harness environment.\n'

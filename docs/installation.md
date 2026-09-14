@@ -18,18 +18,18 @@ The [README installation guide](../README.md#installation-guide) provides the st
 `reuse` retains the repository transport and automatic-update policy. Branch pins are retained except for the [one-time legacy-to-beta migration](versioning.md). `reset` applies the supplied/default preferences, clears the update-check cache and rebuilds the exact managed PATH registration. Both preserve verified releases and runtime files, project harnesses, unrelated shell/registry settings and modified user content. Reset does not authorize removing unknown directories. Without a terminal, an existing installation requires an explicit choice.
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.13.0-beta/install_harness_codex.sh | sh -s -- --existing reuse
+curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.13.1-beta/install_harness_codex.sh | sh -s -- --existing reuse
 source ~/.bashrc
 ```
 
 ```powershell
-& ([scriptblock]::Create((irm https://github.com/sholee-pt/Harness-Codex/releases/download/v0.13.0-beta/install_harness_codex.ps1))) -Existing reset
+& ([scriptblock]::Create((irm https://github.com/sholee-pt/Harness-Codex/releases/download/v0.13.1-beta/install_harness_codex.ps1))) -Existing reset
 ```
 
 ## Source installation
 
 ```bash
-git clone --branch v0.13.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
+git clone --branch v0.13.1-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
 bash Harness-Codex/installer/install.sh
 source ~/.bashrc
 ```

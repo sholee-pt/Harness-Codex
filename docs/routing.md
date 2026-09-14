@@ -122,7 +122,7 @@ block or concurrent PATH change is preserved and can block removal for review.
 For verified offline packages:
 
 ```bash
-harness-codex config --native-ui-archive harness-codex-ui-0.13.0-beta-linux-x86_64.tar.gz
+harness-codex config --native-ui-archive harness-codex-ui-0.13.1-beta-linux-x86_64.tar.gz
 ```
 
 The component includes official same-version helper binaries, file fingerprints,
