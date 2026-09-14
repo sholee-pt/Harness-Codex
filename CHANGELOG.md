@@ -63,6 +63,7 @@ Only the latest development version branch is retained in Harness-Codex and used
 ## Harness for Codex v0.13.1-beta
 
 - Removes the extra first-setup message from Linux and Windows installer progress. Environment creation, elapsed timers and detailed Conda logs are unchanged.
+- Binds both standalone downloaders and Windows help text to the built archive version, preventing an older template version from requesting missing release files.
 - Keeps v0.13.0-beta project and tool compatibility; cross-validation targets that immediately preceding version.
 - Native Auto build and release verification remain pending from v0.13.0-beta. A branch update does not publish verified release assets.
 

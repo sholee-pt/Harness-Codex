@@ -79,8 +79,9 @@ class ReleaseBuildTests(unittest.TestCase):
                          f"{report['sha256']}  {artifact.name}\n{report['bootstrapSha256']}  install_harness_codex.sh\n"
                          f"{report['windowsSha256']}  harness-codex-{self.version}-windows.zip\n"
                          f"{report['windowsBootstrapSha256']}  install_harness_codex.ps1\n")
-        self.assertEqual((self.output / "install_harness_codex.sh").read_bytes(), (self.root / "installer/install_harness_codex.sh").read_bytes())
-        self.assertEqual(report["bootstrapSha256"], hashlib.sha256((self.root / "installer/install_harness_codex.sh").read_bytes()).hexdigest())
+        linux_bootstrap = (self.output / "install_harness_codex.sh").read_bytes()
+        self.assertIn(('VERSION=' + self.version + '\n').encode(), linux_bootstrap)
+        self.assertEqual(report["bootstrapSha256"], hashlib.sha256(linux_bootstrap).hexdigest())
         files = self.contents(artifact)
         windows = Path(report['windowsArtifact'])
         self.assertEqual(report['windowsSha256'], hashlib.sha256(windows.read_bytes()).hexdigest())
@@ -92,7 +93,8 @@ class ReleaseBuildTests(unittest.TestCase):
                 windows_files[entry.filename.split('/', 1)[1]] = archive.read(entry)
         self.assertEqual(windows_files, files)
         bootstrap = self.output / 'install_harness_codex.ps1'
-        self.assertEqual(bootstrap.read_bytes(), (self.root / "installer" / bootstrap.name).read_bytes())
+        self.assertIn("$version = '" + self.version + "'\n", bootstrap.read_text())
+        self.assertIn('Harness for Codex ' + self.version + ' Windows installer.', bootstrap.read_text())
         self.assertEqual(report['windowsBootstrapSha256'], hashlib.sha256(bootstrap.read_bytes()).hexdigest())
         metadata = json.loads(files["_release.json"])
         self.assertEqual(metadata, {"runtime": "codex", "version": self.version, "commit": self.commit,
@@ -116,6 +118,20 @@ class ReleaseBuildTests(unittest.TestCase):
         for name, digest in checksum_entries.items():
             self.assertEqual(digest, hashlib.sha256(files[name]).hexdigest(), name)
         self.assertEqual(report["files"], len(files))
+
+    def test_ambiguous_downloader_versions_fail_before_output_creation(self):
+        for name, declaration in [('install_harness_codex.sh', 'VERSION=0.1.0-beta'),
+                                  ('install_harness_codex.ps1', "$version = '0.1.0-beta'")]:
+            with self.subTest(name=name):
+                path = self.root / 'installer' / name
+                original = path.read_bytes()
+                path.write_bytes(original + ('\n' + declaration + '\n').encode())
+                try:
+                    with self.assertRaisesRegex(ValueError, 'exactly one version declaration'):
+                        build_release.build(self.root, self.output, allow_dirty=True)
+                    self.assertFalse(self.output.exists())
+                finally:
+                    path.write_bytes(original)
 
     def test_archive_bytes_are_deterministic_across_output_directories(self):
         first = build_release.build(self.root, self.output)

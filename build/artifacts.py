@@ -6,13 +6,36 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import re
 import stat
 import tarfile
 import zipfile
 
 
+def render_bootstraps(templates: dict[str, bytes], version: str) -> dict[str, bytes]:
+    """Bind standalone downloaders to the version of the archives being built."""
+    rendered = {}
+    for name, pattern, assignment in (
+        ('install_harness_codex.sh', r'^VERSION=([^\r\n]+)$', 'VERSION=' + version),
+        ('install_harness_codex.ps1', r"^\$version = '([^'\r\n]+)'$", "$version = '" + version + "'"),
+    ):
+        text = templates[name].decode('utf-8').replace('\r\n', '\n')
+        previous = re.findall(pattern, text, re.M)
+        if len(previous) != 1:
+            raise ValueError(f'Expected exactly one version declaration in {name}')
+        text = re.sub(pattern, lambda _: assignment, text, flags=re.M)
+        if name.endswith('.ps1'):
+            help_version = 'Harness for Codex ' + previous[0] + ' Windows installer.'
+            if text.count(help_version) != 1:
+                raise ValueError('Windows installer help must match its version declaration')
+            text = text.replace(help_version, 'Harness for Codex ' + version + ' Windows installer.')
+        rendered[name] = text.encode('utf-8')
+    return rendered
+
+
 def write_artifacts(output: Path, version: str, commit: str | None,
                     files: dict[str, bytes], bootstraps: dict[str, bytes]) -> dict:
+    bootstraps = render_bootstraps(bootstraps, version)
     output.mkdir(parents=True, exist_ok=True)
     artifact = output / f"harness-codex-{version}-linux.tar.gz"
     content = io.BytesIO()
