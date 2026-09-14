@@ -71,7 +71,7 @@ conda run -n harness python build/build_release.py --output /tmp/harness-dist
 
 Build output must be outside the repository. Only local development builds may use `--allow-dirty`.
 
-Integration checks run explicitly in CI on Linux and Windows. For example:
+Integration checks currently run explicitly in CI on Linux. Windows builds and platform validation are paused until separately requested. For example:
 
 ```bash
 conda run -n harness python test/integration/prepare_release_baselines.py --output /tmp/harness-baselines

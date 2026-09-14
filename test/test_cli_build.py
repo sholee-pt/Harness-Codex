@@ -69,7 +69,7 @@ class ReleaseBuildTests(unittest.TestCase):
             self.skipTest(f"Symlink creation unavailable: {exc}")
 
     def test_clean_build_binds_payload_checksums_metadata_and_commit(self):
-        report = build_release.build(self.root, self.output)
+        report = build_release.build(self.root, self.output, platform='both')
         artifact = Path(report["artifact"])
         self.assertEqual(report["version"], self.version)
         self.assertEqual(report["commit"], self.commit)
@@ -134,12 +134,28 @@ class ReleaseBuildTests(unittest.TestCase):
                     path.write_bytes(original)
 
     def test_archive_bytes_are_deterministic_across_output_directories(self):
-        first = build_release.build(self.root, self.output)
-        second = build_release.build(self.root, self.base / "another output")
+        first = build_release.build(self.root, self.output, platform='both')
+        second = build_release.build(self.root, self.base / "another output", platform='both')
         self.assertEqual(Path(first["artifact"]).read_bytes(), Path(second["artifact"]).read_bytes())
         self.assertEqual(first["sha256"], second["sha256"])
         self.assertEqual(Path(first['windowsArtifact']).read_bytes(), Path(second['windowsArtifact']).read_bytes())
         self.assertEqual(Path(first["artifact"]).read_bytes()[4:8], b"\0\0\0\0")
+
+    def test_default_linux_release_contains_only_declared_assets_and_checksums(self):
+        report = build_release.build(self.root, self.output)
+        self.assertEqual(report['platforms'], ['linux'])
+        self.assertNotIn('windowsArtifact', report)
+        expected = {f'harness-codex-{self.version}-linux.tar.gz', 'install_harness_codex.sh'}
+        self.assertEqual({p.name for p in self.output.iterdir()}, expected | {'SHA256SUMS', 'build.json'})
+        sums = dict(line.split('  ', 1)[::-1] for line in (self.output / 'SHA256SUMS').read_text().splitlines())
+        self.assertEqual(set(sums), expected)
+        for name, digest in sums.items():
+            self.assertEqual(digest, hashlib.sha256((self.output / name).read_bytes()).hexdigest())
+        repeated = build_release.build(self.root, self.base / 'linux repeated')
+        self.assertEqual(Path(report['artifact']).read_bytes(), Path(repeated['artifact']).read_bytes())
+        with self.assertRaisesRegex(ValueError, 'platform'):
+            build_release.build(self.root, self.base / 'invalid', platform='unknown')
+        self.assertFalse((self.base / 'invalid').exists())
 
     def test_dirty_source_is_refused_before_creating_output(self):
         (self.root / "README.md").write_bytes(b"local unpublished modification\n")

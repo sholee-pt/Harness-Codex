@@ -66,8 +66,33 @@ Only the latest development version branch is retained in Harness-Codex and used
 - Binds both standalone downloaders and Windows help text to the built archive version, preventing an older template version from requesting missing release files.
 - Verifies downloader versions and checksums during release-build tests; ambiguous version declarations fail before creating build output.
 - Keeps Linux native compiler caches in runner temporary storage so build output does not invalidate the clean-source release check.
-- Allows cold native builds up to 300 minutes to finish CLI compilation and the required TUI tests; publication still requires every platform check to pass.
+- Limits CI and release assets to Linux while Windows work is paused. The release still requires Linux management, installation, upgrade, native build and full TUI/extension checks.
+- Adds the missing reviewed Auto menu snapshot. Runs original UI assertions using the upstream CI profile and development-version fixture, then restores release manifest bytes before compiling the shipped Codex 0.154.0 executable. This avoids release-version padding conflicts and unnecessary optimized test compilation without accepting snapshots automatically.
 - Retains v0.13.1-beta project and tool compatibility. Cross-validation targets the immediately preceding version; existing project agents and skills do not need to be recreated.
+
+### Linux installation
+
+```bash
+curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.13.2-beta/install_harness_codex.sh | sh
+source ~/.bashrc
+harness-codex --version
+cd /path/to/project
+harness-codex init --goal-file PROJECT.md
+source ~/.bashrc
+codex
+```
+
+The source installer supports Linux x86_64 and aarch64; native Auto is published for x86_64. On aarch64, use `init --no-codex-integration` with a separately installed Codex. Existing installations can use `harness-codex update`; project regeneration is not required for this patch. Windows builds and releases are paused.
+
+| Release file | Purpose |
+| --- | --- |
+| `install_harness_codex.sh` | Linux downloader, checksum verification and isolated tool setup |
+| `harness-codex-0.13.2-beta-linux.tar.gz` | Tool source archive, including the local installer |
+| `harness-codex-ui-0.13.2-beta-linux-x86_64.tar.gz` | Native Codex with the Auto extension and required helper resources |
+| `SHA256SUMS` | Digests of the downloadable installers and archives |
+| `build.json` | Exact source commit, declared platforms and native package fingerprints |
+
+Static and runtime integration checks do not establish model quality or token savings. `harness-codex uninstall` previews removal and requires confirmation; project harnesses and native conversation history are preserved.
 
 ## Harness for Codex v0.13.1-beta
 

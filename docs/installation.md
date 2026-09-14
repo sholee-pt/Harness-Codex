@@ -2,6 +2,8 @@
 
 The [README installation guide](../README.md#installation-guide) provides the standard commands. Release installers are version-bound; subsequent `harness-codex update` follows the latest Codex branch unless pinned.
 
+Current releases and CI target Linux. Windows installation code and the option references below are retained for future work; no Windows installer or native package is published while Windows validation is paused.
+
 ## Options
 
 | Linux | Windows | Effect |

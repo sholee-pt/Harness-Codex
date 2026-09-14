@@ -34,7 +34,9 @@ def render_bootstraps(templates: dict[str, bytes], version: str) -> dict[str, by
 
 
 def write_artifacts(output: Path, version: str, commit: str | None,
-                    files: dict[str, bytes], bootstraps: dict[str, bytes]) -> dict:
+                    files: dict[str, bytes], bootstraps: dict[str, bytes], *, platform: str = 'linux') -> dict:
+    if platform not in ('linux', 'both'):
+        raise ValueError('Build platform must be linux or both')
     bootstraps = render_bootstraps(bootstraps, version)
     output.mkdir(parents=True, exist_ok=True)
     artifact = output / f"harness-codex-{version}-linux.tar.gz"
@@ -55,22 +57,27 @@ def write_artifacts(output: Path, version: str, commit: str | None,
         stream.write(bootstraps["install_harness_codex.sh"])
     bootstrap.chmod(0o755)
     bootstrap_digest = hashlib.sha256(bootstraps["install_harness_codex.sh"]).hexdigest()
-    windows = output / f"harness-codex-{version}-windows.zip"
-    with zipfile.ZipFile(windows, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-        for name, data in sorted(files.items()):
-            info = zipfile.ZipInfo(f"harness-codex-{version}/{name}", date_time=(1980, 1, 1, 0, 0, 0))
-            info.create_system = 3
-            info.external_attr = (stat.S_IFREG | 0o644) << 16
-            archive.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
-    windows_digest = hashlib.sha256(windows.read_bytes()).hexdigest()
-    windows_bootstrap = output / "install_harness_codex.ps1"
-    windows_bootstrap.write_bytes(bootstraps[windows_bootstrap.name])
-    windows_bootstrap_digest = hashlib.sha256(windows_bootstrap.read_bytes()).hexdigest()
-    with (output / "SHA256SUMS").open("x", encoding="utf-8", newline="\n") as stream:
-        stream.write(f"{digest}  {artifact.name}\n{bootstrap_digest}  {bootstrap.name}\n{windows_digest}  {windows.name}\n{windows_bootstrap_digest}  {windows_bootstrap.name}\n")
     report = {"runtime": "codex", "version": version, "commit": commit, "developmentBuild": commit is None,
-              "artifact": str(artifact), "sha256": digest, "bootstrapSha256": bootstrap_digest, "windowsArtifact": str(windows), "windowsSha256": windows_digest,
-              "windowsBootstrapSha256": windows_bootstrap_digest, "files": len(files)}
+              "platforms": ['linux'] if platform == 'linux' else ['linux', 'windows'],
+              "artifact": str(artifact), "sha256": digest, "bootstrapSha256": bootstrap_digest, "files": len(files)}
+    sums = f"{digest}  {artifact.name}\n{bootstrap_digest}  {bootstrap.name}\n"
+    if platform == 'both':
+        windows = output / f"harness-codex-{version}-windows.zip"
+        with zipfile.ZipFile(windows, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+            for name, data in sorted(files.items()):
+                info = zipfile.ZipInfo(f"harness-codex-{version}/{name}", date_time=(1980, 1, 1, 0, 0, 0))
+                info.create_system = 3
+                info.external_attr = (stat.S_IFREG | 0o644) << 16
+                archive.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+        windows_digest = hashlib.sha256(windows.read_bytes()).hexdigest()
+        windows_bootstrap = output / "install_harness_codex.ps1"
+        windows_bootstrap.write_bytes(bootstraps[windows_bootstrap.name])
+        windows_bootstrap_digest = hashlib.sha256(windows_bootstrap.read_bytes()).hexdigest()
+        sums += f"{windows_digest}  {windows.name}\n{windows_bootstrap_digest}  {windows_bootstrap.name}\n"
+        report.update(windowsArtifact=str(windows), windowsSha256=windows_digest,
+                      windowsBootstrapSha256=windows_bootstrap_digest)
+    with (output / "SHA256SUMS").open("x", encoding="utf-8", newline="\n") as stream:
+        stream.write(sums)
     with (output / "build.json").open("x", encoding="utf-8", newline="\n") as stream:
         stream.write(json.dumps(report, indent=2) + "\n")
     return report

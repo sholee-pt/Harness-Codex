@@ -14,7 +14,7 @@ codex resume --last
 
 The original renderer, composer, animations, colors, shortcuts, slash commands,
 attachments, permissions, authentication and native history remain Codex-owned.
-The integration supports Linux x86_64 and Windows x64. Other architectures can
+The current integration release supports Linux x86_64; Windows releases are paused. Other architectures can
 use a separately installed Codex with `init --no-codex-integration`, without Auto.
 
 ## Integration design and original Codex preservation

@@ -1,4 +1,4 @@
-"""Attach both verified native assets to an exact-commit tool release."""
+"""Attach all declared platform assets to an exact-commit tool release."""
 import argparse
 import json
 from pathlib import Path
@@ -15,9 +15,16 @@ def attach(dist, artifacts):
     build = json.loads((dist / 'build.json').read_text(encoding='utf-8'))
     if not build.get('commit') or build.get('developmentBuild'):
         raise ValueError('Native components require a verified source release')
+    platforms = build.get('platforms', ['linux', 'windows'])
+    if platforms not in (['linux'], ['linux', 'windows']):
+        raise ValueError('Unsupported release platforms')
+    targets = [platform + '-x86_64' for platform in platforms]
+    expected = {f'harness-codex-ui-{build["version"]}-{target}.tar.gz' for target in targets}
+    if {path.name for path in artifacts.rglob('harness-codex-ui-*.tar.gz')} != expected:
+        raise ValueError('Native assets must match the declared release platforms')
     entries, selected = {}, {}
     with tempfile.TemporaryDirectory(prefix='harness-ui-attach-') as temporary:
-        for platform in package.TARGETS:
+        for platform in targets:
             name = f'harness-codex-ui-{build["version"]}-{platform}.tar.gz'
             candidates = list(artifacts.rglob(name))
             if len(candidates) != 1 or (dist / name).exists():

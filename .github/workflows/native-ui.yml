@@ -19,11 +19,8 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             platform: linux-x86_64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            platform: windows-x86_64
     runs-on: ${{ matrix.os }}
-    # Cold Windows CLI compilation can exceed two hours before TUI test compilation.
+    # Keep cold Linux builds bounded; Windows builds are paused.
     timeout-minutes: 300
     env:
       CARGO_BUILD_JOBS: 2
@@ -77,12 +74,6 @@ jobs:
       - name: Verify the pinned upstream V8 dependencies
         shell: bash -el {0}
         run: conda run --no-capture-output -n harness python -B build/native_ui/dependencies.py --root "${RUNNER_TEMP}/codex-ui" --target ${{ matrix.target }} --output "${RUNNER_TEMP}/harness-v8"
-      - name: Use the upstream MSVC environment
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          & "$env:RUNNER_TEMP/codex-ui/.github/actions/setup-msvc-env/setup-msvc-env.ps1" -Target '${{ matrix.target }}'
-          'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> $env:GITHUB_ENV
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ runner.temp }}/codex-ui/codex-rs -> target
@@ -100,6 +91,14 @@ jobs:
           conda run --no-capture-output -n harness just fmt
           conda run --no-capture-output -n harness python -B "${GITHUB_WORKSPACE}/build/native_ui/review.py" --root "${RUNNER_TEMP}/codex-ui"
           conda run --no-capture-output -n harness python -B "${GITHUB_WORKSPACE}/build/native_ui/source.py"
+      - name: Check the original TUI and extension tests
+        env:
+          HARNESS_SELECTOR_TEST_SCRIPT: ${{ github.workspace }}/harness_cli/native_router.py
+        shell: bash -el {0}
+        run: |
+          conda run --no-capture-output -n harness python -B build/native_ui/run_tests.py --root "${RUNNER_TEMP}/codex-ui" --target ${{ matrix.target }}
+          conda run --no-capture-output -n harness python -B build/native_ui/review.py --root "${RUNNER_TEMP}/codex-ui"
+          conda run --no-capture-output -n harness python -B build/native_ui/source.py
       - name: Build the original CLI with the Harness menu hook
         id: native-build
         shell: bash -el {0}
@@ -108,18 +107,9 @@ jobs:
       - name: Assemble the verified native package
         shell: bash -el {0}
         run: |
-          suffix=""
-          if [[ "${{ runner.os }}" == "Windows" ]]; then suffix=".exe"; fi
-          conda run --no-capture-output -n harness python -B build/native_ui/package.py assemble --root "${RUNNER_TEMP}/native-package" --platform ${{ matrix.platform }} --binary "${RUNNER_TEMP}/codex-ui/codex-rs/target/${{ matrix.target }}/release/codex${suffix}" --output "${RUNNER_TEMP}/native-dist"
-          "${RUNNER_TEMP}/native-package/bin/codex${suffix}" --version
-          "${RUNNER_TEMP}/native-package/bin/codex${suffix}" --help
-      - name: Check the original TUI and extension tests
-        if: ${{ !cancelled() && steps.native-build.outcome == 'success' }}
-        env:
-          HARNESS_SELECTOR_TEST_SCRIPT: ${{ github.workspace }}/harness_cli/native_router.py
-        shell: bash -el {0}
-        working-directory: ${{ runner.temp }}/codex-ui/codex-rs
-        run: conda run --no-capture-output -n harness just test -p codex-tui --release --target ${{ matrix.target }} --locked
+          conda run --no-capture-output -n harness python -B build/native_ui/package.py assemble --root "${RUNNER_TEMP}/native-package" --platform ${{ matrix.platform }} --binary "${RUNNER_TEMP}/codex-ui/codex-rs/target/${{ matrix.target }}/release/codex" --output "${RUNNER_TEMP}/native-dist"
+          "${RUNNER_TEMP}/native-package/bin/codex" --version
+          "${RUNNER_TEMP}/native-package/bin/codex" --help
       - name: Preserve build and patch review evidence
         if: always()
         shell: bash -el {0}
@@ -131,11 +121,11 @@ jobs:
           name: native-ui-${{ runner.os }}
           path: |
             ${{ runner.temp }}/codex-ui/codex-rs/target/${{ matrix.target }}/release/codex
-            ${{ runner.temp }}/codex-ui/codex-rs/target/${{ matrix.target }}/release/codex.exe
             ${{ runner.temp }}/codex-ui-patch.diff
             ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/harness_routing.rs
             ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/tests/harness_routing_tests.rs
             ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/tests/snapshots/*harness*
             ${{ runner.temp }}/codex-ui/codex-rs/tui/src/chatwidget/snapshots/*harness*
+            ${{ runner.temp }}/codex-ui/codex-rs/target/nextest/default/junit.xml
             ${{ runner.temp }}/native-dist/*
           retention-days: 7

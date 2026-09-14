@@ -11,7 +11,7 @@ import tomllib
 HERE = Path(__file__).resolve().parent
 
 
-def normalize_workspace_versions(root):
+def normalize_workspace_versions(root, previous='0.0.0'):
     """The upstream tag bumps workspace version but retains 0.0.0 path locks.
 
     Normalize only local workspace package versions; keep every external source,
@@ -30,11 +30,11 @@ def normalize_workspace_versions(root):
     blocks = content.split('[[package]]')
     for index, block in enumerate(blocks[1:], 1):
         item = tomllib.loads(block)
-        if item.get('name') in names and 'source' not in item and item.get('version') == '0.0.0':
-            blocks[index] = block.replace('version = "0.0.0"', f'version = "{version}"', 1)
+        if item.get('name') in names and 'source' not in item and item.get('version') == previous:
+            blocks[index] = block.replace(f'version = "{previous}"', f'version = "{version}"', 1)
     content = '[[package]]'.join(blocks)
     for name in names:
-        content = content.replace(f'"{name} 0.0.0"', f'"{name} {version}"')
+        content = content.replace(f'"{name} {previous}"', f'"{name} {version}"')
     path.write_text(content, encoding='utf-8', newline='\n')
 
 
@@ -87,6 +87,10 @@ def prepare(root):
     tests = root / 'codex-rs/tui/src/chatwidget/tests.rs'
     tests.write_text(tests.read_text(encoding='utf-8') + '\nmod harness_routing_tests;\n', encoding='utf-8', newline='\n')
     (root / 'codex-rs/tui/src/chatwidget/tests/harness_routing_tests.rs').write_bytes((HERE / 'harness_routing_tests.rs').read_bytes())
+    snapshots = root / 'codex-rs/tui/src/chatwidget/tests/snapshots'
+    snapshots.mkdir(exist_ok=True)
+    for path in (HERE / 'snapshots').glob('*.snap'):
+        (snapshots / path.name).write_bytes(path.read_bytes())
     print(json.dumps({'upstream': revision, 'modified': ['codex-rs/Cargo.lock', *edits],
         'extensionSha256': hashlib.sha256((HERE / 'harness_routing.rs').read_bytes()).hexdigest(),
         'rendererModified': False}, indent=2))

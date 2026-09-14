@@ -12,12 +12,11 @@
 
 <p align="center">
   <a href="environment.yml"><img src="https://img.shields.io/badge/Python-3.11-3776AB.svg?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.11"></a>
-  <a href="#for-linux"><img src=".github/badges/platform.svg" alt="Platform: Linux and Windows"></a>
+  <a href="#for-linux"><img src=".github/badges/platform.svg" alt="Platform: Linux"></a>
 </p>
 
 <p align="center">
   <a href="#for-linux">Linux install</a> &middot;
-  <a href="#for-windows">Windows install</a> &middot;
   <a href="#quick-start">Quick start</a> &middot;
   <a href="https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.13.2-beta">Release</a> &middot;
   <a href="CHANGELOG.md">Changelog</a>
@@ -27,7 +26,7 @@ Generate and maintain one shared project harness with Codex-native agents and sk
 
 **Development beta:** Harness is still under development and testing.
 
-Installers and native Codex packages are published together after Linux and Windows builds and integration checks pass.
+Linux installers and native Codex packages are published together after Linux builds and integration checks pass. Windows validation and releases are paused.
 
 ## Installation Guide
 
@@ -42,14 +41,7 @@ Supports Linux x86_64 and aarch64. Requires curl, Bash, tar and sha256sum. The i
 
 ### For Windows
 
-Run in **64-bit Windows PowerShell 5.1 or PowerShell 7** on Windows x64:
-
-```powershell
-irm https://github.com/sholee-pt/Harness-Codex/releases/download/v0.13.2-beta/install_harness_codex.ps1 | iex
-harness-codex --version
-```
-
-The installer verifies the ZIP checksum, prepares an isolated Python 3.11 environment and Git, and adds the command to your user PATH. It also updates PATH in the current PowerShell session. Administrator access is not required.
+Windows builds and releases are paused. This release does not include a Windows installer or native package. Existing Windows source remains available for future work.
 
 When migrating from 0.10.0-beta, run this installer once: its updater cannot discover the new unprefixed branches. If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness-Codex/blob/v0.13.2-beta/docs/installation.md).
 
@@ -82,7 +74,7 @@ is preserved separately. No Harness conversation launcher is required.
 For Auto to start enabled, configure with `--auto-model auto`; otherwise native
 model defaults remain in effect until you select Auto. This preference is owned
 by Harness and does not rewrite global Codex settings. The Auto integration
-supports Linux x86_64 and Windows x64. On unsupported architectures, use
+is currently released for Linux x86_64. On unsupported architectures, use
 `--no-codex-integration` with a separately installed Codex; Auto is unavailable.
 See [integration and routing](docs/routing.md).
 

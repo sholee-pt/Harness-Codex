@@ -22,9 +22,6 @@ jobs:
           - os: ubuntu-latest
             platform: linux-x86_64
             suffix: ''
-          - os: windows-latest
-            platform: windows-x86_64
-            suffix: '.exe'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
