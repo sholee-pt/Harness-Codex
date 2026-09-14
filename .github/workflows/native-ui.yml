@@ -23,7 +23,8 @@ jobs:
             target: x86_64-pc-windows-msvc
             platform: windows-x86_64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 180
+    # Cold Windows CLI compilation can exceed two hours before TUI test compilation.
+    timeout-minutes: 300
     env:
       CARGO_BUILD_JOBS: 2
       CARGO_PROFILE_RELEASE_DEBUG: 0
