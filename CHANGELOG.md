@@ -65,6 +65,7 @@ Only the latest development version branch is retained in Harness-Codex and used
 
 - Binds both standalone downloaders and Windows help text to the built archive version, preventing an older template version from requesting missing release files.
 - Verifies downloader versions and checksums during release-build tests; ambiguous version declarations fail before creating build output.
+- Keeps Linux native compiler caches in runner temporary storage so build output does not invalidate the clean-source release check.
 - Retains v0.13.1-beta project and tool compatibility. Cross-validation targets the immediately preceding version; existing project agents and skills do not need to be recreated.
 
 ## Harness for Codex v0.13.1-beta

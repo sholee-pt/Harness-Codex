@@ -65,6 +65,12 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: |
+          # setup-zig exports checkout-local caches even with use-cache disabled.
+          # Keep compiler output outside the source identity being packaged.
+          export ZIG_GLOBAL_CACHE_DIR="${RUNNER_TEMP}/harness-zig-cache/global"
+          export ZIG_LOCAL_CACHE_DIR="${RUNNER_TEMP}/harness-zig-cache/local"
+          echo "ZIG_GLOBAL_CACHE_DIR=${ZIG_GLOBAL_CACHE_DIR}" >> "$GITHUB_ENV"
+          echo "ZIG_LOCAL_CACHE_DIR=${ZIG_LOCAL_CACHE_DIR}" >> "$GITHUB_ENV"
           bash "${RUNNER_TEMP}/codex-ui/.github/scripts/install-musl-build-tools.sh"
           echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
       - name: Verify the pinned upstream V8 dependencies
