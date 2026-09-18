@@ -1,4 +1,4 @@
-"""Conservative, in-memory next-turn routing; never runs a model or changes files.
+"""Bounded, in-memory next-turn routing; never runs a model or changes files.
 
 Profile preferences are explicit policy, not benchmark results or pricing claims.
 Only visible catalog entries and their advertised reasoning options are selected.
@@ -26,6 +26,7 @@ class Context:
     effort: str | None = None
     failures: int = 0
     active_task: bool = False
+    lighter_requests: int = 0
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ class Decision:
 def validate_context(context):
     if (context.tier not in TIERS or type(context.failures) is not int
             or not 0 <= context.failures <= 100 or type(context.active_task) is not bool
+            or type(context.lighter_requests) is not int or not 0 <= context.lighter_requests <= 1
             or context.effort is not None and context.effort not in EFFORTS
             or context.model is not None and (not isinstance(context.model, str) or not context.model.strip())):
         raise ValueError('Invalid routing task context.')
@@ -77,22 +79,36 @@ def classify(prompt, context, *, new_task=False):
     if not isinstance(prompt, str) or not prompt.strip() or '\0' in prompt or len(prompt.encode('utf-8')) > MAX_PROMPT:
         raise ValueError('Provide a nonempty routing prompt of at most 32 KiB without NUL characters.')
     text = re.sub(r'\s+', ' ', prompt.casefold()).strip()
-    # Continuations inherit their task even when the new message is very short.
-    if context.active_task and not new_task:
+    tier, reason = _request_tier(text)
+    if context.active_task and not (new_task or starts_new_task(text)):
         if context.failures >= 2:
             return 'deep', 'repeated-failure'
-        if _complex(text):
-            return 'deep', 'complex-change'
-        return context.tier, 'continue-task'
+        if tier == 'deep':
+            return tier, reason
+        continuation = re.search(r'^(continue\b|yes\b|no\b|do it\b|try again\b|same\b|that\b|it\b|계속|이어서|앞서|아까|그것|그대로|그럼|그러면|다시|한\s*번\s*더|네[.!\s]*$|응[.!\s]*$)', text)
+        if continuation or reason == 'uncertain-scope':
+            return context.tier, 'continue-task'
+        if TIERS.index(tier) < TIERS.index(context.tier) and context.lighter_requests == 0:
+            return context.tier, 'lighter-request-pending'
+    return tier, reason
+
+
+def starts_new_task(prompt):
+    return bool(re.search(r'^\s*(new task\b|next task\b|separate (task|request)\b|unrelated (task|request)\b|새(?:로운)?\s*작업|다음\s*작업|다른\s*작업|별개로|별도의\s*요청)', prompt.casefold()))
+
+
+def _request_tier(text):
     if _complex(text):
         return 'deep', 'complex-change'
-    # A narrow edit is the only automatic downgrade. Unknown work stays balanced.
+    # Clear scope may change tiers; ambiguous follow-ups retain their selection.
     edit = re.search(r'\b(typo|spelling|punctuation)\b|오탈자|오타|맞춤법', text)
     documentation = re.search(r'\breadme\b|문서|documentation', text)
     local_edit = re.search(r'\b(sentence|word|heading|wording)\b|문장|단어|제목|문구', text)
     code_work = re.search(r'\b(code|function|bug|logic|algorithm|refactor|implement)\b|코드|함수|버그|로직|알고리즘|리팩|구현', text)
     if (edit or documentation and local_edit) and not code_work and len(text) <= 700:
         return 'fast', 'narrow-text-edit'
+    if code_work and re.search(r'\b(function|module|endpoint|pipeline|test|feature|api)\b|함수|모듈|기능|파이프라인|테스트', text):
+        return 'balanced', 'scoped-code-request'
     return 'balanced', 'uncertain-scope'
 
 
@@ -106,8 +122,8 @@ def _complex(text):
 def choose(prompt, catalog, *, context=Context(), new_task=False, profiles=None, fixed=None):
     """Plan one future turn. A fixed (model, effort) selection disables routing.
 
-    Keep an active task's valid selection, unless repeated failures/complexity
-    justify escalation. Explicit new-task boundaries allow downgrades. Missing
+    Keep ambiguous follow-ups stable. Clear scope can escalate immediately;
+    lighter requests require confirmation across turns or a new-task boundary. Missing
     model metadata retains native settings instead of guessing a valid model.
     """
     tier, reason = classify(prompt, context, new_task=new_task)
@@ -128,14 +144,13 @@ def choose(prompt, catalog, *, context=Context(), new_task=False, profiles=None,
         if entry is None or effort not in _efforts(entry):
             raise ValueError('The fixed model/reasoning combination is not supported by the visible catalog.')
         return Decision(context.tier, model, effort, 'manual-fixed', 'manual', (model, effort) != (context.model, context.effort))
-    if reason == 'continue-task' and context.model in entries and context.effort in _efforts(entries[context.model]):
+    if reason in {'continue-task', 'lighter-request-pending'} and context.model in entries and context.effort in _efforts(entries[context.model]):
         return Decision(tier, context.model, context.effort, reason, 'retained', False)
     default = next((entry for entry in entries.values() if entry.get('isDefault') is True), None)
     selected = next((entries[name] for name in preferences[tier] if name in entries), None)
     selection = 'profile'
     if selected is None:
-        selected = entries.get(context.model) if context.active_task and not new_task else default
-        selected = selected or default
+        selected = default or entries.get(context.model)
         selection = 'available-default'
     if selected is None:
         return Decision(tier, None, None, reason, 'native-unresolved', False)
@@ -166,4 +181,5 @@ def advance(context, decision, *, succeeded, task_complete=False):
     if type(succeeded) is not bool or type(task_complete) is not bool:
         raise ValueError('Execution feedback must use explicit boolean outcomes.')
     return Context(decision.tier, decision.model or context.model, decision.effort or context.effort,
-                   0 if succeeded else min(context.failures + 1, 100), not task_complete)
+                   0 if succeeded else min(context.failures + 1, 100), not task_complete,
+                   int(not task_complete and decision.reason == 'lighter-request-pending'))

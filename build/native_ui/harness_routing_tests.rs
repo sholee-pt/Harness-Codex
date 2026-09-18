@@ -1,6 +1,44 @@
 use super::*;
 
 #[tokio::test]
+async fn auto_footer_updates_on_selection_and_manual_return_without_another_turn() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(Some("gpt-5.2")).await;
+    chat.show_welcome_banner = false;
+    chat.local_settings.tui.status_line = Some(vec!["model-with-reasoning".to_string()]);
+    chat.set_reasoning_effort(Some(ReasoningEffortConfig::High));
+    let original = chat.status_line_text().expect("native footer");
+    chat.harness_routing.lock().expect("state").enabled = true;
+    let mut items = Vec::new();
+    chat.add_harness_auto_choice(&mut items);
+    (items[0].actions[0])(&chat.app_event_tx);
+    chat.pre_draw_tick();
+    assert_eq!(chat.status_line_text(), Some(format!("Auto selected: {original}")));
+    assert!(render_bottom_popup(&chat, /*width*/ 120).contains("Auto selected:"));
+    chat.set_reasoning_effort(Some(ReasoningEffortConfig::Medium));
+    assert_eq!(chat.status_line_text(), Some("Auto selected: gpt-5.2 medium".to_string()));
+    chat.harness_routing.lock().expect("state").active = false;
+    chat.pre_draw_tick();
+    assert_eq!(chat.status_line_text(), Some("gpt-5.2 medium".to_string()));
+}
+
+#[tokio::test]
+async fn startup_auto_and_model_only_footer_preserve_native_manual_display() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(Some("gpt-5.2")).await;
+    chat.local_settings.tui.status_line = Some(vec!["model-name".to_string()]);
+    chat.set_reasoning_effort(Some(ReasoningEffortConfig::High));
+    {
+        let mut state = chat.harness_routing.lock().expect("state");
+        state.enabled = true;
+        state.active = true;
+    }
+    chat.pre_draw_tick();
+    assert_eq!(chat.status_line_text(), Some("Auto selected: gpt-5.2 high".to_string()));
+    chat.harness_routing.lock().expect("state").enabled = false;
+    chat.pre_draw_tick();
+    assert_eq!(chat.status_line_text(), Some("gpt-5.2".to_string()));
+}
+
+#[tokio::test]
 async fn native_manual_choice_disables_auto_and_reselection_resets_only_this_widget() {
     let (mut chat, _rx, _ops) = make_chatwidget_manual(None).await;
     let (other, _other_rx, _other_ops) = make_chatwidget_manual(None).await;

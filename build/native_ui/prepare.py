@@ -51,7 +51,16 @@ def prepare(root):
         'codex-rs/tui/src/chatwidget.rs': [
             ('mod model_popups;', 'mod model_popups;\nmod harness_routing;'),
             ('    model_popup_request_id: Option<uuid::Uuid>,',
-             '    model_popup_request_id: Option<uuid::Uuid>,\n    harness_routing: Arc<std::sync::Mutex<harness_routing::Routing>>,')],
+             '    model_popup_request_id: Option<uuid::Uuid>,\n    harness_routing: Arc<std::sync::Mutex<harness_routing::Routing>>,'),
+            ('        self.refresh_status_line_if_workspace_headline_due();',
+             '        self.refresh_harness_status();\n        self.refresh_status_line_if_workspace_headline_due();')],
+        'codex-rs/tui/src/chatwidget/status_surfaces.rs': [
+            ('    fn model_with_reasoning_display_name(&self) -> String {',
+             '    pub(super) fn model_with_reasoning_display_name(&self) -> String {'),
+            ('StatusLineItem::ModelName => Some(self.model_display_name().to_string()),',
+             'StatusLineItem::ModelName => Some(self.harness_model_status(self.model_display_name().to_string())),'),
+            ('StatusLineItem::ModelWithReasoning => Some(self.model_with_reasoning_display_name()),',
+             'StatusLineItem::ModelWithReasoning => Some(self.harness_model_status(self.model_with_reasoning_display_name())),')],
         'codex-rs/tui/src/chatwidget/constructor.rs': [
             ('            model_popup_request_id: None,',
              '            model_popup_request_id: None,\n            harness_routing: harness_routing::new_state(),')],

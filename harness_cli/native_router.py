@@ -10,7 +10,7 @@ import sys
 if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from harness_cli.model_routing import Context, choose, validate_context
+from harness_cli.model_routing import Context, choose, starts_new_task, validate_context
 
 
 def select(value):
@@ -38,7 +38,7 @@ def select(value):
         effort = value['effort']
         tier = 'deep' if effort in {'high', 'xhigh', 'max', 'ultra'} else 'balanced'
         context = Context(tier=tier, model=value['model'], effort=effort)
-    elif isinstance(previous, dict) and set(previous) == set(asdict(Context())):
+    elif isinstance(previous, dict) and set(previous) in (set(asdict(Context())), set(asdict(Context())) - {'lighter_requests'}):
         context = Context(**previous)
     else:
         raise ValueError('Invalid native routing context')
@@ -51,7 +51,9 @@ def select(value):
         profiles = read_json(Path(profile))
     decision = choose(prompt, catalog, context=context, profiles=profiles)
     next_context = replace(context, tier=decision.tier, model=decision.model or context.model,
-                           effort=decision.effort or context.effort, active_task=True)
+                           effort=decision.effort or context.effort, active_task=True,
+                           failures=0 if starts_new_task(prompt) else context.failures,
+                           lighter_requests=int(decision.reason == 'lighter-request-pending'))
     return {'model': decision.model, 'effort': decision.effort,
             'context': asdict(next_context)}
 

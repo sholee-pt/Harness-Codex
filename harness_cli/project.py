@@ -53,6 +53,7 @@ def register_project_commands(subparsers) -> None:
             parser.add_argument('--native-ui-archive', type=Path, help='Verified native Codex extension archive for offline integration setup.')
             parser.add_argument('--auto-model', choices=('manual', 'auto'), help='Default inference choice for new Codex launches; existing Codex preferences stay unchanged.')
             parser.add_argument('--no-codex-integration', action='store_true', help='Configure project files only; do not install the optional native Auto extension.')
+            parser.add_argument('--activate', choices=('ask', 'shell', 'skip'), default='ask', help='After native integration, offer a Bash with ~/.bashrc loaded; skip in noninteractive/JSON mode.')
             parser.add_argument('--maintenance', choices=('off', 'suggest', 'auto'),
                                 help='Opt into bounded maintenance after configuration; auto may update existing skills only.')
             parser.add_argument('--interactive', action='store_true', help='Use the native Codex conversation screen instead of progress output.')
@@ -443,6 +444,8 @@ def _configure_integration(args, source_root):
                      profiles=getattr(args, 'routing_profiles', None))
     ui.report(report, title='Native Codex integration')
     print(report['nextStep'])
+    from .shell import offer_activation
+    offer_activation(mode=getattr(args, 'activate', 'ask'), cwd=args.project)
 
 
 def _launch(command: list[str], root: Path, prompt: str, *, settings: str = 'native', environment=None) -> int:

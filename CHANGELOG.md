@@ -8,6 +8,7 @@ Release and tag history starts at `v0.10.0-beta` after a one-time reset. Earlier
 
 | Version | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
+| [`v0.14.0-beta`](#harness-for-codex-v0140-beta) | Harness for Codex v0.14.0-beta | Schema 3 | Schema 7 | Schema 2 | Auto footer, adaptive request routing and interactive Bash activation |
 | [`v0.13.2-beta`](#harness-for-codex-v0132-beta) | Harness for Codex v0.13.2-beta | Schema 3 | Schema 7 | Schema 2 | Bind standalone installers to the built release version |
 | [`v0.13.1-beta`](#harness-for-codex-v0131-beta) | Harness for Codex v0.13.1-beta | Schema 3 | Schema 7 | Schema 2 | Remove the first-setup message from installer progress |
 | [`v0.13.0-beta`](#harness-for-codex-v0130-beta) | Harness for Codex v0.13.0-beta | Schema 3 | Schema 7 | Schema 2 | Native Codex conversations, persistent project activation and direct Auto integration |
@@ -60,6 +61,38 @@ Release and tag history starts at `v0.10.0-beta` after a one-time reset. Earlier
 | [`v0.9.0-beta`](#harness-for-codex-v090-beta) | Harness for Codex v0.9.0-beta | Schema 3 | Schema 7 | Schema 2 | Project-local installer, user-selected folders independent of Git boundaries, Artifact Contract 2, no Git metadata writes |
 
 Only the latest development version branch is retained in Harness-Codex and used as the default. Release publication separately requires verified artifacts; earlier source history remains reachable through commits. The table uses normalized display versions and does not relabel historical commits or evidence identifiers.
+
+## Harness for Codex v0.14.0-beta
+
+- Shows `Auto selected: MODEL REASONING` in native model footer items as soon as Auto is selected, and restores the native label on manual selection. The original renderer, input handling and permission settings remain intact.
+- Allows clear new tasks and complexity increases to change the pair immediately. Two consecutive clearly lighter requests can lower the tier; ambiguous continuations retain the pair and interrupt pending downgrades. Routing uses local rules and bounded memory, without a routing model or stored prompt history.
+- Offers Enter/yes after successful interactive Linux `init/config/reset` integration to open Bash in the project with `~/.bashrc` loaded. `--activate ask|shell|skip` controls this behavior; JSON, redirected sessions and dry runs do not open a shell. The parent shell remains unchanged.
+- Retains v0.13.2-beta project contracts, native history and owned installation checks. Upgrade comparison targets only the immediately preceding version. No project regeneration is required for these tool/UI changes.
+
+### Linux installation
+
+```bash
+curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.14.0-beta/install_harness_codex.sh | sh
+# Press Enter to open Bash with ~/.bashrc loaded.
+harness-codex --version
+cd /path/to/project
+harness-codex init --goal-file PROJECT.md
+# Press Enter again after native integration, then:
+codex
+# Select Auto in /model.
+```
+
+Existing installations use `harness-codex update`, then `source ~/.bashrc` and a new native Codex process for the updated footer. Existing projects can keep their harness. Native Auto is published for Linux x86_64; on aarch64, use `init --no-codex-integration` with a separately installed Codex. Windows builds and releases remain paused.
+
+| Release file | Purpose |
+| --- | --- |
+| `install_harness_codex.sh` | Linux downloader with checksum verification and isolated tool setup |
+| `harness-codex-0.14.0-beta-linux.tar.gz` | Tool source archive and local installer |
+| `harness-codex-ui-0.14.0-beta-linux-x86_64.tar.gz` | Native Codex, Auto extension and required helper resources |
+| `SHA256SUMS` | Digests of installers and archives |
+| `build.json` | Exact source commit, platforms and native package fingerprints |
+
+Publication requires Linux management, installation, previous-version upgrade and full native TUI/extension checks. Rule tests establish selection behavior, not model quality or measured token savings. Confirmed `harness-codex uninstall` preserves project harnesses and native history.
 
 ## Harness for Codex v0.13.2-beta
 

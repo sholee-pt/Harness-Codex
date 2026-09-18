@@ -6,7 +6,7 @@ There is no separate conversation UI, session manager or Python launcher.
 
 ```bash
 harness-codex init --goal-file PROJECT.md
-# Open a fresh terminal to load PATH, then:
+# Press Enter after init to load ~/.bashrc in a new Bash, then:
 codex
 codex resume
 codex resume --last
@@ -69,13 +69,20 @@ restricted.
 The initial preferences are Luna, then Spark, for fast work; the native default
 for balanced work; and Astra for deep work. These are explicit policy choices,
 not learned performance rankings. Unavailable preferences use a supported native
-fallback. The native status line shows the current model; a brief native history
-message reports a changed Auto selection.
+fallback. The native model footer shows `Auto selected: MODEL REASONING` immediately
+when Auto is enabled, including when the selection stays unchanged. Choosing a
+manual model restores the ordinary model label. A brief native history message
+reports a changed Auto selection. A custom status line with no model item remains
+unchanged; add `model-with-reasoning` through native `/statusline` to see the label.
 
-A continuation keeps its pair unless escalation is justified. For unrelated
-work, **reselect Auto** before entering the next request to reset task context and
-allow a lower tier. This explicit boundary avoids treating “continue” as a new
-easy task. A completed turn is not evidence that a task passed its tests. The
+A continuation such as “continue” keeps its pair unless escalation is justified.
+Recognized complex work can raise the tier immediately. Clear scoped code requests
+can move from fast to balanced. Two consecutive clearly lighter requests allow a
+lower tier; an ambiguous continuation interrupts that pending change. Starting a
+request with “New task:” or “다음 작업:” permits immediate reassessment, including
+a lower tier. Reselecting Auto also resets the task boundary. The selector retains
+only one pending counter alongside the current pair, not previous request text.
+A completed turn is not evidence that a task passed its tests. The
 extension does not infer a failure count or claim task success from conversation
 text. Auto state is local to the active conversation widget; resume/new-thread
 settings and the `/model` choice determine whether it is enabled there.
@@ -101,8 +108,8 @@ Preferences cannot select hidden models or unsupported reasoning levels.
 ## Native history, updates and removal
 
 Native history replay initializes continuation context from the saved native
-model and reasoning level. It never inserts a Harness activation message. Reselect
-Auto to begin an independent task. Auto state remains in memory, and the installed
+model and reasoning level. It never inserts a Harness activation message. A clear
+new-task prefix or Auto reselection permits an immediate lower tier. Auto state remains in memory, and the installed
 manual/auto default governs a newly opened widget. It does not create a second
 session database or guarantee that an old Auto toggle persists across processes.
 
@@ -122,7 +129,7 @@ block or concurrent PATH change is preserved and can block removal for review.
 For verified offline packages:
 
 ```bash
-harness-codex config --native-ui-archive harness-codex-ui-0.13.2-beta-linux-x86_64.tar.gz
+harness-codex config --native-ui-archive harness-codex-ui-0.14.0-beta-linux-x86_64.tar.gz
 ```
 
 The component includes official same-version helper binaries, file fingerprints,

@@ -1,15 +1,44 @@
-"""Idempotent Bash PATH registration; never evaluate a user's startup file."""
+"""Idempotent Bash PATH registration and explicitly requested shell activation."""
 from __future__ import annotations
 
 import os
 from pathlib import Path
 import shlex
 import stat
+import shutil
+import subprocess
+import sys
 
 from .paths import checked_path as _path
 
 START = '# >>> harness-codex PATH >>>'
 END = '# <<< harness-codex PATH <<<'
+
+
+def offer_activation(*, mode='ask', cwd=None):
+    from .environment import codex_environment
+    from .presentation import JSON_MODE
+    if os.name != 'posix' or mode == 'skip' or JSON_MODE.get() or not sys.stdin.isatty() or not sys.stdout.isatty():
+        return
+    bash = shutil.which('bash')
+    profile = Path.home() / '.bashrc'
+    if bash is None or not profile.is_file():
+        return
+    if mode == 'ask':
+        try:
+            answer = input('Open a new Bash with ~/.bashrc loaded? [Enter/yes opens, no skips]\nThis is a child shell; exit returns to your original shell: ')
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if answer.strip().casefold() not in {'', 'y', 'yes'}:
+            return
+    print('Opening Bash with ~/.bashrc applied. Run codex from this project.', flush=True)
+    try:
+        result = subprocess.run([bash, '--rcfile', str(profile), '-i'], cwd=cwd, env=codex_environment(), check=False)
+        if result.returncode:
+            print('The child Bash exited with an error. Harness remains configured.', file=sys.stderr)
+    except (OSError, KeyboardInterrupt):
+        print('Shell activation ended. Harness remains configured; apply PATH with source ~/.bashrc.', file=sys.stderr)
 
 
 def _block(directory: str) -> bytes:

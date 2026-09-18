@@ -12,6 +12,7 @@ ALLOWED = {
     'codex-rs/tui/src/chatwidget/input_submission.rs',
     'codex-rs/tui/src/chatwidget/model_popups.rs',
     'codex-rs/tui/src/chatwidget/model_popup_state.rs',
+    'codex-rs/tui/src/chatwidget/status_surfaces.rs',
     'codex-rs/tui/src/chatwidget/tests.rs',
 }
 

@@ -15,6 +15,7 @@ pub(super) struct Routing {
     pub(super) enabled: bool,
     pub(super) active: bool,
     pub(super) context: Option<Value>,
+    displayed_active: bool,
     selector: Option<Selector>,
     startup_error: Option<String>,
 }
@@ -76,6 +77,7 @@ impl Routing {
             enabled,
             active: selector.as_ref().is_some_and(|value| value.mode == "auto"),
             context: None,
+            displayed_active: false,
             selector,
             startup_error,
         }
@@ -152,6 +154,28 @@ fn invoke_with_profiles(payload: Value, python: std::ffi::OsString, script: std:
 }
 
 impl ChatWidget {
+    pub(super) fn harness_model_status(&self, label: String) -> String {
+        let active = self.harness_routing.lock().is_ok_and(|state| state.enabled && state.active);
+        if active && !self.restrict_model_picker_to_luna_reserve() {
+            format!("Auto selected: {}", self.model_with_reasoning_display_name())
+        } else {
+            label
+        }
+    }
+
+    pub(super) fn refresh_harness_status(&mut self) {
+        let restricted = self.restrict_model_picker_to_luna_reserve();
+        let changed = self.harness_routing.lock().is_ok_and(|mut state| {
+            let active = state.enabled && state.active && !restricted;
+            let changed = state.displayed_active != active;
+            state.displayed_active = active;
+            changed
+        });
+        if changed {
+            self.refresh_status_line();
+        }
+    }
+
     pub(super) fn report_harness_integration_problem(&mut self) {
         let error = self.harness_routing.lock().ok().and_then(|mut state| state.startup_error.take());
         if let Some(error) = error {

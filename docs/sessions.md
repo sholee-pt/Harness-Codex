@@ -7,7 +7,7 @@ registry and adds no bootstrap user turn.
 ```bash
 cd /path/to/project
 harness-codex init --goal-file PROJECT.md
-# Open a new terminal after initial integration setup.
+# Press Enter after init to open Bash with ~/.bashrc loaded.
 codex
 codex resume
 codex resume --last
@@ -22,6 +22,14 @@ harness-codex doctor --json
 root instruction file (`AGENTS.override.md` before `AGENTS.md`). They do not
 create an override to bypass existing guidance. Existing explicit-skill projects
 remain readable and migrate to a managed pointer on reviewed `config`.
+
+After successful native integration, interactive Linux `init/config/reset` offers
+Enter or yes to open Bash with `~/.bashrc` loaded in the selected project. This is a
+child shell; `exit` returns to the original shell. A child process cannot source a
+file into its parent. To stay in the original shell, decline and run `source ~/.bashrc`.
+`--activate skip` omits the offer; `--activate shell` directly opens the child Bash
+on an interactive terminal. JSON, redirected input/output, dry runs and
+`--no-codex-integration` never open a shell.
 
 Codex builds the instruction chain when starting a conversation. A resumed
 conversation retains native history and model state. If configuration has changed,
