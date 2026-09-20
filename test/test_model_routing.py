@@ -26,6 +26,12 @@ class RoutingTests(unittest.TestCase):
         cases = [
             ('README 문구를 수정해줘.', 'fast'), ('Fix the spelling in the introduction.', 'fast'),
             ('문서 제목의 오타를 고쳐줘.', 'fast'), ('Correct this punctuation.', 'fast'),
+            ('Fix a typo in the security section of README.', 'fast'),
+            ('README 보안 항목의 오타만 수정해줘.', 'fast'),
+            ('Fix a README typo and review authentication.', 'deep'),
+            ('Fix a README typo, disable authentication.', 'deep'),
+            ('README 오타를 고치고 인증 절차를 제거해줘.', 'deep'),
+            ('README 보안 오타를 고치고 인증 코드를 수정해줘.', 'deep'),
             ('Read the repository and explain its responsibilities.', 'balanced'),
             ('새 기능을 구현해줘.', 'balanced'), ('Summarize the experiment results.', 'balanced'),
             ('Continue.', 'balanced'), ('고쳐줘.', 'balanced'),

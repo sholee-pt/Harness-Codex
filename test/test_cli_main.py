@@ -32,12 +32,16 @@ class CliRoutingTests(unittest.TestCase):
         for flag in ("--agent", "--runtime"):
             for command in self.command_names():
                 for arguments in ([flag, "codex", command], [command, flag, "codex"], [command, flag + "=codex"]):
+                    if command == 'checkpoint':
+                        arguments += ['status', '--store', 'unused-store', '--run', 'fixture']
                     self.assertEqual(parser.parse_args(arguments).runtime, "codex")
 
     def test_claude_agent_and_alias_are_rejected_before_environment_network_or_writes(self):
         for flag in ("--agent", "--runtime"):
             for command in self.command_names():
                 for arguments in ([flag, "claude", command], [command, flag, "claude"]):
+                    if command == 'checkpoint':
+                        arguments += ['status', '--store', 'unused-store', '--run', 'fixture']
                     with self.subTest(arguments=arguments), redirect_stderr(io.StringIO()) as output:
                         with mock.patch.object(cli, "_environment") as environment, mock.patch.object(cli, "_automatic_update") as automatic, mock.patch.object(cli, "run_project_command") as project, mock.patch.object(distribution, "install_tool") as install, mock.patch.object(distribution, "update_tool") as update, mock.patch.object(cli, "preflight_project_command") as preflight:
                             self.assertEqual(cli.main(arguments, source_root=REPO), 2)

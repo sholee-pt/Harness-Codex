@@ -1,9 +1,6 @@
 name: Native Codex UI candidate
 
 on:
-  push:
-    branches: [v0.14.0-beta]
-    paths: [build/native_ui/**, harness_cli/native_*.py, .github/workflows/native-ui.yml]
   workflow_dispatch:
   workflow_call:
 
@@ -53,7 +50,8 @@ jobs:
       - name: Prepare pinned upstream with the bounded extension
         shell: bash -el {0}
         run: |
-          git clone --config core.longpaths=true --config core.autocrlf=false --depth 1 --branch rust-v0.154.0 https://github.com/openai/codex.git "${RUNNER_TEMP}/codex-ui"
+          upstream_tag=$(conda run -n harness python -c 'import json; print(json.load(open("build/native_ui/upstream.json"))["tag"])')
+          git clone --config core.longpaths=true --config core.autocrlf=false --depth 1 --branch "$upstream_tag" https://github.com/openai/codex.git "${RUNNER_TEMP}/codex-ui"
           conda run -n harness python -B build/native_ui/prepare.py --root "${RUNNER_TEMP}/codex-ui"
       - name: Install the pinned Rust toolchain
         shell: bash -el {0}

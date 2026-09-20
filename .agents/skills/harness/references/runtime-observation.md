@@ -20,11 +20,11 @@ The first real selected task agent is the capability probe. Never wait on an emp
 
 Parser Schema 2 identifies event surfaces separately from the Codex CLI version.
 
-The current registry binds all three profiles below to Codex CLI `0.152.1`. Reusing a known profile ID with another CLI version is `unsupported` until that version and surface are reviewed together.
+Select profiles by their validated event shape, independently of the CLI version. Record the detected CLI version as provenance only. A newer version using the same surface remains readable; unknown profiles are unsupported and changed/malformed shapes lower confidence without blocking valid native handle execution. Never infer live delegation from a version string or successful initialization. Legacy Schema 1 receipts retain their historical interpretation and are not the current capture path.
 
 - `codex-public-jsonl-core-v1`: registered public JSONL profile with no collaboration visibility. Its exact match produces `not-exposed`, not failure.
-- `codex-public-jsonl-collab-v1`: version-specific public profile that can expose `collab_tool_call`; it is not described as a stable public OpenAI item schema.
-- `codex-local-rollout-subagent-activity-v1`: version-specific local rollout profile for `event_msg` / `item_completed` / `SubAgentActivity` records.
+- `codex-public-jsonl-collab-v1`: shape-validated public profile that can expose `collab_tool_call`; it is not described as a stable public OpenAI item schema.
+- `codex-local-rollout-subagent-activity-v1`: shape-validated local rollout profile for `event_msg` / `item_completed` / `SubAgentActivity` records.
 
 An unregistered profile is `unsupported`. A registered optional profile with no matching lifecycle is `unobserved`; a start without a terminal event is `partial`. Only a same-spawn terminal-outcome or role/parent/session-binding contradiction is `conflicted`. A source that reports `running` while a later source reports `completed` is not a conflict. Execution outcome and thread lifecycle are evaluated separately.
 
@@ -102,7 +102,7 @@ conda run -n harness python <harness-skill-root>/scripts/harness_runtime_receipt
   --observation-bindings TEMPORARY_OBSERVATION_BINDINGS.json \
   --local-jsonl TEMPORARY_LOCAL_ROLLOUT.jsonl \
   --local-profile codex-local-rollout-subagent-activity-v1 \
-  --codex-cli-version 0.152.1 \
+  --codex-cli-version "$(codex --version)" \
   --execution-mode persistent \
   --repository-id repo-0123456789abcdef \
   --harness-commit 0123456789abcdef0123456789abcdef01234567 \

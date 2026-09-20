@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v0.14.0-beta, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
+- This branch contains Harness for Codex v0.15.0-beta, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add telemetry or marketplace dependencies. The separately authorized CLI distribution layer may check/fetch this repository and publish verified GitHub release assets; project generation never performs those operations.
 - Keep evaluation default-off, user-local, and isolated from generation/apply failure handling.
@@ -32,6 +32,8 @@
 
 ## Git conventions
 
+- After dispatching GitHub Actions, report the workflow link and stop. Do not poll, watch, schedule monitoring, or wait for completion unless the owner explicitly asks for another status check. The owner checks release progress directly.
+- Determine runtime Codex compatibility from available capabilities and validated event shapes, not a version allowlist. Keep the reviewed native build revision as reproducibility metadata, separate from runtime compatibility.
 - New Codex branches use `vX.Y.Z-beta` during development: X for major or large-scale changes; Y for minor features, improvements, refactoring and optimization; Z for bug fixes (`[Fix]`). Preserve legacy versions in immutable receipts and compatibility tests.
 - Historical display versions map `vN.M` to `v0.N.M-beta`; this is a label correction, not a claim that old source was rebuilt. This repository contains the Codex edition only.
 - Public stable releases begin at `v1.0.0` after an explicit release decision; repository visibility alone does not publish a release.

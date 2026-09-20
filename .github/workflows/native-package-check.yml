@@ -1,13 +1,6 @@
 name: Native package preflight
 
 on:
-  push:
-    branches: ['v0.14.0-beta']
-    paths:
-      - '.github/workflows/native-package-check.yml'
-      - 'build/native_ui/package.py'
-      - 'build/native_ui/source.py'
-      - 'harness_cli/native_package.py'
   workflow_dispatch:
 
 permissions:

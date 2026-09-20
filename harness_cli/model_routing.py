@@ -98,6 +98,13 @@ def starts_new_task(prompt):
 
 
 def _request_tier(text):
+    # A named security topic is not itself a security change. Restrict this
+    # exception to one explicit documentation-only edit, never mixed requests.
+    narrow_document = re.search(r'\breadme\b|\bdocumentation\b|문서', text)
+    typo = re.search(r'\b(typo|spelling|punctuation)\b|오탈자|오타|맞춤법', text)
+    mixed = re.search(r'\b(and|also|then|implement|refactor|investigate|review|audit|test|code|function|disable|enable|delete|remove|bypass|migrate|deploy|modify)\b|[;,]|그리고|추가로|구현|리팩|조사|검토|검증|코드|함수|삭제|제거|우회|비활성|활성화|배포|변경', text)
+    if narrow_document and typo and not mixed and len(text) <= 300:
+        return 'fast', 'narrow-text-edit'
     if _complex(text):
         return 'deep', 'complex-change'
     # Clear scope may change tiers; ambiguous follow-ups retain their selection.

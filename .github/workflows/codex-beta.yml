@@ -1,12 +1,12 @@
-name: Harness for Codex v0.14.0-beta checks
+name: Harness for Codex v0.15.0-beta checks
 
 on:
   push:
     branches:
-      - v0.14.0-beta
+      - v0.15.0-beta
   pull_request:
     branches:
-      - v0.14.0-beta
+      - v0.15.0-beta
   workflow_dispatch:
     inputs:
       publish:
@@ -18,6 +18,25 @@ permissions:
   contents: read
 
 jobs:
+  commit-status:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: conda-incubator/setup-miniconda@v4.0.1
+        with:
+          activate-environment: harness
+          auto-activate: false
+          environment-file: environment.yml
+      - name: Mark the exact commit pending
+        shell: bash -el {0}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: conda run -n harness python -B build/commit_status.py begin --publish '${{ inputs.publish == true }}'
+
   verify:
     strategy:
       fail-fast: false
@@ -54,20 +73,24 @@ jobs:
         shell: bash -el {0}
         run: conda run --no-capture-output -n harness python -u -m unittest discover -s test -v
 
+      - name: Cross-check blocked work and selective checkpoint resume
+        shell: bash -el {0}
+        run: conda run --no-capture-output -n harness python -B test/integration/verify_checkpoint_resume.py --output "${RUNNER_TEMP}/checkpoint-resume"
+
       - name: Verify the pinned frontmatter oracle
         shell: bash -el {0}
         run: |
           conda run -n harness python -m pip install -r test/requirements-validation.txt
           conda run -n harness python test/integration/frontmatter_differential.py --seed 20260905 --count 11000 --output "${RUNNER_TEMP}/frontmatter-report.json"
 
-      - name: Cross-check the previous version v0.13.2-beta update to v0.14.0-beta
+      - name: Cross-check the previous version v0.14.0-beta update to v0.15.0-beta
         shell: bash -el {0}
         run: |
           baseline_root="${RUNNER_TEMP}/harness-baselines"
           conda run -n harness python test/integration/prepare_release_baselines.py --output "${baseline_root}"
-          conda run -n harness python test/integration/verify_release_upgrade.py --baseline "${baseline_root}/v0132" --output "${RUNNER_TEMP}/upgrade-v0132.json"
-          conda run -n harness python test/integration/verify_cli_upgrade.py --baseline "${baseline_root}/v0132" --output "${RUNNER_TEMP}/cli-upgrade-v0132.json"
-          conda run -n harness python test/integration/verify_installer_permissions.py --baseline "${baseline_root}/v0132" --candidate . --output "${RUNNER_TEMP}/installer-permissions.json"
+          conda run -n harness python test/integration/verify_release_upgrade.py --baseline "${baseline_root}/v0140" --output "${RUNNER_TEMP}/upgrade-v0140.json"
+          conda run -n harness python test/integration/verify_cli_upgrade.py --baseline "${baseline_root}/v0140" --output "${RUNNER_TEMP}/cli-upgrade-v0140.json"
+          conda run -n harness python test/integration/verify_installer_permissions.py --baseline "${baseline_root}/v0140" --candidate . --output "${RUNNER_TEMP}/installer-permissions.json"
           cat "${RUNNER_TEMP}/installer-permissions.json"
 
       # Runtime-plan, receipt, relay and operations unit tests run in full discovery above.
@@ -115,7 +138,7 @@ jobs:
       - name: Verify the real Linux bootstrap and installed command
         if: runner.os == 'Linux'
         shell: bash -el {0}
-        run: conda run -n harness python test/integration/verify_cli_distribution.py --archive "${RUNNER_TEMP}/harness-dist/harness-codex-0.14.0-beta-linux.tar.gz"
+        run: conda run -n harness python test/integration/verify_cli_distribution.py --archive "${RUNNER_TEMP}/harness-dist/harness-codex-0.15.0-beta-linux.tar.gz"
 
       - name: Verify public pipeline and cold environment setup
         if: runner.os == 'Linux'
@@ -129,7 +152,7 @@ jobs:
         run: |
           bash installer/install.sh --data-dir "${RUNNER_TEMP}/source-install/data" --bin-dir "${RUNNER_TEMP}/source-install/bin" --auto-update off --no-modify-path
           "${RUNNER_TEMP}/source-install/bin/harness-codex" --version
-          conda run -n harness python -B -c 'import json, os, pathlib; state=json.loads((pathlib.Path(os.environ["RUNNER_TEMP"])/"source-install/data/active.json").read_text()); assert state["commit"]==os.environ["GITHUB_SHA"], state; assert state["version"]=="0.14.0-beta"; print("Source installer retained the exact checked-out commit.")'
+          conda run -n harness python -B -c 'import json, os, pathlib; state=json.loads((pathlib.Path(os.environ["RUNNER_TEMP"])/"source-install/data/active.json").read_text()); assert state["commit"]==os.environ["GITHUB_SHA"], state; assert state["version"]=="0.15.0-beta"; print("Source installer retained the exact checked-out commit.")'
 
       - name: Verify the checkout remains clean
         shell: bash -el {0}
@@ -138,11 +161,12 @@ jobs:
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
 
   native-release:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/v0.14.0-beta'
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/v0.15.0-beta'
+    needs: verify
     uses: ./.github/workflows/native-ui.yml
 
   release:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/v0.14.0-beta'
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/v0.15.0-beta'
     needs: [verify, native-release]
     runs-on: ubuntu-latest
     permissions:
@@ -171,8 +195,29 @@ jobs:
         shell: bash -el {0}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: v0.14.0-beta
+          RELEASE_TAG: v0.15.0-beta
         run: |
-          test "$GITHUB_REF_NAME" = "v0.14.0-beta"
+          test "$GITHUB_REF_NAME" = "v0.15.0-beta"
           conda run -n harness python build/release_notes.py --output "${RUNNER_TEMP}/release-body.md"
-          gh release create "$RELEASE_TAG" "${RUNNER_TEMP}/harness-dist/"* --target "$GITHUB_SHA" --title "Harness for Codex v0.14.0-beta" --notes-file "${RUNNER_TEMP}/release-body.md" --prerelease
+          gh release create "$RELEASE_TAG" "${RUNNER_TEMP}/harness-dist/"* --target "$GITHUB_SHA" --title "Harness for Codex v0.15.0-beta" --notes-file "${RUNNER_TEMP}/release-body.md" --prerelease
+
+  commit-result:
+    if: always() && github.event_name != 'pull_request'
+    needs: [commit-status, verify, native-release, release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: conda-incubator/setup-miniconda@v4.0.1
+        with:
+          activate-environment: harness
+          auto-activate: false
+          environment-file: environment.yml
+      - name: Publish the actual verification or release outcome
+        shell: bash -el {0}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HARNESS_JOB_RESULTS: ${{ toJSON(needs) }}
+        run: conda run -n harness python -B build/commit_status.py finish --publish '${{ inputs.publish == true }}'

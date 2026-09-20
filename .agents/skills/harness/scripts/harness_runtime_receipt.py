@@ -31,10 +31,10 @@ PUBLIC_CORE_PROFILE = "codex-public-jsonl-core-v1"
 PUBLIC_COLLAB_PROFILE = "codex-public-jsonl-collab-v1"
 LOCAL_SUBAGENT_PROFILE = "codex-local-rollout-subagent-activity-v1"
 REGISTERED_PUBLIC_PROFILES = {
-    (PUBLIC_CORE_PROFILE, "0.152.1"): "none",
-    (PUBLIC_COLLAB_PROFILE, "0.152.1"): "optional",
+    PUBLIC_CORE_PROFILE: "none",
+    PUBLIC_COLLAB_PROFILE: "optional",
 }
-REGISTERED_LOCAL_PROFILES = {(LOCAL_SUBAGENT_PROFILE, "0.152.1"): "optional"}
+REGISTERED_LOCAL_PROFILES = {LOCAL_SUBAGENT_PROFILE: "optional"}
 
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 REPOSITORY_ID_RE = re.compile(r"^repo-[0-9a-f]{16,64}$")
@@ -717,7 +717,8 @@ def _parse_public_events(
     child_to_participant: dict[str, str],
     binding_parent: str | None,
 ) -> tuple[dict[str, Any], dict[str, int | None], str | None, bool, str, str]:
-    profile_key = (profile_id, codex_cli_version)
+    # Version is provenance only. Each event must satisfy the selected wire contract.
+    profile_key = profile_id
     compatibility = (
         "supported" if profile_key in REGISTERED_PUBLIC_PROFILES else "unsupported"
     )
@@ -763,6 +764,8 @@ def _parse_public_events(
                     for state in states.values():
                         _add_failure(state, "profile-conflict", "public-event")
                 parent = raw_parent
+            else:
+                unknown += 1
             continue
         if event_type == "turn.started":
             continue
@@ -792,6 +795,9 @@ def _parse_public_events(
         if isinstance(item, dict) and item.get("type") not in KNOWN_PUBLIC_ITEMS:
             unknown += 1
             continue
+        if event_type.startswith("item.") and not isinstance(item, dict):
+            unknown += 1
+            continue
         if not isinstance(item, dict) or item.get("type") != "collab_tool_call":
             continue
         relevant += 1
@@ -803,6 +809,9 @@ def _parse_public_events(
         if compatibility != "supported" or event_type != "item.completed":
             continue
         sender = item.get("sender_thread_id")
+        if not isinstance(sender, str) or not sender:
+            unknown += 1
+            continue
         if binding_parent is not None and sender != binding_parent:
             conflict = True
             for state in states.values():
@@ -816,6 +825,12 @@ def _parse_public_events(
             continue
         action = item.get("tool", item.get("action", item.get("name")))
         raw_states = item.get("agents_states")
+        if action not in {"wait", "spawn_agent", "send_input", "close_agent", "resume_agent"}:
+            unknown += 1
+            continue
+        if action == "wait" and not isinstance(raw_states, dict):
+            unknown += 1
+            continue
         if action == "wait" and isinstance(raw_states, dict):
             for child in receivers:
                 participant = child_to_participant.get(child)
@@ -826,6 +841,9 @@ def _parse_public_events(
                 state["observed"] = True
                 raw_state = raw_states.get(child)
                 child_status = raw_state.get("status") if isinstance(raw_state, dict) else None
+                if not isinstance(child_status, str) or child_status not in STANDARD_STATUSES:
+                    unknown += 1
+                    continue
                 if child_status == "completed":
                     terminal_relevant += 1
                     _add_completion(state, "public-event")
@@ -927,7 +945,7 @@ def _parse_local_events(
         return None, False
     if lines is None or profile_id is None:
         raise RuntimeReceiptError("local lines and local profile must be supplied together")
-    profile_key = (profile_id, codex_cli_version)
+    profile_key = profile_id
     compatibility = (
         "supported" if profile_key in REGISTERED_LOCAL_PROFILES else "unsupported"
     )
@@ -1303,7 +1321,7 @@ def _validate_profile(profile: Any, index: int) -> None:
         _integer(item.get(key), f"event profile {key}")
     if item["source"] == "public-jsonl":
         expected_visibility = REGISTERED_PUBLIC_PROFILES.get(
-            (item["profileId"], item["codexCliVersion"])
+            item["profileId"]
         )
         if expected_visibility is None:
             if item["profileId"] != "unregistered-public" or item["compatibility"] != "unsupported":
@@ -1311,7 +1329,7 @@ def _validate_profile(profile: Any, index: int) -> None:
             expected_visibility = "unknown"
     else:
         expected_visibility = REGISTERED_LOCAL_PROFILES.get(
-            (item["profileId"], item["codexCliVersion"])
+            item["profileId"]
         )
         if expected_visibility is None:
             if item["profileId"] != "unregistered-local" or item["compatibility"] != "unsupported":

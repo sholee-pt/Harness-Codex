@@ -497,7 +497,7 @@ class RuntimeReceiptV2Tests(unittest.TestCase):
         self.assertTrue(receipt["agents"][0]["completed"])
         self.assertTrue(receipt["provesLiveSubagentExecution"])
 
-    def test_unregistered_cli_profile_pair_is_unsupported(self) -> None:
+    def test_new_cli_version_keeps_known_wire_contract(self) -> None:
         plan = self._single_agent_plan()
         receipt = self._build(
             plan=plan,
@@ -505,9 +505,9 @@ class RuntimeReceiptV2Tests(unittest.TestCase):
             codex_cli_version="0.153.0",
         )
         profile = receipt["eventProfiles"][0]
-        self.assertEqual(profile["profileId"], "unregistered-public")
-        self.assertEqual(profile["compatibility"], "unsupported")
-        self.assertEqual(profile["collaborationCompleteness"], "unobserved")
+        self.assertEqual(profile["profileId"], receipt2.PUBLIC_CORE_PROFILE)
+        self.assertEqual(profile["compatibility"], "supported")
+        self.assertEqual(profile["collaborationCompleteness"], "not-exposed")
         self.assertTrue(receipt["agents"][0]["completed"])
 
     def test_core_profile_with_collaboration_event_is_conflicted(self) -> None:
@@ -523,6 +523,34 @@ class RuntimeReceiptV2Tests(unittest.TestCase):
         )
         self.assertEqual(receipt["collaborationCompleteness"], "conflicted")
         self.assertFalse(receipt["provesLiveSubagentExecution"])
+
+    def test_public_and_local_shapes_work_with_future_version_labels(self) -> None:
+        plan = self._single_agent_plan()
+        control = control_plane_report(plan)
+        for version in ("0.154.0", "99.42.7", "codex-cli nightly-custom"):
+            with self.subTest(version=version):
+                receipt = self._build(plan=plan, control_plane=control,
+                    observation_bindings=local_bindings(plan, control),
+                    lines=public_collab_lines(plan), public_profile_id=receipt2.PUBLIC_COLLAB_PROFILE,
+                    local_lines=local_activity_lines(plan), local_profile_id=receipt2.LOCAL_SUBAGENT_PROFILE,
+                    codex_cli_version=version)
+                self.assertTrue(receipt["provesLiveSubagentExecution"])
+                self.assertEqual([p["compatibility"] for p in receipt["eventProfiles"]], ["supported", "supported"])
+                self.assertEqual(receipt["codexCliVersion"], version)
+
+    def test_changed_event_shape_degrades_without_fabricating_a_conflict(self) -> None:
+        plan = self._single_agent_plan()
+        control = control_plane_report(plan)
+        lines = [json.loads(line) for line in public_collab_lines(plan)]
+        for event in lines:
+            if isinstance(event.get("item"), dict):
+                event["item"].pop("sender_thread_id", None)
+        receipt = self._build(plan=plan, control_plane=control,
+            observation_bindings=local_bindings(plan, control), codex_cli_version="future-build",
+            lines=[json.dumps(line) for line in lines], public_profile_id=receipt2.PUBLIC_COLLAB_PROFILE)
+        self.assertEqual(receipt["eventProfiles"][0]["compatibility"], "degraded")
+        self.assertFalse(receipt["runtime"]["conflictDetected"])
+        self.assertTrue(receipt["agents"][0]["completed"])
 
     def test_surface_fingerprint_excludes_prompt_and_unknown_fields(self) -> None:
         plan = self._single_agent_plan()

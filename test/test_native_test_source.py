@@ -107,3 +107,28 @@ class NativeTestSourceTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 run_tests(self.root, self.target)
         self.assert_restored()
+
+    def test_reviewed_version_comes_from_metadata_and_mismatch_preserves_files(self):
+        self.manifest.write_bytes(self.before[self.manifest].replace(b'0.154.0', b'99.42.7'))
+        self.before[self.manifest] = self.manifest.read_bytes()
+        with self.assertRaisesRegex(ValueError, 'upstream.json'):
+            run_tests(self.root, self.target, metadata_only=True)
+        self.assert_restored()
+        def invoke(command, **kwargs):
+            self.assertEqual(tomllib.loads(self.manifest.read_text())['workspace']['package']['version'], '0.0.0')
+            self.assertIn('--locked', command)
+            return subprocess.CompletedProcess(command, 0)
+        with patch('build.native_ui.run_tests.json.loads', return_value={'version': '99.42.7'}), \
+                patch('build.native_ui.run_tests.reconcile'), \
+                patch('build.native_ui.run_tests.subprocess.run', side_effect=invoke), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(run_tests(self.root, self.target, metadata_only=True), 0)
+        self.assert_restored()
+
+    def test_helper_download_uses_reviewed_tag_metadata(self):
+        from build.native_ui.package import prepare
+        with patch('build.native_ui.package.json.loads', return_value={'tag': 'rust-v99.42.7'}), \
+                patch('build.native_ui.package.download', side_effect=OSError('offline fixture')) as download:
+            with self.assertRaises(OSError):
+                prepare(self.root / 'package', 'linux-x86_64')
+        self.assertIn('/rust-v99.42.7/codex-package-x86_64-unknown-linux-musl.tar.gz', download.call_args.args[0])

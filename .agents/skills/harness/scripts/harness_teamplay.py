@@ -29,6 +29,9 @@ After resolving routing and required quality checks, handle a small, tightly cou
 
 Read delegation references and validate an ephemeral runtime plan only when delegation or coordination is selected. If new evidence requires that transition, validate the plan before spawning agents. Do not reuse an earlier validation as proof of current permissions, file ownership, evidence freshness, or write scope. Report the changed result, checks, and remaining gaps without empty subagent-accounting fields."""
 
+CHECKPOINT_GUIDANCE = """For explicitly requested resumable multi-stage work, read `.agents/skills/harness/references/task-checkpoints.md`. Use bounded, opt-in checkpoints only when reuse has material value. Keep small direct tasks free of checkpoint state; project growth alone does not require another agent."""
+
+
 PROJECT_BLOCK = """<!-- harness:runtime-teamplay:v2:begin -->
 ## Runtime execution classification
 

@@ -1,6 +1,6 @@
 """Run unchanged upstream UI assertions with their development-version fixture.
 
-The release tag changes 0.0.0 to 0.154.0, but its snapshots retain padding for
+The reviewed release tag changes 0.0.0, but its snapshots retain padding for
 0.0.0. Use that fixture version only while testing and restore both manifests
 byte-for-byte before compiling or packaging the actual release executable.
 """
@@ -26,9 +26,10 @@ def run_tests(root: Path, target: str, *, metadata_only: bool = False) -> int:
     saved = {path: path.read_bytes() for path in (manifest, lock)}
     content = saved[manifest].decode('utf-8')
     version = tomllib.loads(content)['workspace']['package']['version']
-    if version != '0.154.0':
-        raise ValueError('UI tests require the pinned 0.154.0 release source')
-    pattern = r'(?m)(^\[workspace\.package\]\s*\n(?:(?!\[)[^\n]*\n)*?version\s*=\s*)"0\.154\.0"'
+    upstream = json.loads(Path(__file__).with_name('upstream.json').read_text(encoding='utf-8'))
+    if version != upstream['version']:
+        raise ValueError('UI tests require the release source declared in upstream.json')
+    pattern = r'(?m)(^\[workspace\.package\]\s*\n(?:(?!\[)[^\n]*\n)*?version\s*=\s*)"' + re.escape(version) + '"'
     fixture, count = re.subn(pattern, lambda match: match[1] + '"0.0.0"', content)
     if count != 1:
         raise ValueError('Expected one pinned workspace version declaration')

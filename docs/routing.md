@@ -45,6 +45,13 @@ standard streams, terminal ownership and exit status go directly to that executa
 The pinned version may lag a separately installed upstream Codex; updating upstream
 requires review and testing of a new extension build.
 
+This build revision is reproducibility metadata, not a runtime version gate. Project
+skills and current runtime observations use available capabilities and validated
+event shapes. Updating a separately installed Codex does not automatically add the
+Auto UI patch to that executable; use it directly without integration, or select a
+verified extended package. Unknown event shapes reduce observability instead of
+pretending that native execution failed or silently broadening permissions.
+
 ## Auto and manual selection
 
 In the conversation, type `/model`. **Auto** is the first item in the native
@@ -129,7 +136,7 @@ block or concurrent PATH change is preserved and can block removal for review.
 For verified offline packages:
 
 ```bash
-harness-codex config --native-ui-archive harness-codex-ui-0.14.0-beta-linux-x86_64.tar.gz
+harness-codex config --native-ui-archive harness-codex-ui-0.15.0-beta-linux-x86_64.tar.gz
 ```
 
 The component includes official same-version helper binaries, file fingerprints,
@@ -161,3 +168,5 @@ It does not retrain agents or improve the harness automatically.
 
 Source: [pinned Codex CLI](https://github.com/openai/codex/tree/6b9826e3aa83b1a5947db50f4332cb9c65f1b340),
 [App Server](https://developers.openai.com/codex/app-server/).
+
+A single explicit documentation typo stays lightweight even when its subject is security or architecture. Mixed code/review requests retain the risk-sensitive classification. CLI version strings are not model selection inputs; use the current visible model catalog and supported reasoning options.

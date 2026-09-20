@@ -24,7 +24,8 @@ OFFICIAL = {
 
 def prepare(output, platform):
     archive = output.with_suffix('.official.tar.gz')
-    download('https://github.com/openai/codex/releases/download/rust-v0.154.0/codex-package-'
+    upstream = json.loads(Path(__file__).with_name('upstream.json').read_text(encoding='utf-8'))
+    download('https://github.com/openai/codex/releases/download/' + upstream['tag'] + '/codex-package-'
              + package.TARGETS[platform] + '.tar.gz', archive)
     if package.fingerprint(archive)['sha256'] != OFFICIAL[platform]:
         raise ValueError('Official Codex package checksum mismatch')

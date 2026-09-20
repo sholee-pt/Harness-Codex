@@ -220,6 +220,15 @@ class SourceContractTests(unittest.TestCase):
         self.assertFalse(output.exists())
         self.assertEqual(snapshot(self.base), before)
 
+    def test_checkpoint_payload_is_required_before_install_creates_state(self):
+        files = dist._snapshot(REPO)
+        for index, name in enumerate(('harness_cli/checkpoint.py', '.agents/skills/harness/scripts/harness_checkpoint.py',
+                                     '.agents/skills/harness/references/task-checkpoints.md')):
+            with self.subTest(missing=name):
+                source = write_source(self.base / ('incomplete-' + str(index)), files)
+                (source / name).unlink()
+                self.assert_rejected_before_writes(source, 'missing required')
+
 
 if __name__ == "__main__":
     unittest.main()

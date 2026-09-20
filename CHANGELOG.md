@@ -8,6 +8,7 @@ Release and tag history starts at `v0.10.0-beta` after a one-time reset. Earlier
 
 | Version | Harness release | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- | --- |
+| [`v0.15.0-beta`](#harness-for-codex-v0150-beta) | Harness for Codex v0.15.0-beta | Schema 3 | Schema 7 | Schema 2 | Opt-in selective checkpoints, shape-based Codex compatibility, bounded Auto routing and explicit commit status |
 | [`v0.14.0-beta`](#harness-for-codex-v0140-beta) | Harness for Codex v0.14.0-beta | Schema 3 | Schema 7 | Schema 2 | Auto footer, adaptive request routing and interactive Bash activation |
 | [`v0.13.2-beta`](#harness-for-codex-v0132-beta) | Harness for Codex v0.13.2-beta | Schema 3 | Schema 7 | Schema 2 | Bind standalone installers to the built release version |
 | [`v0.13.1-beta`](#harness-for-codex-v0131-beta) | Harness for Codex v0.13.1-beta | Schema 3 | Schema 7 | Schema 2 | Remove the first-setup message from installer progress |
@@ -61,6 +62,37 @@ Release and tag history starts at `v0.10.0-beta` after a one-time reset. Earlier
 | [`v0.9.0-beta`](#harness-for-codex-v090-beta) | Harness for Codex v0.9.0-beta | Schema 3 | Schema 7 | Schema 2 | Project-local installer, user-selected folders independent of Git boundaries, Artifact Contract 2, no Git metadata writes |
 
 Only the latest development version branch is retained in Harness-Codex and used as the default. Release publication separately requires verified artifacts; earlier source history remains reachable through commits. The table uses normalized display versions and does not relabel historical commits or evidence identifiers.
+
+## Harness for Codex v0.15.0-beta
+
+- Adds explicit, bounded task checkpoints and selective resume: reuse only unchanged verified inputs, contracts and outputs; rerun affected dependency chains. Storage is opt-in, outside the project and limited to hashes/statuses. Reuse expires after the selected 1-30 days; remove records explicitly after agents are quiescent.
+- Separates task completion from observed agent idleness. Active/stop-requested writers retain ownership across checkpoint runs; failed checks never count as success. Native Codex still owns conversations, agents and permissions.
+- Reads supported runtime event shapes independently of Codex version numbers. Unknown or malformed formats reduce confidence; no version string proves native execution. Reviewed native build metadata remains pinned for reproducibility.
+- Keeps a narrow README/security typo lightweight in Auto while retaining complex routing for mixed code, review and security requests.
+- Adds a blocked/resume CLI cross-check and an opt-in two-phase native collaboration fixture. Default CI makes no model calls; live execution and token savings are not claimed by offline tests.
+- Publishes verification/release outcomes to the exact commit status. Native compilation runs once per requested release rather than also rebuilding on push. Upgrade comparisons use only v0.14.0-beta.
+
+### Linux installation
+
+```bash
+curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.15.0-beta/install_harness_codex.sh | sh
+harness-codex --version
+# Existing tool installation:
+harness-codex update
+# Review existing project artifacts without resetting them:
+harness-codex config --project /path/to/project
+```
+
+Project contracts remain compatible with v0.14.0-beta. Configure a project only when you want the new optional checkpoint guidance in its router; normal conversations do not need regeneration. Checkpoint commands are documented in [.agents/skills/harness/references/task-checkpoints.md](https://github.com/sholee-pt/Harness-Codex/blob/v0.15.0-beta/.agents/skills/harness/references/task-checkpoints.md).
+
+### Release assets and verification
+
+- `install_harness_codex.sh`: Linux bootstrap; prepares the isolated environment and installs the tool.
+- `harness-codex-0.15.0-beta-linux.tar.gz`: standalone generator/CLI source payload.
+- `harness-codex-ui-0.15.0-beta-linux-x86_64.tar.gz`: original Codex UI with the bounded Auto extension and verified runtime resources.
+- `SHA256SUMS`, `build.json` and native build records identify the packaged files and source revisions.
+
+Linux publication is gated on project checks, the original native TUI/extension tests and native packaging. Windows release work remains paused. Run `test/integration/verify_checkpoint_resume.py --live --output NEW_DIRECTORY` only when explicitly choosing real model calls and two ordinary native conversations; offline success is not live-agent or cost-benefit evidence.
 
 ## Harness for Codex v0.14.0-beta
 

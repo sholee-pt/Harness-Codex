@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.14.0-beta"><img src="https://img.shields.io/badge/Version-v0.14.0--beta-2563EB.svg?style=flat-square" alt="Version: v0.14.0-beta"></a>
+  <a href="https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.15.0-beta"><img src="https://img.shields.io/badge/Version-v0.15.0--beta-2563EB.svg?style=flat-square" alt="Version: v0.15.0-beta"></a>
   <a href="#agent-editions"><img src=".github/badges/agent-codex.svg" alt="Agent: Codex"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Proprietary-64748B.svg?style=flat-square" alt="License: Proprietary"></a>
 </p>
@@ -18,7 +18,7 @@
 <p align="center">
   <a href="#for-linux">Linux install</a> &middot;
   <a href="#quick-start">Quick start</a> &middot;
-  <a href="https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.14.0-beta">Release</a> &middot;
+  <a href="https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.15.0-beta">Release</a> &middot;
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
@@ -28,12 +28,14 @@ Generate and maintain one shared project harness with Codex-native agents and sk
 
 Linux installers and native Codex packages are published together after Linux builds and integration checks pass. Windows validation and releases are paused.
 
+[![Checks](https://github.com/sholee-pt/Harness-Codex/actions/workflows/codex-beta.yml/badge.svg?branch=v0.15.0-beta&event=push)](https://github.com/sholee-pt/Harness-Codex/actions/workflows/codex-beta.yml)
+
 ## Installation Guide
 
 ### For Linux
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.14.0-beta/install_harness_codex.sh | sh
+curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.15.0-beta/install_harness_codex.sh | sh
 harness-codex --version
 ```
 
@@ -43,7 +45,7 @@ Supports Linux x86_64 and aarch64. Requires curl, Bash, tar and sha256sum. The i
 
 Windows builds and releases are paused. This release does not include a Windows installer or native package. Existing Windows source remains available for future work.
 
-When migrating from 0.10.0-beta, run this installer once: its updater cannot discover the new unprefixed branches. If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness-Codex/blob/v0.14.0-beta/docs/installation.md).
+When migrating from 0.10.0-beta, run this installer once: its updater cannot discover the new unprefixed branches. If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness-Codex/blob/v0.15.0-beta/docs/installation.md).
 
 ## Quick Start
 
@@ -144,13 +146,14 @@ After reinstalling, run `status` in a project to recognize its retained harness.
 ## Documentation
 
 - [Native Codex integration and automatic model routing](docs/routing.md)
-- [Installation, reinstall choices and troubleshooting](https://github.com/sholee-pt/Harness-Codex/blob/v0.14.0-beta/docs/installation.md)
-- [Project and conversation lifecycle](https://github.com/sholee-pt/Harness-Codex/blob/v0.14.0-beta/docs/sessions.md)
+- [Installation, reinstall choices and troubleshooting](https://github.com/sholee-pt/Harness-Codex/blob/v0.15.0-beta/docs/installation.md)
+- [Project and conversation lifecycle](https://github.com/sholee-pt/Harness-Codex/blob/v0.15.0-beta/docs/sessions.md)
 - [Bounded maintenance and local records](docs/maintenance.md)
+- [Optional task checkpoints and selective resume](.agents/skills/harness/references/task-checkpoints.md)
 - [Beta versioning and migration](docs/versioning.md)
-- [Generated structure and design](https://github.com/sholee-pt/Harness-Codex/blob/v0.14.0-beta/docs/architecture.md)
-- [Quality evaluation and optional local evidence](https://github.com/sholee-pt/Harness-Codex/blob/v0.14.0-beta/docs/evaluation.md)
-- [Release assets and verification](https://github.com/sholee-pt/Harness-Codex/blob/v0.14.0-beta/docs/distribution.md)
+- [Generated structure and design](https://github.com/sholee-pt/Harness-Codex/blob/v0.15.0-beta/docs/architecture.md)
+- [Quality evaluation and optional local evidence](https://github.com/sholee-pt/Harness-Codex/blob/v0.15.0-beta/docs/evaluation.md)
+- [Release assets and verification](https://github.com/sholee-pt/Harness-Codex/blob/v0.15.0-beta/docs/distribution.md)
 - [Changelog](CHANGELOG.md) · [GitHub Releases](https://github.com/sholee-pt/Harness-Codex/releases) · [Contributing](CONTRIBUTING.md)
 
 ## Agent editions

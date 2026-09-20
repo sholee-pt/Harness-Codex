@@ -15,7 +15,7 @@ import urllib.error
 from harness_cli import distribution as dist, native_package as package, native_ui, project, uninstall
 from test_cli_distribution import source
 
-VERSION = '0.14.0-beta'
+VERSION = '0.15.0-beta'
 
 
 def fixture(root, platform='windows-x86_64'):
@@ -69,7 +69,7 @@ class NativeUiTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             package.verify(self.bundle, VERSION, 'windows-x86_64')
         with self.assertRaises(ValueError):
-            package.verify(self.bundle, '0.15.0-beta', 'windows-x86_64')
+            package.verify(self.bundle, '0.16.0-beta', 'windows-x86_64')
 
     def test_unsafe_tar_members_never_escape_staging(self):
         for index, (name, kind) in enumerate([('../escape', tarfile.REGTYPE), ('C:/escape', tarfile.REGTYPE),
