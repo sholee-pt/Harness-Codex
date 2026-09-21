@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.17.1‑beta`](#harness-for-codex-v0171-beta) | Schema 3 | Schema 7 | Schema 2 | Refresh transient native dependency downloads and lengthen bounded retry backoff |
 | [`v0.17.0‑beta`](#harness-for-codex-v0170-beta) | Schema 3 | Schema 7 | Schema 2 | Automatic isolated Graft setup during init, reuse and explicit opt-out preservation |
 | [`v0.16.0‑beta`](#harness-for-codex-v0160-beta) | Schema 3 | Schema 7 | Schema 2 | Optional local Graft retrieval, bounded evidence reuse and independent integrity diagnostics |
 | [`v0.15.0‑beta`](#harness-for-codex-v0150-beta) | Schema 3 | Schema 7 | Schema 2 | Opt-in selective checkpoints, shape-based Codex compatibility, bounded Auto routing and explicit commit status |
@@ -56,6 +57,12 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.17.1-beta
+
+- Retries transient native dependency download failures with a unique request query and no-cache headers, avoiding repeated reuse of a failed cached response or expired redirect while preserving the official asset path.
+- Spaces the five bounded download attempts by 5, 10, 20 and 40 seconds. Permanent HTTP errors, TLS failures, size limits and checksum mismatches still stop the build; incomplete downloads are removed before retrying.
+- Preserves v0.17.0-beta project compatibility and all Plan, Manifest and Transaction contracts. Upgrade comparisons use only the immediately preceding version.
 
 ## Harness for Codex v0.17.0-beta
 

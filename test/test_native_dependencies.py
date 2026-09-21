@@ -36,7 +36,7 @@ class NativeDependencyTests(unittest.TestCase):
             dependencies.download(self.url, self.path)
         self.assertEqual(self.path.read_bytes(), b'complete')
         self.assertEqual(fetch.call_count, 3)
-        self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2])
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [5, 10])
 
     def test_retry_limit_leaves_no_partial_file(self):
         with patch.object(dependencies.urllib.request, 'urlopen', side_effect=[self.error(504) for _ in range(5)]) as fetch, \
@@ -44,8 +44,33 @@ class NativeDependencyTests(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError):
                 dependencies.download(self.url, self.path)
         self.assertEqual(fetch.call_count, 5)
-        self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2, 4, 8])
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [5, 10, 20, 40])
         self.assertFalse(self.path.exists())
+
+    def test_retries_refresh_cached_gateway_errors_without_changing_asset_identity(self):
+        url = self.url + '?existing=value#fragment'
+        requests = []
+        def fetch(request, **kwargs):
+            requests.append(request)
+            if isinstance(request, str):
+                self.assertEqual(request, url)
+                raise self.error(504)
+            parts = dependencies.urllib.parse.urlsplit(request.full_url)
+            self.assertEqual((parts.scheme, parts.netloc, parts.path, parts.fragment),
+                             ('https', 'github.com', '/openai/codex/releases/download/fixture/asset', 'fragment'))
+            self.assertEqual(request.get_header('Cache-control'), 'no-cache')
+            self.assertEqual(request.get_header('Pragma'), 'no-cache')
+            query = dependencies.urllib.parse.parse_qs(parts.query)
+            self.assertEqual(query['existing'], ['value'])
+            self.assertEqual(len(query['harness_retry']), 1)
+            if len(requests) == 2:
+                raise self.error(504)
+            return Response(b'complete')
+        with patch.object(dependencies.urllib.request, 'urlopen', side_effect=fetch), \
+                patch.object(dependencies.time, 'sleep'), contextlib.redirect_stdout(io.StringIO()):
+            dependencies.download(url, self.path)
+        self.assertEqual(self.path.read_bytes(), b'complete')
+        self.assertNotEqual(requests[1].full_url, requests[2].full_url)
 
     def test_permanent_http_and_tls_errors_are_not_retried(self):
         for error in (self.error(403), self.error(404), urllib.error.URLError('certificate verify failed')):

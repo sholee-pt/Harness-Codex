@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 DOWNLOAD_ATTEMPTS = 5
@@ -37,8 +38,15 @@ def _download_once(url, path):
 
 def download(url, path):
     for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        request = url
+        if attempt > 1:
+            # Refresh a possibly cached gateway error or expired asset redirect.
+            parts = urllib.parse.urlsplit(url)
+            query = parts.query + ('&' if parts.query else '') + f'harness_retry={time.time_ns()}-{attempt}'
+            request = urllib.request.Request(urllib.parse.urlunsplit(parts._replace(query=query)),
+                headers={'Cache-Control': 'no-cache', 'Pragma': 'no-cache'})
         try:
-            _download_once(url, path)
+            _download_once(request, path)
             return
         except urllib.error.HTTPError as exc:
             transient = exc.code in TRANSIENT_HTTP_STATUS
@@ -54,8 +62,8 @@ def download(url, path):
             if attempt == DOWNLOAD_ATTEMPTS:
                 raise
             reason = type(exc).__name__
-        delay = 2 ** (attempt - 1)
-        print(f'V8 download {path.name}: {reason}; retry {attempt + 1}/{DOWNLOAD_ATTEMPTS} in {delay}s.', flush=True)
+        delay = 5 * 2 ** (attempt - 1)
+        print(f'Native download {path.name}: {reason}; retry {attempt + 1}/{DOWNLOAD_ATTEMPTS} in {delay}s with a fresh request.', flush=True)
         time.sleep(delay)
 
 
