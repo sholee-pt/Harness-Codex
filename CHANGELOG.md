@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.17.0‑beta`](#harness-for-codex-v0170-beta) | Schema 3 | Schema 7 | Schema 2 | Automatic isolated Graft setup during init, reuse and explicit opt-out preservation |
 | [`v0.16.0‑beta`](#harness-for-codex-v0160-beta) | Schema 3 | Schema 7 | Schema 2 | Optional local Graft retrieval, bounded evidence reuse and independent integrity diagnostics |
 | [`v0.15.0‑beta`](#harness-for-codex-v0150-beta) | Schema 3 | Schema 7 | Schema 2 | Opt-in selective checkpoints, shape-based Codex compatibility, bounded Auto routing and explicit commit status |
 | [`v0.14.0‑beta`](#harness-for-codex-v0140-beta) | Schema 3 | Schema 7 | Schema 2 | Auto footer, adaptive request routing and interactive Bash activation |
@@ -55,6 +56,14 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.17.0-beta
+
+- Prepares and enables local structural retrieval automatically after successful Linux init, including an already configured project. The first setup downloads a checksum-verified Node 22 runtime and the reviewed Graft package into isolated user-local storage; later projects reuse them.
+- Keeps existing enabled projects free of repeated setup and indexing during init. Queries retain on-demand incremental refresh, bounded output and ordinary-search fallback.
+- Remembers explicit retrieval opt-outs. Adds init --retrieval off and package-free graft enable for re-enabling or retrying setup; preserves user-owned retrieval skills.
+- Leaves dry runs and install-only operations free of retrieval setup, and preserves config/reset behavior unless --retrieval is explicitly supplied. Dependency preparation failure does not fail otherwise successful project configuration.
+- Adds bootstrap ownership, extraction, checksum, timeout and failure tests, plus a Linux release gate that exercises automatic init without model calls. Generated Plan/Manifest/Transaction contracts remain unchanged.
 
 ## Harness for Codex v0.16.0-beta
 

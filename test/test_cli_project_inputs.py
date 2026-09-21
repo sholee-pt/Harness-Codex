@@ -111,7 +111,7 @@ class ProjectInputTests(unittest.TestCase):
         code, out, err = self.run_cli("init", tty=False)
         self.assertEqual(code, 0, err)
         self.assertIn("already exists", out)
-        self.assertIn("No project files were changed", out)
+        self.assertIn("The generated harness was retained", out)
         self.assertEqual(fixtures.snapshot(self.root), before)
         self.codex.assert_not_called()
 

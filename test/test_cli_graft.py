@@ -8,7 +8,8 @@ import tempfile
 import unittest
 from unittest import mock
 
-from harness_cli import graft, main
+from harness_cli import graft, graft_setup, main, project
+import test_cli_project as project_fixtures
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -104,6 +105,10 @@ class GraftTests(unittest.TestCase):
         skill.write_text(graft.SKILL, encoding='utf-8')
         with self.assertRaisesRegex(ValueError, 'user-owned'):
             self.enable()
+        self.run_command('disable')
+        self.assertTrue(skill.is_file())
+        with self.assertRaisesRegex(ValueError, 'user-owned'):
+            self.enable()
         self.assertFalse((self.root / '.harness').exists())
 
     def test_repeat_enable_is_noop_for_settings_and_skill(self):
@@ -114,3 +119,76 @@ class GraftTests(unittest.TestCase):
         self.assertEqual(before, [(p.read_bytes(), p.stat().st_mtime_ns) for p in files])
         self.run_command('disable')
         self.assertFalse(files[0].exists())
+
+    def test_automatic_reuses_enabled_setup_without_index_or_network_work(self):
+        self.enable()
+        before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.root.parent.rglob('*') if p.is_file()}
+        with mock.patch.object(graft_setup, 'prepare', side_effect=AssertionError('No setup')), mock.patch.object(graft, '_invoke', side_effect=AssertionError('No rebuild')):
+            self.assertEqual(graft.automatic(self.root, REPO)['state'], 'enabled')
+        self.assertEqual(before, {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.root.parent.rglob('*') if p.is_file()})
+
+    def test_explicit_disable_before_first_init_is_remembered(self):
+        self.run_command('disable')
+        with mock.patch.object(graft_setup, 'prepare', side_effect=AssertionError('Opt-out')):
+            self.assertEqual(graft.automatic(self.root, REPO)['state'], 'disabled')
+        self.enable()
+        self.assertTrue(self.run_command('status')['enabled'])
+
+    def test_previous_version_receipts_keep_their_enabled_or_disabled_choice(self):
+        self.enable()
+        path = graft.storage(self.root) / 'settings.json'
+        value = json.loads(path.read_text())
+        value.pop('disabledByUser')
+        value.pop('skillOwned')
+        with mock.patch.object(graft_setup, 'prepare', side_effect=AssertionError('No migration')):
+            for enabled in (True, False):
+                value['enabled'] = enabled
+                path.write_text(json.dumps(value))
+                before = path.read_bytes(), path.stat().st_mtime_ns
+                self.assertEqual(graft.automatic(self.root, REPO)['state'], 'enabled' if enabled else 'disabled')
+                self.assertEqual(before, (path.read_bytes(), path.stat().st_mtime_ns))
+
+    def test_enable_without_package_prepares_once_and_creates_native_skill(self):
+        with mock.patch.object(graft_setup, 'prepare', return_value=(Path('/node'), self.root / 'package')) as setup:
+            with mock.patch.object(graft.shutil, 'which', return_value='/node'), mock.patch.object(graft, '_invoke', return_value={'adapter': graft.OWNER}):
+                result = graft.automatic(self.root, REPO)
+        setup.assert_called_once()
+        self.assertTrue(result['enabled'])
+        self.assertTrue((self.root / graft.SKILL_PATH).is_file())
+
+    def test_project_default_skip_and_dependency_failure_do_not_block_configuration(self):
+        parser = main.build_parser(REPO)
+        with mock.patch.object(graft, 'automatic', side_effect=ValueError('offline')) as automatic:
+            for command in (['init', '--dry-run'], ['init', '--install-only'], ['config']):
+                project._configure_retrieval(parser.parse_args(command), REPO, self.root)
+            automatic.assert_not_called()
+            with contextlib.redirect_stderr(io.StringIO()) as errors:
+                project._configure_retrieval(parser.parse_args(['init']), REPO, self.root)
+            automatic.assert_called_once_with(self.root, REPO, disabled=False)
+            self.assertIn('ordinary code search', errors.getvalue())
+
+
+class ProjectGraftTests(unittest.TestCase):
+    setUp = project_fixtures.ProjectCliTests.setUp
+    run_cli = project_fixtures.ProjectCliTests.run_cli
+
+    def test_successful_and_existing_init_prepare_retrieval_without_regeneration(self):
+        os.environ['FAKE_CODEX_MODE'] = 'generate'
+        with mock.patch.object(graft, 'automatic', return_value={'state': 'enabled'}) as activate:
+            code, out, err = self.run_cli('init', '--retrieval', 'auto')
+            self.assertEqual(code, 0, err)
+            activate.assert_called_once_with(self.root, REPO, disabled=False)
+            self.codex.reset_mock()
+            before = project_fixtures.snapshot(self.root)
+            code, out, err = self.run_cli('init', '--retrieval', 'auto')
+            self.assertEqual(code, 0, err)
+            self.assertEqual(activate.call_count, 2)
+            self.codex.assert_not_called()
+            self.assertEqual(before, project_fixtures.snapshot(self.root))
+
+    def test_failed_configuration_never_starts_retrieval_setup(self):
+        os.environ['FAKE_CODEX_MODE'] = 'corrupt'
+        with mock.patch.object(graft, 'automatic') as activate:
+            code, out, err = self.run_cli('init', '--retrieval', 'auto')
+        self.assertNotEqual(code, 0)
+        activate.assert_not_called()

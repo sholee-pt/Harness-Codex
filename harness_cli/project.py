@@ -52,8 +52,10 @@ def register_project_commands(subparsers) -> None:
             parser.add_argument('--routing-profiles', type=Path, help='Optional JSON model preferences for the native Auto extension.')
             parser.add_argument('--native-ui-archive', type=Path, help='Verified native Codex extension archive for offline integration setup.')
             parser.add_argument('--auto-model', choices=('manual', 'auto'), help='Default inference choice for new Codex launches; existing Codex preferences stay unchanged.')
-            parser.add_argument('--no-codex-integration', action='store_true', help='Configure project files only; do not install the optional native Auto extension.')
+            parser.add_argument('--no-codex-integration', action='store_true', help='Do not install the native Auto extension; --retrieval controls Graft setup separately.')
             parser.add_argument('--activate', choices=('ask', 'shell', 'skip'), default='ask', help='After native integration, offer a Bash with ~/.bashrc loaded; skip in noninteractive/JSON mode.')
+            parser.add_argument('--retrieval', choices=('auto', 'off'), default='auto' if command == 'init' else None,
+                                help='Prepare local Graft retrieval automatically on Linux (init default), or keep it disabled. Config/reset preserve it unless specified.')
             parser.add_argument('--maintenance', choices=('off', 'suggest', 'auto'),
                                 help='Opt into bounded maintenance after configuration; auto may update existing skills only.')
             parser.add_argument('--interactive', action='store_true', help='Use the native Codex conversation screen instead of progress output.')
@@ -454,6 +456,20 @@ def _configure_integration(args, source_root):
     offer_activation(mode=getattr(args, 'activate', 'ask'), cwd=args.project)
 
 
+def _configure_retrieval(args, source_root, root):
+    mode = getattr(args, 'retrieval', None)
+    if mode is None or getattr(args, 'dry_run', False) or getattr(args, 'install_only', False):
+        return
+    from .graft import automatic
+    try:
+        with ui.Progress('Preparing local code retrieval', compact=True):
+            report = automatic(root, source_root, disabled=mode == 'off')
+        ui.report(report, title='Graft retrieval')
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        ui.report({'state': 'unavailable', 'guidance': 'The project harness remains usable with ordinary code search.',
+                   'warnings': [str(exc), 'Retry with harness-codex graft enable --project PATH.']}, title='Graft retrieval', error=True)
+
+
 def _launch(command: list[str], root: Path, prompt: str, *, settings: str = 'native', environment=None) -> int:
     """Interactive configuration fallback; work conversations never enter here."""
     if prompt:
@@ -540,6 +556,7 @@ def _finish_configuration(source_root: Path, root: Path, command: list[str], goa
     if getattr(args, 'maintenance', None) is not None:
         from .maintenance import enable
         enable(source_root, root, args.maintenance)
+    _configure_retrieval(args, source_root, root)
     _configure_integration(args, source_root)
     print('Next: codex (from this project).')
     return 0
@@ -589,12 +606,14 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                 else:
                     print("Review harness-codex status/doctor before use. For a supported upgrade or stale evidence, supply --goal/--goal-file to init for a reviewed update.")
                 if args._existing_init_noop:
+                    if existing_status['state'] in {'configured', 'stale-evidence'}:
+                        _configure_retrieval(args, source_root, root)
                     _configure_integration(args, source_root)
                     if getattr(args, 'maintenance', None) is not None:
                         from .maintenance import enable
                         enable(source_root, root, args.maintenance)
                         return 0
-                    print("No project files were changed and Codex was not launched. Supply --goal/--goal-file to init for an explicit reviewed update.")
+                    print("The generated harness was retained and Codex was not launched. Supply --goal/--goal-file to init for an explicit reviewed update.")
                     return 1 if existing_status["state"] == "invalid" else 0
             elif os.path.lexists(root / ".agents/skills/harness"):
                 print("The generator is already present; a generated project harness has not yet been confirmed.")

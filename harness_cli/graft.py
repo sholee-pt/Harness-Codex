@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+from types import SimpleNamespace
 
 from .paths import checked_path
 
@@ -42,7 +43,7 @@ def register(commands):
         if name in {'enable', 'query', 'rebuild'}:
             command.add_argument('--timeout', type=float, default=120)
         if name == 'enable':
-            command.add_argument('--package', type=Path, required=True, help='Installed @nanonets/graft package directory; no automatic download.')
+            command.add_argument('--package', type=Path, help='Use this installed package; otherwise prepare an isolated Linux runtime automatically.')
             command.add_argument('--node', default='node')
         if name == 'query':
             command.add_argument('question')
@@ -70,23 +71,43 @@ def _load(path):
     value = json.loads(path.read_text(encoding='utf-8'))
     if (not isinstance(value, dict) or value.get('owner') != OWNER
             or type(value.get('enabled')) is not bool or value.get('skillHash') != hashlib.sha256(SKILL.encode()).hexdigest()
-            or not all(isinstance(value.get(name), str) and value[name] for name in ('package', 'node'))):
+            or not all(isinstance(value.get(name), str) and (value[name] or not value['enabled']) for name in ('package', 'node'))
+            or any(name in value and type(value[name]) is not bool for name in ('disabledByUser', 'skillOwned'))):
         raise ValueError('Retrieval settings are invalid or unowned; files were preserved.')
     return value
+
+
+def home():
+    return checked_path(os.environ.get('HARNESS_GRAFT_HOME', str(Path.home() / '.local/share/harness-codex-retrieval')))
 
 
 def storage(root):
     # Opt-in and executable provenance belong to the current user, not a cloned
     # project's editable files. Graphs remain disposable and separate from manifests.
-    base = Path(os.environ.get('HARNESS_GRAFT_HOME', str(Path.home() / '.local/share/harness-codex-retrieval')))
+    base = home()
     identity = hashlib.sha256(os.path.normcase(str(root)).encode()).hexdigest()
     return checked_path(base / identity)
+
+
+def automatic(root, source_root, *, disabled=False):
+    """Init convenience; never scan/rebuild a previously enabled project here."""
+    settings = _load(checked_path(storage(root) / 'settings.json'))
+    if not disabled and settings:
+        if settings.get('disabledByUser', not settings['enabled']):
+            return {'state': 'disabled', 'guidance': 'Explicit Graft opt-out preserved.'}
+        skill = checked_path(root / SKILL_PATH)
+        if settings['enabled'] and settings.get('skillOwned', True) and skill.is_file() and skill.read_bytes() == SKILL.encode():
+            return {'state': 'enabled', 'guidance': 'Existing setup reused; retrieval refreshes only when queried.'}
+    args = SimpleNamespace(project=root, graft_action='disable' if disabled else 'enable',
+                           package=Path(settings['package']) if settings and settings['package'] else None,
+                           node=settings['node'] if settings and settings['node'] else 'node', timeout=120, json=False)
+    return execute(args, source_root)
 
 
 def _invoke(source_root, root, cache, settings, action, *, timeout, question='', limit=6, max_chars=12000):
     package = Path(settings['package'])
     metadata = json.loads((package / 'package.json').read_text(encoding='utf-8'))
-    if metadata.get('name') != '@nanonets/graft' or metadata.get('version') != PACKAGE_VERSION:
+    if not isinstance(metadata, dict) or metadata.get('name') != '@nanonets/graft' or metadata.get('version') != PACKAGE_VERSION:
         raise ValueError(f'This adapter is reviewed for @nanonets/graft {PACKAGE_VERSION}; ordinary code search remains available.')
     # Reject cache links before passing a writable directory to an external library.
     for path in cache.rglob('*') if cache.exists() else ():
@@ -118,7 +139,7 @@ def _invoke(source_root, root, cache, settings, action, *, timeout, question='',
     return result
 
 
-def run(args, source_root):
+def execute(args, source_root):
     root = checked_path(args.project)
     if not root.is_dir() or any(part.casefold() == '.git' for part in root.parts):
         raise ValueError('--project must be an existing project directory outside Git metadata.')
@@ -132,14 +153,23 @@ def run(args, source_root):
     if action == 'status':
         result = {'enabled': bool(settings and settings['enabled']), 'provider': 'graft',
                   'indexed': (cache / 'harness-ready.json').is_file(), 'mode': 'local-structural',
-                  'skillInstalled': bool(settings and skill.is_file() and skill.read_bytes() == SKILL.encode())}
+                  'skillInstalled': bool(settings and settings.get('skillOwned', True) and skill.is_file() and skill.read_bytes() == SKILL.encode())}
     elif action == 'disable':
+        if settings is None:
+            if folder.exists():
+                raise ValueError('Unowned retrieval directory already exists; files were preserved.')
+            settings = {'owner': OWNER, 'enabled': False, 'package': '', 'node': '',
+                        'skillHash': hashlib.sha256(SKILL.encode()).hexdigest(), 'skillOwned': False}
         if settings:
+            remove_skill = settings.get('skillOwned', True) and skill.is_file() and skill.read_bytes() == SKILL.encode()
             settings['enabled'] = False
+            settings['disabledByUser'] = True
+            if remove_skill:
+                settings['skillOwned'] = False
             _save(state_path, settings)
-            if skill.is_file() and skill.read_bytes() == SKILL.encode():
+            if remove_skill:
                 skill.unlink()
-        result = {'enabled': False, 'cache': 'preserved', 'projectFiles': 'preserved'}
+        result = {'state': 'disabled', 'enabled': False, 'cache': 'preserved', 'projectFiles': 'preserved'}
     else:
         if (not 0 < args.timeout <= 240 or not 1 <= getattr(args, 'limit', 6) <= 20
                 or not 512 <= getattr(args, 'max_chars', 12000) <= 64000):
@@ -147,16 +177,19 @@ def run(args, source_root):
         if action == 'enable':
             if settings is None and folder.exists():
                 raise ValueError('Unowned retrieval directory already exists; preserve it and choose a clean project setup.')
-            if skill.exists() and (settings is None or skill.read_bytes() != SKILL.encode()):
+            if skill.exists() and (settings is None or not settings.get('skillOwned', True) or skill.read_bytes() != SKILL.encode()):
                 raise ValueError('Existing retrieval skill is user-owned or modified; it was preserved.')
+            if args.package is None:
+                from .graft_setup import prepare
+                args.node, args.package = prepare(home(), PACKAGE_VERSION)
             node = shutil.which(os.path.expanduser(args.node))
             if node is None:
                 raise ValueError('Node.js 20 or newer is required only for optional Graft retrieval.')
             settings = {'owner': OWNER, 'enabled': True, 'package': str(args.package.expanduser().resolve()),
-                        'node': node, 'skillHash': hashlib.sha256(SKILL.encode()).hexdigest()}
+                        'node': node, 'skillHash': hashlib.sha256(SKILL.encode()).hexdigest(), 'disabledByUser': False, 'skillOwned': True}
             # A disabled receipt makes an interrupted first build explicitly retryable.
             if previous is None:
-                _save(state_path, {**settings, 'enabled': False})
+                _save(state_path, {**settings, 'enabled': False, 'skillOwned': False})
         elif not settings or not settings['enabled']:
             raise ValueError('Graft is disabled for this project; continue with ordinary source search.')
         if action == 'query' and (not args.question.strip() or len(args.question) > 8000 or '\0' in args.question):
@@ -170,6 +203,13 @@ def run(args, source_root):
                 with skill.open('x', encoding='utf-8', newline='\n') as stream:
                     stream.write(SKILL)
             _save(state_path, settings)
+            result.update(state='enabled', enabled=True)
+    return result
+
+
+def run(args, source_root):
+    result = execute(args, source_root)
+    action = args.graft_action
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif action == 'query':

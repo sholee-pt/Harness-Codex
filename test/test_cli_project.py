@@ -63,13 +63,14 @@ class ProjectCliTests(unittest.TestCase):
         mock.patch.dict(os.environ, {
             "FAKE_CODEX_LOG": str(self.log), "FAKE_HARNESS_SOURCE": str(REPO_ROOT),
             "FAKE_CODEX_MODE": "noop", "FAKE_CODEX_EXIT": "0",
+            "HARNESS_GRAFT_HOME": str(self.base / 'retrieval'),
         }).start()
         self.codex = mock.patch.object(project, "_codex_command", return_value=[sys.executable, "-B", str(self.fake)]).start()
 
     def run_cli(self, command, *extra, tty=True):
         output = TerminalBuffer() if tty else io.StringIO()
         error = io.StringIO()
-        options = ["--interactive", "--settings", "native", "--no-codex-integration"] if command in {"init", "configure", "config", "reset"} else (
+        options = ["--interactive", "--settings", "native", "--no-codex-integration", "--retrieval", "off"] if command in {"init", "configure", "config", "reset"} else (
             ['--settings', 'native'] if command in {'new', 'start', 'resume'} else [])
         args = self.parser.parse_args([command, "--json", "--project", str(self.root), *options, *extra])
         with mock.patch.object(sys, "stdin", TerminalBuffer() if tty else io.StringIO()), contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
