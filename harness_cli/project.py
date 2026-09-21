@@ -221,10 +221,10 @@ def _report(source_root: Path, root: Path, *, doctor: bool = False) -> tuple[int
     return completed.returncode, report
 
 
-def _reviewable_missing_reference(root: Path, label: str, relative: str, *, source_root: Path) -> bool:
+def _reviewable_missing_reference(root: Path, label: str, relative: str, *, source_root: Path, manifest=None) -> bool:
     """Missing-path diagnostics skip some metadata checks; complete them here."""
     try:
-        value = json.loads((root / ".harness/manifest.json").read_text(encoding="utf-8"))
+        value = manifest if manifest is not None else json.loads((root / ".harness/manifest.json").read_text(encoding="utf-8"))
         for component in label.split("."):
             match = re.fullmatch(r"([A-Za-z]+)(?:\[(\d+)\])?", component)
             if match is None:
@@ -272,13 +272,19 @@ def _only_stale_evidence(report: dict, *, root: Path | None = None, source_root:
     if not isinstance(errors, list) or not errors:
         return False
     changed, shortened, absent = set(), set(), set()
+    manifest = None
     for error in errors:
         match = stale.fullmatch(error) if isinstance(error, str) else None
         if match is None:
             missing_match = missing.fullmatch(error) if isinstance(error, str) else None
+            if root is not None and source_root is not None and missing_match is not None and manifest is None:
+                try:
+                    manifest = json.loads((root / '.harness/manifest.json').read_text(encoding='utf-8'))
+                except (OSError, ValueError):
+                    return False
             if (root is not None and source_root is not None and missing_match is not None
                     and _reviewable_missing_reference(root, missing_match.group("label"), missing_match.group("path"),
-                                                      source_root=source_root)):
+                                                      source_root=source_root, manifest=manifest)):
                 absent.add(missing_match.group("path"))
                 continue
             return False

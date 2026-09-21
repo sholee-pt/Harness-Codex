@@ -62,6 +62,7 @@ class Validator:
         self.validation_layers: dict[str, dict[str, str]] = {}
         self.legacy_artifacts = False
         self.upgrade_requirements: list[str] = []
+        self.compatibility_state = "failed"
 
     def error(self, message: str) -> None:
         self.errors.append(message)
@@ -125,6 +126,7 @@ class Validator:
             self.error("generator must contain name, version, and runtime")
         try:
             contract_state = harness_metadata.artifact_contract_state(self.manifest)
+            self.compatibility_state = "passed" if contract_state == "current" else "upgrade-required"
             self.legacy_artifacts = contract_state == "legacy"
             if contract_state != "current":
                 self.upgrade_requirements.append("Review an Authoring Contract 3 draft and apply Artifact Contract 2 and the project-local workspace contract through the guarded update workflow.")
@@ -192,6 +194,7 @@ class Validator:
             self.error("managedFiles must be an array")
 
     def validate_evidence_locations(self) -> None:
+        snapshot = harness_state.EvidenceSnapshot()
         references: list[tuple[str, object]] = []
         project = self.manifest.get("project", {})
         project_evidence = project.get("evidence", []) if isinstance(project, dict) else []
@@ -238,7 +241,7 @@ class Validator:
                 continue
             if isinstance(expected_hash, str) and re.fullmatch(r"[0-9a-f]{64}", expected_hash):
                 try:
-                    actual_hash = harness_state.digest_bytes(path.read_bytes())
+                    _, actual_hash = snapshot.read(path)
                 except OSError as exc:
                     self.error(f"could not read {label}.path: {exc}")
                     continue
@@ -262,12 +265,16 @@ class Validator:
                     self.error(f"{label}.lines must satisfy 1 <= start <= end")
                     continue
                 try:
-                    line_count = len(path.read_text(encoding="utf-8").splitlines())
+                    line_count = snapshot.line_count(path)
                 except (OSError, UnicodeError):
                     self.error(f"{label}.lines requires a UTF-8 file: {evidence_path}")
                     continue
                 if end > line_count:
                     self.error(f"{label}.lines exceeds {evidence_path}")
+        try:
+            snapshot.verify()
+        except OSError as exc:
+            self.error(str(exc))
 
     def validate_skill(self, item: dict) -> str | None:
         name = item.get("name")
@@ -659,7 +666,7 @@ class Validator:
         }
         installation_status = "invalid" if self.errors else "upgrade-required" if self.upgrade_requirements else "valid"
         self.validation_layers["artifactCompatibility"] = {
-            "status": "failed" if self.errors else "upgrade-required" if self.upgrade_requirements else "passed",
+            "status": self.compatibility_state,
             "proves": "Current artifact-contract compatibility is separate from installation integrity.",
         }
         activation = activation_report(self.manifest, valid=installation_status == "valid")
@@ -671,6 +678,9 @@ class Validator:
             "valid": installation_status == "valid",
             "installationStatus": installation_status,
             "integrityValid": not self.errors,
+            "managedIntegrityValid": all(self.validation_layers.get(name, {}).get("status") == "passed" for name in (
+                "transactionSafety", "rootContext", "workspaceOwnership", "managedOwnership",
+            )),
             "artifactContractVersion": self.manifest.get("artifactContractVersion"),
             "requiredArtifactContractVersion": harness_metadata.ARTIFACT_CONTRACT_VERSION,
             "upgradeRequirements": self.upgrade_requirements,

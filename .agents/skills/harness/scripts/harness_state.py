@@ -43,6 +43,54 @@ def digest_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+class EvidenceSnapshot:
+    """Bounded, single-validation cache for source evidence, never write preconditions."""
+
+    def __init__(self, limit: int = 16 * 1024 * 1024):
+        self.limit = limit
+        self.size = 0
+        self.files: dict[Path, tuple[tuple, bytes, str]] = {}
+        self.line_counts: dict[str, int] = {}
+
+    @staticmethod
+    def signature(path: Path) -> tuple:
+        value = path.stat()
+        return (value.st_dev, value.st_ino, value.st_mode, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+
+    def read(self, path: Path) -> tuple[bytes, str]:
+        before = self.signature(path)
+        saved = self.files.get(path)
+        if saved is not None and saved[0] == before:
+            return saved[1], saved[2]
+        if saved is not None:
+            self.size -= len(saved[1])
+            del self.files[path]
+        content = path.read_bytes()
+        if self.signature(path) != before:
+            raise OSError(f"source evidence changed while reading: {path.name}")
+        digest = digest_bytes(content)
+        if self.size + len(content) <= self.limit:
+            self.files[path] = (before, content, digest)
+            self.size += len(content)
+        return content, digest
+
+    def line_count(self, path: Path) -> int:
+        content, digest = self.read(path)
+        if digest in self.line_counts:
+            return self.line_counts[digest]
+        count = len(content.decode("utf-8").splitlines())
+        if path in self.files:
+            self.line_counts[digest] = count
+        return count
+
+    def verify(self) -> None:
+        # Metadata is only a fast hint. Re-read before leaving this pass, including
+        # same-size edits with restored timestamps. Never reuse this cache on apply.
+        for path, (_, content, _) in self.files.items():
+            if path.read_bytes() != content:
+                raise OSError(f"source evidence changed during validation: {path.name}")
+
+
 def mode_text(mode: int) -> str:
     if not isinstance(mode, int) or isinstance(mode, bool) or not 0 <= mode <= 0o777:
         raise StateError(f"file mode must contain only permission bits: {mode!r}")

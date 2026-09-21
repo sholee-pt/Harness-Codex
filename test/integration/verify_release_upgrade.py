@@ -39,7 +39,7 @@ def worker(source, root, stage):
 
     draft = test_runtime_teamplay.DeterministicPlanBuilderTests()._draft('coordinated-cross-contract-plan.json')
     if stage == 'baseline':
-        assert harness_metadata.HARNESS_VERSION == '0.14.0-beta'
+        assert harness_metadata.HARNESS_VERSION == '0.15.0-beta'
         shutil.copytree(tests_root / 'fixtures/coordinated-cross-contract', root, dirs_exist_ok=True)
         plan = harness_plan_builder.materialize_plan(draft, root=root)
         harness_apply.apply_application(harness_apply.build_application(root, plan))
@@ -47,7 +47,7 @@ def worker(source, root, stage):
         assert report['valid'], report['errors']
         (root.parent / (root.name + '-baseline-plan.json')).write_text(json.dumps(plan), encoding='utf-8')
         return {'generatorVersion': harness_metadata.HARNESS_VERSION, 'valid': report['valid'], 'instructionSizes': instruction_sizes(root), 'agentCount': len(plan['topology']['agents'])}
-    assert harness_metadata.HARNESS_VERSION == '0.15.0-beta'
+    assert harness_metadata.HARNESS_VERSION == '0.16.0-beta'
     before = snapshot(root)
     legacy = validate_harness.Validator(root).run()
     doctor = harness_doctor.diagnose(root)
@@ -63,13 +63,13 @@ def worker(source, root, stage):
         raise AssertionError('A modified installation must not be overwritten')
     original_manifest = json.loads((root / '.harness/manifest.json').read_text(encoding='utf-8'))
     original_version = original_manifest['generator']['version']
-    assert original_version == '0.14.0-beta'
+    assert original_version == '0.15.0-beta'
     expected_status = 'valid'
     assert legacy['installationStatus'] == expected_status and legacy['integrityValid'], legacy
     assert doctor['installationStatus'] == expected_status, doctor
     previous_plan_accepted = None
     runtime_compatible = None
-    if original_version == '0.14.0-beta':
+    if original_version == '0.15.0-beta':
         # The unchanged plan was produced by the actual old source subprocess.
         # The new advisory is optional, so its absence cannot invalidate it.
         import harness_git_policy
@@ -78,9 +78,7 @@ def worker(source, root, stage):
             content = artifact['content']
             if artifact['path'].endswith('.toml'):
                 content = tomllib.loads(content)['developer_instructions']
-            if original_version == '9.0':
-                assert harness_git_policy.GUIDANCE not in content
-            elif artifact['path'].endswith('.toml') or artifact['path'] == '.agents/skills/project-harness/SKILL.md':
+            if artifact['path'].endswith('.toml') or artifact['path'] == '.agents/skills/project-harness/SKILL.md':
                 assert harness_git_policy.GUIDANCE in content
         previous_plan_accepted = harness_apply.build_application(root, previous_plan)['report']['valid']
         assert previous_plan_accepted and snapshot(root) == before

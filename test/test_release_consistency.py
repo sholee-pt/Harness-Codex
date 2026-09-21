@@ -27,13 +27,13 @@ import harness_transaction  # noqa: E402
 
 class ReleaseConsistencyTests(unittest.TestCase):
     def test_release_metadata_is_consistent(self) -> None:
-        self.assertEqual(harness_metadata.HARNESS_VERSION, "0.15.0-beta")
+        self.assertEqual(harness_metadata.HARNESS_VERSION, "0.16.0-beta")
         self.assertEqual(harness_metadata.AUTHORING_CONTRACT_VERSION, 3)
         self.assertEqual(harness_metadata.ARTIFACT_CONTRACT_VERSION, 2)
         self.assertIn('9.11', harness_metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS)
         self.assertIn('0.10.0-beta', harness_metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS)
         self.assertIn('0.11.0-beta', harness_metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS)
-        self.assertNotIn('0.16.0-beta', harness_metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS)
+        self.assertNotIn('0.17.0-beta', harness_metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS)
         self.assertIn('8.0', harness_metadata.READABLE_EVALUATION_VERSIONS)
         self.assertIn('8.1', harness_metadata.READABLE_EVALUATION_VERSIONS)
         self.assertIn('9.0', harness_metadata.READABLE_EVALUATION_VERSIONS)
@@ -77,7 +77,7 @@ class ReleaseConsistencyTests(unittest.TestCase):
         current = harness_metadata.HARNESS_VERSION
         self.assertIn('Version-v' + current.replace('-', '--'), readme)
         self.assertIn('v' + current + '/install_harness_codex.sh', readme)
-        self.assertIn('| [`v' + current + '`](#harness-for-codex-v' + current.replace('.', '') + ')', versions)
+        self.assertIn('| [`v' + current.replace('-beta', '‑beta') + '`](#harness-for-codex-v' + current.replace('.', '') + ')', versions)
         self.assertIn('This branch contains Harness for Codex v' + current, agents)
         self.assertIn('name: Harness for Codex v' + current + ' checks', workflow)
         self.assertIn('- v' + current, workflow)

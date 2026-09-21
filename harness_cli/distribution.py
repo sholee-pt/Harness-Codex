@@ -43,6 +43,7 @@ REQUIRED = frozenset({"harness.py", "install.py", "harness_cli/__init__.py", "ha
 # Keep the original common set valid for complete v9.2 and v9.3 distributions.
 # Later releases inherit each dependency from its numeric introduction version.
 VERSION_REQUIRED = (
+    (version_key("0.16.0-beta"), frozenset({"harness_cli/graft.py", "harness_cli/graft_bridge.mjs"})),
     (version_key("0.15.0-beta"), frozenset({"harness_cli/checkpoint.py", ".agents/skills/harness/scripts/harness_checkpoint.py", ".agents/skills/harness/references/task-checkpoints.md"})),
     (version_key("0.13.0-beta"), frozenset({"harness_cli/codex_integration.py", "harness_cli/integration_path.py"})),
     (version_key("0.12.0-beta"), frozenset({"harness_cli/model_routing.py", "harness_cli/routing.py", "harness_cli/native_ui.py", "harness_cli/native_router.py", "harness_cli/native_package.py"})),

@@ -113,7 +113,9 @@ def load_plan(path: Path) -> dict:
     return plan
 
 
-def validate_evidence(root: Path, value: object, label: str) -> list[dict]:
+def validate_evidence(root: Path, value: object, label: str, *, snapshot=None) -> list[dict]:
+    own_snapshot = snapshot is None
+    snapshot = snapshot if snapshot is not None else harness_state.EvidenceSnapshot()
     evidence = require_list(value, label)
     if not evidence:
         raise PlanError(f"{label} must contain at least one evidence object")
@@ -141,7 +143,7 @@ def validate_evidence(root: Path, value: object, label: str) -> list[dict]:
             raise PlanError(f"{label}[{index}].claim must be a non-empty string")
         if not isinstance(expected_hash, str) or not HASH_RE.fullmatch(expected_hash):
             raise PlanError(f"{label}[{index}].sha256 must be a SHA-256 hash")
-        actual_hash = harness_state.digest_bytes(path.read_bytes())
+        content, actual_hash = snapshot.read(path)
         if actual_hash != expected_hash:
             raise PlanError(f"{label}[{index}] changed after analysis: {relative}")
         lines = entry.get("lines")
@@ -161,7 +163,7 @@ def validate_evidence(root: Path, value: object, label: str) -> list[dict]:
                     f"{label}[{index}].lines must contain integers with 1 <= start <= end"
                 )
             try:
-                line_count = len(path.read_text(encoding="utf-8").splitlines())
+                line_count = snapshot.line_count(path)
             except (OSError, UnicodeError) as exc:
                 raise PlanError(
                     f"{label}[{index}] uses lines for a non-UTF-8 file: {relative}"
@@ -171,15 +173,17 @@ def validate_evidence(root: Path, value: object, label: str) -> list[dict]:
                     f"{label}[{index}].lines ends at {end}, but {relative} has {line_count} lines"
                 )
         validated.append(entry)
+    if own_snapshot:
+        snapshot.verify()
     return validated
 
 
-def validate_project(root: Path, plan: dict) -> dict:
+def validate_project(root: Path, plan: dict, *, snapshot=None) -> dict:
     project = require_object(plan.get("project"), "project")
     summary = project.get("summary")
     if not isinstance(summary, str) or not summary.strip():
         raise PlanError("project.summary must be a non-empty string")
-    validate_evidence(root, project.get("evidence"), "project.evidence")
+    validate_evidence(root, project.get("evidence"), "project.evidence", snapshot=snapshot)
     rationale = require_object(project.get("rationale"), "project.rationale")
     rationale_summary = rationale.get("summary")
     if not isinstance(rationale_summary, str) or not rationale_summary.strip():
@@ -223,7 +227,7 @@ def validate_artifacts(root: Path, plan: dict) -> tuple[dict[str, str], dict[str
     return artifacts, modes
 
 
-def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> tuple[dict, list[str]]:
+def validate_topology(root: Path, plan: dict, artifacts: dict[str, str], *, snapshot=None) -> tuple[dict, list[str]]:
     topology = require_object(plan.get("topology"), "topology")
     capability_policies = plan.get("capabilityPolicies")
     try:
@@ -233,7 +237,7 @@ def validate_topology(root: Path, plan: dict, artifacts: dict[str, str]) -> tupl
         raise PlanError(str(exc)) from exc
 
     for label, evidence in harness_topology.iter_evidence(topology):
-        validate_evidence(root, evidence, label)
+        validate_evidence(root, evidence, label, snapshot=snapshot)
 
     agents = require_list(topology.get("agents"), "topology.agents")
     skills = require_list(topology.get("skills"), "topology.skills")
@@ -526,9 +530,11 @@ def build_application(root: Path, plan: dict) -> dict:
         raise PlanError(str(exc)) from exc
     harness_transaction.ensure_no_pending_transaction(root)
     reject_runtime_state(plan)
-    project = validate_project(root, plan)
+    snapshot = harness_state.EvidenceSnapshot()
+    project = validate_project(root, plan, snapshot=snapshot)
     artifacts, artifact_modes = validate_artifacts(root, plan)
-    topology, topology_warnings = validate_topology(root, plan, artifacts)
+    topology, topology_warnings = validate_topology(root, plan, artifacts, snapshot=snapshot)
+    snapshot.verify()
     capability_policies = require_list(plan.get("capabilityPolicies"), "capabilityPolicies")
     managed_block = validate_instruction(plan)
     manifest, old_managed = existing_manifest_state(root)

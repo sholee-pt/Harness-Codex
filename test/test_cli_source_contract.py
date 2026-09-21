@@ -62,7 +62,7 @@ class SourceContractTests(unittest.TestCase):
         self.assert_rejected_before_writes(source, r'harness_cli/runtime_cleanup\.ps1')
 
     def test_refactored_source_requires_actual_imported_modules_before_writes(self):
-        for name in ("project_installer.py", "paths.py"):
+        for name in ("project_installer.py", "paths.py", "graft.py", "graft_bridge.mjs"):
             with self.subTest(module=name):
                 source = write_source(self.base / name, dist._snapshot(REPO))
                 (source / "harness_cli" / name).unlink()

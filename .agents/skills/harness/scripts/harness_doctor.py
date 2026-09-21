@@ -36,6 +36,7 @@ def diagnose(root: Path) -> dict:
         "valid": validation["valid"] and not errors,
         "installationStatus": validation["installationStatus"],
         "integrityValid": validation["integrityValid"],
+        "managedIntegrityValid": validation["managedIntegrityValid"],
         "upgradeRequirements": validation["upgradeRequirements"],
         "environment": {
             "harnessCondaEnvironment": harness_environment,
