@@ -1,4 +1,4 @@
-"""Extract the current changelog section as an inline GitHub release body."""
+"""Compose version changes and shared installation guidance as a release body."""
 from __future__ import annotations
 
 import argparse
@@ -18,7 +18,8 @@ def release_notes(root: Path) -> str:
     sections = re.findall(r'^' + re.escape(heading) + r'\n(.*?)(?=^## |\Z)', content, re.M | re.S)
     if len(sections) != 1 or not sections[0].strip():
         raise ValueError('Changelog must have exactly one nonempty current release section')
-    return sections[0].strip() + '\n'
+    installation = (root / 'docs/release-installation.md').read_text(encoding='utf-8')
+    return sections[0].strip() + '\n\n' + installation.replace('{version}', version).strip() + '\n'
 
 
 if __name__ == '__main__':
