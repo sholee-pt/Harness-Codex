@@ -9,7 +9,8 @@ import tempfile
 import unittest
 from unittest import mock
 
-from harness_cli import graft, jev, jev_client, main
+from harness_cli import graft, graft_setup, jev, jev_client, main, project
+import test_cli_project as project_fixtures
 
 REPO = Path(__file__).resolve().parents[1]
 QUESTION = 'Where is the validation of incoming requests implemented?'
@@ -54,6 +55,40 @@ class JevTests(unittest.TestCase):
             self.assertEqual(self.command('status')['mode'], 'off')
             self.assertEqual(self.advise()['state'], 'disabled')
         self.assertEqual(self.snapshot(), {})
+
+    def test_automatic_setup_waits_for_graft_without_creating_state(self):
+        with mock.patch.object(jev, '_request', side_effect=AssertionError('No API')):
+            self.assertEqual(jev.automatic(self.root, REPO)['state'], 'unavailable')
+        self.assertEqual(self.snapshot(), {})
+
+    def test_automatic_enable_without_key_then_use_key_without_reenabling(self):
+        args = main.build_parser(REPO).parse_args(['graft', 'enable', '--package', str(self.root), '--project', str(self.root)])
+        with mock.patch.object(graft.shutil, 'which', return_value='/node'), mock.patch.object(graft, '_invoke', return_value={}):
+            graft.execute(args, REPO)
+        with mock.patch.dict(os.environ, {'TYPESAFE_API_KEY': ''}), mock.patch.object(jev, '_request') as request:
+            result = jev.automatic(self.root, REPO)
+            self.assertEqual(result['mode'], 'shadow')
+            self.assertFalse(result['keyAvailable'])
+            self.assertEqual(self.advise()['state'], 'key-unavailable')
+            request.assert_not_called()
+        with mock.patch.object(jev, '_request', side_effect=response) as request:
+            self.assertEqual(self.advise()['state'], 'observed')
+            request.assert_called_once()
+
+    def test_automatic_reuse_preserves_preferences_cache_and_explicit_opt_out(self):
+        self.enable('--mode', 'suggest', '--daily-calls', '7', '--model', 'jev-1.14.0')
+        with mock.patch.object(jev, '_request', side_effect=response):
+            self.advise()
+        for action, expected in ((None, 'suggest'), ('disable', 'off'), ('clear', 'off')):
+            if action:
+                self.command(action, '--yes')
+            before = self.snapshot()
+            with mock.patch.object(jev, '_request', side_effect=AssertionError('No API')):
+                result = jev.automatic(self.root, REPO)
+            self.assertEqual(result['mode'], expected)
+            self.assertEqual(result['dailyCallLimit'], 7)
+            self.assertEqual(result['model'], 'jev-1.14.0')
+            self.assertEqual(before, self.snapshot())
 
     def test_explicit_enable_requires_graft_and_preserves_unknown_directory(self):
         with self.assertRaisesRegex(ValueError, 'Graft'):
@@ -160,13 +195,16 @@ class JevTests(unittest.TestCase):
     def test_corrupt_state_is_preserved_and_does_not_block_search(self):
         self.enable()
         path = jev._path(self.root)
-        path.write_text('{broken')
-        before = self.snapshot()
-        with mock.patch.object(jev, '_request') as request:
-            self.assertFalse(jev.enabled(self.root))
-            self.assertEqual(self.advise()['state'], 'unavailable')
-            request.assert_not_called()
-        self.assertEqual(before, self.snapshot())
+        for data in ('{broken', json.dumps({'owner': jev.OWNER, 'policy': jev.POLICY, 'mode': []})):
+            path.write_text(data)
+            before = self.snapshot()
+            with mock.patch.object(jev, '_request') as request:
+                self.assertFalse(jev.enabled(self.root))
+                self.assertEqual(self.advise()['state'], 'unavailable')
+                with self.assertRaises(ValueError):
+                    jev.automatic(self.root, REPO)
+                request.assert_not_called()
+            self.assertEqual(before, self.snapshot())
 
     def test_human_labels_compare_ranking_without_self_improvement(self):
         self.enable()
@@ -232,6 +270,51 @@ class JevTransportTests(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(jev_client.main(), 1)
             self.assertEqual(output.getvalue(), '')
+
+
+class ProjectJevTests(unittest.TestCase):
+    setUp = project_fixtures.ProjectCliTests.setUp
+    run_cli = project_fixtures.ProjectCliTests.run_cli
+
+    def test_fresh_and_existing_init_enable_once_without_api_or_regeneration(self):
+        os.environ['FAKE_CODEX_MODE'] = 'generate'
+        with mock.patch.object(graft_setup, 'prepare', return_value=(Path('/node'), self.base / 'package')):
+            with mock.patch.object(graft.shutil, 'which', return_value='/node'), mock.patch.object(graft, '_invoke', return_value={}) as build:
+                with mock.patch.object(jev, '_request', side_effect=AssertionError('Init cannot call Jev')):
+                    code, out, err = self.run_cli('init', '--retrieval', 'auto')
+                    self.assertEqual(code, 0, err)
+                    self.assertTrue(jev.enabled(self.root))
+                    self.assertEqual(jev._read(jev._path(self.root))['mode'], 'shadow')
+                    before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.base.rglob('*') if p.is_file()}
+                    self.codex.reset_mock()
+                    code, out, err = self.run_cli('init', '--retrieval', 'auto')
+                    self.assertEqual(code, 0, err)
+                    self.codex.assert_not_called()
+                    build.assert_called_once()
+                    self.assertEqual(before, {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.base.rglob('*') if p.is_file()})
+
+    def test_preview_install_only_config_and_retrieval_opt_out_never_enable_jev(self):
+        parser = main.build_parser(REPO)
+        with mock.patch.object(graft, 'automatic', return_value={'state': 'disabled'}), mock.patch.object(jev, 'automatic') as activate:
+            for args in (['init', '--dry-run'], ['init', '--install-only'], ['config'], ['init', '--retrieval', 'off'], ['init']):
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    project._configure_retrieval(parser.parse_args(args), REPO, self.root)
+            activate.assert_not_called()
+
+    def test_jev_setup_failure_does_not_fail_valid_project_configuration(self):
+        os.environ['FAKE_CODEX_MODE'] = 'generate'
+        with mock.patch.object(graft, 'automatic', return_value={'state': 'enabled'}):
+            with mock.patch.object(jev, 'automatic', side_effect=ValueError('Unowned state; preserved')):
+                code, out, err = self.run_cli('init', '--retrieval', 'auto')
+        self.assertEqual(code, 0, err)
+        self.assertIn('Graft and ordinary code search remain available', err)
+
+    def test_failed_project_configuration_does_not_enable_jev(self):
+        os.environ['FAKE_CODEX_MODE'] = 'corrupt'
+        with mock.patch.object(jev, 'automatic') as activate:
+            code, out, err = self.run_cli('init', '--retrieval', 'auto')
+        self.assertNotEqual(code, 0)
+        activate.assert_not_called()
 
 
 if __name__ == '__main__':

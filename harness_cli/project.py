@@ -55,7 +55,7 @@ def register_project_commands(subparsers) -> None:
             parser.add_argument('--no-codex-integration', action='store_true', help='Do not install the native Auto extension; --retrieval controls Graft setup separately.')
             parser.add_argument('--activate', choices=('ask', 'shell', 'skip'), default='ask', help='After native integration, offer a Bash with ~/.bashrc loaded; skip in noninteractive/JSON mode.')
             parser.add_argument('--retrieval', choices=('auto', 'off'), default='auto' if command == 'init' else None,
-                                help='Prepare local Graft retrieval automatically on Linux (init default), or keep it disabled. Config/reset preserve it unless specified.')
+                                help='Prepare Graft and Jev shadow advice on init (Jev needs TYPESAFE_API_KEY for queries), or disable retrieval. Config/reset preserve choices unless specified.')
             parser.add_argument('--maintenance', choices=('off', 'suggest', 'auto'),
                                 help='Opt into bounded maintenance after configuration; auto may update existing skills only.')
             parser.add_argument('--interactive', action='store_true', help='Use the native Codex conversation screen instead of progress output.')
@@ -468,6 +468,14 @@ def _configure_retrieval(args, source_root, root):
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         ui.report({'state': 'unavailable', 'guidance': 'The project harness remains usable with ordinary code search.',
                    'warnings': [str(exc), 'Retry with harness-codex graft enable --project PATH.']}, title='Graft retrieval', error=True)
+        return
+    if args.command == 'init' and report.get('state') == 'enabled':
+        from .jev import automatic as automatic_jev
+        try:
+            ui.report(automatic_jev(root, source_root), title='Jev advice')
+        except (OSError, ValueError) as exc:
+            ui.report({'state': 'unavailable', 'guidance': 'Graft and ordinary code search remain available.',
+                       'warnings': [str(exc), 'Retry with harness-codex jev enable --project PATH.']}, title='Jev advice', error=True)
 
 
 def _launch(command: list[str], root: Path, prompt: str, *, settings: str = 'native', environment=None) -> int:

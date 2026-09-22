@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.19.0‑beta`](#harness-for-codex-v0190-beta) | Schema 3 | Schema 7 | Schema 2 | Automatic Jev shadow setup during init, deferred key use and preference preservation |
 | [`v0.18.0‑beta`](#harness-for-codex-v0180-beta) | Schema 3 | Schema 7 | Schema 2 | Opt-in bounded Jev retrieval advice, local overhead observations and human-labeled ranking comparison |
 | [`v0.17.1‑beta`](#harness-for-codex-v0171-beta) | Schema 3 | Schema 7 | Schema 2 | Refresh transient native dependency downloads and lengthen bounded retry backoff |
 | [`v0.17.0‑beta`](#harness-for-codex-v0170-beta) | Schema 3 | Schema 7 | Schema 2 | Automatic isolated Graft setup during init, reuse and explicit opt-out preservation |
@@ -58,6 +59,12 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.19.0-beta
+
+- Enables Jev shadow advice automatically after successful Graft setup during init, including init of an existing compatible project. Init makes no Jev API requests; a missing TYPESAFE_API_KEY leaves ordinary retrieval available until a key is supplied.
+- Reuses existing Jev modes, models, budgets, cached advice and labels without writes. Explicit disable and clear remain disabled on later init; retrieval opt-out, previews, install-only and failed configuration skip setup.
+- Shares manual and automatic Jev setup logic and isolates setup errors from project configuration. Config/reset preserve Jev preferences; Plan, Manifest and Transaction contracts remain unchanged.
 
 ## Harness for Codex v0.18.0-beta
 

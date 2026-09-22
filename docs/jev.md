@@ -1,26 +1,35 @@
 # Optional Jev retrieval advice
 
-Jev can classify candidates already returned by a Graft query. It is off by
-default and requires a separate TypeSafe API key. Enabling Graft during `init`
-does not enable Jev or authorize external processing of project source.
+Jev can classify candidates already returned by a Graft query. Successful `init`
+automatically enables its shadow comparison after Graft is ready. It requires a
+separate TypeSafe API key for actual requests; init itself makes no Jev API calls.
 
-Enable once for a selected project, after deciding that its retrieval questions
-and returned code snippets may be sent to TypeSafe:
+Initialize normally; no separate `jev enable` command is needed:
 
 ```bash
 # Set TYPESAFE_API_KEY through your own shell or secret manager first.
-harness-codex jev enable --project /path/to/project
+harness-codex init --project /path/to/project
 harness-codex graft query "Where is request validation implemented?" --project /path/to/project --json
 harness-codex jev status --project /path/to/project --json
 ```
 
 This requires a TypeSafe account/key independently of Codex authentication.
+Without a key, Jev remains configured and Graft returns its ordinary results.
+Setting `TYPESAFE_API_KEY` later enables eligible calls without another init or
+enable command. Init reports this condition and the external processing boundary.
 The key is read from the environment, never saved in Harness settings or passed
 on the process command line. Requests use the fixed HTTPS TypeSafe endpoint;
 redirects are rejected. The provider receives the query and up to 2,400 characters
 per returned candidate, including source pointers and code excerpts. Its data
 handling policies apply. No full conversation, graph or extra source files are
 sent. Do not enable this for projects whose retrieved source cannot be shared.
+Use `init --retrieval off` to skip both retrieval setups, or run `jev disable`
+after init to retain local Graft without Jev. No model request occurs in between
+unless you run an eligible retrieval query. Existing Jev preferences, including
+explicit disable/clear, mode, model, budgets, caches and labels, survive repeated
+init without writes. `jev enable` explicitly re-enables a disabled setup. Config
+and reset preserve Jev preferences. Dry-run, install-only, failed configuration
+and disabled/unavailable Graft never initialize Jev.
 
 ## Selective calls and preserved behavior
 
@@ -62,7 +71,7 @@ source inspection and normal verification remain necessary.
 
 ## What is actually evaluated
 
-After opt-in, local counters automatically record attempted calls, failures,
+After activation, local counters automatically record attempted calls, failures,
 cache hits, call latency and provider-reported input/output tokens from valid
 responses. Failed or interrupted calls can also be billed without returning usage.
 These counters measure added overhead, not saved Codex tokens or improved quality.

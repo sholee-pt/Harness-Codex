@@ -1,4 +1,4 @@
-"""Opt-in retrieval advice and local observations; never self-authorizes changes."""
+"""Bounded retrieval advice and local observations; never self-authorizes changes."""
 from __future__ import annotations
 
 import hashlib
@@ -12,6 +12,7 @@ import secrets
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 
 from .distribution import _lock
 from .graft import _load, _save, storage
@@ -27,7 +28,7 @@ TTL = 86400
 
 
 def register(commands):
-    parser = commands.add_parser('jev', help='Opt in to external retrieval advice; start with a local shadow comparison.')
+    parser = commands.add_parser('jev', help='Manage external retrieval advice and local shadow comparisons.')
     parser.add_argument('jev_action', choices=('enable', 'disable', 'status', 'feedback', 'clear'), nargs='?', default='status')
     parser.add_argument('--project', type=Path, default=Path.cwd())
     parser.add_argument('--mode', choices=('shadow', 'suggest'), default='shadow')
@@ -49,7 +50,7 @@ def _read(path):
         raise ValueError('Jev state exceeds its bound')
     value = json.loads(path.read_text(encoding='utf-8'))
     if (not isinstance(value, dict) or value.get('owner') != OWNER or value.get('policy') != POLICY
-            or value.get('mode') not in {'off', 'shadow', 'suggest'}
+            or not isinstance(value.get('mode'), str) or value['mode'] not in {'off', 'shadow', 'suggest'}
             or not isinstance(value.get('model'), str) or not re.fullmatch(r'jev-\d+\.\d+\.\d+', value['model'])
             or type(value.get('dailyCalls')) is not int or not 1 <= value['dailyCalls'] <= 100
             or not isinstance(value.get('secret'), str) or not re.fullmatch(r'[0-9a-f]{64}', value['secret'])
@@ -101,12 +102,36 @@ def report(state):
             'scope': 'Jev API overhead and optional human-labeled retrieval ranking only; no task/token-saving attribution.'}
 
 
-def run(args, source_root):
+def _result(state):
+    return {**report(state), 'keyAvailable': bool(os.environ.get('TYPESAFE_API_KEY', '').strip())}
+
+
+def automatic(root, source_root):
+    """Init enables shadow advice once; existing preferences and observations survive."""
+    if _read(_path(root)) is None:
+        graft = _load(checked_path(storage(root) / 'settings.json'))
+        if not graft or not graft['enabled']:
+            return {'state': 'unavailable', 'guidance': 'Jev setup requires enabled Graft; ordinary search remains available.'}
+    args = SimpleNamespace(project=root, jev_action='enable', mode='shadow', model=MODEL, daily_calls=20)
+    result = execute(args, source_root, preserve_existing=True)
+    result['state'] = result['mode']
+    if result['mode'] == 'off':
+        result['guidance'] = 'Explicit Jev opt-out preserved; use jev enable to change it.'
+    else:
+        result['guidance'] = 'Eligible queries may send bounded code snippets to TypeSafe. Init makes no API calls.'
+        if not result['keyAvailable']:
+            result['guidance'] += ' Set TYPESAFE_API_KEY to use Jev; until then, ordinary search continues.'
+    return result
+
+
+def execute(args, source_root, *, preserve_existing=False):
     root = checked_path(args.project)
     if not root.is_dir() or any(part.casefold() == '.git' for part in root.parts):
         raise ValueError('Choose an existing project outside Git metadata')
     path = _path(root)
     state = _read(path)
+    if preserve_existing and state is not None:
+        return _result(state)
     action = args.jev_action
     if action != 'status':
         if action == 'enable':
@@ -121,7 +146,10 @@ def run(args, source_root):
         elif state is None:
             raise ValueError('Jev is not configured')
         with _lock(path.parent):
-            state = _read(path) or {'owner': OWNER, 'policy': POLICY, 'secret': secrets.token_hex(32),
+            state = _read(path)
+            if preserve_existing and state is not None:
+                return _result(state)
+            state = state or {'owner': OWNER, 'policy': POLICY, 'secret': secrets.token_hex(32),
                 'mode': 'off', 'model': args.model, 'dailyCalls': args.daily_calls, 'day': 0, 'callsToday': 0,
                 'backoffUntil': 0, 'cache': {}, 'metrics': dict.fromkeys(('calls', 'failures', 'cacheHits', 'inputTokens', 'outputTokens', 'milliseconds'), 0)}
             if action == 'enable':
@@ -142,16 +170,19 @@ def run(args, source_root):
                     raise ValueError('Unknown candidate ID')
                 state['cache'][args.query_id]['relevant'] = sorted({int(v[1:]) for v in values})
             _save(path, state)
-    result = report(state)
-    result['keyAvailable'] = bool(os.environ.get('TYPESAFE_API_KEY', '').strip())
+    return _result(state)
+
+
+def run(args, source_root):
+    result = execute(args, source_root)
     if args.json:
         print(json.dumps(result, indent=2))
     else:
         print('Jev: ' + result['mode'])
         print('Benefit: not measured. Automatic improvement: off.')
-        if state:
-            print(f"Calls: {state['metrics']['calls']}; cache hits: {state['metrics']['cacheHits']}; labeled queries: {result['labeledQueries']}")
-        if action == 'enable':
+        if 'metrics' in result:
+            print(f"Calls: {result['metrics']['calls']}; cache hits: {result['metrics']['cacheHits']}; labeled queries: {result['labeledQueries']}")
+        if args.jev_action == 'enable':
             print('Eligible Graft queries may send the query and bounded returned code snippets to TypeSafe. Set TYPESAFE_API_KEY in your shell; it is never stored by Harness.')
     return 0
 

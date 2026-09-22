@@ -62,7 +62,7 @@ def verify(package=None):
             harness_apply.apply_application(harness_apply.build_application(project, minimal_plan(project)))
         before = {p.relative_to(project): (p.read_bytes(), p.stat().st_mtime_ns) for p in project.rglob('*') if p.is_file()}
         guard = ROOT / 'test/integration/graft_deny_network.mjs'
-        env = {**os.environ, 'HARNESS_GRAFT_HOME': str(base / 'storage'), 'DO_NOT_TRACK': '1'}
+        env = {**os.environ, 'HARNESS_GRAFT_HOME': str(base / 'storage'), 'DO_NOT_TRACK': '1', 'TYPESAFE_API_KEY': ''}
         env.pop('NODE_OPTIONS', None)
         def init():
             completed = subprocess.run([sys.executable, '-B', str(ROOT / 'harness.py'), '--no-update-check', 'init',
@@ -81,6 +81,10 @@ def verify(package=None):
         if package is None:
             setup = init()
             assert call('status')['enabled'], setup.stdout + setup.stderr
+            with mock.patch.dict(os.environ, env):
+                sys.path.insert(0, str(ROOT))
+                from harness_cli import jev
+                assert jev._read(jev._path(project))['mode'] == 'shadow'
         else:
             first = call('enable', '--package', str(package))
             assert first['nodes'] >= 1, first
@@ -108,6 +112,13 @@ def verify(package=None):
             from harness_cli import graft
             settings = graft._load(graft.storage(project) / 'settings.json')
         advice = verify_advice(base, env, settings['package'], settings['node'])
+        if package is None:
+            with mock.patch.dict(os.environ, env), contextlib.redirect_stdout(io.StringIO()):
+                from harness_cli import main
+                jev.run(main.build_parser(ROOT).parse_args(['jev', 'disable', '--project', str(project)]), ROOT)
+            init()
+            with mock.patch.dict(os.environ, env):
+                assert jev._read(jev._path(project))['mode'] == 'off'
         call('disable')
         if package is None:
             init()
@@ -118,7 +129,8 @@ def verify(package=None):
         assert all((project / name).read_bytes() == data and (project / name).stat().st_mtime_ns == timestamp
                    for name, (data, timestamp) in before.items() if name != Path('math.py'))
         return {'realPackage': '0.18.0', 'unchangedQueryRebuilt': False, 'changedQueryRefreshed': True,
-                'automaticInit': package is None, 'explicitDisablePreserved': True, 'userFilesPreserved': True, 'modelCalls': 0, 'jev': advice}
+                'automaticInit': package is None, 'automaticJevInit': package is None,
+                'explicitDisablePreserved': True, 'userFilesPreserved': True, 'modelCalls': 0, 'jev': advice}
 
 
 if __name__ == '__main__':
