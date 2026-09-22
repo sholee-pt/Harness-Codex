@@ -5,7 +5,6 @@ import hashlib
 import hmac
 import json
 import math
-import os
 from pathlib import Path
 import re
 import secrets
@@ -17,6 +16,7 @@ from types import SimpleNamespace
 from .distribution import _lock
 from .graft import _load, _save, storage
 from .paths import checked_path
+from .jev_auth import resolve
 
 OWNER = 'harness-jev-v1'
 MODEL = 'jev-1.13.0'
@@ -29,7 +29,8 @@ TTL = 86400
 
 def register(commands):
     parser = commands.add_parser('jev', help='Manage external retrieval advice and local shadow comparisons.')
-    parser.add_argument('jev_action', choices=('enable', 'disable', 'status', 'feedback', 'clear'), nargs='?', default='status')
+    parser.add_argument('jev_action', choices=('enable', 'disable', 'status', 'feedback', 'clear', 'login', 'logout'), nargs='?', default='status')
+    parser.add_argument('--replace-key', action='store_true', help='Replace a saved credential during jev login.')
     parser.add_argument('--project', type=Path, default=Path.cwd())
     parser.add_argument('--mode', choices=('shadow', 'suggest'), default='shadow')
     parser.add_argument('--model', default=MODEL, help='Versioned Jev model; changing it invalidates cached advice.')
@@ -103,7 +104,7 @@ def report(state):
 
 
 def _result(state):
-    return {**report(state), 'keyAvailable': bool(os.environ.get('TYPESAFE_API_KEY', '').strip())}
+    return {**report(state), 'keyAvailable': bool(resolve())}
 
 
 def automatic(root, source_root):
@@ -118,9 +119,9 @@ def automatic(root, source_root):
     if result['mode'] == 'off':
         result['guidance'] = 'Explicit Jev opt-out preserved; use jev enable to change it.'
     else:
-        result['guidance'] = 'Eligible queries may send bounded code snippets to TypeSafe. Init makes no API calls.'
+        result['guidance'] = 'Eligible queries may send bounded code snippets to TypeSafe. Retrieval setup makes no API calls.'
         if not result['keyAvailable']:
-            result['guidance'] += ' Set TYPESAFE_API_KEY to use Jev; until then, ordinary search continues.'
+            result['guidance'] += ' Use jev login or TYPESAFE_API_KEY; until then, ordinary search continues.'
     return result
 
 
@@ -174,6 +175,9 @@ def execute(args, source_root, *, preserve_existing=False):
 
 
 def run(args, source_root):
+    if args.jev_action in {'login', 'logout'}:
+        from .jev_auth import run as authenticate
+        return authenticate(args, args.model)
     result = execute(args, source_root)
     if args.json:
         print(json.dumps(result, indent=2))
@@ -183,7 +187,7 @@ def run(args, source_root):
         if 'metrics' in result:
             print(f"Calls: {result['metrics']['calls']}; cache hits: {result['metrics']['cacheHits']}; labeled queries: {result['labeledQueries']}")
         if args.jev_action == 'enable':
-            print('Eligible Graft queries may send the query and bounded returned code snippets to TypeSafe. Set TYPESAFE_API_KEY in your shell; it is never stored by Harness.')
+            print('Eligible Graft queries may send the query and bounded returned code snippets to TypeSafe. Use jev login or TYPESAFE_API_KEY for authentication.')
     return 0
 
 
@@ -257,7 +261,7 @@ def advise(root, question, candidates):
             if cached:
                 state['metrics']['cacheHits'] += 1
             else:
-                if not os.environ.get('TYPESAFE_API_KEY', '').strip():
+                if not resolve():
                     return {'state': 'key-unavailable'}
                 if now < state['backoffUntil']:
                     return {'state': 'cooldown'}

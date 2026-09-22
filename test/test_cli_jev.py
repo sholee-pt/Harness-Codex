@@ -28,7 +28,7 @@ class JevTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name) / 'project'
         self.root.mkdir()
-        patch = mock.patch.dict(os.environ, {'HARNESS_GRAFT_HOME': str(Path(directory.name) / 'local'), 'TYPESAFE_API_KEY': 'fixture-key'})
+        patch = mock.patch.dict(os.environ, {'HARNESS_GRAFT_HOME': str(Path(directory.name) / 'local'), 'HARNESS_CREDENTIAL_HOME': str(Path(directory.name) / 'credentials'), 'TYPESAFE_API_KEY': 'fixture-key'})
         patch.start()
         self.addCleanup(patch.stop)
 

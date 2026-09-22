@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.20.0‑beta`](#harness-for-codex-v0200-beta) | Schema 3 | Schema 7 | Schema 2 | Guided TypeSafe login, private user-local credentials and immediate reuse |
 | [`v0.19.0‑beta`](#harness-for-codex-v0190-beta) | Schema 3 | Schema 7 | Schema 2 | Automatic Jev shadow setup during init, deferred key use and preference preservation |
 | [`v0.18.0‑beta`](#harness-for-codex-v0180-beta) | Schema 3 | Schema 7 | Schema 2 | Opt-in bounded Jev retrieval advice, local overhead observations and human-labeled ranking comparison |
 | [`v0.17.1‑beta`](#harness-for-codex-v0171-beta) | Schema 3 | Schema 7 | Schema 2 | Refresh transient native dependency downloads and lengthen bounded retry backoff |
@@ -59,6 +60,14 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.20.0-beta
+
+- Adds guided Linux TypeSafe credential setup during init after enabled Graft/Jev setup: open the official key page, paste once with hidden input, and reuse across projects without shell exports or restart. SSH displays the link; skipped, JSON and unattended setup never wait for a key.
+- Adds `jev login`, `jev login --replace-key` and confirmed `jev logout`. Environment keys retain precedence. Repeated init preserves credentials, explicit opt-outs and project observations.
+- Stores credentials separately from projects and metrics in an owner-only directory/file (0700/0600); rejects foreign, linked, malformed or permissively accessible storage. Replacement is atomic and never logs the key or passes it in process arguments. Confirmed tool uninstall removes the owned saved key while preserving project harnesses.
+- Checks a newly entered key with one bounded, fixed non-project request. Rejected credentials never replace an existing key; service/network failures remain explicitly unverified. This small authentication request may incur provider usage; ordinary init with existing credentials makes no request.
+- Adds credential lifecycle, redaction, timeout, storage and Linux permission regression coverage. Keeps project/artifact contracts and existing retrieval behavior; upgrade comparisons target v0.19.0-beta only.
 
 ## Harness for Codex v0.19.0-beta
 

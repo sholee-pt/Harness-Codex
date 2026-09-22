@@ -47,8 +47,10 @@ The adapter calls reviewed structural library APIs directly, bypassing Graft
 CLI startup, automatic version checks, init, global hooks and telemetry. It
 never enables the LLM/deep pass. Graft itself sends no project inputs to a model
 or hosted graph service. Init also enables [Jev shadow advice](jev.md), which can
-send bounded query results to TypeSafe when TYPESAFE_API_KEY is set. Init makes
-no Jev API calls; explicit Jev disable remains disabled on later init.
+send bounded query results to TypeSafe when a saved key or TYPESAFE_API_KEY is
+available. Init offers guided key setup; only explicit new-key entry makes a
+fixed non-project authentication call. Explicit Jev disable remains disabled
+on later init.
 Graft remains a separately installed MIT dependency;
 its license is retained in that package, and it is not bundled into Harness.
 Other versions require adapter review instead of silently guessing API behavior.

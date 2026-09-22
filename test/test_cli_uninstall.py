@@ -18,6 +18,7 @@ class UninstallTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.base = Path(temporary.name)
+        self.enterContext(mock.patch.dict(os.environ, {'HARNESS_CREDENTIAL_HOME': str(self.base / 'credentials')}))
         self.source = source(self.base / 'source', '9.8')
         self.data, self.bin = self.base / 'data', self.base / 'bin'
         self.state = dist.install_tool(self.source, self.data, self.bin, sys.executable)
@@ -79,6 +80,15 @@ class UninstallTests(unittest.TestCase):
         self.assertEqual(len(list((self.data / 'releases').iterdir())), 2)
         self.invoke()
         self.assertFalse(self.data.exists())
+
+    def test_credential_removal_requires_completed_confirmed_uninstall(self):
+        from harness_cli import jev_auth
+        with mock.patch.object(jev_auth, 'forget', return_value=True) as forget:
+            self.invoke(dry_run=True)
+            self.invoke(answer='no')
+            forget.assert_not_called()
+            self.invoke()
+            forget.assert_called_once()
 
     def test_installed_cli_runs_confirmation_and_self_removal_in_a_fresh_process(self):
         # Real installed source and launcher; only terminal detection is adapted

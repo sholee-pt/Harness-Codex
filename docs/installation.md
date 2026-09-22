@@ -20,18 +20,18 @@ Current releases and CI target Linux. Windows installation code and the option r
 `reuse` retains the repository transport and automatic-update policy. Branch pins are retained except for the [one-time legacy-to-beta migration](versioning.md). `reset` applies the supplied/default preferences, clears the update-check cache and rebuilds the exact managed PATH registration. Both preserve verified releases and runtime files, project harnesses, unrelated shell/registry settings and modified user content. Reset does not authorize removing unknown directories. Without a terminal, an existing installation requires an explicit choice.
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.19.0-beta/install_harness_codex.sh | sh -s -- --existing reuse
+curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.20.0-beta/install_harness_codex.sh | sh -s -- --existing reuse
 source ~/.bashrc
 ```
 
 ```powershell
-& ([scriptblock]::Create((irm https://github.com/sholee-pt/Harness-Codex/releases/download/v0.19.0-beta/install_harness_codex.ps1))) -Existing reset
+& ([scriptblock]::Create((irm https://github.com/sholee-pt/Harness-Codex/releases/download/v0.20.0-beta/install_harness_codex.ps1))) -Existing reset
 ```
 
 ## Source installation
 
 ```bash
-git clone --branch v0.19.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
+git clone --branch v0.20.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
 bash Harness-Codex/installer/install.sh
 source ~/.bashrc
 ```
@@ -57,3 +57,5 @@ The installer displays an animated indicator and live elapsed seconds on an inte
 The CLI removes only verified files from its own installation. New dedicated runtime files have immutable SHA-256 ownership receipts. Added or changed runtime files are retained and reported; reused and legacy Conda installations have no inferred ownership and remain installed. Temporary failure logs and other historical untracked files are not deleted by matching their names.
 
 Project harnesses survive tool uninstall. Reinstall, select the same project and run `status`: no global registry is needed because its manifest is stored in the project. Use native `codex` for a compatible harness, update its generator and run `config` when needed, or explicitly `reset`. `remove --include-generator --yes` removes the unchanged owned project installation before tool uninstall if desired. Native Codex history and credentials belong to Codex and remain untouched.
+
+Confirmed uninstall removes the owned saved TypeSafe credential, while preserving project harnesses and Graft/Jev observations. Environment keys are not changed. Unsafe or unrecognized credential storage is preserved and reported. Use `harness-codex jev login` after reinstall to connect TypeSafe again; see [Jev authentication](jev.md#login-and-saved-credentials).

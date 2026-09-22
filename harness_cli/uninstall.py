@@ -278,6 +278,7 @@ def run(data_root: Path, *, dry_run=False) -> int:
     print(f"PATH registration: {plan['path']['state']}" +
           (f" ({plan['path']['reason']})" if 'reason' in plan['path'] else ''))
     print('Project harnesses, reused Conda environments and other commands will be kept.')
+    print('The saved TypeSafe key will also be removed if its ownership and permissions are valid; shell environment values are unchanged.')
     if plan['runtime']:
         print('Installer-owned runtime: ' + plan['runtime']['root'])
         print('Unchanged runtime files will also be removed. Added/modified files are preserved.')
@@ -300,7 +301,12 @@ def run(data_root: Path, *, dry_run=False) -> int:
     cleanup_source = None
     if plan['runtime'] and os.name == 'nt':
         cleanup_source = Path(__file__).with_name('runtime_cleanup.ps1').read_bytes()
+    from .jev_auth import forget
     result = remove(plan)
+    try:
+        forget()
+    except (OSError, ValueError):
+        print('The TypeSafe credential could not be safely removed; preserved. Use jev logout before uninstalling to inspect this separately.')
     if plan['runtime']:
         from . import footprint
         if os.name == 'nt':

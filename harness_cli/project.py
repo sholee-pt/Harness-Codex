@@ -472,7 +472,11 @@ def _configure_retrieval(args, source_root, root):
     if args.command == 'init' and report.get('state') == 'enabled':
         from .jev import automatic as automatic_jev
         try:
-            ui.report(automatic_jev(root, source_root), title='Jev advice')
+            result = automatic_jev(root, source_root)
+            ui.report(result, title='Jev advice')
+            if result.get('mode') in {'shadow', 'suggest'} and not result.get('keyAvailable'):
+                from .jev_auth import login
+                ui.report(login(result['model'], interactive=not getattr(args, 'json', False)), title='Jev authentication')
         except (OSError, ValueError) as exc:
             ui.report({'state': 'unavailable', 'guidance': 'Graft and ordinary code search remain available.',
                        'warnings': [str(exc), 'Retry with harness-codex jev enable --project PATH.']}, title='Jev advice', error=True)

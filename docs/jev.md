@@ -2,12 +2,14 @@
 
 Jev can classify candidates already returned by a Graft query. Successful `init`
 automatically enables its shadow comparison after Graft is ready. It requires a
-separate TypeSafe API key for actual requests; init itself makes no Jev API calls.
+separate TypeSafe API key for actual requests. On Linux, interactive init offers
+guided key setup when none is available. Existing credentials make no init API
+calls; entering a new key permits one small, fixed authentication request.
 
 Initialize normally; no separate `jev enable` command is needed:
 
 ```bash
-# Set TYPESAFE_API_KEY through your own shell or secret manager first.
+# Follow the key setup prompt, or skip it and continue without Jev calls.
 harness-codex init --project /path/to/project
 harness-codex graft query "Where is request validation implemented?" --project /path/to/project --json
 harness-codex jev status --project /path/to/project --json
@@ -15,10 +17,10 @@ harness-codex jev status --project /path/to/project --json
 
 This requires a TypeSafe account/key independently of Codex authentication.
 Without a key, Jev remains configured and Graft returns its ordinary results.
-Setting `TYPESAFE_API_KEY` later enables eligible calls without another init or
-enable command. Init reports this condition and the external processing boundary.
-The key is read from the environment, never saved in Harness settings or passed
-on the process command line. Requests use the fixed HTTPS TypeSafe endpoint;
+Running `jev login` or setting `TYPESAFE_API_KEY` later enables eligible calls
+without another init or enable command. Init reports the external processing
+boundary. Credentials never enter project settings or process arguments.
+Requests use the fixed HTTPS TypeSafe endpoint;
 redirects are rejected. The provider receives the query and up to 2,400 characters
 per returned candidate, including source pointers and code excerpts. Its data
 handling policies apply. No full conversation, graph or extra source files are
@@ -27,14 +29,57 @@ Use `init --retrieval off` to skip both retrieval setups, or run `jev disable`
 after init to retain local Graft without Jev. No model request occurs in between
 unless you run an eligible retrieval query. Existing Jev preferences, including
 explicit disable/clear, mode, model, budgets, caches and labels, survive repeated
-init without writes. `jev enable` explicitly re-enables a disabled setup. Config
+init without state writes. `jev enable` explicitly re-enables a disabled setup. Config
 and reset preserve Jev preferences. Dry-run, install-only, failed configuration
 and disabled/unavailable Graft never initialize Jev.
 
+## Login and saved credentials
+
+On Linux, init prints the official [key page](https://console.typesafe.ai/keys).
+Press Enter to try opening it, `p` to paste directly, or `s` to skip. On SSH,
+open the printed link on your own computer. Sign in and issue a key on TypeSafe,
+then paste it into the hidden terminal prompt. An empty key skips setup; a
+terminal that cannot hide input is refused. JSON/unattended runs never prompt
+or open a browser. This is API-key setup, not OAuth or automatic key issuance.
+
+One four-second-bounded request checks the newly entered key using a fixed test
+sentence, with no project data. This can incur a small provider charge, disclosed
+before input. A 401 rejection preserves any previous key. Network/service failures
+save the entered key as unverified in the setup result; they are not reported as
+successful authentication. Subsequent eligible requests still use the normal
+timeout, budget and fallback. Authentication checks are separate from project
+retrieval counters and limits. Existing credentials are reused without probing.
+
+```bash
+harness-codex jev login                    # Also works before project init
+harness-codex jev login --replace-key      # Replace a saved key explicitly
+harness-codex jev logout                   # Confirm removal with yes
+```
+
+`TYPESAFE_API_KEY` takes precedence and is never copied into storage. Otherwise,
+Harness reads `~/.local/share/harness-codex-credentials/typesafe.json` directly.
+`HARNESS_CREDENTIAL_HOME` can select a different user-owned storage directory.
+Linux enforces directory 0700 and file 0600, current-user ownership, a bounded
+regular file and no symbolic/hard links. Foreign, malformed or overly accessible
+files are preserved and not used. The file is plaintext with restricted access,
+not an encrypted keyring. Keys never enter `.bashrc`, a project, a manifest,
+observations, logs or command arguments. No `source` or terminal restart is needed;
+projects on the same machine and OS account reuse the key. Project opt-outs remain
+independent. Windows persistent login is not provided while Windows work is paused;
+environment keys remain supported.
+
+Logout removes only the owned saved credential, leaves project settings intact,
+and cannot unset a parent shell's environment key. `jev logout --yes` supports
+explicit unattended removal. Confirmed tool uninstall also removes the owned
+credential; unsafe/unrecognized storage is preserved and reported. Clearing Jev
+observations or reinstalling/updating the tool does not remove the credential.
+
 ## Selective calls and preserved behavior
 
-- Only an actual `graft query` can call Jev. Init, configuration, ordinary turns,
-  the native Auto model selector, status and disabled retrieval do not call it.
+- Only an actual `graft query` can send retrieval candidates to Jev. The sole
+  additional call is the fixed probe after explicit new-key entry. Configuration,
+  ordinary turns, the native Auto model selector, status, repeated init with a key
+  and disabled retrieval do not call it.
 - A query needs 6-20 distinct candidates, a 20-8,000-character question and a
   request body no larger than 48,000 bytes. These are conservative eligibility
   rules, not proof that a judgment is necessary or beneficial.
@@ -112,7 +157,8 @@ must be explicit in the comparison.
 State stays under the selected user's Graft storage, separate from project
 artifacts, manifests and transactions. It contains keyed query fingerprints,
 bounded probabilities, optional candidate-index labels and counters; no raw
-questions, snippets, source paths, provider replies or API keys are persisted.
+questions, snippets, source paths, provider replies or API keys are persisted in
+observations. Saved authentication lives separately in the credential directory.
 Existing caches survive tool uninstall, matching Graft's documented behavior.
 
 ```bash

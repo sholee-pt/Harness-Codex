@@ -64,6 +64,8 @@ class ProjectCliTests(unittest.TestCase):
             "FAKE_CODEX_LOG": str(self.log), "FAKE_HARNESS_SOURCE": str(REPO_ROOT),
             "FAKE_CODEX_MODE": "noop", "FAKE_CODEX_EXIT": "0",
             "HARNESS_GRAFT_HOME": str(self.base / 'retrieval'),
+            "HARNESS_CREDENTIAL_HOME": str(self.base / 'credentials'),
+            "TYPESAFE_API_KEY": '',
         }).start()
         self.codex = mock.patch.object(project, "_codex_command", return_value=[sys.executable, "-B", str(self.fake)]).start()
 

@@ -87,12 +87,12 @@ class CodexIntegrationTests(unittest.TestCase):
         before = integration.read(self.data)
         previous_binary = Path(before['directory']) / 'codex.exe'
         previous_bytes = previous_binary.read_bytes()
-        newer = source(self.root / 'next-source', '0.20.0-beta', commit=None)
+        newer = source(self.root / 'next-source', '0.21.0-beta', commit=None)
         dist.install_tool(newer, self.data, self.root / 'commands', sys.executable)
         self.assertEqual(integration.status(self.data)['state'], 'upgrade-required')
         metadata = self.bundle / 'harness-ui.json'
         value = json.loads(metadata.read_text())
-        value['version'] = '0.20.0-beta'
+        value['version'] = '0.21.0-beta'
         metadata.write_text(json.dumps(value))
         archive(self.bundle, self.archive)
         result = integration.install(self.data, newer, archive=self.archive, registry=self.registry)

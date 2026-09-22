@@ -27,13 +27,13 @@ import harness_transaction  # noqa: E402
 
 class ReleaseConsistencyTests(unittest.TestCase):
     def test_release_metadata_is_consistent(self) -> None:
-        self.assertEqual(harness_metadata.HARNESS_VERSION, "0.19.0-beta")
+        self.assertEqual(harness_metadata.HARNESS_VERSION, "0.20.0-beta")
         self.assertEqual(harness_metadata.AUTHORING_CONTRACT_VERSION, 3)
         self.assertEqual(harness_metadata.ARTIFACT_CONTRACT_VERSION, 2)
         self.assertIn('9.11', harness_metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS)
         self.assertIn('0.10.0-beta', harness_metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS)
         self.assertIn('0.11.0-beta', harness_metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS)
-        self.assertNotIn('0.20.0-beta', harness_metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS)
+        self.assertNotIn('0.21.0-beta', harness_metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS)
         self.assertIn('8.0', harness_metadata.READABLE_EVALUATION_VERSIONS)
         self.assertIn('8.1', harness_metadata.READABLE_EVALUATION_VERSIONS)
         self.assertIn('9.0', harness_metadata.READABLE_EVALUATION_VERSIONS)

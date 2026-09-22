@@ -62,7 +62,7 @@ def verify(package=None):
             harness_apply.apply_application(harness_apply.build_application(project, minimal_plan(project)))
         before = {p.relative_to(project): (p.read_bytes(), p.stat().st_mtime_ns) for p in project.rglob('*') if p.is_file()}
         guard = ROOT / 'test/integration/graft_deny_network.mjs'
-        env = {**os.environ, 'HARNESS_GRAFT_HOME': str(base / 'storage'), 'DO_NOT_TRACK': '1', 'TYPESAFE_API_KEY': ''}
+        env = {**os.environ, 'HARNESS_GRAFT_HOME': str(base / 'storage'), 'HARNESS_CREDENTIAL_HOME': str(base / 'credentials'), 'DO_NOT_TRACK': '1', 'TYPESAFE_API_KEY': ''}
         env.pop('NODE_OPTIONS', None)
         def init():
             completed = subprocess.run([sys.executable, '-B', str(ROOT / 'harness.py'), '--no-update-check', 'init',
