@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.18.0‑beta`](#harness-for-codex-v0180-beta) | Schema 3 | Schema 7 | Schema 2 | Opt-in bounded Jev retrieval advice, local overhead observations and human-labeled ranking comparison |
 | [`v0.17.1‑beta`](#harness-for-codex-v0171-beta) | Schema 3 | Schema 7 | Schema 2 | Refresh transient native dependency downloads and lengthen bounded retry backoff |
 | [`v0.17.0‑beta`](#harness-for-codex-v0170-beta) | Schema 3 | Schema 7 | Schema 2 | Automatic isolated Graft setup during init, reuse and explicit opt-out preservation |
 | [`v0.16.0‑beta`](#harness-for-codex-v0160-beta) | Schema 3 | Schema 7 | Schema 2 | Optional local Graft retrieval, bounded evidence reuse and independent integrity diagnostics |
@@ -57,6 +58,13 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.18.0-beta
+
+- Adds separately enabled Jev advice for eligible Graft queries, with shadow comparison by default and optional reading-order hints that preserve all original results.
+- Batches candidate questions, limits payload and daily calls, reuses exact cached advice, enforces a child-process deadline and falls back to ordinary retrieval on unavailable or invalid responses.
+- Records opt-in local overhead counters and optional human-labeled baseline/suggested ranking comparisons without retaining raw queries or snippets, claiming token savings or automatically changing policies.
+- Preserves native Auto routing, project agents, retrieval skill bytes and Plan, Manifest and Transaction contracts. Validates updates from the immediately preceding v0.17.1-beta.
 
 ## Harness for Codex v0.17.1-beta
 

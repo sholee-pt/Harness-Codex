@@ -45,8 +45,10 @@ unchanged. No new agent is required.
 
 The adapter calls reviewed structural library APIs directly, bypassing Graft
 CLI startup, automatic version checks, init, global hooks and telemetry. It
-never enables the LLM/deep pass. Project inputs are not sent to a model or a
-hosted graph service. Graft remains a separately installed MIT dependency;
+never enables the LLM/deep pass. Graft itself sends no project inputs to a model
+or hosted graph service. The separately enabled [Jev adapter](jev.md) can send
+bounded query results to TypeSafe; it remains off after ordinary init.
+Graft remains a separately installed MIT dependency;
 its license is retained in that package, and it is not bundled into Harness.
 Other versions require adapter review instead of silently guessing API behavior.
 

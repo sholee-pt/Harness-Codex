@@ -1,13 +1,50 @@
 """Real Graft package smoke, without model calls, global wiring or project rewrites."""
 import argparse
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def verify_advice(base, env, package, node):
+    """Real graph and adapter, fixture Jev response: this does not evaluate Jev quality."""
+    sys.path.insert(0, str(ROOT))
+    from harness_cli import graft, jev, main
+    project = base / 'advice-project'
+    project.mkdir()
+    for i in range(8):
+        (project / f'validation_{i}.py').write_text(f'def validation_request_{i}(request):\n    return request + {i}\n', encoding='utf-8')
+    parser = main.build_parser(ROOT)
+    def query():
+        return graft.execute(parser.parse_args(['graft', 'query', 'Where are validation request handlers implemented?',
+            '--project', str(project)]), ROOT)
+    with mock.patch.dict(os.environ, {**env, 'TYPESAFE_API_KEY': 'fixture-only'}):
+        graft.execute(parser.parse_args(['graft', 'enable', '--project', str(project), '--package', package, '--node', node]), ROOT)
+        baseline = query()
+        assert baseline['hits'] == 6, baseline
+        with contextlib.redirect_stdout(io.StringIO()):
+            jev.run(parser.parse_args(['jev', 'enable', '--project', str(project)]), ROOT)
+        before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in project.rglob('*') if p.is_file()}
+        def answer(payload):
+            return {'model': payload['model'], 'answers': {key: {'type': 'noul', 'noul': .9 if key == 'c5' else .5}
+                for key in payload['questions']}, 'usage': {'input_tokens': 500, 'output_tokens': 6}}
+        with mock.patch.object(jev, '_request', side_effect=answer) as provider:
+            observed = query()
+            repeated = query()
+            assert observed['text'] == baseline['text'] == repeated['text']
+            assert observed['jev']['suggestedOrder'][0] == 'c5', observed
+            assert repeated['jev']['state'] == 'cached', repeated
+            assert provider.call_count == 1
+        assert all((p.read_bytes(), p.stat().st_mtime_ns) == value for p, value in before.items())
+    return {'realGraph': True, 'provider': 'fixture-only', 'batchCalls': 1, 'cachedRepeat': True,
+            'shadowPreservedText': True, 'projectFilesPreserved': True, 'liveJevQuality': 'not-tested'}
 
 
 def verify(package=None):
@@ -66,6 +103,11 @@ def verify(package=None):
         changed = call('query', 'multiply')
         assert changed['refreshed'] and changed['hits'] > 0, changed
         assert 'multiply' in changed['text']
+        with mock.patch.dict(os.environ, env):
+            sys.path.insert(0, str(ROOT))
+            from harness_cli import graft
+            settings = graft._load(graft.storage(project) / 'settings.json')
+        advice = verify_advice(base, env, settings['package'], settings['node'])
         call('disable')
         if package is None:
             init()
@@ -76,7 +118,7 @@ def verify(package=None):
         assert all((project / name).read_bytes() == data and (project / name).stat().st_mtime_ns == timestamp
                    for name, (data, timestamp) in before.items() if name != Path('math.py'))
         return {'realPackage': '0.18.0', 'unchangedQueryRebuilt': False, 'changedQueryRefreshed': True,
-                'automaticInit': package is None, 'explicitDisablePreserved': True, 'userFilesPreserved': True, 'modelCalls': 0}
+                'automaticInit': package is None, 'explicitDisablePreserved': True, 'userFilesPreserved': True, 'modelCalls': 0, 'jev': advice}
 
 
 if __name__ == '__main__':

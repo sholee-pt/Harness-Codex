@@ -7,7 +7,7 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINES = {
-    'v0170': 'e0d1c8e3e20db98ba7c1b004e0b974438a37d3e8',
+    'v0171': '48cab98425ecda34da19daa5a883af1e055c39e1',
 }
 
 

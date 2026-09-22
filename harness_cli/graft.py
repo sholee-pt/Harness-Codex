@@ -104,7 +104,7 @@ def automatic(root, source_root, *, disabled=False):
     return execute(args, source_root)
 
 
-def _invoke(source_root, root, cache, settings, action, *, timeout, question='', limit=6, max_chars=12000):
+def _invoke(source_root, root, cache, settings, action, *, timeout, question='', limit=6, max_chars=12000, advice=False):
     package = Path(settings['package'])
     metadata = json.loads((package / 'package.json').read_text(encoding='utf-8'))
     if not isinstance(metadata, dict) or metadata.get('name') != '@nanonets/graft' or metadata.get('version') != PACKAGE_VERSION:
@@ -115,7 +115,7 @@ def _invoke(source_root, root, cache, settings, action, *, timeout, question='',
     env = os.environ.copy()
     env.update(DO_NOT_TRACK='1', GRAFT_NO_GITIGNORE='1', GRAFT_NO_IGNORE='1', GRAFT_NO_SEED='1', GRAFT_NO_REFRESH='0')
     request = {'package': str(package), 'root': str(root), 'cache': str(cache), 'action': action,
-               'question': question, 'limit': limit, 'maxChars': max_chars}
+               'question': question, 'limit': limit, 'maxChars': max_chars, 'advice': advice}
     with subprocess.Popen([settings['node'], str(source_root / 'harness_cli/graft_bridge.mjs')],
                           stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                           text=True, encoding='utf-8', env=env, cwd=source_root) as process:
@@ -194,9 +194,20 @@ def execute(args, source_root):
             raise ValueError('Graft is disabled for this project; continue with ordinary source search.')
         if action == 'query' and (not args.question.strip() or len(args.question) > 8000 or '\0' in args.question):
             raise ValueError('Retrieval question must contain 1-8000 characters without NUL.')
+        from . import jev
+        advice = action == 'query' and jev.enabled(root)
         result = _invoke(source_root, root, cache, settings, action,
                          timeout=args.timeout, question=getattr(args, 'question', ''),
-                         limit=getattr(args, 'limit', 6), max_chars=getattr(args, 'max_chars', 12000))
+                         limit=getattr(args, 'limit', 6), max_chars=getattr(args, 'max_chars', 12000), advice=advice)
+        candidates = result.pop('candidates', None)
+        if advice:
+            observation = jev.advise(root, args.question, candidates)
+            result['jev'] = observation
+            if observation.get('mode') == 'suggest':
+                order = ', '.join(str(int(key[1:]) + 1) for key in observation['suggestedOrder'])
+                hint = f'[Jev suggested reading order: original hits {order}. Verify source; all hits retained.]\n'
+                if len(hint) + len(result['text']) <= args.max_chars:
+                    result['text'] = hint + result['text']
         if action == 'enable':
             skill.parent.mkdir(parents=True, exist_ok=True)
             if not skill.exists():

@@ -1,0 +1,238 @@
+"""Retrieval advice cannot change baseline results, permissions or project contracts."""
+import contextlib
+import io
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+from unittest import mock
+
+from harness_cli import graft, jev, jev_client, main
+
+REPO = Path(__file__).resolve().parents[1]
+QUESTION = 'Where is the validation of incoming requests implemented?'
+CANDIDATES = [{'id': f'c{i}', 'text': f'candidate source function_{i}'} for i in range(6)]
+
+
+def response(payload):
+    return {'model': payload['model'], 'answers': {f'c{i}': {'type': 'noul', 'noul': p}
+            for i, p in enumerate((.1, .5, .9, .4, .8, .2))}, 'usage': {'input_tokens': 611, 'output_tokens': 12}}
+
+
+class JevTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name) / 'project'
+        self.root.mkdir()
+        patch = mock.patch.dict(os.environ, {'HARNESS_GRAFT_HOME': str(Path(directory.name) / 'local'), 'TYPESAFE_API_KEY': 'fixture-key'})
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def command(self, *arguments):
+        args = main.build_parser(REPO).parse_args(['jev', *arguments, '--project', str(self.root), '--json'])
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            jev.run(args, REPO)
+        return json.loads(output.getvalue())
+
+    def enable(self, *arguments):
+        args = main.build_parser(REPO).parse_args(['graft', 'enable', '--package', str(self.root), '--project', str(self.root)])
+        with mock.patch.object(graft.shutil, 'which', return_value='/node'), mock.patch.object(graft, '_invoke', return_value={}):
+            graft.execute(args, REPO)
+        return self.command('enable', *arguments)
+
+    def advise(self, question=QUESTION, candidates=CANDIDATES):
+        return jev.advise(self.root, question, candidates)
+
+    def snapshot(self):
+        return {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.root.parent.rglob('*') if p.is_file()}
+
+    def test_default_off_status_has_no_writes_or_network(self):
+        with mock.patch.object(jev, '_request', side_effect=AssertionError('No API')):
+            self.assertEqual(self.command('status')['mode'], 'off')
+            self.assertEqual(self.advise()['state'], 'disabled')
+        self.assertEqual(self.snapshot(), {})
+
+    def test_explicit_enable_requires_graft_and_preserves_unknown_directory(self):
+        with self.assertRaisesRegex(ValueError, 'Graft'):
+            self.command('enable')
+        self.enable()
+        path = jev._path(self.root)
+        path.unlink()
+        with self.assertRaisesRegex(ValueError, 'Unowned'):
+            self.command('enable')
+
+    def test_repeat_enable_status_and_ineligible_queries_are_noops(self):
+        self.enable()
+        before = self.snapshot()
+        with mock.patch.object(jev, '_request', side_effect=AssertionError('No API')):
+            self.command('enable')
+            self.command('status')
+            for question, candidates in [('hi', CANDIDATES), (QUESTION, CANDIDATES[:5]),
+                                         (QUESTION, [{'id': f'c{i}', 'text': 'same'} for i in range(6)])]:
+                self.assertEqual(self.advise(question, candidates)['state'], 'ineligible')
+        self.assertEqual(before, self.snapshot())
+
+    def test_missing_key_never_starts_provider_or_writes_state(self):
+        self.enable()
+        before = self.snapshot()
+        with mock.patch.dict(os.environ, {'TYPESAFE_API_KEY': ''}), mock.patch.object(jev, '_request') as request:
+            self.assertEqual(self.advise()['state'], 'key-unavailable')
+            request.assert_not_called()
+        self.assertEqual(before, self.snapshot())
+
+    def test_batch_cache_and_local_privacy(self):
+        self.enable()
+        project_before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.root.rglob('*') if p.is_file()}
+        with mock.patch.object(jev, '_request', side_effect=response) as request:
+            first = self.advise()
+            self.assertEqual(self.advise()['state'], 'cached')
+            request.assert_called_once()
+            self.assertEqual(len(request.call_args.args[0]['questions']), 6)
+        self.assertEqual(first['suggestedOrder'], ['c2', 'c4', 'c1', 'c3', 'c0', 'c5'])
+        self.assertEqual(first['judgments'], ['no', 'abstain', 'yes', 'abstain', 'yes', 'no'])
+        state = jev._read(jev._path(self.root))
+        self.assertEqual(state['metrics']['inputTokens'], 611)
+        self.assertEqual(state['metrics']['cacheHits'], 1)
+        stored = jev._path(self.root).read_text()
+        for private in (QUESTION, 'candidate source', 'fixture-key', str(self.root)):
+            self.assertNotIn(private, stored)
+        self.assertEqual(project_before, {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.root.rglob('*') if p.is_file()})
+
+    def test_payload_model_and_source_changes_invalidate_cache(self):
+        self.enable()
+        with mock.patch.object(jev, '_request', side_effect=response) as request:
+            self.advise()
+            self.advise(QUESTION + ' Include errors.')
+            self.advise(candidates=[{**v, 'text': v['text'] + ' changed'} for v in CANDIDATES])
+            self.command('enable', '--model', 'jev-1.14.0')
+            self.advise()
+            self.assertEqual(request.call_count, 4)
+        self.assertEqual(self.command('status')['cachedQueries'], 1)
+
+    def test_expired_cache_requires_new_observation(self):
+        self.enable()
+        with mock.patch.object(jev, '_request', side_effect=response) as request:
+            self.advise()
+            state = jev._read(jev._path(self.root))
+            for item in state['cache'].values():
+                item['time'] -= jev.TTL
+            graft._save(jev._path(self.root), state)
+            self.assertEqual(self.advise()['state'], 'observed')
+            self.assertEqual(request.call_count, 2)
+
+    def test_timeout_reserves_budget_and_backs_off_without_retries(self):
+        self.enable()
+        with mock.patch.object(jev, '_request', side_effect=subprocess.TimeoutExpired('child', 4)) as request:
+            self.assertEqual(self.advise()['state'], 'unavailable')
+            self.assertEqual(self.advise()['state'], 'cooldown')
+            request.assert_called_once()
+        state = jev._read(jev._path(self.root))
+        self.assertEqual(state['callsToday'], 1)
+        self.assertEqual(state['metrics']['failures'], 1)
+
+    def test_daily_budget_and_busy_lock_fall_back(self):
+        self.enable('--daily-calls', '1')
+        with mock.patch.object(jev, '_request', side_effect=response) as request:
+            self.advise()
+            self.assertEqual(self.advise(QUESTION + ' Different task.')['state'], 'budget-exhausted')
+            lock = jev._path(self.root).parent / '.install.lock'
+            lock.write_text('another owner')
+            before = self.snapshot()
+            self.assertEqual(self.advise()['state'], 'unavailable')
+            self.assertEqual(before, self.snapshot())
+            request.assert_called_once()
+
+    def test_invalid_responses_never_produce_advice(self):
+        payload = jev._payload(QUESTION, CANDIDATES, jev.MODEL)
+        changes = [lambda v: v.update(model='unexpected'), lambda v: v['answers'].pop('c2'),
+                   lambda v: v['answers']['c0'].update(noul=float('nan')),
+                   lambda v: v['answers']['c0'].update(noul=True),
+                   lambda v: v['usage'].update(input_tokens=-1)]
+        for change in changes:
+            value = response(payload)
+            change(value)
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                jev._answers(value, payload)
+
+    def test_corrupt_state_is_preserved_and_does_not_block_search(self):
+        self.enable()
+        path = jev._path(self.root)
+        path.write_text('{broken')
+        before = self.snapshot()
+        with mock.patch.object(jev, '_request') as request:
+            self.assertFalse(jev.enabled(self.root))
+            self.assertEqual(self.advise()['state'], 'unavailable')
+            request.assert_not_called()
+        self.assertEqual(before, self.snapshot())
+
+    def test_human_labels_compare_ranking_without_self_improvement(self):
+        self.enable()
+        with mock.patch.object(jev, '_request', side_effect=response):
+            identity = self.advise()['queryId']
+        report = self.command('feedback', '--query-id', identity, '--relevant', 'c2')
+        self.assertAlmostEqual(report['baselineMRR'], 1 / 3)
+        self.assertEqual(report['suggestedMRR'], 1)
+        self.assertFalse(report['automaticImprovement'])
+        self.assertEqual(report['benefit'], 'not-measured')
+        report = self.command('feedback', '--query-id', identity, '--relevant', 'none')
+        self.assertEqual(report['labeledQueries'], 1)
+        self.assertEqual(report['suggestedMRR'], 0)
+        self.command('disable')
+        self.assertEqual(self.advise()['state'], 'disabled')
+        with self.assertRaisesRegex(ValueError, '--yes'):
+            self.command('clear')
+        self.assertEqual(self.command('clear', '--yes')['cachedQueries'], 0)
+
+    def test_shadow_and_failure_preserve_text_suggest_keeps_all_hits_and_bound(self):
+        self.enable()
+        args = main.build_parser(REPO).parse_args(['graft', 'query', QUESTION, '--project', str(self.root)])
+        baseline = 'Original Graft result with every candidate.'
+        def search(*a, **kw):
+            return {'text': baseline, 'hits': 6, 'candidates': CANDIDATES}
+        with mock.patch.object(graft, '_invoke', side_effect=search), mock.patch.object(jev, '_request', side_effect=response):
+            result = graft.execute(args, REPO)
+            self.assertEqual(result['text'], baseline)
+            self.assertNotIn('candidates', result)
+            self.command('enable', '--mode', 'suggest')
+            result = graft.execute(args, REPO)
+            self.assertTrue(result['text'].endswith(baseline))
+            self.assertIn('3, 5, 2, 4, 1, 6', result['text'])
+            baseline = 'x' * 512
+            args.max_chars = 512
+            self.assertEqual(graft.execute(args, REPO)['text'], baseline)
+        with mock.patch.object(graft, '_invoke', side_effect=search), mock.patch.object(jev, 'advise', return_value={'state': 'unavailable'}):
+            self.assertEqual(graft.execute(args, REPO)['text'], baseline)
+
+
+class JevTransportTests(unittest.TestCase):
+    def test_fixed_endpoint_no_redirect_and_bounded_read(self):
+        response_stream = mock.MagicMock()
+        response_stream.__enter__.return_value.read.return_value = b'{"ok": true}'
+        with mock.patch.dict(os.environ, {'TYPESAFE_API_KEY': 'fixture'}), mock.patch.object(jev_client.urllib.request, 'build_opener') as opener:
+            opener.return_value.open.return_value = response_stream
+            self.assertTrue(jev_client.fetch({'state': 'bounded'})['ok'])
+            request = opener.return_value.open.call_args.args[0]
+            self.assertEqual(request.full_url, jev_client.ENDPOINT)
+            self.assertEqual(request.get_header('Authorization'), 'Bearer fixture')
+            response_stream.__enter__.return_value.read.assert_called_once_with(jev_client.MAX_BYTES + 1)
+            self.assertEqual(opener.call_args.args, (jev_client.NoRedirect,))
+        with self.assertRaises(ValueError):
+            jev_client.NoRedirect().redirect_request(None, None, 302, '', {}, 'https://elsewhere.invalid')
+
+    def test_child_deadline_and_error_redaction(self):
+        with mock.patch.object(jev.subprocess, 'run', return_value=mock.Mock(returncode=1, stdout='', stderr='private input')) as run:
+            with self.assertRaisesRegex(ValueError, '^Jev unavailable$'):
+                jev._request({})
+            self.assertEqual(run.call_args.kwargs['timeout'], 4)
+            self.assertNotIn('TYPESAFE_API_KEY', repr(run.call_args))
+        with mock.patch.object(jev_client.sys, 'stdin', mock.Mock(buffer=io.BytesIO(b'{}'))), mock.patch.object(jev_client, 'fetch', side_effect=ValueError('private')):
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(jev_client.main(), 1)
+            self.assertEqual(output.getvalue(), '')
+
+
+if __name__ == '__main__':
+    unittest.main()

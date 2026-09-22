@@ -84,6 +84,8 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     register_checkpoint(commands)
     from .graft import register as register_graft
     register_graft(commands)
+    from .jev import register as register_jev
+    register_jev(commands)
     for name in ("init", "new", "resume", "start", "configure"):
         commands.choices[name].add_argument("--no-update-check", action="store_true", default=argparse.SUPPRESS)
     install = commands.add_parser("install", help="Install this tool into user-local managed storage.")
@@ -273,6 +275,9 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
             return run(args, source_root)
         if args.command == 'graft':
             from .graft import run
+            return run(args, source_root)
+        if args.command == 'jev':
+            from .jev import run
             return run(args, source_root)
         preflight_project_command(args, source_root=source_root)
         if args.command == "init" and not args.dry_run and os.environ.get("HARNESS_TOOL_HOME"):

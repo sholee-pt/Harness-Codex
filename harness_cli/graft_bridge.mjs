@@ -29,6 +29,10 @@ try {
       // Local character estimates are not observed token savings. Do not relay them.
       delete answer.saved;
       delete answer.rules;
+      if (request.advice) {
+        result.candidates = answer.hits.map((hit, i) => ({ id: `c${i}`,
+          text: [hit.title, hit.pointer, hit.snippet, hit.code].filter(value => typeof value === 'string').join('\n').slice(0, 2400) }));
+      }
       const text = formatAsk(answer);
       result.text = text.length > request.maxChars ? text.slice(0, request.maxChars) + '\n[Result truncated; inspect relevant source.]' : text;
       result.hits = answer.hits.length;
