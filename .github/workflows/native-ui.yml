@@ -170,7 +170,11 @@ jobs:
         if: always()
         shell: bash -el {0}
         run: |
-          git -C "${RUNNER_TEMP}/codex-ui" diff > "${RUNNER_TEMP}/codex-ui-patch.diff"
+          if [ -d "${RUNNER_TEMP}/codex-ui/.git" ]; then
+            git -C "${RUNNER_TEMP}/codex-ui" diff > "${RUNNER_TEMP}/codex-ui-patch.diff"
+          else
+            echo 'Native upstream checkout is unavailable; patch evidence was not produced.'
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:

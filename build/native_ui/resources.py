@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import mmap
 import os
 from pathlib import Path
 import platform
@@ -24,6 +25,10 @@ def swap_bytes(values, free):
     # Small hosted runners need a buffer for the large TUI test link. Keep the
     # existing 25 GiB test-build disk reserve after allocating that buffer.
     needed = max(0, 8 * GIB - values['SwapTotal']) if values['MemTotal'] < 12 * GIB else 0
+    if needed:
+        # Linux reserves the first page for the swap header. mkswap also needs
+        # at least ten pages; disk capacity is not the usable swap capacity.
+        needed = max(10, (needed + mmap.PAGESIZE - 1) // mmap.PAGESIZE + 1) * mmap.PAGESIZE
     if free < 25 * GIB + needed:
         raise ValueError('Native CI needs 25 GiB free after any additional swap allocation')
     return needed
@@ -35,6 +40,7 @@ def prepare(root):
     if not root.is_absolute() or root.is_symlink() or not root.is_dir() or root.resolve() != root:
         raise ValueError('RUNNER_TEMP must be an existing absolute directory without links')
     values = memory()
+    report(root)
     needed = swap_bytes(values, shutil.disk_usage(root).free)
     if needed:
         path = root / 'harness-native.swap'
@@ -42,10 +48,13 @@ def prepare(root):
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         os.close(descriptor)
         for command in (['fallocate', '-l', str(needed), str(path)],
+                        ['sudo', '-n', 'chown', '0:0', str(path)],
                         ['sudo', '-n', 'mkswap', str(path)], ['sudo', '-n', 'swapon', str(path)]):
             subprocess.run(command, check=True, timeout=120)
-        if memory()['SwapTotal'] < 8 * GIB:
-            raise ValueError('Native CI swap activation could not be verified')
+        actual = memory()['SwapTotal']
+        if actual < 8 * GIB:
+            report(root)
+            raise ValueError(f'Native CI swap activation could not be verified: {actual} usable bytes; required {8 * GIB}')
     report(root)
     return needed
 

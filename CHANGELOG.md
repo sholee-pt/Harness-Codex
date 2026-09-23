@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.20.2‑beta`](#harness-for-codex-v0202-beta) | Schema 3 | Schema 7 | Schema 2 | Correct usable swap capacity and handle unavailable native source evidence |
 | [`v0.20.1‑beta`](#harness-for-codex-v0201-beta) | Schema 3 | Schema 7 | Schema 2 | Bound Linux native build concurrency, reserve memory headroom and log runner resources |
 | [`v0.20.0‑beta`](#harness-for-codex-v0200-beta) | Schema 3 | Schema 7 | Schema 2 | Guided TypeSafe login, private user-local credentials and immediate reuse |
 | [`v0.19.0‑beta`](#harness-for-codex-v0190-beta) | Schema 3 | Schema 7 | Schema 2 | Automatic Jev shadow setup during init, deferred key use and preference preservation |
@@ -61,6 +62,13 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.20.2-beta
+
+- Includes the Linux swap header, page alignment and minimum area size when reserving usable memory capacity, preventing successful activation from being rejected one page below the target. Preserves the disk reserve and verifies actual usable swap after activation.
+- Assigns the newly created CI swap file to root before activation and reports actual capacity when verification fails.
+- Skips patch evidence collection when upstream checkout has not occurred, avoiding a misleading missing-directory failure and empty patch artifact after an earlier setup error. Real Git errors in an existing checkout still fail.
+- Adds swap-capacity boundary, real Linux mkswap-header and missing-checkout regressions. Keeps native test coverage and publication requirements unchanged; compares upgrades only with v0.20.1-beta.
 
 ## Harness for Codex v0.20.1-beta
 
