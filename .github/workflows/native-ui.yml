@@ -20,7 +20,8 @@ jobs:
     # Keep cold Linux builds bounded; Windows builds are paused.
     timeout-minutes: 300
     env:
-      CARGO_BUILD_JOBS: 2
+      CARGO_BUILD_JOBS: 1
+      NEXTEST_TEST_THREADS: 1
       CARGO_INCREMENTAL: '0'
       CARGO_PROFILE_CI_TEST_DEBUG: '0'
       CARGO_PROFILE_RELEASE_DEBUG: 0
@@ -47,6 +48,9 @@ jobs:
           activate-environment: harness
           auto-activate: false
           environment-file: environment.yml
+      - name: Reserve memory for native compilation
+        shell: bash -el {0}
+        run: conda run --no-capture-output -n harness python -B build/native_ui/resources.py prepare
       - name: Prepare pinned upstream with the bounded extension
         shell: bash -el {0}
         run: |
@@ -103,7 +107,7 @@ jobs:
         shell: bash -el {0}
         working-directory: ${{ runner.temp }}/codex-ui/codex-rs
         run: |
-          conda run --no-capture-output -n harness just fix -p codex-tui --profile ci-test --target ${{ matrix.target }}
+          conda run --no-capture-output -n harness python -B "${GITHUB_WORKSPACE}/build/native_ui/resources.py" run -- nice -n 10 just fix -p codex-tui --profile ci-test --target ${{ matrix.target }}
           conda run --no-capture-output -n harness just fmt
           conda run --no-capture-output -n harness python -B "${GITHUB_WORKSPACE}/build/native_ui/review.py" --root "${RUNNER_TEMP}/codex-ui"
           conda run --no-capture-output -n harness python -B "${GITHUB_WORKSPACE}/build/native_ui/source.py"
@@ -113,7 +117,7 @@ jobs:
           CARGO_TARGET_DIR: ${{ runner.temp }}/harness-native-tests
         shell: bash -el {0}
         run: |
-          conda run --no-capture-output -n harness python -B build/native_ui/run_tests.py --root "${RUNNER_TEMP}/codex-ui" --target ${{ matrix.target }}
+          conda run --no-capture-output -n harness python -B build/native_ui/resources.py run -- nice -n 10 python -B build/native_ui/run_tests.py --root "${RUNNER_TEMP}/codex-ui" --target ${{ matrix.target }}
           conda run --no-capture-output -n harness python -B build/native_ui/review.py --root "${RUNNER_TEMP}/codex-ui"
           conda run --no-capture-output -n harness python -B build/native_ui/source.py
       - name: Preserve test results and reclaim test build storage
@@ -155,7 +159,7 @@ jobs:
         id: native-build
         shell: bash -el {0}
         working-directory: ${{ runner.temp }}/codex-ui/codex-rs
-        run: cargo build --locked --target ${{ matrix.target }} --release -p codex-cli --bin codex
+        run: conda run --no-capture-output -n harness python -B "${GITHUB_WORKSPACE}/build/native_ui/resources.py" run -- nice -n 10 cargo build --locked --target ${{ matrix.target }} --release -p codex-cli --bin codex
       - name: Assemble the verified native package
         shell: bash -el {0}
         run: |

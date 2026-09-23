@@ -15,7 +15,7 @@ import urllib.error
 from harness_cli import distribution as dist, native_package as package, native_ui, project, uninstall
 from test_cli_distribution import source
 
-VERSION = '0.20.0-beta'
+VERSION = '0.20.1-beta'
 
 
 def fixture(root, platform='windows-x86_64'):

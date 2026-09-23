@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.20.1‑beta`](#harness-for-codex-v0201-beta) | Schema 3 | Schema 7 | Schema 2 | Bound Linux native build concurrency, reserve memory headroom and log runner resources |
 | [`v0.20.0‑beta`](#harness-for-codex-v0200-beta) | Schema 3 | Schema 7 | Schema 2 | Guided TypeSafe login, private user-local credentials and immediate reuse |
 | [`v0.19.0‑beta`](#harness-for-codex-v0190-beta) | Schema 3 | Schema 7 | Schema 2 | Automatic Jev shadow setup during init, deferred key use and preference preservation |
 | [`v0.18.0‑beta`](#harness-for-codex-v0180-beta) | Schema 3 | Schema 7 | Schema 2 | Opt-in bounded Jev retrieval advice, local overhead observations and human-labeled ranking comparison |
@@ -60,6 +61,13 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.20.1-beta
+
+- Limits Linux native Cargo compilation and nextest execution to one job at a time, with lower build scheduling priority to leave capacity for the hosted runner service.
+- Supplements existing swap up to 8 GiB on small disposable hosted runners while preserving the 25 GiB test-build disk reserve. Insufficient capacity or failed swap activation stops the build before compilation.
+- Logs available memory, swap, disk and available kernel memory-pressure events during expensive native steps. Preserves command failures, the complete original TUI/extension suite, dependency checks and publication gates.
+- Keeps generation, Jev authentication, Graft retrieval and Plan, Manifest and Transaction behavior unchanged. Upgrade comparison targets v0.20.0-beta.
 
 ## Harness for Codex v0.20.0-beta
 
