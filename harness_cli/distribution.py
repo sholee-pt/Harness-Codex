@@ -43,6 +43,7 @@ REQUIRED = frozenset({"harness.py", "install.py", "harness_cli/__init__.py", "ha
 # Keep the original common set valid for complete v9.2 and v9.3 distributions.
 # Later releases inherit each dependency from its numeric introduction version.
 VERSION_REQUIRED = (
+    (version_key("0.21.0-beta"), frozenset({"harness_cli/locking.py", ".agents/skills/harness/scripts/harness_eval_lock.py", ".agents/skills/harness/scripts/harness_instruction_audit.py"})),
     (version_key("0.20.0-beta"), frozenset({"harness_cli/jev_auth.py"})),
     (version_key("0.18.0-beta"), frozenset({"harness_cli/jev.py", "harness_cli/jev_client.py"})),
     (version_key("0.17.0-beta"), frozenset({"harness_cli/graft_setup.py"})),

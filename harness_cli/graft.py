@@ -8,9 +8,11 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import uuid
 from types import SimpleNamespace
 
 from .paths import checked_path
+from .locking import FileLock
 
 PACKAGE_VERSION = '0.18.0'
 OWNER = 'harness-graft-v1'
@@ -75,6 +77,27 @@ def _load(path):
             or any(name in value and type(value[name]) is not bool for name in ('disabledByUser', 'skillOwned'))):
         raise ValueError('Retrieval settings are invalid or unowned; files were preserved.')
     return value
+
+
+def _settings_lock(folder):
+    return FileLock(checked_path(folder.parent / '.locks' / (folder.name + '.lock')), timeout=1)
+
+
+def _settings_or_new(path):
+    settings = _load(path)
+    if settings is None:
+        if path.parent.exists():
+            raise ValueError('Unowned retrieval directory already exists; files were preserved.')
+        settings = {'owner': OWNER, 'enabled': False, 'package': '', 'node': '',
+                    'skillHash': hashlib.sha256(SKILL.encode()).hexdigest(), 'skillOwned': False,
+                    'disabledByUser': False}
+    return settings
+
+
+def _check_skill(skill, settings):
+    checked_path(skill)
+    if skill.exists() and (not settings.get('skillOwned', True) or skill.read_bytes() != SKILL.encode()):
+        raise ValueError('Existing retrieval skill is user-owned or modified; it was preserved.')
 
 
 def home():
@@ -148,20 +171,17 @@ def execute(args, source_root):
     cache = checked_path(folder / 'graph')
     skill = checked_path(root / SKILL_PATH)
     settings = _load(state_path)
-    previous = settings
     action = args.graft_action
     if action == 'status':
         result = {'enabled': bool(settings and settings['enabled']), 'provider': 'graft',
                   'indexed': (cache / 'harness-ready.json').is_file(), 'mode': 'local-structural',
                   'skillInstalled': bool(settings and settings.get('skillOwned', True) and skill.is_file() and skill.read_bytes() == SKILL.encode())}
     elif action == 'disable':
-        if settings is None:
-            if folder.exists():
-                raise ValueError('Unowned retrieval directory already exists; files were preserved.')
-            settings = {'owner': OWNER, 'enabled': False, 'package': '', 'node': '',
-                        'skillHash': hashlib.sha256(SKILL.encode()).hexdigest(), 'skillOwned': False}
-        if settings:
+        with _settings_lock(folder):
+            settings = _settings_or_new(state_path)
             remove_skill = settings.get('skillOwned', True) and skill.is_file() and skill.read_bytes() == SKILL.encode()
+            if settings['enabled'] or not settings.get('disabledByUser'):
+                settings['revision'] = uuid.uuid4().hex
             settings['enabled'] = False
             settings['disabledByUser'] = True
             if remove_skill:
@@ -175,10 +195,12 @@ def execute(args, source_root):
                 or not 512 <= getattr(args, 'max_chars', 12000) <= 64000):
             raise ValueError('Retrieval limits must be timeout 0-240s, results 1-20, characters 512-64000.')
         if action == 'enable':
-            if settings is None and folder.exists():
-                raise ValueError('Unowned retrieval directory already exists; preserve it and choose a clean project setup.')
-            if skill.exists() and (settings is None or not settings.get('skillOwned', True) or skill.read_bytes() != SKILL.encode()):
-                raise ValueError('Existing retrieval skill is user-owned or modified; it was preserved.')
+            with _settings_lock(folder):
+                previous = _settings_or_new(state_path)
+                _check_skill(skill, previous)
+                # Reserve a retryable first setup before slow external work. A
+                # newer opt-out changes this receipt and cannot be overwritten.
+                _save(state_path, previous)
             if args.package is None:
                 from .graft_setup import prepare
                 args.node, args.package = prepare(home(), PACKAGE_VERSION)
@@ -187,9 +209,8 @@ def execute(args, source_root):
                 raise ValueError('Node.js 20 or newer is required only for optional Graft retrieval.')
             settings = {'owner': OWNER, 'enabled': True, 'package': str(args.package.expanduser().resolve()),
                         'node': node, 'skillHash': hashlib.sha256(SKILL.encode()).hexdigest(), 'disabledByUser': False, 'skillOwned': True}
-            # A disabled receipt makes an interrupted first build explicitly retryable.
-            if previous is None:
-                _save(state_path, {**settings, 'enabled': False, 'skillOwned': False})
+            if 'revision' in previous:
+                settings['revision'] = previous['revision']
         elif not settings or not settings['enabled']:
             raise ValueError('Graft is disabled for this project; continue with ordinary source search.')
         if action == 'query' and (not args.question.strip() or len(args.question) > 8000 or '\0' in args.question):
@@ -209,12 +230,18 @@ def execute(args, source_root):
                 if len(hint) + len(result['text']) <= args.max_chars:
                     result['text'] = hint + result['text']
         if action == 'enable':
-            skill.parent.mkdir(parents=True, exist_ok=True)
-            if not skill.exists():
-                with skill.open('x', encoding='utf-8', newline='\n') as stream:
-                    stream.write(SKILL)
-            _save(state_path, settings)
-            result.update(state='enabled', enabled=True)
+            with _settings_lock(folder):
+                current = _load(state_path)
+                if current != previous:
+                    return {'state': 'superseded', 'enabled': bool(current and current['enabled']),
+                            'guidance': 'A newer retrieval preference was preserved; this build did not change it.'}
+                _check_skill(skill, current)
+                skill.parent.mkdir(parents=True, exist_ok=True)
+                if not skill.exists():
+                    with skill.open('x', encoding='utf-8', newline='\n') as stream:
+                        stream.write(SKILL)
+                _save(state_path, settings)
+                result.update(state='enabled', enabled=True)
     return result
 
 

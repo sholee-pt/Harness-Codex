@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from harness_cli import graft, graft_setup, main, project
+from harness_cli import graft, graft_setup, jev, main, project
 import test_cli_project as project_fixtures
 
 REPO = Path(__file__).resolve().parents[1]
@@ -120,6 +120,41 @@ class GraftTests(unittest.TestCase):
         self.run_command('disable')
         self.assertFalse(files[0].exists())
 
+    def test_disable_during_build_wins_and_does_not_install_skill(self):
+        def build(*args, **kwargs):
+            self.run_command('disable')
+            return {}
+        with mock.patch.object(graft.shutil, 'which', return_value='/node'), mock.patch.object(graft, '_invoke', side_effect=build):
+            result = self.run_command('enable', '--package', str(self.root))
+        self.assertEqual(result['state'], 'superseded')
+        self.assertFalse(self.run_command('status')['enabled'])
+        self.assertFalse((self.root / graft.SKILL_PATH).exists())
+        self.assertEqual(graft.automatic(self.root, REPO)['state'], 'disabled')
+
+    def test_skill_created_during_build_is_preserved_without_adoption(self):
+        def build(*args, **kwargs):
+            skill = self.root / graft.SKILL_PATH
+            skill.parent.mkdir(parents=True)
+            skill.write_text(graft.SKILL, encoding='utf-8')
+            return {}
+        with mock.patch.object(graft.shutil, 'which', return_value='/node'), mock.patch.object(graft, '_invoke', side_effect=build):
+            with self.assertRaisesRegex(ValueError, 'user-owned'):
+                self.run_command('enable', '--package', str(self.root))
+        self.assertFalse(self.run_command('status')['enabled'])
+        self.assertEqual((self.root / graft.SKILL_PATH).read_text(encoding='utf-8'), graft.SKILL)
+
+    def test_disable_then_new_enable_fences_the_earlier_build(self):
+        self.enable()
+        def build(*args, **kwargs):
+            self.run_command('disable')
+            self.enable()
+            return {}
+        with mock.patch.object(graft.shutil, 'which', return_value='/node'), mock.patch.object(graft, '_invoke', side_effect=build):
+            result = self.run_command('enable', '--package', str(self.root / 'obsolete-package'))
+        self.assertEqual(result['state'], 'superseded')
+        self.assertTrue(self.run_command('status')['enabled'])
+        self.assertNotIn('obsolete-package', (graft.storage(self.root) / 'settings.json').read_text())
+
     def test_automatic_reuses_enabled_setup_without_index_or_network_work(self):
         self.enable()
         before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.root.parent.rglob('*') if p.is_file()}
@@ -188,7 +223,8 @@ class ProjectGraftTests(unittest.TestCase):
 
     def test_failed_configuration_never_starts_retrieval_setup(self):
         os.environ['FAKE_CODEX_MODE'] = 'corrupt'
-        with mock.patch.object(graft, 'automatic') as activate:
+        with mock.patch.object(graft, 'automatic') as activate, mock.patch.object(jev, 'automatic') as advice:
             code, out, err = self.run_cli('init', '--retrieval', 'auto')
         self.assertNotEqual(code, 0)
         activate.assert_not_called()
+        advice.assert_not_called()

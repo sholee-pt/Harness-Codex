@@ -152,19 +152,6 @@ def remove_hooks(data_root, *, codex_home=None, dry_run=True):
     return {'state': 'remove', 'handlers': removed}
 
 
-def activation(source_root, root):
-    report = helper(source_root, root, ['status'])
-    if report['mode'] == 'off':
-        return ''
-    return ('\n\nProject maintenance is ' + report['mode'] + '. Keep the existing harness by default. '
-            'Only if the user explicitly expands responsibilities or independent tasks reveal a recurring workflow/routing/verification gap, '
-            'read .agents/skills/harness/references/maintenance.md and record a bounded signal. '
-            'Ordinary code bugs, new conversation topics and single failures do not justify harness changes. '
-            'Do not assess or rewrite the harness on every turn; do not add agents merely because scope grows. '
-            'Native hook notices identify eligible batches. An existing skill update needs no new conversation; '
-            'new native components require explicit config review and a discovery check.')
-
-
 def run(args, source_root):
     if args.hook:
         return helper(source_root, args.project, ['hook'], capture=False)

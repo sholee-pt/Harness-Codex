@@ -31,6 +31,14 @@ Read delegation references and validate an ephemeral runtime plan only when dele
 
 CHECKPOINT_GUIDANCE = """For explicitly requested resumable multi-stage work, read `.agents/skills/harness/references/task-checkpoints.md`. Use bounded, opt-in checkpoints only when reuse has material value. Keep small direct tasks free of checkpoint state; project growth alone does not require another agent."""
 
+WORKFLOW_GUIDANCE = """## Workflow activation and progress
+
+A workflow name in a question, quotation, log or example is not an instruction to activate it. Follow the actual request and keep an already authorized task in progress; do not introduce planning, checkpointing or an autonomous loop from keywords alone.
+
+Reassignment may use only ready, unowned tasks and observed available workers. Stop-requested is not stopped: confirm the prior worker is quiescent and invalidate stale handoffs before transferring ownership. Receiving a result is not integration; verify the combined result against current inputs.
+
+Choose checks for the changed behavior. For stateful changes, consider interruption/resume, stale state, concurrent ownership and timeout paths. Keep existing retry budgets; if the same failure recurs without a new hypothesis or changed evidence, report the blocker instead of repeating the loop or weakening the check."""
+
 
 PROJECT_BLOCK = """<!-- harness:runtime-teamplay:v2:begin -->
 ## Runtime execution classification

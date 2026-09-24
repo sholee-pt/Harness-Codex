@@ -764,6 +764,12 @@ def application_modes(application: dict) -> dict[str, int]:
 
 
 def apply_application(application: dict) -> dict:
+    root = application["manifestPath"].parents[1]
+    with harness_transaction.project_lock(root):
+        return _apply_application(application)
+
+
+def _apply_application(application: dict) -> dict:
     action_by_path = application_actions(application)
     desired_modes = application_modes(application)
     root = application["manifestPath"].parents[1]

@@ -191,6 +191,7 @@ class MaintenanceTests(unittest.TestCase):
 
     def test_other_sessions_and_children_defer_review(self):
         self.manager.configure('auto')
+        self.assertIn('record the bounded evidence signal', self.hook('SessionStart'))
         self.hook(session='other')
         self.signal()
         self.assertEqual(self.hook(), '')
@@ -200,6 +201,31 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(self.hook(), '')
         self.hook('SubagentStop', agent_id='child')
         self.assertIn('review', self.hook())
+
+    def test_signal_policy_is_announced_once_without_prompt_inspection_or_review(self):
+        self.manager.configure('auto')
+        before = self.snapshot()
+        with mock.patch.object(self.manager, 'manifest', side_effect=AssertionError('No project scan')):
+            self.assertIn('Project maintenance is auto', self.hook('SessionStart'))
+            self.assertEqual(self.hook('SessionStart', source='resume'), '')
+            for _ in range(10):
+                self.assertEqual(self.hook(), '')
+                self.hook('Stop')
+            self.assertIn('Project maintenance is auto', self.hook('SessionStart', source='compact'))
+        self.assertIsNone(self.lease())
+        self.assertEqual(self.manager.status()['metrics']['reviews'], 0)
+        self.assertEqual(self.snapshot(), before)
+        self.manager.configure('suggest')
+        self.assertIn('Project maintenance is suggest', self.hook())
+        self.assertEqual(self.hook(), '')
+
+    def test_legacy_session_gets_policy_once_when_sessionstart_was_missed(self):
+        self.manager.configure('suggest')
+        with self.manager.transaction() as state:
+            key = self.manager.store.fingerprint(b'session-a')
+            state['sessions'][key] = {'active': False, 'children': [], 'seenRevision': None}
+        self.assertIn('Project maintenance is suggest', self.hook())
+        self.assertEqual(self.hook(), '')
 
     def test_private_state_has_no_raw_project_session_or_prompt(self):
         self.manager.configure('auto')

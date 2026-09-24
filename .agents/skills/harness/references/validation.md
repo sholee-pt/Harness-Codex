@@ -41,6 +41,8 @@ Read this reference after artifacts have been generated or updated.
 
 ## Behavioral scenarios
 
+Select scenarios from the changed behavior; a small edit does not require this entire list. Stateful changes may need interruption/resume, stale state, concurrent ownership, dirty user files, timeout and false-completion probes. Keep the existing retry/revision budgets. Repeating the same failure without a new hypothesis or changed evidence is a reason to report the blocker, not weaken a check or start an unbounded repair loop.
+
 Test the applicable cases, using an isolated temporary repository when possible:
 
 1. A physically large single-boundary project remains minimal and produces no unnecessary specialist agent.

@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""Small cross-platform advisory lock used by the local evaluation store."""
+"""Crash-released advisory locks shared by local stores and project transactions."""
 
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
+from functools import wraps
+import hashlib
+import tempfile
+import threading
 import time
 from pathlib import Path
 from types import TracebackType
@@ -45,6 +50,9 @@ class FileLock:
         return True
 
     def acquire(self) -> "FileLock":
+        for part in (self.path, *self.path.parents):
+            if part.is_symlink() or (part.exists() and getattr(part.lstat(), "st_file_attributes", 0) & 0x400):
+                raise ValueError("Lock paths must not contain links or reparse points")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         file = self.path.open("a+b")
         if file.tell() == 0:
@@ -54,7 +62,7 @@ class FileLock:
         while not self._try_lock(file):
             if time.monotonic() >= deadline:
                 file.close()
-                raise LockError(f"timed out waiting for evaluation lock: {self.path.name}")
+                raise LockError(f"timed out waiting for Harness lock: {self.path.name}")
             time.sleep(self.poll_interval)
         self._file = file
         return self
@@ -87,3 +95,36 @@ class FileLock:
         traceback: TracebackType | None,
     ) -> None:
         self.release()
+
+
+_held = threading.local()
+
+
+@contextmanager
+def project_lock(root: Path):
+    # Outside the project: removing a harness must not unlink a live lock inode.
+    key = hashlib.sha256(os.path.normcase(str(root.resolve())).encode()).hexdigest()
+    user = hashlib.sha256(os.path.normcase(str(Path.home())).encode()).hexdigest()[:16]
+    default = Path(tempfile.gettempdir()) / ("harness-project-locks-" + user)
+    base = Path(os.environ.get("HARNESS_LOCK_HOME", str(default))).expanduser().absolute()
+    path = base / (key + ".lock")
+    held = getattr(_held, "paths", None)
+    if held is None:
+        held = _held.paths = set()
+    if path in held:
+        yield
+        return
+    with FileLock(path):
+        held.add(path)
+        try:
+            yield
+        finally:
+            held.remove(path)
+
+
+def project_locked(function):
+    @wraps(function)
+    def locked(root, *args, **kwargs):
+        with project_lock(root):
+            return function(root, *args, **kwargs)
+    return locked

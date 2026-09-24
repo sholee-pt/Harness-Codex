@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -166,6 +168,30 @@ class CheckpointTests(unittest.TestCase):
         self.plan['tasks'].append(self.task('new-task'))
         (self.root / 'new-task.in').write_text('new input')
         self.assertEqual(self.call('resume', run='second', previous='first', keep_days=1)['reused'], ['alpha'])
+
+    def test_partial_plan_cannot_claim_whole_run_completion(self):
+        self.finish('alpha')
+        self.plan['tasks'] = self.plan['tasks'][:1]
+        report = self.call('status')
+        self.assertFalse(report['complete'])
+        self.assertFalse(report['planMatchesRun'])
+        self.assertEqual(report['omittedTasks'], 2)
+        self.assertEqual(report['reusable'], ['alpha'])
+        self.call('resume', run='replacement', previous='first', keep_days=1)
+        self.assertTrue(self.call('status', run='replacement')['complete'])
+
+    @unittest.skipIf(os.name == 'nt', 'Linux process-group containment; Windows release is paused')
+    def test_timed_out_verifier_cannot_leave_a_child_writing_later(self):
+        child = "import time; from pathlib import Path; time.sleep(2); Path('escaped').write_text('late')"
+        parent = "import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', " + repr(child) + "]); time.sleep(15)"
+        self.plan['tasks'][0]['checks'] = [[sys.executable, '-c', parent]]
+        self.call('init', run='descendant', keep_days=1)
+        self.call('start', run='descendant', task='alpha')
+        (self.root / 'alpha.out').write_text('ok')
+        self.assertEqual(self.call('record', run='descendant', task='alpha', timeout=1)['status'], 'blocked')
+        time.sleep(1.4)
+        self.assertFalse((self.root / 'escaped').exists())
+        self.assertFalse(self.call('status', run='descendant')['complete'])
 
     def test_invalid_dependency_graph_paths_and_budget(self):
         cases = []

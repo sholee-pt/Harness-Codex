@@ -11,6 +11,7 @@ import shutil
 import sys
 
 import harness_metadata
+import harness_instruction_audit
 import validate_harness
 
 
@@ -48,6 +49,7 @@ def diagnose(root: Path) -> dict:
         "validationLayers": validation["validationLayers"],
         "summary": validation["summary"],
         "externalCapabilities": validation["externalCapabilities"],
+        "instructionInventory": harness_instruction_audit.inspect(root, validator.manifest),
         "errors": errors,
         "warnings": validation["warnings"],
         "workspaceWrites": False,

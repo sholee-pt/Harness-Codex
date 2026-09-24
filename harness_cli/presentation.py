@@ -45,6 +45,11 @@ def report(value: dict, *, title='Harness', error=False) -> None:
             print(f'  {label}: {clean(item)}', file=stream)
     if value.get('summary'):
         print('  Check scope: project files and contracts. Live loading and task quality require separate evaluation.', file=stream)
+    inventory = value.get('instructionInventory')
+    if isinstance(inventory, dict):
+        print(f"  Instructions: {inventory['files']} files, {inventory['bytes']} bytes; "
+              f"{len(inventory['duplicateParagraphs'])} repeated prose groups, {len(inventory['skipped'])} skipped. "
+              'Static inventory only; --json shows details.', file=stream)
     for kind in ('errors', 'warnings', 'upgradeRequirements'):
         for entry in value.get(kind, [])[:12]:
             print(f'  - {clean(entry)}', file=stream)

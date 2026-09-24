@@ -74,6 +74,8 @@ Keep teamplay semantic and runtime-only. Read [teamplay-contract.md](references/
 
 The generated `project-harness` must include the bundled runtime classification, task-ownership, parent-relay, capability fallback, writer isolation, phase-freeze, stopping, retention, and completion rules. Generated agent instructions must include the bundled parent-coordination rules. These rules direct Codex to use native subagents when available; they do not themselves prove that delegation occurred.
 
+The builder also adds concise workflow activation guidance. A quoted workflow name or an informational question does not activate a workflow. Keep checks proportional to changed behavior and use existing failure budgets. Reassign only ready, unowned work after observing the prior owner quiescent; never infer availability from silence or a stop request.
+
 ## Phase 4 — Dry-run, apply, and validate
 
 1. Complete the draft topology, project evidence, rationale, artifacts, placeholders, and managed instruction block.
@@ -89,6 +91,8 @@ The generated `project-harness` must include the bundled runtime classification,
 10. When a golden expectation exists, run `conda run -n harness python <harness-skill-root>/scripts/evaluate_topology.py --plan <plan-file> --golden <golden-file>`.
 11. Read [validation.md](references/validation.md) and perform the applicable behavioral checks. Use [codex-smoke-test.md](references/codex-smoke-test.md) when live discovery, subagent selection, or parent-relay verification is required.
 12. Account for every planned artifact as created, unchanged, conflicted, skipped, or failed. Do not silently drop outputs.
+
+Inspect the builder's `instructionInventory` during configuration. Review repeated project prose in its loading context; retain canonical contract blocks and user-owned instructions. Prefer one authoritative procedure with conditional references over copying it across skills. The inventory measures static bytes/characters, not live token cost or quality. Do not run it on every user turn. Doctor supplies the same bounded inventory for installed managed instructions and root pointers.
 
 ## Audit and update mode
 

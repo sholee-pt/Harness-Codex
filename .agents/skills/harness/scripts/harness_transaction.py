@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 
 import harness_metadata
 import harness_state
+from harness_eval_lock import project_lock, project_locked
 
 
 TRANSACTION_SCHEMA_VERSION = harness_metadata.TRANSACTION_SCHEMA_VERSION
@@ -79,6 +80,10 @@ def _backup_relative(transaction_id: str, relative: str) -> str:
 
 
 def _write_journal(root: Path, journal: dict) -> None:
+    if journal_path(root).exists():
+        _require_owner(root, journal)
+    elif journal["state"] != "preparing":
+        raise TransactionError("transaction journal disappeared; preserve staged data for review")
     harness_state.atomic_write_text(
         journal_path(root), json.dumps(journal, indent=2, ensure_ascii=False) + "\n"
     )
@@ -107,6 +112,7 @@ def _cleanup_transaction_directory(root: Path, transaction_id: str) -> None:
 
 
 def _cleanup_transaction(root: Path, journal: dict) -> None:
+    _require_owner(root, journal)
     _cleanup_transaction_directory(root, journal["transactionId"])
     path = journal_path(root)
     path.unlink(missing_ok=True)
@@ -141,6 +147,7 @@ def inspect_transaction(root: Path) -> dict:
     }
 
 
+@project_locked
 def clean_orphaned_workspace(root: Path) -> dict:
     """Remove the reserved staging root only when no recovery journal exists."""
     status = harness_state.transaction_status(root)
@@ -238,7 +245,7 @@ def validate_journal(root: Path, journal: object) -> dict:
     return journal
 
 
-def load_journal(root: Path) -> dict:
+def _read_journal(root: Path) -> dict:
     path = journal_path(root)
     if not path.is_file():
         raise TransactionError("no pending Harness transaction was found")
@@ -246,7 +253,22 @@ def load_journal(root: Path) -> dict:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise TransactionError(f"invalid transaction journal: {exc}") from exc
-    return validate_journal(root, data)
+    return data
+
+
+def load_journal(root: Path) -> dict:
+    return validate_journal(root, _read_journal(root))
+
+
+def _require_owner(root: Path, journal: dict) -> dict:
+    # Validate the full path/operation contract once at entry. During writes,
+    # compare immutable fields instead of repeating all filesystem path checks.
+    current = _read_journal(root)
+    if not isinstance(current, dict) or current.get("transactionId") != journal["transactionId"]:
+        raise TransactionError("transaction ownership changed; another journal must not be overwritten or recovered")
+    if any(current.get(key) != journal[key] for key in ("schemaVersion", "runtime", "operations")):
+        raise TransactionError("transaction contract changed; preserve the journal for review")
+    return current
 
 
 def ensure_no_pending_transaction(root: Path) -> None:
@@ -295,6 +317,7 @@ def _validate_preconditions(
             raise TransactionError(f"existing target mode changed before apply: {relative}")
 
 
+@project_locked
 def prepare_transaction(
     root: Path,
     outputs: dict[str, str],
@@ -412,8 +435,11 @@ def _mode_matches(path: Path, expected: int) -> bool:
     return path.is_file() and harness_state.mode_matches(path, expected)
 
 
-def recover_transaction(root: Path) -> dict:
+@project_locked
+def recover_transaction(root: Path, *, expected_id: str | None = None) -> dict:
     journal = load_journal(root)
+    if expected_id is not None and journal["transactionId"] != expected_id:
+        raise TransactionError("transaction ownership changed; recovery refused")
     if journal["state"] in {"preparing", "committed", "rolled-back"}:
         previous_state = journal["state"]
         _cleanup_transaction(root, journal)
@@ -477,8 +503,11 @@ def recover_transaction(root: Path) -> dict:
     return {"state": "rolled-back", "cleaned": True, "restored": restored, "removed": removed}
 
 
+@project_locked
 def apply_transaction(root: Path, journal: dict) -> dict:
     validate_journal(root, journal)
+    if _require_owner(root, journal) != journal:
+        raise TransactionError("transaction journal changed after preparation")
     if journal["state"] != "prepared":
         raise TransactionError(
             f"transaction must be prepared before apply, found {journal['state']!r}"
@@ -528,7 +557,7 @@ def apply_transaction(root: Path, journal: dict) -> dict:
             _write_journal(root, journal)
     except Exception as apply_error:
         try:
-            recovery = recover_transaction(root)
+            recovery = recover_transaction(root, expected_id=journal["transactionId"])
         except Exception as recovery_error:
             journal["state"] = "recovery-required"
             try:

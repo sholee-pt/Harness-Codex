@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.21.0‑beta`](#harness-for-codex-v0210-beta) | Schema 3 | Schema 7 | Schema 2 | Serialize transaction ownership, recover Jev locks, preserve Graft opt-outs, complete-run checkpoints and bounded workflow guidance |
 | [`v0.20.2‑beta`](#harness-for-codex-v0202-beta) | Schema 3 | Schema 7 | Schema 2 | Correct usable swap capacity and handle unavailable native source evidence |
 | [`v0.20.1‑beta`](#harness-for-codex-v0201-beta) | Schema 3 | Schema 7 | Schema 2 | Bound Linux native build concurrency, reserve memory headroom and log runner resources |
 | [`v0.20.0‑beta`](#harness-for-codex-v0200-beta) | Schema 3 | Schema 7 | Schema 2 | Guided TypeSafe login, private user-local credentials and immediate reuse |
@@ -62,6 +63,16 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.21.0-beta
+
+- Serialize apply, recovery, removal and orphan cleanup with crash-released project locks; reject stale transaction handles before writes or cleanup.
+- Require the full checkpoint task set for whole-run completion and terminate a timed-out Linux verifier's process group while retaining native-agent ownership until separately observed quiescent.
+- Preserve a newer Graft opt-out or setup choice when an earlier build finishes; recheck skill ownership before installation. Recover Jev after forced process exit while preserving reserved call budgets and live legacy locks.
+- Deliver enabled maintenance signal guidance once per native session/policy, with a compact refresh after compaction; remove the unused conversation-injection helper.
+- Materialize concise workflow activation, ready-task ownership, integration and repeated-failure guidance inspired by reviewed OMX concepts. Preserve Codex as the execution engine and all existing permission and artifact contracts.
+- Add a bounded, read-only instruction inventory to plan materialization and doctor: static size, discovery-description size and repeated prose, with required canonical contracts excluded from deduplication advice.
+- Consolidate duplicate failed-init Graft/Jev setup tests and add reproductions for concurrency, crash recovery, partial completion and one-time hook context. Compare installation upgrades only with v0.20.2-beta; retain Linux-only release gates.
 
 ## Harness for Codex v0.20.2-beta
 

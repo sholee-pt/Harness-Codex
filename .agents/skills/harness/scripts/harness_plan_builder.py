@@ -16,6 +16,7 @@ import harness_change_discipline
 import inventory
 import harness_metadata
 import harness_teamplay
+import harness_instruction_audit
 import harness_agent_contract
 import harness_frontmatter
 import harness_git_policy
@@ -185,6 +186,8 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
                 )
             if harness_teamplay.CHECKPOINT_GUIDANCE not in artifact["content"]:
                 artifact["content"] += "\n\n" + harness_teamplay.CHECKPOINT_GUIDANCE + "\n"
+            if harness_teamplay.WORKFLOW_GUIDANCE not in harness_change_discipline.normalize_line_endings(artifact["content"]):
+                artifact["content"] += "\n\n" + harness_teamplay.WORKFLOW_GUIDANCE + "\n"
             artifact["content"] = harness_git_policy.append_guidance(artifact["content"])
         elif path in agent_paths:
             try:
@@ -307,6 +310,8 @@ def main() -> int:
                     "materialized": True,
                     "artifactContractVersion": harness_metadata.ARTIFACT_CONTRACT_VERSION,
                     "output": output.name,
+                    "instructionInventory": harness_instruction_audit.summarize({item['path']: item['content']
+                        for item in materialized['artifacts'] if item['path'].endswith(('/SKILL.md', '.toml'))}),
                     "warnings": [],
                     "errors": [],
                 },

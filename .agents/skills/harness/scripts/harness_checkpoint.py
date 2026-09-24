@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import signal
 import subprocess
 import tempfile
 import time
@@ -186,6 +187,29 @@ def save(path, state):
         Path(temporary).unlink(missing_ok=True)
 
 
+def run_check(command, root, timeout):
+    process = subprocess.Popen(command, cwd=root, stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=os.name != 'nt')
+    try:
+        return process.wait(timeout=timeout) == 0
+    except BaseException:
+        if os.name != 'nt':
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        else:
+            try:
+                subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            if process.poll() is None:
+                process.kill()
+        process.wait(timeout=5)
+        raise
+
+
 def operate(root, store, plan, action, run, *, task=None, previous=None, keep_days=None, observed=None, timeout=60):
     root, store = checked(root), checked(store)
     if not root.is_dir() or store.is_relative_to(root) or root.is_relative_to(store):
@@ -253,8 +277,10 @@ def operate(root, store, plan, action, run, *, task=None, previous=None, keep_da
             raise ValueError("Checkpoint expired; quiesce/remove it or start a new run")
         accepted, reasons = reusable(tasks, current["tasks"])
         if action == "status":
-            return {"run": run, "complete": len(accepted) == len(tasks)
+            same_tasks = set(tasks) == set(current["tasks"])
+            return {"run": run, "complete": same_tasks and len(accepted) == len(tasks)
                     and not any(t["lifecycle"] in ACTIVE for t in current["tasks"].values()),
+                    "planMatchesRun": same_tasks, "omittedTasks": len(set(current["tasks"]) - set(tasks)),
                     "reusable": [names[k] for k in tasks if k in accepted],
                     "pending": {names[k]: v for k, v in reasons.items()},
                     "nativeLifecycle": "caller-observed", "expiresAt": current["expiresAt"]}
@@ -285,9 +311,7 @@ def operate(root, store, plan, action, run, *, task=None, previous=None, keep_da
                     results.append(False)
                     break
                 try:
-                    outcome = subprocess.run(command, cwd=root, stdin=subprocess.DEVNULL,
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=max(0.01, deadline - time.monotonic()))
-                    results.append(outcome.returncode == 0)
+                    results.append(run_check(command, root, max(0.01, deadline - time.monotonic())))
                 except (OSError, subprocess.TimeoutExpired):
                     results.append(False)
                 if not results[-1]:

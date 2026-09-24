@@ -9,6 +9,7 @@ original/backup before restoring anything, as the generator's transaction does.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import wraps
 import errno
 import hashlib
 import importlib
@@ -398,6 +399,19 @@ def _plan(root: Path, include_generator: bool, helpers) -> tuple[dict, list, lis
     return report, operations, replacements
 
 
+def _serialized(function):
+    @wraps(function)
+    def locked(root, *, source_root, **kwargs):
+        if kwargs.get('dry_run', True):
+            return function(root, source_root=source_root, **kwargs)
+        helpers = _helpers(source_root)
+        root = _root(root, helpers[0])
+        with helpers[-1].project_lock(root):
+            return function(root, source_root=source_root, **kwargs)
+    return locked
+
+
+@_serialized
 def remove_project(root: Path, *, source_root: Path, include_generator: bool = False, dry_run: bool = True) -> dict:
     """Preview by default; callers require explicit --yes before dry_run=False."""
     helpers = _helpers(source_root)
@@ -484,6 +498,7 @@ def removal_status(root: Path, *, source_root: Path) -> dict:
             "recoverable": True, "operationCount": len(journal["operations"]), "writes": 0}
 
 
+@_serialized
 def recover_removal(root: Path, *, source_root: Path, dry_run: bool = True) -> dict:
     helpers = _helpers(source_root)
     root = _root(root, helpers[0])

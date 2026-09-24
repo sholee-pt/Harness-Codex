@@ -19,8 +19,10 @@ eligible batch. `auto` authorizes bounded existing-skill corrections after revie
 Both install a user-level native hook without replacing unrelated hooks. Use
 `/hooks` in Codex to review/trust the new or changed handler. Trust is never granted
 by Harness. If hooks are not enabled and trusted, automatic notices and concurrency
-observation are unavailable. A new/resumed Harness conversation supplies the mode's
-signal instructions; an already-open conversation must re-read them or be resumed.
+observation are unavailable. The trusted SessionStart hook supplies concise signal
+instructions once per session/policy; UserPromptSubmit supplies them if startup was
+missed. A mode change or compaction refreshes the guidance. Ordinary later turns
+receive no repeated policy text and do not trigger a review without eligible signals.
 
 The handler uses the native [Codex hooks contract](https://developers.openai.com/codex/hooks/).
 It checks the installed tool's integrity and bounded local state, not every project

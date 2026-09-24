@@ -26,6 +26,8 @@ Assign `producer`, `reviewer`, `skeptic`, `integrator`, `supervisor`, or `scout`
 
 Every task has one owner, bounded inputs and outputs, dependencies, a required flag, and verification. Required outputs have exactly one owner. A required task without verification is invalid. Required artifact loss, a critical unresolved challenge, or a scope violation stops a critical path.
 
+Use dynamic reassignment only for ready, unowned work and an observed available worker. A stop request or an expired wait does not release a live writer. Confirm the previous owner is quiescent before a transfer, invalidate its stale handoff, and recheck dependencies and scope. Do not add background polling or a second queue beside native Codex. Message delivery, task return and verified integration are separate states; the integrator checks the combined result against current inputs.
+
 ## Communication
 
 Use only these semantic message types:

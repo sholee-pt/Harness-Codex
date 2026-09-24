@@ -29,6 +29,15 @@ MAX_SESSIONS = 32
 REVIEW_SECONDS = 180
 COOLDOWN_SECONDS = 3600
 REVIEWS_PER_DAY = 2
+SIGNAL_POLICY = '1'
+
+
+def signal_context(mode):
+    return ('Project maintenance is ' + mode + '. Keep the existing harness by default. '
+            'Only explicit responsibility changes or recurring workflow/routing/verification gaps justify a signal; '
+            'then read .agents/skills/harness/references/maintenance.md and record the bounded evidence signal. '
+            'Ordinary bugs, single failures and new topics do not justify harness review. '
+            'Do not review every turn or add agents merely because scope grows. Native hooks announce eligible batches.')
 
 
 def digest(value):
@@ -91,7 +100,8 @@ class Maintenance:
                 raise ValueError('Invalid maintenance candidate')
         for key, session in value['sessions'].items():
             if (not re.fullmatch(r'[0-9a-f]{64}', key) or not isinstance(session, dict)
-                    or set(session) != {'active', 'children', 'seenRevision'}
+                    or not {'active', 'children', 'seenRevision'} <= set(session) <= {'active', 'children', 'seenRevision', 'seenPolicy'}
+                    or ('seenPolicy' in session and session['seenPolicy'] not in {None, *('1:' + mode for mode in MODES)})
                     or type(session['active']) is not bool or not isinstance(session['children'], list)
                     or len(session['children']) > 64
                     or any(not re.fullmatch(r'[0-9a-f]{64}', ref) for ref in session['children'])
@@ -333,12 +343,16 @@ class Maintenance:
             if kind in {'Stop', 'Interrupt'}:
                 session['active'] = False
                 return ''
+            policy = SIGNAL_POLICY + ':' + state['mode']
+            messages = []
+            if session.get('seenPolicy') != policy or kind == 'SessionStart' and event.get('source') == 'compact':
+                messages.append(signal_context(state['mode']))
+                session['seenPolicy'] = policy
             if kind == 'SessionStart':
                 # Compaction can emit SessionStart during an active turn.
                 # Keep existing activity; a new entry already starts inactive.
-                return ''
+                return '\n'.join(messages)
             session['active'] = True
-            messages = []
             revision = state['appliedRevision']
             if revision and session['seenRevision'] != revision:
                 messages.append('Harness skill content changed. Re-read the current project-harness and relevant skills before this task. '

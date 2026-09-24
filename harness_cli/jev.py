@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from contextlib import contextmanager
 import hmac
 import json
 import math
@@ -13,7 +14,7 @@ import sys
 import time
 from types import SimpleNamespace
 
-from .distribution import _lock
+from .locking import process_alive, state_lock
 from .graft import _load, _save, storage
 from .paths import checked_path
 from .jev_auth import resolve
@@ -25,6 +26,18 @@ MAX_CACHE = 128
 MAX_BODY = 48000
 TIMEOUT = 4
 TTL = 86400
+
+
+@contextmanager
+def _lock(folder):
+    with state_lock(folder, timeout=.25):
+        legacy = checked_path(folder / '.install.lock')
+        if legacy.exists():
+            content = legacy.read_text(encoding='ascii')
+            if not content.isdigit() or process_alive(int(content)):
+                raise ValueError('A legacy Jev request is active or its lock requires review')
+            legacy.unlink()
+        yield
 
 
 def register(commands):

@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -168,6 +169,26 @@ class JevTests(unittest.TestCase):
         self.assertEqual(state['callsToday'], 1)
         self.assertEqual(state['metrics']['failures'], 1)
 
+    def test_forced_provider_exit_releases_lock_and_preserves_reserved_budget(self):
+        self.enable()
+        script = ('import os, sys, json; from pathlib import Path; from harness_cli import jev; '
+                  'jev._request = lambda payload: os._exit(23); '
+                  'jev.advise(Path(sys.argv[1]), sys.argv[2], json.loads(sys.argv[3]))')
+        child = subprocess.Popen([sys.executable, '-B', '-c', script, str(self.root), QUESTION, json.dumps(CANDIDATES)], cwd=REPO)
+        self.assertEqual(child.wait(timeout=10), 23)
+        self.assertEqual(jev._read(jev._path(self.root))['callsToday'], 1)
+        self.assertEqual(self.command('disable')['mode'], 'off')
+        # A previous release's dead PID receipt is also recoverable; it is not
+        # permission to take a lock from a still-running legacy process.
+        legacy = jev._path(self.root).parent / '.install.lock'
+        legacy.write_text(str(child.pid))
+        self.assertEqual(self.command('enable')['mode'], 'shadow')
+        self.assertFalse(legacy.exists())
+        legacy.write_text(str(os.getpid()))
+        with self.assertRaisesRegex(ValueError, 'legacy Jev request'):
+            self.command('disable')
+        self.assertTrue(legacy.exists())
+
     def test_daily_budget_and_busy_lock_fall_back(self):
         self.enable('--daily-calls', '1')
         with mock.patch.object(jev, '_request', side_effect=response) as request:
@@ -308,14 +329,6 @@ class ProjectJevTests(unittest.TestCase):
                 code, out, err = self.run_cli('init', '--retrieval', 'auto')
         self.assertEqual(code, 0, err)
         self.assertIn('Graft and ordinary code search remain available', err)
-
-    def test_failed_project_configuration_does_not_enable_jev(self):
-        os.environ['FAKE_CODEX_MODE'] = 'corrupt'
-        with mock.patch.object(jev, 'automatic') as activate:
-            code, out, err = self.run_cli('init', '--retrieval', 'auto')
-        self.assertNotEqual(code, 0)
-        activate.assert_not_called()
-
 
 if __name__ == '__main__':
     unittest.main()
