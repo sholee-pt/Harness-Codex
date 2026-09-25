@@ -33,6 +33,8 @@ Describe the project through observable boundaries rather than language labels a
 
 A frontend/backend split is one possible contract boundary, not a default architecture.
 
+For an observed scientific/statistical analysis workflow, read [scientific-workflows.md](scientific-workflows.md). For an interface or lifecycle shared by components, use [contract-review.md](contract-review.md) to identify concrete verification needs. Do not load either reference just because a directory name resembles a domain.
+
 ## Evidence record
 
 For each proposed boundary, capture:

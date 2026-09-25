@@ -25,6 +25,8 @@ Unknown identity or provenance should produce a scoped uncertainty and a way to 
 
 ## Adaptable comparison note
 
+When statistical analysis or recurring experiment tracking is relevant, read [scientific-workflows.md](scientific-workflows.md). Reuse an installed matching specialist procedure through [external-skills.md](external-skills.md); add no library, tracking service or agent solely because this reference mentions one.
+
 Use the following fields only when a comparison or experiment needs them. Keep the note with the user's normal experiment records; do not add it to the persistent Harness manifest or silently enable evaluation/telemetry. Mark fields unknown or not applicable when appropriate and explain the consequence.
 
 ```text

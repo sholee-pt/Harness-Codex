@@ -47,6 +47,8 @@ For each proposed agent, record its unique responsibility, evidence, material-bo
 
 Read [skill-design.md](references/skill-design.md). Create a project skill only for repeatable procedures, repository-specific knowledge, or deterministic resources that materially improve future work. Skills may be shared by multiple agents.
 
+When `.agents/skills/` already exists, run `scripts/harness_external_skills.py --root <workspace-root>` through the harness environment once during configuration. Match its metadata to evidenced procedures before creating duplicates. Read [external-skills.md](references/external-skills.md) when a relevant external skill exists or a missing specialist procedure is identified. Do not download libraries during generation or assume metadata proves runtime discovery.
+
 ## Phase 3 — Plan native artifacts
 
 Use the templates in `assets/` as structural starting points, then tailor them to the project. Read [generated-contracts.md](references/generated-contracts.md) for artifact compatibility, strict skill frontmatter, and topology-derived agent instructions. Read [plan-format.md](references/plan-format.md) and write an authoring-contract 3 draft for schema 3 to a temporary file. Put `{{HARNESS_PROJECT_CHANGE_DISCIPLINE_V1}}` and `{{HARNESS_PROJECT_TEAMPLAY_V2}}` exactly once in the `project-harness` artifact. Put `{{HARNESS_AGENT_CONTRACT_V1}}` and `{{HARNESS_AGENT_TEAMPLAY_V2}}` exactly once inside every generated agent's `developer_instructions` and `{{HARNESS_WRITER_CHANGE_DISCIPLINE_V1}}` exactly once in every writer agent's `developer_instructions`; do not ask the model to reproduce these canonical blocks. The draft contains the complete desired content and permission mode for:

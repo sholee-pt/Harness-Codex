@@ -18,6 +18,8 @@ Score concrete observations separately: unsupported responsibilities; missed req
 
 ## Native task follow-through
 
+When evaluating external-procedure or domain guidance, include a small CLI fix with no scientific work; an existing relevant external skill that should not be duplicated; a single-cell project with mismatched count/feature contracts; repeated measurements that cannot be treated as independent samples; an experiment comparison with missing/duplicate runs; and an API rename whose consumer still uses the old field. Vary domains beyond these examples and include held-out raw projects. Assess missed contracts and unnecessary procedure/team expansion independently. These are proposed evaluation cases, not evidence that a fresh-generation trial has run.
+
 Use [codex-smoke-test.md](codex-smoke-test.md) for fresh-session discovery and observed delegation. Include a small direct task, a justified specialist task and, if applicable, a producer-reviewer task. Verify changed files and project-native outcomes, not only the final explanation. Separate automatic selection from an explicitly named agent test; both are useful but prove different things.
 
 Compare task results only with an uncontaminated baseline and fixed task/verification/runtime conditions. The existing `paired-run` evaluator addresses downstream use of an already generated harness and has its own [isolation requirements](evaluation-isolation.md); it is not a fresh-generation evaluator and does not support every workspace layout. Do not expand its accepted source contract or weaken isolation to make a generation study fit.

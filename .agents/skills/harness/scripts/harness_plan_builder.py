@@ -193,6 +193,8 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
                 artifact["content"] += "\n\n" + harness_teamplay.CHECKPOINT_GUIDANCE + "\n"
             if harness_teamplay.WORKFLOW_GUIDANCE not in harness_change_discipline.normalize_line_endings(artifact["content"]):
                 artifact["content"] += "\n\n" + harness_teamplay.WORKFLOW_GUIDANCE + "\n"
+            if harness_teamplay.PROCEDURE_GUIDANCE not in harness_change_discipline.normalize_line_endings(artifact["content"]):
+                artifact["content"] += "\n\n" + harness_teamplay.PROCEDURE_GUIDANCE + "\n"
             artifact["content"] = harness_git_policy.append_guidance(artifact["content"])
         elif path in agent_paths:
             try:

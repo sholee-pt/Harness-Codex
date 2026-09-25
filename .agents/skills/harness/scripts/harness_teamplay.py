@@ -40,6 +40,8 @@ Reassignment may use only ready, unowned tasks and observed available workers. S
 
 Choose checks for the changed behavior. For stateful changes, consider interruption/resume, stale state, concurrent ownership and timeout paths. Keep existing retry budgets; if the same failure recurs without a new hypothesis or changed evidence, report the blocker instead of repeating the loop or weakening the check."""
 
+PROCEDURE_GUIDANCE = """When a change crosses producer/consumer or lifecycle boundaries, read `.agents/skills/harness/references/contract-review.md` and verify the affected slice before broader integration. Reuse an installed relevant specialist procedure instead of duplicating it; read `.agents/skills/harness/references/external-skills.md` only when that reuse is relevant. Neither requires extra agents or a per-turn scan."""
+
 
 PROJECT_BLOCK = """<!-- harness:runtime-teamplay:v2:begin -->
 ## Runtime execution classification

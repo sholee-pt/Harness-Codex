@@ -26,6 +26,7 @@ Use these recipes as decision examples, not persistent templates. Every plan rem
 - Messages: findings, evidence-backed challenges, handoffs, decisions, completion.
 - Writers use separate worktrees and disjoint scopes; ordered overlap needs a complete frozen handoff.
 - Verify every contract and migration. Missing required artifacts or unresolved critical challenges stop the run.
+- Use [contract-review.md](contract-review.md) for changed producer/consumer and lifecycle checks; a single-owner change can use the same checks directly without this coordinated recipe.
 - Fallback: leader relay with sequential handoffs. Retention: ephemeral or explicitly redacted.
 
 ## Supervisor-based large migration

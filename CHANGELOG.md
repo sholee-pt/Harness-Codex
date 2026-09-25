@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.22.0‑beta`](#harness-for-codex-v0220-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve external specialist skills, reuse relevant procedures and strengthen scientific and cross-contract review |
 | [`v0.21.1‑beta`](#harness-for-codex-v0211-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve concurrent user edits, fence checkpoint attempts, recover partial setup and align generated/runtime contracts |
 | [`v0.21.0‑beta`](#harness-for-codex-v0210-beta) | Schema 3 | Schema 7 | Schema 2 | Serialize transaction ownership, recover Jev locks, preserve Graft opt-outs, complete-run checkpoints and bounded workflow guidance |
 | [`v0.20.2‑beta`](#harness-for-codex-v0202-beta) | Schema 3 | Schema 7 | Schema 2 | Correct usable swap capacity and handle unavailable native source evidence |
@@ -64,6 +65,13 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.22.0-beta
+
+- Add offline project skill discovery, create-only local import and explicit selected-bundle verification; retain upstream metadata, supporting files, license and declared provenance.
+- Reuse relevant external procedures during configuration without taking manifest ownership, automatically downloading libraries or scanning/hashing every conversation turn.
+- Add conditional scientific analysis, experiment tracking and producer/consumer contract review with incremental verification and existing revision budgets.
+- Preserve prior artifact/manifest/transaction contracts, minimal-agent routing and native Codex permissions; compare upgrades only against v0.21.1-beta.
 
 ## Harness for Codex v0.21.1-beta
 

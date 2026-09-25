@@ -26,4 +26,4 @@ The frontmatter must contain a kebab-case `name` matching the directory and a co
 
 ## Agent linkage
 
-An agent may use zero, one, or several skills. A skill may be shared. Record each dependency in `.harness/manifest.json` and in the agent or orchestrator instructions where the runtime must load it.
+An agent may use zero, one, or several skills. A skill may be shared. Record generated skill dependencies in `.harness/manifest.json` and in the agent or orchestrator instructions where the runtime must load them. For separately installed external skills, use [external-skills.md](external-skills.md); their ownership and metadata remain outside the generated artifact contract.
