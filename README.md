@@ -26,7 +26,7 @@ Generate and maintain one shared project harness with Codex-native agents and sk
 
 **Development beta:** Harness is still under development and testing.
 
-Linux installers and native Codex packages are published together after Linux builds and integration checks pass. Windows validation and releases are paused.
+Linux installers and native Codex packages are published together after Linux builds and integration checks pass. Windows assets are added only for an explicitly requested release after separate Windows validation; ordinary releases remain Linux-only.
 
 [![Checks](https://github.com/sholee-pt/Harness-Codex/actions/workflows/codex-beta.yml/badge.svg?branch=v0.22.2-beta)](https://github.com/sholee-pt/Harness-Codex/actions/workflows/codex-beta.yml)
 
@@ -43,7 +43,15 @@ Supports Linux x86_64 and aarch64. Requires curl, Bash, tar and sha256sum. The i
 
 ### For Windows
 
-Windows builds and releases are paused. This release does not include a Windows installer or native package. Existing Windows source remains available for future work.
+Windows availability is version-specific. When the release includes `install_harness_codex.ps1`, `harness-codex-VERSION-windows.zip` and the Windows native package, download the PowerShell installer from that release and run it under your normal script execution policy:
+
+```powershell
+Invoke-WebRequest 'https://github.com/sholee-pt/Harness-Codex/releases/download/v0.22.2-beta/install_harness_codex.ps1' -OutFile ./install_harness_codex.ps1
+& ./install_harness_codex.ps1
+harness-codex --version
+```
+
+The Windows assets appear only after the [manual Windows checks](https://github.com/sholee-pt/Harness-Codex/actions/workflows/windows-release.yml) and the corresponding Linux release succeed. A later release does not automatically include Windows assets.
 
 When migrating from 0.10.0-beta, run this installer once: its updater cannot discover the new unprefixed branches. If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness-Codex/blob/v0.22.2-beta/docs/installation.md).
 

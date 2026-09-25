@@ -33,6 +33,7 @@
 ## Git conventions
 
 - After dispatching GitHub Actions, report the workflow link and stop. Do not poll, watch, schedule monitoring, or wait for completion unless the owner explicitly asks for another status check. The owner checks release progress directly.
+- Release requests default to Linux only. Explicit Windows authorization applies to that one requested release only; never carry it forward or enable automatic Windows builds on ordinary pushes or later release requests. Use the separate manual Windows workflow for a specified source commit, preserving the existing Linux release and its source identity.
 - Determine runtime Codex compatibility from available capabilities and validated event shapes, not a version allowlist. Keep the reviewed native build revision as reproducibility metadata, separate from runtime compatibility.
 - New Codex branches use `vX.Y.Z-beta` during development: X for major or large-scale changes; Y for minor features, improvements, refactoring and optimization; Z for bug fixes (`[Fix]`). Preserve legacy versions in immutable receipts and compatibility tests.
 - Historical display versions map `vN.M` to `v0.N.M-beta`; this is a label correction, not a claim that old source was rebuilt. This repository contains the Codex edition only.
