@@ -1,0 +1,207 @@
+name: One-off Windows release
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact 40-character source commit of the Linux release to supplement
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release-${{ inputs.source_commit }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 300
+    permissions:
+      contents: read
+      statuses: write
+    defaults:
+      run:
+        shell: bash -el {0}
+        working-directory: source
+    env:
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
+      CARGO_BUILD_JOBS: '1'
+      NEXTEST_TEST_THREADS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_CI_TEST_DEBUG: '0'
+      CARGO_PROFILE_RELEASE_DEBUG: '0'
+      CARGO_PROFILE_RELEASE_LTO: 'false'
+    steps:
+      - name: Validate the explicitly selected source
+        shell: bash
+        working-directory: .
+        run: '[[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source_commit }}
+          path: source
+          fetch-depth: 0
+      - name: Mark Windows verification pending on the release source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$SOURCE_COMMIT" -f state=pending -f 'context=Harness / Windows release' -f 'description=Explicit one-off Windows verification' -f "target_url=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+      - uses: conda-incubator/setup-miniconda@v4.0.1
+        with:
+          activate-environment: harness
+          auto-activate: false
+          environment-file: source/environment.yml
+      - name: Verify source identity and preview installation
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          conda run -n harness python -B build/native_ui/source.py
+          conda run -n harness python -B install.py --root "$RUNNER_TEMP" --dry-run
+      - name: Run complete Windows regression tests
+        timeout-minutes: 20
+        run: conda run --no-capture-output -n harness python -B -m unittest discover -s test -v
+      - name: Verify the interpreter and previous version upgrade
+        timeout-minutes: 15
+        run: |
+          conda run --no-capture-output -n harness python -B test/integration/verify_interpreter_selection.py --output "$RUNNER_TEMP/windows-interpreter.json"
+          conda run -n harness python -B test/integration/prepare_release_baselines.py --output "$RUNNER_TEMP/windows-baselines"
+          baseline=$(conda run -n harness python -B -c 'import os,pathlib; p=list(pathlib.Path(os.environ["RUNNER_TEMP"],"windows-baselines").iterdir()); p=[x for x in p if x.is_dir()]; assert len(p)==1; print(p[0])')
+          conda run -n harness python -B test/integration/verify_release_upgrade.py --baseline "$baseline" --output "$RUNNER_TEMP/windows-project-upgrade.json"
+          conda run -n harness python -B test/integration/verify_cli_upgrade.py --baseline "$baseline" --output "$RUNNER_TEMP/windows-cli-upgrade.json"
+      - name: Build matching platform archives
+        run: conda run -n harness python -B build/build_release.py --platform both --output "$RUNNER_TEMP/windows-dist"
+      - name: Verify cold Windows installation, PATH and uninstall
+        timeout-minutes: 30
+        shell: pwsh
+        run: ./test/integration/verify_windows_install.ps1 -Dist "$env:RUNNER_TEMP/windows-dist" -Cold
+      - name: Prepare pinned upstream and preserve original native helpers
+        run: |
+          upstream_tag=$(conda run -n harness python -B -c 'import json; print(json.load(open("build/native_ui/upstream.json"))["tag"])')
+          git clone --config core.longpaths=true --config core.autocrlf=false --depth 1 --branch "$upstream_tag" https://github.com/openai/codex.git "$RUNNER_TEMP/codex-windows"
+          conda run -n harness python -B build/native_ui/prepare.py --root "$RUNNER_TEMP/codex-windows"
+          conda run -n harness python -B build/native_ui/package.py prepare --root "$RUNNER_TEMP/windows-native-package" --platform windows-x86_64
+      - name: Install the reviewed Rust toolchain
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy --target x86_64-pc-windows-msvc
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: just@1.51.0,nextest
+      - uses: facebook/install-dotslash@1e4e7b3e07eaca387acb98f1d4720e0bee8dbb6a
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: '0.11.3'
+      - name: Verify Windows V8 dependencies and locked build graphs
+        run: |
+          conda run -n harness python -B build/native_ui/dependencies.py --root "$RUNNER_TEMP/codex-windows" --target x86_64-pc-windows-msvc --output "$RUNNER_TEMP/windows-v8"
+      - name: Use the reviewed upstream MSVC environment
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP/codex-windows/.github/actions/setup-msvc-env/setup-msvc-env.ps1" -Target 'x86_64-pc-windows-msvc'
+          'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> $env:GITHUB_ENV
+      - name: Check release and test dependency graphs
+        run: |
+          conda run -n harness python -B build/native_ui/lockfile.py --root "$RUNNER_TEMP/codex-windows"
+          conda run -n harness python -B build/native_ui/run_tests.py --root "$RUNNER_TEMP/codex-windows" --target x86_64-pc-windows-msvc --metadata-only
+      - name: Check the extension and original TUI tests
+        env:
+          HARNESS_SELECTOR_TEST_SCRIPT: ${{ github.workspace }}/source/harness_cli/native_router.py
+          CARGO_TARGET_DIR: ${{ runner.temp }}/harness-windows-tests
+        run: |
+          conda run -n harness python -B -c 'import os,pathlib,shutil; p=pathlib.Path(os.environ["RUNNER_TEMP"]); assert shutil.disk_usage(p).free >= 25*1024**3, "Native tests need 25 GiB free"'
+          cd "$RUNNER_TEMP/codex-windows/codex-rs"
+          conda run --no-capture-output -n harness just fix -p codex-tui --profile ci-test --target x86_64-pc-windows-msvc
+          conda run -n harness just fmt
+          cd "$GITHUB_WORKSPACE/source"
+          conda run -n harness python -B build/native_ui/review.py --root "$RUNNER_TEMP/codex-windows"
+          conda run --no-capture-output -n harness python -B build/native_ui/run_tests.py --root "$RUNNER_TEMP/codex-windows" --target x86_64-pc-windows-msvc
+          conda run -n harness python -B build/native_ui/source.py
+      - name: Preserve test results and reclaim test output
+        if: always()
+        shell: pwsh
+        run: |
+          $temporary = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\', '/')
+          $target = [IO.Path]::GetFullPath((Join-Path $temporary 'harness-windows-tests'))
+          if (-not $target.StartsWith($temporary + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe cleanup target' }
+          if (Test-Path -LiteralPath $target) {
+            if ((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked cleanup target' }
+            $junit = Join-Path $target 'nextest/default/junit.xml'
+            if (Test-Path -LiteralPath $junit) { Copy-Item -LiteralPath $junit -Destination (Join-Path $temporary 'windows-native-tests.xml') }
+            Remove-Item -LiteralPath $target -Recurse -Force
+          }
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ runner.temp }}/codex-windows/codex-rs -> target
+          prefix-key: harness-windows-release-v1
+          cache-on-failure: true
+          cache-workspace-crates: true
+      - name: Build and package the verified Windows executable
+        run: |
+          conda run -n harness python -B -c 'import os,pathlib,shutil; p=pathlib.Path(os.environ["RUNNER_TEMP"]); assert shutil.disk_usage(p).free >= 15*1024**3, "Native release needs 15 GiB free"'
+          cd "$RUNNER_TEMP/codex-windows/codex-rs"
+          conda run --no-capture-output -n harness cargo build --locked --target x86_64-pc-windows-msvc --release -p codex-cli --bin codex
+          cd "$GITHUB_WORKSPACE/source"
+          conda run -n harness python -B build/native_ui/review.py --root "$RUNNER_TEMP/codex-windows"
+          conda run -n harness python -B build/native_ui/package.py assemble --root "$RUNNER_TEMP/windows-native-package" --platform windows-x86_64 --binary "$RUNNER_TEMP/codex-windows/codex-rs/target/x86_64-pc-windows-msvc/release/codex.exe" --output "$RUNNER_TEMP/windows-dist"
+          "$RUNNER_TEMP/windows-native-package/bin/codex.exe" --version
+          "$RUNNER_TEMP/windows-native-package/bin/codex.exe" --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-windows-release
+          path: ${{ runner.temp }}/windows-dist/*
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-verification-evidence
+          path: |
+            ${{ runner.temp }}/windows-*.json
+            ${{ runner.temp }}/windows-native-tests.xml
+            ${{ runner.temp }}/codex-windows/codex-rs/tui/src/chatwidget/tests/snapshots/*harness*
+          retention-days: 14
+
+  publish:
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: conda-incubator/setup-miniconda@v4.0.1
+        with:
+          activate-environment: harness
+          auto-activate: false
+          environment-file: environment.yml
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: verified-windows-release
+          path: ${{ runner.temp }}/windows-dist
+      - name: Add Windows assets to the matching published Linux release
+        shell: bash -el {0}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          conda run -n harness python -B -m unittest discover -s test -p test_windows_release.py -v
+          conda run -n harness python -B build/windows_release.py --dist "$RUNNER_TEMP/windows-dist" --commit "$SOURCE_COMMIT" --repository "$GITHUB_REPOSITORY"
+
+  result:
+    if: always()
+    needs: [windows, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - name: Report the actual Windows result on its source commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+        run: |
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          state=failure
+          if [[ "$WINDOWS_RESULT" == success && "$PUBLISH_RESULT" == success ]]; then state=success; fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$SOURCE_COMMIT" -f "state=$state" -f 'context=Harness / Windows release' -f "description=One-off Windows release: $state" -f "target_url=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
