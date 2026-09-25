@@ -42,6 +42,8 @@ Choose checks for the changed behavior. For stateful changes, consider interrupt
 
 PROCEDURE_GUIDANCE = """When a change crosses producer/consumer or lifecycle boundaries, read `.agents/skills/harness/references/contract-review.md` and verify the affected slice before broader integration. Reuse an installed relevant specialist procedure instead of duplicating it; read `.agents/skills/harness/references/external-skills.md` only when that reuse is relevant. Neither requires extra agents or a per-turn scan."""
 
+PROVISIONAL_GUIDANCE = """For a validated provisional runtime plan, `participants` may instead name temporary `runtimeParticipantId` roles. The canonical block's project-custom-agent selection rule applies to persistent `agent` entries. For a temporary role, confirm native ephemeral delegation is available, pass its bounded task, scopes, parent-coordination rules and verification to that receiver, and map the plan ID to its acknowledged handle. Read `.agents/skills/harness/references/native-subagent-relay.md` for this distinction. If unsupported, use the plan's declared fallback while preserving its task contract and native permissions. Never create a persistent agent just to satisfy a temporary role."""
+
 
 PROJECT_BLOCK = """<!-- harness:runtime-teamplay:v2:begin -->
 ## Runtime execution classification

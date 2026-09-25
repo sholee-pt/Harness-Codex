@@ -55,7 +55,10 @@ def correctness_gate(baseline: dict, treatment: dict, policy: str) -> dict:
         )
         signatures.append(signature if complete else None)
     known = signatures[0] is not None and signatures[0] == signatures[1]
-    regression = (known and _verification_pass_rate(treatment) < _verification_pass_rate(baseline)) or (
+    baseline_checks = {(check.get("checkRef"), check.get("profileFingerprint")): check.get("result")
+                       for check in baseline["outcome"].get("verification", [])}
+    regression = (known and any(baseline_checks[(check.get("checkRef"), check.get("profileFingerprint"))] == "passed"
+                                and check.get("result") == "failed" for check in treatment["outcome"]["verification"])) or (
         not baseline["outcome"]["criticalFailure"] and treatment["outcome"]["criticalFailure"]
     )
     status = "passed" if policy == "none" else "failed" if regression else "passed" if known else "unknown"

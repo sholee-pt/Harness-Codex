@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.22.1‑beta`](#harness-for-codex-v0221-beta) | Schema 3 | Schema 7 | Schema 2 | Use the installed helper interpreter, preserve concurrent edits, reject per-check regressions and recover bounded maintenance/retrieval failures |
 | [`v0.22.0‑beta`](#harness-for-codex-v0220-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve external specialist skills, reuse relevant procedures and strengthen scientific and cross-contract review |
 | [`v0.21.1‑beta`](#harness-for-codex-v0211-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve concurrent user edits, fence checkpoint attempts, recover partial setup and align generated/runtime contracts |
 | [`v0.21.0‑beta`](#harness-for-codex-v0210-beta) | Schema 3 | Schema 7 | Schema 2 | Serialize transaction ownership, recover Jev locks, preserve Graft opt-outs, complete-run checkpoints and bounded workflow guidance |
@@ -65,6 +66,16 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.22.1-beta
+
+- Run generator helpers through the installed absolute Python interpreter without requiring Conda on the project PATH or activating a named environment.
+- Diagnose the actual Python environment rather than trusting inherited Conda shell labels.
+- Reject a manifest changed after compatibility validation and preserve concurrent user hook edits; restore hook ownership receipts after a failed update.
+- Reject individual passing-to-failing verification regressions even when aggregate pass rates are equal.
+- Retain Graft skill ownership after interrupted removal so cleanup and re-enabling can be retried safely; include the truncation notice within the retrieval output limit.
+- Expire manual maintenance review leases without requiring a native hook, while retaining active worker exclusion and retry budgets.
+- Clarify ephemeral participant delegation and fallback without changing canonical artifact contracts or requiring additional persistent agents.
 
 ## Harness for Codex v0.22.0-beta
 

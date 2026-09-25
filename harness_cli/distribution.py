@@ -43,6 +43,7 @@ REQUIRED = frozenset({"harness.py", "install.py", "harness_cli/__init__.py", "ha
 # Keep the original common set valid for complete v9.2 and v9.3 distributions.
 # Later releases inherit each dependency from its numeric introduction version.
 VERSION_REQUIRED = (
+    (version_key("0.22.1-beta"), frozenset({"harness_cli/helper.py"})),
     (version_key("0.22.0-beta"), frozenset({"harness_cli/skills.py", ".agents/skills/harness/scripts/harness_external_skills.py", ".agents/skills/harness/references/external-skills.md", ".agents/skills/harness/references/scientific-workflows.md", ".agents/skills/harness/references/contract-review.md"})),
     (version_key("0.21.0-beta"), frozenset({"harness_cli/locking.py", ".agents/skills/harness/scripts/harness_eval_lock.py", ".agents/skills/harness/scripts/harness_instruction_audit.py"})),
     (version_key("0.20.0-beta"), frozenset({"harness_cli/jev_auth.py"})),
@@ -143,7 +144,10 @@ def _read_json(path: Path) -> dict:
     return result
 
 
-def _write_json(path: Path, value: dict) -> None:
+_NO_EXPECTATION = object()
+
+
+def _write_json(path: Path, value: dict, *, expected=_NO_EXPECTATION) -> None:
     _path(path)
     fd, temporary = tempfile.mkstemp(prefix=".write-", dir=path.parent)
     try:
@@ -152,6 +156,16 @@ def _write_json(path: Path, value: dict) -> None:
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
+        if expected is not _NO_EXPECTATION:
+            _path(path)
+            current = None
+            if path.exists():
+                with path.open('rb') as stream:
+                    current = stream.read(len(expected or b'') + 1)
+            if current != expected:
+                raise DistributionError("Managed metadata changed during update; concurrent edits preserved")
+            if current is not None:
+                Path(temporary).chmod(stat.S_IMODE(path.stat().st_mode))
         os.replace(temporary, path)
     finally:
         if os.path.lexists(temporary):

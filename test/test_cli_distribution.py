@@ -77,6 +77,18 @@ def credential_fill_command():
 
 
 class DistributionTests(unittest.TestCase):
+    def test_current_helper_is_required_without_rejecting_previous_release(self):
+        for version in ('0.22.0-beta', '0.22.1-beta'):
+            fixture = source(self.base / version, version)
+            snapshot = {path.relative_to(fixture).as_posix(): path.read_bytes() for path in fixture.rglob('*') if path.is_file()}
+            dist._source_info(snapshot)
+            snapshot.pop('harness_cli/helper.py', None)
+            if version == '0.22.1-beta':
+                with self.assertRaisesRegex(dist.DistributionError, 'harness_cli/helper.py'):
+                    dist._source_info(snapshot)
+            else:
+                dist._source_info(snapshot)
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

@@ -96,14 +96,14 @@ The manifest binding uses SHA-256 over the raw `.harness/manifest.json` bytes. T
 }
 ```
 
-`participants` is the complete set of persistent agents activated for the current task; do not add a second active-agent list. Optional `handoffs` bind ordered overlapping writers with `fromTask`, `toTask`, the complete shared `scope`, `frozenSha256`, and `verification`. Optional `messages` are checked against communication budgets and semantic packet requirements. Do not store concrete runtime tool names or absolute repository paths.
+`participants` is the complete set of persistent agents or explicitly provisional temporary roles activated for the current task; do not add a second active-agent list. Optional `handoffs` bind ordered overlapping writers with `fromTask`, `toTask`, the complete shared `scope`, `frozenSha256`, and `verification`. Optional `messages` are checked against communication budgets and semantic packet requirements. Do not store concrete runtime tool names or absolute repository paths.
 
 Provisional greenfield participants use `runtimeParticipantId` instead of `agent`, require `execution.evidenceStatus: provisional` and `persistenceAllowed: false`, and are not written to `.codex/agents/`. Promotion requires later repository evidence and a reviewed generation plan.
 
 ## Validation
 
 ```shell
-conda run -n harness python <harness-skill-root>/scripts/validate_runtime_plan.py \
+harness-codex helper validate_runtime_plan \
   --root TARGET_REPOSITORY \
   --plan RUNTIME_PLAN.json
 ```
@@ -113,7 +113,7 @@ The command is no-write. A valid result proves source binding, references, task 
 After each delegated task, validate the returned parent-facing packet against the same plan:
 
 ```shell
-conda run -n harness python <harness-skill-root>/scripts/validate_coordination_packet.py \
+harness-codex helper validate_coordination_packet \
   --root TARGET_REPOSITORY \
   --plan RUNTIME_PLAN.json \
   --packet COORDINATION_PACKET.json

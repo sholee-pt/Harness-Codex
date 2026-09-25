@@ -175,8 +175,9 @@ class Maintenance:
 
     def status(self):
         state = self._read(self._location())
+        expired = state['lease'] is not None and self.clock() > state['lease']['deadline']
         return {'mode': state['mode'], 'pending': len(self._eligible(state)),
-                'reviewInProgress': state['lease'] is not None, 'metrics': state['metrics'],
+                'reviewInProgress': state['lease'] is not None and not expired, 'reviewExpired': expired, 'metrics': state['metrics'],
                 'automaticScope': 'existing-skill-content-only', 'qualityBenefit': 'not-established',
                 'tokenBudgetEnforcement': 'not-available-in-native-interactive-session',
                 'reviewTimeLimitSeconds': REVIEW_SECONDS, 'reviewsPerDay': REVIEWS_PER_DAY}
@@ -209,7 +210,17 @@ class Maintenance:
     def _busy(self, state, session):
         return any(item['children'] or (key != session and item['active']) for key, item in state['sessions'].items())
 
+    def _expire(self, state):
+        lease = state['lease']
+        if lease and self.clock() > lease['deadline']:
+            for key in lease['candidates']:
+                state['candidates'][key]['status'] = 'resolved'
+            state['metrics']['reviewSeconds'] += lease['deadline'] - lease['started']
+            state['metrics']['unmeasuredReviews'] += 1
+            state['lease'] = None
+
     def _claim(self, state, session):
+        self._expire(state)
         now = self.clock()
         state['attempts'] = [t for t in state['attempts'] if now - t < 86400]
         if state['lease'] or self._busy(state, session):
@@ -315,13 +326,7 @@ class Maintenance:
                 return ''
             # A missed/ignored review cannot permanently block maintenance or
             # cause repeated model work on the same unresolved batch.
-            expired = state['lease']
-            if expired and self.clock() > expired['deadline']:
-                for key in expired['candidates']:
-                    state['candidates'][key]['status'] = 'resolved'
-                state['metrics']['reviewSeconds'] += expired['deadline'] - expired['started']
-                state['metrics']['unmeasuredReviews'] += 1
-                state['lease'] = None
+            self._expire(state)
             raw_id = event.get('session_id')
             if not isinstance(raw_id, str) or not raw_id or len(raw_id) > 256:
                 return ''

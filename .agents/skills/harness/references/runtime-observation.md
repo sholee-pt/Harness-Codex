@@ -93,7 +93,7 @@ An optional Schema 2 observation-binding file maps the same handle and spawn ins
 Run the no-repository-write builder:
 
 ```shell
-conda run -n harness python <harness-skill-root>/scripts/harness_runtime_receipt.py \
+harness-codex helper harness_runtime_receipt \
   --root TARGET_REPOSITORY \
   --plan RUNTIME_PLAN.json \
   --jsonl CODEX_PUBLIC_EVENTS.jsonl \

@@ -5,7 +5,7 @@ Read this reference only after a valid ephemeral runtime plan selects `delegated
 ## Execution sequence
 
 1. Treat `participants` as the complete active-agent set for the current task. Do not create a second active-agent list.
-2. Spawn only the selected project custom agents. Use the first real selected task agent as the capability probe. Require one non-empty canonical receiver handle and confirm that handle in the current agent list before treating spawn as acknowledged. A raw child thread ID is optional observation evidence, not an execution-control prerequisite.
+2. For persistent `agent` entries, spawn only the selected project custom agents. For validated provisional `runtimeParticipantId` entries, first confirm that native ephemeral delegation is available; pass the temporary role's bounded task, scopes, parent-coordination rules and verification without creating a persistent agent file. If unavailable, use the declared fallback and preserve native permissions. Use the first real selected task participant as the capability probe. Require one non-empty canonical receiver handle and confirm that handle in the current agent list before treating spawn as acknowledged. Map the plan participant ID to that handle. A raw child thread ID is optional observation evidence, not an execution-control prerequisite.
 3. Give each acknowledged receiver the assigned task, bounded inputs, required outputs, write scopes, verification, and remaining round budget. Use the canonical handle for wait, follow-up, and interrupt. Do not repeat the same failed spawn without a state change.
 4. Keep reviewers and scouts read-only. Default to one writer plus parallel read-only agents. Use parallel writers only after the runtime has actually established separate worktrees or equivalent isolation and disjoint write scopes.
 5. Wait for every required acknowledged receiver, at most three attempts and 300000 total milliseconds per agent. Never wait on an empty or unlisted handle. Each completed subagent returns one parent-facing coordination packet.
@@ -87,7 +87,7 @@ Here `complete` means the bounded review is complete, not that an experiment fin
 Validate a returned packet without writing repository state:
 
 ```shell
-conda run -n harness python <harness-skill-root>/scripts/validate_coordination_packet.py \
+harness-codex helper validate_coordination_packet \
   --root TARGET_REPOSITORY \
   --plan RUNTIME_PLAN.json \
   --packet COORDINATION_PACKET.json

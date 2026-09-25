@@ -15,6 +15,60 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 class GraftTests(unittest.TestCase):
+    def test_disable_failure_retains_cleanup_ownership_and_allows_retry(self):
+        self.enable()
+        skill = self.root / graft.SKILL_PATH
+        unlink = Path.unlink
+        def fail(path, *args, **kwargs):
+            if path == skill:
+                raise PermissionError('temporary-denial')
+            return unlink(path, *args, **kwargs)
+        with mock.patch.object(Path, 'unlink', fail), self.assertRaisesRegex(PermissionError, 'temporary-denial'):
+            self.run_command('disable')
+        state = graft._load(graft.storage(self.root) / 'settings.json')
+        self.assertFalse(state['enabled'])
+        self.assertTrue(state['skillOwned'])
+        self.assertTrue(skill.is_file())
+        self.run_command('disable')
+        self.assertFalse(skill.exists())
+        self.assertTrue(self.enable()['enabled'])
+
+    def test_bridge_bounds_complete_output_and_preserves_unicode(self):
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('Node.js is unavailable')
+        package = self.root / 'fixture-package'
+        package.mkdir()
+        (package / 'package.json').write_text('{"type":"module"}')
+        modules = {'graph/build.js': 'export async function buildGraph(){return {errors: [], files: 0};}',
+                   'graph/fingerprint.js': 'export function probeDrift(){return {};} export function isClean(){return true;}',
+                   'util/state.js': 'export function acquireLockIn(){return true;} export function releaseLockIn(){}'}
+        for name, content in modules.items():
+            path = package / 'dist' / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
+        ask = package / 'dist/ask/ask.js'
+        ask.parent.mkdir()
+        cache = self.root / 'cache'
+        cache.mkdir()
+        request = {'package': str(package), 'root': str(self.root), 'cache': str(cache), 'action': 'query',
+                   'question': 'fixture', 'maxChars': 512, 'limit': 6, 'advice': False}
+        for content in ('x' * 512, 'x' * 1000, 'x' * 466 + '\U0001f600' * 500):
+            with self.subTest(length=len(content)):
+                ask.write_text('export function ask(){return {hits: []};} export function formatAsk(){return ' + json.dumps(content) + ';}')
+                result = subprocess.run([node, str(REPO / 'harness_cli/graft_bridge.mjs')], input=json.dumps(request),
+                                        capture_output=True, text=True, timeout=10, check=True)
+                output = json.loads(result.stdout)
+                self.assertLessEqual(len(output['text'].encode('utf-16-le')) // 2, 512)
+                if len(content) == 512:
+                    self.assertEqual(output['text'], content)
+                    self.assertFalse(output['truncated'])
+                else:
+                    self.assertTrue(output['truncated'])
+                    self.assertIn('[Result truncated;', output['text'])
+
     def test_failed_initial_settings_replace_allows_retry(self):
         with mock.patch.object(graft.os, 'replace', side_effect=OSError('initial-save')):
             with self.assertRaisesRegex(OSError, 'initial-save'):

@@ -798,6 +798,29 @@ class StoreTests(unittest.TestCase):
 
 
 class ComparisonTests(unittest.TestCase):
+    def test_swapped_failures_cannot_qualify_token_savings(self):
+        baseline = manual_record(uuid_text(80), uuid_text(1), arm='baseline', output_tokens=100)
+        treatment = manual_record(uuid_text(80), uuid_text(2), arm='harness', output_tokens=10)
+        for record, results in ((baseline, ['passed', 'failed']), (treatment, ['failed', 'passed'])):
+            template = record['outcome']['verification'][0]
+            record['outcome']['verification'] = [dict(template, checkRef='check:' + str(i + 1) * 32, result=result,
+                exitCode=dict(template['exitCode'], value=0 if result == 'passed' else 1)) for i, result in enumerate(results)]
+            record.update(types.seal_record(record))
+            types.validate_run_record(record)
+        treatment['outcome']['verification'].reverse()
+        treatment.update(types.seal_record(treatment))
+        plan = self.comparison_plan()
+        plan['primaryOutcome'] = {'metric': 'output-tokens', 'direction': 'lower-is-better', 'minimumEffect': 1}
+        plan['secondaryOutcomes'] = ['verification-pass-rate']
+        result = compare.compare_runs(baseline=baseline, treatment=treatment, plan=plan,
+            comparison_id=uuid_text(10), pair_id=uuid_text(500), repository_id=uuid_text(80), created_at='2026-09-25T00:00:00Z')
+        self.assertEqual(result['correctnessGate']['status'], 'failed')
+        self.assertTrue(result['correctnessGate']['criticalRegression'])
+        self.assertNotEqual(result['primaryOutcome']['direction'], 'beneficial')
+        bypass = compare.correctness_gate(baseline, treatment, 'none')
+        self.assertTrue(bypass['passed'])
+        self.assertTrue(bypass['criticalRegression'])
+
     def test_unknown_correctness_is_descriptive_and_cannot_support_proposal(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

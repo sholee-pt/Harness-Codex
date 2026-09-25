@@ -34,7 +34,10 @@ try {
           text: [hit.title, hit.pointer, hit.snippet, hit.code].filter(value => typeof value === 'string').join('\n').slice(0, 2400) }));
       }
       const text = formatAsk(answer);
-      result.text = text.length > request.maxChars ? text.slice(0, request.maxChars) + '\n[Result truncated; inspect relevant source.]' : text;
+      const notice = '\n[Result truncated; inspect relevant source.]';
+      let prefix = text.slice(0, Math.max(0, request.maxChars - notice.length));
+      if (/[\uD800-\uDBFF]$/.test(prefix)) prefix = prefix.slice(0, -1);
+      result.text = text.length > request.maxChars ? prefix + notice.slice(0, request.maxChars) : text;
       result.hits = answer.hits.length;
       result.truncated = text.length > request.maxChars;
     } else {

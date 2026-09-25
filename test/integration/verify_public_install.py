@@ -72,6 +72,11 @@ else:
         assert executable.is_file() and not (home / '.local/bin/harness').exists()
         assert run([executable, '--version']).strip() == 'Harness for Codex ' + version
         assert 'config' in run([executable, '--help'])
+        project = base / 'project'
+        project.mkdir()
+        # Generator helpers must also work in the cold shell: no Conda command
+        # or globally named environment is required after prefix installation.
+        assert isinstance(json.loads(run([executable, 'helper', 'inventory', project])), dict)
         # A fresh real interactive Bash reads .bashrc without manual PATH setup.
         located = run(['/bin/bash', '--noprofile', '-ic', 'command -v harness-codex']).strip()
         assert located == str(executable), located
@@ -94,8 +99,6 @@ else:
         assert before == after, 'Repeated installation changed owned tool or Bash profile bytes/mtime'
         runtime = home / 'share/harness-codex-runtime'
         assert (runtime / 'conda/bin/conda').is_file()
-        project = base / 'project'
-        project.mkdir()
         (home / '.bashrc').unlink()
         run([executable, 'init', '--project', project, '--install-only', '--no-update-check'])
         assert 'harness-codex PATH' in (home / '.bashrc').read_text()
@@ -111,6 +114,7 @@ else:
                 'miniforgeDownload': 'real official HTTPS with pinned SHA-256',
                 'preexistingCondaOnPath': False,
                 'freshCondaEnvironmentCreated': True, 'freshBashFoundCommand': True,
+                'coldShellGeneratorHelper': True,
                 'repeatBytesAndMtimesPreserved': True, 'initRepairedMissingProfileEntry': True,
                 'ownedRuntimeRemoved': True, 'projectKeptAfterUninstall': True,
                 'nativeCodexInvoked': False}

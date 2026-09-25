@@ -20,6 +20,88 @@ from harness_cli.maintenance import install_hooks
 
 
 class MaintenanceTests(unittest.TestCase):
+    def test_manual_begin_expires_lease_without_hooks_and_status_is_read_only(self):
+        self.manager.configure('auto')
+        self.signal()
+        first = self.manager.begin()
+        self.assertEqual(first['status'], 'claimed')
+        self.now += 86401
+        self.signal('user-request', 'next-day')
+        path = self.manager._location()
+        before = path.read_bytes(), path.stat().st_mtime_ns
+        self.assertTrue(self.manager.status()['reviewExpired'])
+        self.assertFalse(self.manager.status()['reviewInProgress'])
+        self.assertEqual(before, (path.read_bytes(), path.stat().st_mtime_ns))
+        second = self.manager.begin()
+        self.assertEqual(second['status'], 'claimed')
+        self.assertNotEqual(first['id'], second['id'])
+        self.assertEqual(self.manager.status()['metrics']['unmeasuredReviews'], 1)
+        self.assertEqual(self.manager.begin()['status'], 'deferred')
+        self.assertEqual(self.manager.status()['metrics']['unmeasuredReviews'], 1)
+
+    def test_expired_review_does_not_release_active_native_workers(self):
+        self.manager.configure('auto')
+        self.signal()
+        self.manager.begin()
+        self.hook(session='other-worker')
+        self.now += 86401
+        self.signal('user-request', 'next-day')
+        self.assertEqual(self.manager.begin()['status'], 'deferred')
+        self.assertIsNone(self.lease())
+        self.hook('Stop', session='other-worker')
+        self.assertEqual(self.manager.begin()['status'], 'claimed')
+
+    def test_hook_install_and_remove_preserve_concurrent_user_edits(self):
+        from harness_cli import distribution, maintenance as cli_maintenance
+        home = self.base / 'codex home'
+        home.mkdir()
+        path = home / 'hooks.json'
+        receipt = home / 'harness-maintenance-hooks.json'
+        path.write_text('{"hooks": {}, "custom": "before"}')
+        writer = distribution._write_json
+        def concurrent_write(target, value, **kwargs):
+            if target == path:
+                current = json.loads(path.read_text())
+                current['custom'] = 'concurrent-user-value'
+                path.write_text(json.dumps(current))
+            writer(target, value, **kwargs)
+        with mock.patch.object(distribution, '_write_json', side_effect=concurrent_write):
+            with self.assertRaisesRegex(distribution.DistributionError, 'concurrent edits preserved'):
+                install_hooks(ROOT, codex_home=home, tool_home=self.base)
+        self.assertEqual(json.loads(path.read_text())['custom'], 'concurrent-user-value')
+        self.assertFalse(receipt.exists())
+        install_hooks(ROOT, codex_home=home, tool_home=self.base)
+        receipt_before = receipt.read_bytes()
+        value = json.loads(path.read_text()); value['custom'] = 'before-removal'
+        path.write_text(json.dumps(value))
+        with mock.patch.object(distribution, '_write_json', side_effect=concurrent_write), \
+                mock.patch.object(distribution, 'installed_status', return_value={'python': sys.executable}):
+            with self.assertRaisesRegex(distribution.DistributionError, 'concurrent edits preserved'):
+                cli_maintenance.remove_hooks(self.base, codex_home=home, dry_run=False)
+        self.assertEqual(receipt.read_bytes(), receipt_before)
+        self.assertEqual(json.loads(path.read_text())['custom'], 'concurrent-user-value')
+        with mock.patch.object(distribution, 'installed_status', return_value={'python': sys.executable}):
+            self.assertGreater(cli_maintenance.remove_hooks(self.base, codex_home=home, dry_run=False)['handlers'], 0)
+        self.assertFalse(receipt.exists())
+
+    def test_failed_hook_update_restores_existing_receipt_and_allows_retry(self):
+        from harness_cli import distribution
+        home = self.base / 'codex home'
+        install_hooks(ROOT, codex_home=home, tool_home=self.base / 'old-tool')
+        before = {p.name: p.read_bytes() for p in home.iterdir()}
+        writer = distribution._write_json
+        for error in (OSError, KeyboardInterrupt):
+            for target in ('hooks.json', 'harness-maintenance-hooks.json'):
+                def fail(path, value, **kwargs):
+                    if path.name == target:
+                        raise error('simulated-hook-write-failure')
+                    return writer(path, value, **kwargs)
+                with self.subTest(error=error.__name__, target=target), mock.patch.object(distribution, '_write_json', side_effect=fail):
+                    with self.assertRaisesRegex(error, 'simulated-hook-write-failure'):
+                        install_hooks(ROOT, codex_home=home, tool_home=self.base / 'new-tool')
+                self.assertEqual(before, {p.name: p.read_bytes() for p in home.iterdir()})
+        self.assertTrue(install_hooks(ROOT, codex_home=home, tool_home=self.base / 'new-tool')['changed'])
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

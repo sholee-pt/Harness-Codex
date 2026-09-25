@@ -86,7 +86,7 @@ class ActivationDiagnosticsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             harness_apply.apply_application(harness_apply.build_application(root, minimal_plan(root)))
-            with mock.patch.dict(os.environ, {"CONDA_DEFAULT_ENV": "base", "CONDA_PREFIX": "/base"}):
+            with mock.patch.object(sys, 'prefix', str(root / 'base')):
                 report = harness_doctor.diagnose(root)
             self.assertFalse(report["valid"])
             self.assertFalse(report["environment"]["harnessCondaEnvironment"])

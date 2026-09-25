@@ -544,6 +544,9 @@ def build_application(root: Path, plan: dict) -> dict:
     snapshot.verify()
     capability_policies = require_list(plan.get("capabilityPolicies"), "capabilityPolicies")
     managed_block = validate_instruction(plan)
+    manifest_path = harness_state.resolve_inside(root, ".harness/manifest.json")
+    manifest_bytes = manifest_path.read_bytes() if manifest_path.exists() else None
+    manifest_mode = harness_state.current_mode(manifest_path) if manifest_bytes is not None else harness_state.DEFAULT_FILE_MODE
     manifest, old_managed = existing_manifest_state(root)
     try:
         instruction_relative = harness_state.active_instruction_relative(root)
@@ -669,19 +672,21 @@ def build_application(root: Path, plan: dict) -> dict:
         "managedFiles": sorted(desired_entries.values(), key=lambda item: item["path"]),
     }
     manifest_text = json.dumps(desired_manifest, indent=2, ensure_ascii=False) + "\n"
-    manifest_path = root / ".harness" / "manifest.json"
-    if not manifest_path.exists():
+    current_bytes = manifest_path.read_bytes() if manifest_path.exists() else None
+    if current_bytes != manifest_bytes or (manifest_bytes is not None and not harness_state.mode_matches(manifest_path, manifest_mode)):
+        raise PlanError("manifest changed during application planning; retry against the current installation")
+    if manifest_bytes is None:
         manifest_action = "create"
     else:
         manifest_action = (
-            "unchanged" if manifest_path.read_text(encoding="utf-8") == manifest_text else "update"
+            "unchanged" if manifest_bytes.decode("utf-8") == manifest_text else "update"
         )
     actions.append({"path": ".harness/manifest.json", "action": manifest_action})
     if manifest_action != "create":
         original_hashes[".harness/manifest.json"] = harness_state.digest_bytes(
-            manifest_path.read_bytes()
+            manifest_bytes
         )
-        original_modes[".harness/manifest.json"] = harness_state.current_mode(manifest_path)
+        original_modes[".harness/manifest.json"] = manifest_mode
         desired_modes[".harness/manifest.json"] = original_modes[".harness/manifest.json"]
     else:
         desired_modes[".harness/manifest.json"] = harness_state.DEFAULT_FILE_MODE

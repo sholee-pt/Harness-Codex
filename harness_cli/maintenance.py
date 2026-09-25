@@ -49,6 +49,17 @@ def helper(source_root, root, arguments, *, capture=True):
     return json.loads(result.stdout)
 
 
+def _hook_snapshot(path):
+    checked_path(path)
+    if not path.exists():
+        return None
+    with path.open('rb') as stream:
+        content = stream.read(256 * 1024 + 1)
+    if len(content) > 256 * 1024:
+        raise ValueError('Existing hook configuration is too large; preserve it for manual review')
+    return content
+
+
 def install_hooks(source_root, *, codex_home=None, tool_home=None):
     home = checked_path(codex_home or Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))))
     path = checked_path(home / 'hooks.json')
@@ -56,17 +67,16 @@ def install_hooks(source_root, *, codex_home=None, tool_home=None):
     entry = checked_path(Path(tool_home or os.environ['HARNESS_TOOL_HOME']) / 'launcher.py') if (tool_home or os.environ.get('HARNESS_TOOL_HOME')) else checked_path(Path(source_root) / 'harness.py')
     arguments = [sys.executable, '-B', str(entry), '--no-update-check', 'maintenance', '--hook']
     command = subprocess.list2cmdline(arguments) if os.name == 'nt' else shlex.join(arguments)
-    value = {}
-    if path.exists():
-        if path.stat().st_size > 256 * 1024:
-            raise ValueError('Existing hook configuration is too large; preserve it for manual review')
-        value = json.loads(path.read_text(encoding='utf-8-sig'))
+    original = _hook_snapshot(path)
+    original_receipt = _hook_snapshot(receipt)
+    value = json.loads(original.decode('utf-8-sig')) if original is not None else {}
     if not isinstance(value, dict) or not isinstance(value.get('hooks', {}), dict):
         raise ValueError('Existing hooks are malformed; no settings were overwritten')
     previous = None
-    if receipt.exists():
-        saved = json.loads(receipt.read_text(encoding='utf-8'))
-        if set(saved) != {'owner', 'command'} or saved['owner'] != 'harness-maintenance-v1':
+    if original_receipt is not None:
+        saved = json.loads(original_receipt)
+        if (not isinstance(saved, dict) or set(saved) != {'owner', 'command'}
+                or saved['owner'] != 'harness-maintenance-v1' or not isinstance(saved['command'], str)):
             raise ValueError('Maintenance hook ownership receipt is invalid')
         previous = saved['command']
     before = json.dumps(value, sort_keys=True)
@@ -90,11 +100,28 @@ def install_hooks(source_root, *, codex_home=None, tool_home=None):
     # Reuse the same bounded atomic writer as distribution receipts.
     from .distribution import _write_json
     home.mkdir(parents=True, exist_ok=True)
-    if changed:
-        _write_json(path, value)
     saved = {'owner': 'harness-maintenance-v1', 'command': command}
-    if not receipt.exists() or json.loads(receipt.read_text()) != saved:
-        _write_json(receipt, saved)
+    receipt_changed = original_receipt is None or json.loads(original_receipt) != saved
+    changes = ([(path, value, original)] if changed else []) + ([(receipt, saved, original_receipt)] if receipt_changed else [])
+    try:
+        if _hook_snapshot(receipt) != original_receipt:
+            raise ValueError('Hook ownership changed during installation; concurrent edits preserved')
+        if _hook_snapshot(path) != original:
+            raise ValueError('Hook settings changed during installation; concurrent edits preserved')
+        # Publish handlers before replacing their receipt. If the process dies,
+        # retry can recognize the exact new command while retaining old ownership.
+        for target, content, before_bytes in changes:
+            _write_json(target, content, expected=before_bytes)
+    except BaseException:
+        for target, content, before_bytes in reversed(changes):
+            written = (json.dumps(content, indent=2, sort_keys=True) + '\n').encode('utf-8')
+            if _hook_snapshot(target) == written:
+                if before_bytes is None:
+                    target.unlink()
+                else:
+                    from .shell import _replace_profile
+                    _replace_profile(target, written, before_bytes)
+        raise
     return {'changed': changed, 'trust': 'native-review-required', 'path': str(path)}
 
 
@@ -120,17 +147,22 @@ def remove_hooks(data_root, *, codex_home=None, dry_run=True):
     path = checked_path(home / 'hooks.json')
     if not receipt.is_file():
         return {'state': 'absent'}
-    from .distribution import _read_json, _write_json, installed_status
-    saved = _read_json(receipt)
-    if set(saved) != {'owner', 'command'} or saved['owner'] != 'harness-maintenance-v1':
+    from .distribution import _write_json, installed_status
+    original_receipt = _hook_snapshot(receipt)
+    if original_receipt is None:
+        return {'state': 'absent'}
+    original = _hook_snapshot(path)
+    saved = json.loads(original_receipt)
+    if (not isinstance(saved, dict) or set(saved) != {'owner', 'command'}
+            or saved['owner'] != 'harness-maintenance-v1' or not isinstance(saved['command'], str)):
         raise ValueError('Maintenance hook ownership receipt is invalid; preserve it')
     state = installed_status(data_root)
     arguments = [state['python'], '-B', str(checked_path(Path(data_root) / 'launcher.py')), '--no-update-check', 'maintenance', '--hook']
     expected = subprocess.list2cmdline(arguments) if os.name == 'nt' else shlex.join(arguments)
     if saved['command'] != expected:
         return {'state': 'another-installation; preserved'}
-    value = _read_json(path) if path.exists() else {}
-    if not isinstance(value.get('hooks', {}), dict):
+    value = json.loads(original.decode('utf-8-sig')) if original is not None else {}
+    if not isinstance(value, dict) or not isinstance(value.get('hooks', {}), dict):
         raise ValueError('Existing hooks are malformed; preserve them')
     removed = 0
     for event, groups in value.get('hooks', {}).items():
@@ -146,8 +178,14 @@ def remove_hooks(data_root, *, codex_home=None, dry_run=True):
             if before and not group['hooks']:
                 groups.remove(group)
     if not dry_run:
+        if _hook_snapshot(receipt) != original_receipt:
+            raise ValueError('Hook ownership changed during removal; concurrent edits preserved')
         if removed:
-            _write_json(path, value)
+            _write_json(path, value, expected=original)
+        elif _hook_snapshot(path) != original:
+            raise ValueError('Hook settings changed during removal; concurrent edits preserved')
+        if _hook_snapshot(receipt) != original_receipt:
+            raise ValueError('Hook ownership changed during removal; concurrent edits preserved')
         receipt.unlink()
     return {'state': 'remove', 'handlers': removed}
 

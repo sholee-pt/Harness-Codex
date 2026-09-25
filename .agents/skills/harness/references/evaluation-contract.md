@@ -22,28 +22,28 @@ Interactive Codex work is never labelled `runtime-instrumented`. Read [capture-p
 
 ## Commands
 
-Run every command in the `harness` Conda environment.
+The helper command selects the installed Python interpreter and preserves the project environment for task verification. It does not require Conda activation.
 
 ```shell
-conda run -n harness python scripts/harness_eval.py run --root REPOSITORY --task-file TASK.txt --sandbox read-only
-conda run -n harness python scripts/harness_eval.py record-start --root REPOSITORY --capture manual
-conda run -n harness python scripts/harness_eval.py record-complete --run RUN_ID --completion completed --report REPORT.json
-conda run -n harness python scripts/harness_eval.py add-observation --run RUN_ID --kind supplement --report REPORT.json
-conda run -n harness python scripts/harness_eval.py add-observation --run RUN_ID --kind replacement --supersedes OBSERVATION_ID --report REPORT.json
-conda run -n harness python scripts/harness_eval.py add-observation --run RUN_ID --kind withdrawal --supersedes OBSERVATION_ID
-conda run -n harness python scripts/harness_eval.py annotate --run RUN_ID --acceptance accepted
-conda run -n harness python scripts/harness_eval.py annotate --run RUN_ID --acceptance accepted-with-corrections --corrections 1 --supersedes ANNOTATION_ID
-conda run -n harness python scripts/harness_eval.py view --run RUN_ID
-conda run -n harness python scripts/harness_eval.py list
-conda run -n harness python scripts/harness_eval.py inspect --run RUN_ID
-conda run -n harness python scripts/harness_eval.py export --repository REPOSITORY_ID
-conda run -n harness python scripts/harness_eval.py repair --repository REPOSITORY_ID
-conda run -n harness python scripts/harness_eval.py paired-run --root REPOSITORY --task-file TASK.txt --comparison-plan PLAN.json --verification VERIFY.json --codex-home CLEAN_CODEX_HOME --repetitions 3 --order randomized
-conda run -n harness python scripts/harness_eval.py paired-run --root REPOSITORY --task-file TASK.txt --comparison-plan PLAN.json --verification VERIFY.json --codex-home CLEAN_CODEX_HOME --dry-run --validate-materialization
-conda run -n harness python scripts/harness_eval.py propose --repository REPOSITORY_ID --comparison-plan PLAN.json
-conda run -n harness python scripts/harness_eval.py propose --repository REPOSITORY_ID --comparison-plan PLAN.json --evaluation-stratum STRATUM_SHA256
-conda run -n harness python scripts/harness_eval.py change-discipline-suite --root REPOSITORY --cases CASES.json
-conda run -n harness python scripts/harness_eval.py change-discipline-suite --cases CASES.json --validate-only
+harness-codex helper harness_eval run --root REPOSITORY --task-file TASK.txt --sandbox read-only
+harness-codex helper harness_eval record-start --root REPOSITORY --capture manual
+harness-codex helper harness_eval record-complete --run RUN_ID --completion completed --report REPORT.json
+harness-codex helper harness_eval add-observation --run RUN_ID --kind supplement --report REPORT.json
+harness-codex helper harness_eval add-observation --run RUN_ID --kind replacement --supersedes OBSERVATION_ID --report REPORT.json
+harness-codex helper harness_eval add-observation --run RUN_ID --kind withdrawal --supersedes OBSERVATION_ID
+harness-codex helper harness_eval annotate --run RUN_ID --acceptance accepted
+harness-codex helper harness_eval annotate --run RUN_ID --acceptance accepted-with-corrections --corrections 1 --supersedes ANNOTATION_ID
+harness-codex helper harness_eval view --run RUN_ID
+harness-codex helper harness_eval list
+harness-codex helper harness_eval inspect --run RUN_ID
+harness-codex helper harness_eval export --repository REPOSITORY_ID
+harness-codex helper harness_eval repair --repository REPOSITORY_ID
+harness-codex helper harness_eval paired-run --root REPOSITORY --task-file TASK.txt --comparison-plan PLAN.json --verification VERIFY.json --codex-home CLEAN_CODEX_HOME --repetitions 3 --order randomized
+harness-codex helper harness_eval paired-run --root REPOSITORY --task-file TASK.txt --comparison-plan PLAN.json --verification VERIFY.json --codex-home CLEAN_CODEX_HOME --dry-run --validate-materialization
+harness-codex helper harness_eval propose --repository REPOSITORY_ID --comparison-plan PLAN.json
+harness-codex helper harness_eval propose --repository REPOSITORY_ID --comparison-plan PLAN.json --evaluation-stratum STRATUM_SHA256
+harness-codex helper harness_eval change-discipline-suite --root REPOSITORY --cases CASES.json
+harness-codex helper harness_eval change-discipline-suite --cases CASES.json --validate-only
 ```
 
 Prompt text is read from stdin or a user-owned file. Do not pass it as a positional shell argument.

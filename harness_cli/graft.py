@@ -199,11 +199,11 @@ def execute(args, source_root):
                 settings['revision'] = uuid.uuid4().hex
             settings['enabled'] = False
             settings['disabledByUser'] = True
-            if remove_skill:
-                settings['skillOwned'] = False
             _save(state_path, settings)
             if remove_skill:
                 skill.unlink()
+                settings['skillOwned'] = False
+                _save(state_path, settings)
         result = {'state': 'disabled', 'enabled': False, 'cache': 'preserved', 'projectFiles': 'preserved'}
     else:
         if (not 0 < args.timeout <= 240 or not 1 <= getattr(args, 'limit', 6) <= 20

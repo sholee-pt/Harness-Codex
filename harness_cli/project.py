@@ -413,7 +413,13 @@ def _configuration_prompt(goal: str | None) -> str:
         " The CLI maintains .harness/GUIDE.md as the single project harness guide. "
         "Do not create dated/versioned Harness guide copies or edit that CLI-owned guide; "
         "keep project-specific routing instructions in the managed project harness."
+        " Run bundled Python helpers through harness-codex helper SCRIPT_NAME (without .py); "
+        "this selects the installed interpreter without activating or changing the project's environment. "
+        "For older generator references, replace conda run -n harness python <skill-root>/scripts/SCRIPT_NAME.py "
+        "with that helper command."
     )
+    prompt += "\nVerified helper command prefix (JSON argv; quote for the active shell): " + json.dumps(
+        [sys.executable, '-B', str(Path(__file__).resolve().parents[1] / 'harness.py'), '--no-update-check', 'helper'])
     if goal:
         prompt += "\n\nThe user's project goal:\n" + goal
     return prompt

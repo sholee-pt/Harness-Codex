@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 import shutil
 import sys
@@ -20,15 +19,12 @@ def diagnose(root: Path) -> dict:
         raise ValueError("workspace root must be an existing directory")
     validator = validate_harness.Validator(root.resolve())
     validation = validator.run()
-    environment = os.environ.get("CONDA_DEFAULT_ENV", "")
-    prefix = os.environ.get("CONDA_PREFIX", "")
-    harness_environment = environment == "harness" or (
-        bool(prefix) and Path(prefix).name == "harness"
-    )
+    prefix = Path(sys.prefix)
+    harness_environment = prefix.name == "harness" and (prefix / "conda-meta/history").is_file()
     python_supported = sys.version_info >= (3, 11)
     errors = list(validation["errors"])
     if not harness_environment:
-        errors.append("Run this helper with conda run -n harness python.")
+        errors.append("Run harness-codex helper harness_doctor with the installed dedicated Python interpreter.")
     if not python_supported:
         errors.append("Harness requires Python 3.11 or later.")
     return {

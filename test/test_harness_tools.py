@@ -661,6 +661,25 @@ class StateTests(unittest.TestCase):
 
 
 class ApplyTests(unittest.TestCase):
+    def test_manifest_changed_after_validation_is_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = minimal_plan(root)
+            harness_apply.apply_application(harness_apply.build_application(root, plan))
+            path = root / '.harness/manifest.json'
+            read = harness_apply.existing_manifest_state
+            def change_after_read(selected_root):
+                result = read(selected_root)
+                value = json.loads(path.read_text())
+                value['artifactContractVersion'] = 999
+                path.write_text(json.dumps(value), encoding='utf-8')
+                return result
+            with mock.patch.object(harness_apply, 'existing_manifest_state', side_effect=change_after_read):
+                with self.assertRaisesRegex(harness_apply.PlanError, 'manifest changed during'):
+                    harness_apply.build_application(root, plan)
+            self.assertEqual(json.loads(path.read_text())['artifactContractVersion'], 999)
+            self.assertFalse((root / '.harness/transaction.json').exists())
+
     def test_apply_accepts_nested_repository_inside_selected_git_root(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -784,6 +803,9 @@ class ApplyTests(unittest.TestCase):
                         + closing
                     )
             plan = harness_plan_builder.materialize_plan(plan, root=root)
+            router = next(item['content'] for item in plan['artifacts'] if item['path'] == '.agents/skills/project-harness/SKILL.md')
+            self.assertEqual(router.count(harness_teamplay.PROJECT_BLOCK), 1)
+            self.assertEqual(router.count(harness_teamplay.PROVISIONAL_GUIDANCE), 1)
 
             dry_run = harness_apply.build_application(root, plan)
             self.assertFalse((root / ".harness" / "manifest.json").exists())

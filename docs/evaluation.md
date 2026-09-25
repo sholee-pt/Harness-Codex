@@ -7,7 +7,7 @@ The current Harness for Codex can observe long-running interactive use without t
 This mode is disabled until the user explicitly installs the user-level hook. Generate a candidate configuration first:
 
 ```shell
-conda run -n harness python TARGET_PROJECT/.agents/skills/harness/scripts/harness_ops.py hooks-template
+harness-codex helper harness_ops hooks-template
 ```
 
 If `~/.codex/hooks.json` does not exist, it may be created explicitly with `--output ~/.codex/hooks.json`. Existing hook files are never overwritten; merge the printed entries manually and review or trust them with `/hooks`. The handler ignores directories without a current project-local Harness manifest, so installing the user hook does not turn every filesystem directory into a Harness workspace.
@@ -15,8 +15,8 @@ If `~/.codex/hooks.json` does not exist, it may be created explicitly with `--ou
 The hook stores no raw prompt, response, transcript, agent name, or absolute path. Local HMAC references and finite enums are written only to the user-local Harness state directory. Completion is not treated as success, agent-reported success is not user acceptance, and missing evidence remains `unknown`. Operations evidence never changes topology or regenerates agents automatically.
 
 ```shell
-conda run -n harness python TARGET_PROJECT/.agents/skills/harness/scripts/harness_ops.py audit --root TARGET_WORKSPACE
-conda run -n harness python TARGET_PROJECT/.agents/skills/harness/scripts/harness_ops.py purge --root TARGET_WORKSPACE
+harness-codex helper harness_ops audit --root TARGET_WORKSPACE
+harness-codex helper harness_ops purge --root TARGET_WORKSPACE
 ```
 
 An audit reports task-level routing, agent use, verification, adverse outcomes, later correction or reopen relationships, and evidence gaps. It is a review signal rather than proof of semantic quality. See [operations-evidence.md](../.agents/skills/harness/references/operations-evidence.md) for trust, privacy, retention, and interpretation rules.
@@ -27,21 +27,21 @@ An audit reports task-level routing, agent use, verification, adverse outcomes, 
 The current Harness for Codex can record local metadata for an explicitly requested run, compare isolated with/without-Harness arms, attribute results only to a plan-bound declared or preassigned configuration delta, ingest structured observations, and probe change-discipline decisions against synthetic cases. The delta comes from immutable arm configuration snapshots; it does not prove that every declared route, agent, skill, or policy was used at runtime. Evaluation is disabled by default and does not change generation, ownership, apply, recovery, operations evidence, or runtime-teamplay validation behavior.
 
 ```shell
-conda run -n harness python .agents/skills/harness/scripts/harness_eval.py run \
+harness-codex helper harness_eval run \
   --root TARGET_REPOSITORY \
   --task-file TASK.txt \
   --sandbox read-only
 
-conda run -n harness python .agents/skills/harness/scripts/harness_eval.py list
+harness-codex helper harness_eval list
 
-conda run -n harness python .agents/skills/harness/scripts/harness_eval.py add-observation \
+harness-codex helper harness_eval add-observation \
   --run RUN_ID \
   --report OBSERVATION.json
 
-conda run -n harness python .agents/skills/harness/scripts/harness_eval.py view \
+harness-codex helper harness_eval view \
   --run RUN_ID
 
-conda run -n harness python .agents/skills/harness/scripts/harness_eval.py change-discipline-suite \
+harness-codex helper harness_eval change-discipline-suite \
   --root TARGET_REPOSITORY \
   --cases test/fixtures/evaluation/change-discipline-cases.json
 ```
@@ -72,21 +72,21 @@ Concrete positive or negative configuration attribution requires `propose --comp
 The generator includes standard-library-only Python tools. Run them through the dedicated Conda environment:
 
 ```shell
-conda run -n harness python .agents/skills/harness/scripts/inventory.py .
-conda run -n harness python .agents/skills/harness/scripts/harness_state.py evidence --root . --path PATH_TO_EVIDENCE
-conda run -n harness python .agents/skills/harness/scripts/harness_state.py status --root .
-conda run -n harness python .agents/skills/harness/scripts/harness_plan_builder.py --root . --input DRAFT_PLAN.json --output PLAN.json
-conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --plan PATH_TO_PLAN.json --dry-run
-conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --inspect-transaction
-conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --recover
-conda run -n harness python .agents/skills/harness/scripts/harness_apply.py --root . --clean-orphaned-transaction
-conda run -n harness python .agents/skills/harness/scripts/validate_harness.py .
-conda run -n harness python .agents/skills/harness/scripts/validate_runtime_plan.py --root . --plan PATH_TO_RUNTIME_PLAN.json
-conda run -n harness python .agents/skills/harness/scripts/validate_coordination_packet.py --root . --plan PATH_TO_RUNTIME_PLAN.json --packet PATH_TO_PACKET.json
-conda run -n harness python .agents/skills/harness/scripts/harness_runtime_receipt.py --root . --plan PATH_TO_RUNTIME_PLAN.json --jsonl PATH_TO_CODEX_EVENTS.jsonl --public-profile codex-public-jsonl-core-v1 --control-plane-report PATH_TO_CONTROL_PLANE_REPORT.json --codex-cli-version 0.152.1 --execution-mode persistent --repository-id repo-0123456789abcdef --harness-commit 0123456789abcdef0123456789abcdef01234567 --salt-file PATH_TO_TEMPORARY_SALT
-conda run -n harness python .agents/skills/harness/scripts/harness_relay_receipt.py --root . --plan PATH_TO_RUNTIME_PLAN.json --receipt PATH_TO_RELAY_RECEIPT.json
-conda run -n harness python .agents/skills/harness/scripts/evaluate_topology.py --plan PATH_TO_PLAN.json --golden PATH_TO_GOLDEN.json
-conda run -n harness python .agents/skills/harness/scripts/harness_eval.py --help
+harness-codex helper inventory .
+harness-codex helper harness_state evidence --root . --path PATH_TO_EVIDENCE
+harness-codex helper harness_state status --root .
+harness-codex helper harness_plan_builder --root . --input DRAFT_PLAN.json --output PLAN.json
+harness-codex helper harness_apply --root . --plan PATH_TO_PLAN.json --dry-run
+harness-codex helper harness_apply --root . --inspect-transaction
+harness-codex helper harness_apply --root . --recover
+harness-codex helper harness_apply --root . --clean-orphaned-transaction
+harness-codex helper validate_harness .
+harness-codex helper validate_runtime_plan --root . --plan PATH_TO_RUNTIME_PLAN.json
+harness-codex helper validate_coordination_packet --root . --plan PATH_TO_RUNTIME_PLAN.json --packet PATH_TO_PACKET.json
+harness-codex helper harness_runtime_receipt --root . --plan PATH_TO_RUNTIME_PLAN.json --jsonl PATH_TO_CODEX_EVENTS.jsonl --public-profile codex-public-jsonl-core-v1 --control-plane-report PATH_TO_CONTROL_PLANE_REPORT.json --codex-cli-version 0.152.1 --execution-mode persistent --repository-id repo-0123456789abcdef --harness-commit 0123456789abcdef0123456789abcdef01234567 --salt-file PATH_TO_TEMPORARY_SALT
+harness-codex helper harness_relay_receipt --root . --plan PATH_TO_RUNTIME_PLAN.json --receipt PATH_TO_RELAY_RECEIPT.json
+harness-codex helper evaluate_topology --plan PATH_TO_PLAN.json --golden PATH_TO_GOLDEN.json
+harness-codex helper harness_eval --help
 conda run -n harness python -m unittest discover -s test -v
 ```
 

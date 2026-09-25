@@ -38,7 +38,7 @@ Revisions are contiguous from zero, stay within the runtime-plan round budget, a
 Seal an unsigned completed envelope before validation:
 
 ```shell
-conda run -n harness python <harness-skill-root>/scripts/harness_relay_receipt.py \
+harness-codex helper harness_relay_receipt \
   --root TARGET_REPOSITORY \
   --plan RUNTIME_PLAN.json \
   --receipt RELAY_RECEIPT_DRAFT.json \
@@ -49,7 +49,7 @@ conda run -n harness python <harness-skill-root>/scripts/harness_relay_receipt.p
 Validate without modifying repository state:
 
 ```shell
-conda run -n harness python <harness-skill-root>/scripts/harness_relay_receipt.py \
+harness-codex helper harness_relay_receipt \
   --root TARGET_REPOSITORY \
   --plan RUNTIME_PLAN.json \
   --receipt RELAY_RECEIPT.json

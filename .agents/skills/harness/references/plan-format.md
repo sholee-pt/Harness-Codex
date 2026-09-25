@@ -163,7 +163,7 @@ The draft uses deterministic placeholders instead of reproducing fixed contracts
 Materialize the draft before dry-run:
 
 ```shell
-conda run -n harness python <harness-skill-root>/scripts/harness_plan_builder.py \
+harness-codex helper harness_plan_builder \
   --root <repo-root> \
   --input DRAFT_PLAN.json \
   --output PLAN.json

@@ -19,7 +19,7 @@ A `preparing` journal means target mutation never began. Recovery removes only t
 Run:
 
 ```shell
-conda run -n harness python <harness-skill-root>/scripts/harness_apply.py --root <repo-root> --recover
+harness-codex helper harness_apply --root <repo-root> --recover
 ```
 
 Recovery does not trust only the recorded applied-path list. It checks every operation against the original and desired hashes, so it also handles a termination after target replacement but before the progress marker was written.
@@ -35,7 +35,7 @@ Recovery validates all content hashes and portable permission modes before resto
 Inspect the current state without mutation:
 
 ```shell
-conda run -n harness python <harness-skill-root>/scripts/harness_apply.py --root <repo-root> --inspect-transaction
+harness-codex helper harness_apply --root <repo-root> --inspect-transaction
 ```
 
 ## Orphaned staging workspace
@@ -43,7 +43,7 @@ conda run -n harness python <harness-skill-root>/scripts/harness_apply.py --root
 If `.harness/transactions/` exists without `.harness/transaction.json`, normal hash-based recovery is impossible because no journal identifies intended targets. Inspect first. If the output confirms `orphaned-workspace` and the contents are disposable staging data, remove only that reserved workspace with:
 
 ```shell
-conda run -n harness python <harness-skill-root>/scripts/harness_apply.py --root <repo-root> --clean-orphaned-transaction
+harness-codex helper harness_apply --root <repo-root> --clean-orphaned-transaction
 ```
 
 This command refuses to run when a journal exists and does not modify generated target files.

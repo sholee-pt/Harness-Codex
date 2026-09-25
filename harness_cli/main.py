@@ -88,6 +88,8 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     register_jev(commands)
     from .skills import register as register_skills
     register_skills(commands)
+    from .helper import register as register_helper
+    register_helper(commands)
     for name in ("init", "new", "resume", "start", "configure"):
         commands.choices[name].add_argument("--no-update-check", action="store_true", default=argparse.SUPPRESS)
     install = commands.add_parser("install", help="Install this tool into user-local managed storage.")
@@ -283,6 +285,9 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
             return run(args, source_root)
         if args.command == 'skills':
             from .skills import run
+            return run(args, source_root)
+        if args.command == 'helper':
+            from .helper import run
             return run(args, source_root)
         preflight_project_command(args, source_root=source_root)
         if args.command == "init" and not args.dry_run and os.environ.get("HARNESS_TOOL_HOME"):

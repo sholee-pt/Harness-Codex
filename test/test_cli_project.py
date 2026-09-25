@@ -48,6 +48,35 @@ def snapshot(root: Path) -> dict:
 
 
 class ProjectCliTests(unittest.TestCase):
+    def test_verified_helper_prefix_works_without_conda_or_harness_on_path(self):
+        import subprocess
+        from harness_cli import helper, main
+        prompt = project._configuration_prompt(None)
+        prefix = json.loads(prompt.split('Verified helper command prefix (JSON argv; quote for the active shell): ')[1])
+        environment = {**os.environ, 'PATH': str(self.base / 'empty-path'), 'CONDA_PREFIX': str(self.base / 'project-env'),
+                       'CONDA_DEFAULT_ENV': 'project-env'}
+        result = subprocess.run([*prefix, 'inventory', str(self.root)], env=environment,
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsInstance(json.loads(result.stdout), dict)
+        harness_apply.apply_application(harness_apply.build_application(self.root, minimal_plan(self.root)))
+        result = subprocess.run([*prefix, 'harness_doctor', '--root', str(self.root)], env=environment,
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertTrue(json.loads(result.stdout)['environment']['harnessCondaEnvironment'])
+        import harness_doctor
+        with mock.patch.object(sys, 'prefix', str(self.base / 'unrelated-python')), \
+                mock.patch.dict(os.environ, {'CONDA_DEFAULT_ENV': 'harness', 'CONDA_PREFIX': '/envs/harness'}):
+            self.assertFalse(harness_doctor.diagnose(self.root)['environment']['harnessCondaEnvironment'])
+        args = main.build_parser(REPO_ROOT).parse_args(['helper', 'inventory', str(self.root)])
+        with mock.patch.dict(os.environ, environment), mock.patch.object(helper.subprocess, 'run') as run:
+            run.return_value.returncode = 0
+            self.assertEqual(helper.run(args, REPO_ROOT), 0)
+            child = run.call_args.kwargs['env']
+            for key in ('PATH', 'CONDA_PREFIX', 'CONDA_DEFAULT_ENV'):
+                self.assertEqual(child[key], environment[key])
+            self.assertEqual(run.call_args.args[0][0], sys.executable)
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
