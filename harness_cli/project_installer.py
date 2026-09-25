@@ -130,7 +130,7 @@ def validate_generator_source(files: dict[str, bytes], version: str) -> None:
     from harness_cli.versions import version_key
 
     try:
-        current = version_key(version) >= version_key("0.23.0-beta")
+        current = version_key(version) >= version_key("0.22.2-beta")
     except ValueError as exc:
         raise InstallError("invalid generator release version") from exc
     required = set(GENERATOR_ENTRYPOINTS) if current else set()

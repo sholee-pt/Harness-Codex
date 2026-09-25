@@ -478,7 +478,12 @@ def recover_transaction(root: Path, *, expected_id: str | None = None) -> dict:
 
     restored = 0
     removed = 0
-    for operation, target, _desired, original, current_hash, _current_mode in reversed(prepared):
+    for operation, target, _desired, original, current_hash, current_mode in reversed(prepared):
+        target = harness_state.resolve_inside(root, operation["path"])
+        observed_hash = _digest_path(target) if target.is_file() else None
+        observed_mode = harness_state.current_mode(target) if target.is_file() else None
+        if (target.exists() and not target.is_file()) or observed_hash != current_hash or observed_mode != current_mode:
+            raise TransactionError(f"target changed during recovery: {operation['path']}")
         if operation["hadOriginal"]:
             if not (
                 current_hash == operation["originalSha256"]

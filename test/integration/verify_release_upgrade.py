@@ -47,7 +47,7 @@ def worker(source, root, stage):
         assert report['valid'], report['errors']
         (root.parent / (root.name + '-baseline-plan.json')).write_text(json.dumps(plan), encoding='utf-8')
         return {'generatorVersion': harness_metadata.HARNESS_VERSION, 'valid': report['valid'], 'instructionSizes': instruction_sizes(root), 'agentCount': len(plan['topology']['agents'])}
-    assert harness_metadata.HARNESS_VERSION == '0.23.0-beta'
+    assert harness_metadata.HARNESS_VERSION == '0.22.2-beta'
     before = snapshot(root)
     legacy = validate_harness.Validator(root).run()
     doctor = harness_doctor.diagnose(root)

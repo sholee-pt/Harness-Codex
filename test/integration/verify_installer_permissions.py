@@ -88,9 +88,8 @@ def copy_source(source: Path, destination: Path) -> Path:
     destination.mkdir()
     shutil.copy2(source / "install.py", destination / "install.py")
     if (source / "harness_cli/project_installer.py").is_file():
-        (destination / "harness_cli").mkdir()
-        for name in ("__init__.py", "project_installer.py"):
-            shutil.copy2(source / "harness_cli" / name, destination / "harness_cli" / name)
+        shutil.copytree(source / "harness_cli", destination / "harness_cli",
+                        ignore=shutil.ignore_patterns(*SOURCE_IGNORED, "*.pyc", "*.pyo"))
     (destination / SKILL).mkdir(parents=True)
     for name in COMPONENTS:
         incoming, target = source / SKILL / name, destination / SKILL / name
@@ -208,7 +207,7 @@ def main() -> int:
         bindings = {"baseline": source_binding(args.baseline), "candidate": source_binding(args.candidate)}
         report["sources"] = bindings
         assert bindings["baseline"]["version"] == "0.22.1-beta", "baseline must be the pinned previous source"
-        assert bindings["candidate"]["version"] == "0.23.0-beta", "candidate must be the beta source"
+        assert bindings["candidate"]["version"] == "0.22.2-beta", "candidate must be the beta source"
         if os.name != "posix":
             report.update(status="skipped", reason="POSIX directory mode semantics are unavailable; Windows ACL preservation is not verified.")
         else:

@@ -78,6 +78,33 @@ class TransactionConcurrencyTests(unittest.TestCase):
             self.assertEqual(before, {p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
         transaction.apply_transaction(self.root, second)
 
+    def test_recovery_rechecks_later_targets_after_each_restoration(self):
+        paths = ['.agents/skills/alpha/SKILL.md', '.agents/skills/beta/SKILL.md']
+        for relative in paths:
+            target = self.root / relative
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b'original')
+        outputs = dict.fromkeys(paths, 'updated')
+        modes = {path: harness_state.current_mode(self.root / path) for path in paths}
+        journal = transaction.prepare_transaction(self.root, outputs, dict.fromkeys(paths, 'update'),
+            dict.fromkeys(paths, harness_state.digest_bytes(b'original')), modes, modes, [])
+        for relative in paths:
+            (self.root / relative).write_bytes(b'updated')
+        write = harness_state.atomic_write_bytes
+        def external_edit_after_first_restore(path, data, **kwargs):
+            write(path, data, **kwargs)
+            if path == self.root / paths[1]:
+                (self.root / paths[0]).write_bytes(b'external edit during recovery')
+        with mock.patch.object(harness_state, 'atomic_write_bytes', side_effect=external_edit_after_first_restore):
+            with self.assertRaisesRegex(transaction.TransactionError, 'changed during recovery'):
+                transaction.recover_transaction(self.root)
+        self.assertEqual((self.root / paths[0]).read_bytes(), b'external edit during recovery')
+        self.assertEqual((self.root / paths[1]).read_bytes(), b'original')
+        self.assertEqual(transaction.load_journal(self.root)['transactionId'], journal['transactionId'])
+        (self.root / paths[0]).write_bytes(b'updated')
+        self.assertEqual(transaction.recover_transaction(self.root)['restored'], 1)
+        self.assertIsNone(harness_state.transaction_status(self.root))
+
     def test_same_id_with_a_changed_contract_cannot_be_overwritten(self):
         journal = self.prepare('alpha')
         path = transaction.journal_path(self.root)

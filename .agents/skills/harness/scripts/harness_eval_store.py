@@ -598,37 +598,41 @@ class EvaluationStore:
             for path in candidates:
                 try:
                     value = json.loads(path.read_text(encoding="utf-8"))
-                    types.verify_integrity(value)
                     relative = path.relative_to(root)
                     record_kind = relative.parts[0] if relative.parts else ""
-                    if "recordState" in value:
+                    if record_kind == "runs":
                         types.validate_run_record(value)
-                    elif "annotationId" in value:
+                        expected_path = f"runs/{value['recordState']}/{value['runId']}.json"
+                        stored_repository = value["repository"]["repositoryId"]
+                    elif record_kind == "annotations":
                         types.validate_annotation(value)
-                    elif "observationId" in value:
+                        expected_path = f"annotations/{value['runId']}/{value['annotationId']}.json"
+                        stored_repository = value.get("repositoryId", repository_id)
+                    elif record_kind == "observations":
                         types.validate_observation_record(value)
-                    elif "comparisonId" in value:
+                        expected_path = f"observations/{value['observationId']}.json"
+                        stored_repository = value["repositoryId"]
+                    elif record_kind == "comparisons":
                         types.validate_comparison_record(value)
-                        if record_kind != "comparisons":
-                            raise types.EvaluationError("comparison record is stored under the wrong kind")
-                        if path.stem != value["comparisonId"]:
-                            raise types.EvaluationError("comparison filename id does not match the record id")
-                        if value["repositoryId"] != repository_id:
-                            raise types.EvaluationError("comparison repository id does not match the storage scope")
-                    elif "proposalId" in value:
+                        expected_path = f"comparisons/{value['comparisonId']}.json"
+                        stored_repository = value["repositoryId"]
+                    elif record_kind == "proposals":
                         types.validate_proposal_record(value)
-                        if record_kind != "proposals":
-                            raise types.EvaluationError("proposal record is stored under the wrong kind")
-                        if path.stem != value["proposalId"]:
-                            raise types.EvaluationError("proposal filename id does not match the record id")
-                        if value["repositoryId"] != repository_id:
-                            raise types.EvaluationError("proposal repository id does not match the storage scope")
+                        expected_path = f"proposals/{value['proposalId']}.json"
+                        stored_repository = value["repositoryId"]
                     else:
                         raise types.EvaluationError("unknown evaluation record type")
+                    if relative.as_posix() != expected_path:
+                        raise types.EvaluationError("record filename or directory does not match its identity")
+                    if stored_repository != repository_id:
+                        raise types.EvaluationError("record repository id does not match the storage scope")
                 except (OSError, UnicodeError, json.JSONDecodeError, types.EvaluationError) as exc:
-                    digest = harness_state.digest_bytes(path.read_bytes()) if path.is_file() else "missing"
+                    try:
+                        digest = harness_state.digest_bytes(path.read_bytes()) if path.is_file() else "missing"
+                    except OSError:
+                        digest = "unreadable"
                     invalid.append({"path": str(path.relative_to(root)).replace("\\", "/"), "digest": digest, "error": type(exc).__name__})
-                    if quarantine and path.is_file():
+                    if quarantine and digest not in {"missing", "unreadable"} and path.is_file():
                         target = root / "quarantine" / f"{path.stem}-{digest[:12]}.json"
                         target.parent.mkdir(parents=True, exist_ok=True)
                         os.replace(path, target)

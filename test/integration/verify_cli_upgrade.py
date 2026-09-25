@@ -101,7 +101,7 @@ def verify(baseline):
     assert current._source_info(old_snapshot)[0] == baseline_version, "Complete historical module layouts must remain readable"
     candidate_version = current._source_info(new_snapshot)[0]
     assert baseline_version == "0.22.1-beta"
-    assert candidate_version == "0.23.0-beta"
+    assert candidate_version == "0.22.2-beta"
     optional_installers = {"install.sh", "install.ps1", "install_harness.sh", "install_harness_codex.sh", "install_harness_codex.ps1"}
     retired_installers = optional_installers & (old_snapshot.keys() - new_snapshot.keys())
     assert "install_harness.sh" not in new_snapshot

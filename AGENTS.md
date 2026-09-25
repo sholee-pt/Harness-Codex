@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v0.23.0-beta, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
+- This branch contains Harness for Codex v0.22.2-beta, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add telemetry or marketplace dependencies. The separately authorized CLI distribution layer may check/fetch this repository and publish verified GitHub release assets; project generation never performs those operations.
 - Keep general task evaluation default-off, user-local, and isolated from generation/apply failure handling. The owner-authorized init default may enable bounded Jev shadow advice and its local counters after Graft is ready and preserves explicit opt-outs. Only explicit new-key entry permits a fixed, bounded non-project authentication probe; existing credentials never trigger an init API call. Store credentials separately from project artifacts, metrics and shell profiles.
@@ -38,7 +38,7 @@
 - Historical display versions map `vN.M` to `v0.N.M-beta`; this is a label correction, not a claim that old source was rebuilt. This repository contains the Codex edition only.
 - Public stable releases begin at `v1.0.0` after an explicit release decision; repository visibility alone does not publish a release.
 - Use `[Doc]` for explanatory documentation-only changes that do not affect harness generation or runtime behavior, and do not increment the version for them. Generator instructions, templates and contracts are behavioral inputs even when written in Markdown; classify their changes by effect, not file extension.
-- Other commits use `[Feat]`, `[Fix]`, `[Refactor]`, `[Test]`, or `[Chore]`. Choose the version increment by the change's effect; refactoring and optimization use Y, not Z. See `docs/versioning.md`.
+- Other commits use `[Feat]`, `[Fix]`, `[Refactor]`, `[Test]`, or `[Chore]`. Choose the version increment by the change's effect; standalone refactoring and optimization use Y, while internal cleanup or bounds needed to restore documented behavior as part of a bug fix retain Z. See `docs/versioning.md`.
 - Do not commit, push, merge, or rewrite history unless the user has authorized it. An explicit implementation request from this repository owner includes commit and push. Keep the latest development version as the default branch and retain only that version branch, as authorized by the owner. Branch updates do not establish release verification; publish release assets only after the required checks pass. This repository-maintenance convention does not authorize remote operations during generated-project configuration.
 
 ## CLI distribution

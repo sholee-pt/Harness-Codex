@@ -5,7 +5,7 @@ from __future__ import annotations
 
 
 RUNTIME = "codex"
-HARNESS_VERSION = "0.23.0-beta"
+HARNESS_VERSION = "0.22.2-beta"
 AUTHORING_CONTRACT_VERSION = 3
 ARTIFACT_CONTRACT_VERSION = 2
 # Installation compatibility follows the artifact contract, not release equality.

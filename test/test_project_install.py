@@ -32,6 +32,17 @@ def directory_metadata(path):
 
 
 class ProjectInstallTests(unittest.TestCase):
+    def test_permission_crosscheck_source_runs_the_real_installer(self):
+        from integration import verify_installer_permissions as permissions
+
+        source = permissions.copy_source(REPO_ROOT, self.base / "permission source")
+        before = state(self.root)
+        report = permissions.cli(source, self.root, dry_run=True)
+        self.assertGreater(report["writes"], 0)
+        self.assertEqual(state(self.root), before)
+        self.assertEqual(permissions.cli(source, self.root)["writes"], report["writes"])
+        self.assertEqual(permissions.cli(source, self.root)["writes"], 0)
+
     def test_missing_generator_dependency_preserves_project_before_receipt(self):
         source = self.base / "current source"
         shutil.copytree(REPO_ROOT / ".agents/skills/harness", source, ignore=shutil.ignore_patterns("__pycache__"))

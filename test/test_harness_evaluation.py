@@ -447,6 +447,46 @@ class CanonicalizationTests(unittest.TestCase):
 
 
 class StoreTests(unittest.TestCase):
+    def test_repair_reports_misplaced_records_and_preserves_unreadable_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            repository = parent / "repo"
+            repository.mkdir()
+            evaluation_store = store_module.EvaluationStore(parent / "state")
+            repository_id = evaluation_store.register_repository(repository)
+            run = manual_record(repository_id, uuid_text(2))
+            persist_completed(evaluation_store, run)
+            root = evaluation_store.repository_root(repository_id)
+            record = observation_record(repository_id, run["runId"], uuid_text(10))
+            for relative in (f"annotations/{run['runId']}/{uuid_text(10)}.json", f"observations/{uuid_text(11)}.json", f"runs/pending/{uuid_text(10)}.json"):
+                with self.subTest(relative=relative):
+                    path = root / relative
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    data = json.dumps(record).encode()
+                    path.write_bytes(data)
+                    report = evaluation_store.repair_repository(repository_id)
+                    self.assertTrue(any(item["path"] == relative for item in report["invalid"]))
+                    self.assertEqual(path.read_bytes(), data)
+                    repaired = evaluation_store.repair_repository(repository_id, quarantine=True)
+                    self.assertEqual(repaired["quarantined"], 1)
+                    self.assertFalse(path.exists())
+            unreadable = root / "observations" / f"{uuid_text(12)}.json"
+            unreadable.write_bytes(b"{")
+            read_text, read_bytes = Path.read_text, Path.read_bytes
+            def text(path, *args, **kwargs):
+                if path == unreadable:
+                    raise PermissionError("fixture")
+                return read_text(path, *args, **kwargs)
+            def content(path, *args, **kwargs):
+                if path == unreadable:
+                    raise PermissionError("fixture")
+                return read_bytes(path, *args, **kwargs)
+            with mock.patch.object(Path, "read_text", text), mock.patch.object(Path, "read_bytes", content):
+                report = evaluation_store.repair_repository(repository_id, quarantine=True)
+            self.assertEqual(report["quarantined"], 0)
+            self.assertTrue(any(item["digest"] == "unreadable" for item in report["invalid"]))
+            self.assertEqual(unreadable.read_bytes(), b"{")
+
     def test_duplicate_run_pair_and_plan_comparison_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory)

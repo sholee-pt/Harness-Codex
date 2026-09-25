@@ -9,8 +9,10 @@ Development releases use `vX.Y.Z-beta`.
 | Bug fix | Z | `[Fix]` |
 | Explanatory documentation with no effect on harness generation or execution | None | `[Doc]` |
 
-Choose the increment by the change's effect. Refactoring and optimization use Y,
-not Z. A release containing both a minor feature and a bug fix uses Y; a major
+Choose the increment by the change's effect. Standalone refactoring and optimization
+use Y. Internal cleanup or bounds needed to fix a defect retain Z when they restore
+documented behavior rather than introduce a separate feature. A release containing
+both a minor feature and a bug fix uses Y; a major
 change takes precedence over both. Test and maintenance changes follow the same
 effect-based rule rather than automatically using the bug-fix increment.
 

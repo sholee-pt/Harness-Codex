@@ -30,7 +30,7 @@ Recovery does not trust only the recorded applied-path list. It checks every ope
 - A missing updated target is treated as an external deletion and preserved as a recovery conflict.
 - A target with any other hash is treated as an external edit and is preserved.
 
-Recovery validates all content hashes and portable permission modes before restoring or removing any target. If one target conflicts, no recovery mutation begins and the journal remains available for inspection. Ownership, ACLs, and timestamps remain platform-managed and are outside transaction schema 2.
+Recovery validates all content hashes and portable permission modes before restoring or removing any target. If one target already conflicts, no recovery mutation begins and the journal remains available for inspection. It also rechecks each target immediately before restoring or removing it. A change detected during recovery stops further mutation and preserves the journal; earlier targets may already have been restored. Ownership, ACLs, and timestamps remain platform-managed and are outside transaction schema 2.
 
 Inspect the current state without mutation:
 
