@@ -6,12 +6,20 @@ import tempfile
 import unittest
 
 from test_harness_tools import harness_apply, harness_plan_builder, harness_teamplay, minimal_plan
+import harness_change_discipline
 import harness_instruction_audit as audit
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class InstructionAuditTests(unittest.TestCase):
+    def test_required_writer_contract_is_not_a_duplicate_suggestion(self):
+        body = harness_teamplay.AGENT_BLOCK + '\n\n' + harness_change_discipline.WRITER_BLOCK
+        content = 'developer_instructions = ' + json.dumps(body)
+        report = audit.summarize({f'.codex/agents/writer_{i}.toml': content for i in range(2)})
+        self.assertEqual(report['duplicateParagraphs'], [])
+        self.assertEqual(report['characters'], 2 * len(content))
+
     def test_shared_paragraphs_are_reported_without_raw_text_or_contract_duplicates(self):
         paragraph = 'Project-specific source evidence must be checked before changing the existing evaluator. ' * 3
         body = paragraph + '\n\n' + harness_teamplay.PROJECT_BLOCK

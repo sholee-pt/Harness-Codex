@@ -19,6 +19,7 @@ import harness_teamplay
 import harness_instruction_audit
 import harness_agent_contract
 import harness_frontmatter
+import harness_state
 import harness_git_policy
 import harness_topology
 
@@ -147,6 +148,10 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
         if not isinstance(content, str):
             raise PlanBuilderError(f"artifact {path} content must be text")
         by_path[path] = artifact
+
+    undeclared = harness_state.undeclared_entrypoints(by_path, topology)
+    if undeclared:
+        raise PlanBuilderError("native entry points must be declared in topology: " + ", ".join(undeclared))
 
     missing = expected_paths - set(by_path)
     if missing:

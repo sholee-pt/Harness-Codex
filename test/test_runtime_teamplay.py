@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -214,6 +215,32 @@ class TeamSelectionTests(unittest.TestCase):
 
 
 class RuntimePlanValidationTests(RuntimeFixtureTestCase):
+    def test_runtime_rechecks_current_selected_scope_and_revision_limit(self):
+        (self.root / 'contracts').mkdir()
+        self.assertTrue(self.validate()['valid'])
+        (self.root / 'contracts').rmdir()
+        (self.root / 'contracts').write_text('now a file')
+        with self.assertRaisesRegex(ValueError, 'current participant scope'):
+            self.validate()
+        (self.root / 'contracts').unlink()
+        # Missing targets remain allowed for tasks that create new files.
+        self.assertTrue(self.validate()['valid'])
+        self.plan['communication']['maxRounds'] = harness_teamplay.MAX_REVISION_ROUNDS + 1
+        with self.assertRaisesRegex(ValueError, 'revision contract'):
+            self.validate()
+
+    def test_documented_runtime_and_packet_examples_validate_together(self):
+        references = SCRIPTS.parent / 'references'
+        def example(name):
+            return json.loads(re.search(r'```json\s*\n(.*?)\n```', (references / name).read_text(), re.S).group(1))
+        plan = example('runtime-plan.md')
+        plan['source'] = self.plan['source']
+        self.assertTrue(self.validate(plan)['valid'])
+        packet = example('native-subagent-relay.md')
+        result = harness_coordination.validate_coordination_packet(packet,
+            participants=harness_coordination.participant_map(plan), tasks=harness_coordination.task_map(plan))
+        self.assertIsInstance(result, dict)
+
     def test_runtime_plan_is_bound_to_manifest_hash(self) -> None:
         report = self.validate()
         self.assertTrue(report["valid"])

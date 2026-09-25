@@ -236,6 +236,13 @@ def validate_topology(root: Path, plan: dict, artifacts: dict[str, str], *, snap
     except harness_topology.TopologyError as exc:
         raise PlanError(str(exc)) from exc
 
+    undeclared = harness_state.undeclared_entrypoints(artifacts, topology)
+    if undeclared:
+        raise PlanError("native entry points must be declared in topology: " + ", ".join(undeclared))
+    reference_errors = harness_state.missing_markdown_references(root, artifacts)
+    if reference_errors:
+        raise PlanError("; ".join(reference_errors))
+
     for label, evidence in harness_topology.iter_evidence(topology):
         validate_evidence(root, evidence, label, snapshot=snapshot)
 
@@ -574,7 +581,10 @@ def build_application(root: Path, plan: dict) -> dict:
     instruction_path = harness_state.resolve_inside(root, instruction_relative)
     if instruction_path.exists() and not instruction_path.is_file():
         raise PlanError(f"instruction path is not a regular file: {instruction_relative}")
-    existing_instruction = instruction_path.read_bytes().decode("utf-8") if instruction_path.is_file() else ""
+    instruction_exists = instruction_path.is_file()
+    instruction_bytes = instruction_path.read_bytes() if instruction_exists else b""
+    instruction_original_mode = harness_state.current_mode(instruction_path) if instruction_exists else harness_state.DEFAULT_FILE_MODE
+    existing_instruction = instruction_bytes.decode("utf-8")
     has_markers = (
         harness_state.BEGIN_MARKER in existing_instruction or harness_state.END_MARKER in existing_instruction
     )
@@ -590,7 +600,7 @@ def build_application(root: Path, plan: dict) -> dict:
     merged_instruction: str | None = None
     if instruction_mode == "managed-pointer":
         merged_instruction = merge_managed_block(existing_instruction, managed_block)
-        if not instruction_path.exists():
+        if not instruction_exists:
             # Preserve the established generated-only file shape. Existing user
             # files receive no bytes outside the owned block, including newline.
             merged_instruction += "\n"
@@ -602,9 +612,9 @@ def build_application(root: Path, plan: dict) -> dict:
         )
         if instruction_action != "create":
             original_hashes[instruction_relative] = harness_state.digest_bytes(
-                instruction_path.read_bytes()
+                instruction_bytes
             )
-            original_modes[instruction_relative] = harness_state.current_mode(instruction_path)
+            original_modes[instruction_relative] = instruction_original_mode
             desired_modes[instruction_relative] = original_modes[instruction_relative]
         else:
             desired_modes[instruction_relative] = harness_state.DEFAULT_FILE_MODE
@@ -690,6 +700,10 @@ def build_application(root: Path, plan: dict) -> dict:
         "originalModes": original_modes,
         "desiredModes": desired_modes,
         "managedPreconditions": list(old_managed.values()),
+        "evidencePreconditions": {
+            item["path"]: item["sha256"] for item in project["evidence"] +
+            [entry for _, entries in harness_topology.iter_evidence(topology) for entry in entries]
+        },
         "report": {
             "runtime": harness_state.RUNTIME,
             "valid": True,
@@ -773,6 +787,10 @@ def _apply_application(application: dict) -> dict:
     action_by_path = application_actions(application)
     desired_modes = application_modes(application)
     root = application["manifestPath"].parents[1]
+    for relative, expected in application["evidencePreconditions"].items():
+        path = harness_state.resolve_inside(root, relative, must_exist=True)
+        if harness_state.digest_bytes(path.read_bytes()) != expected:
+            raise PlanError(f"source evidence changed before apply; review the current source: {relative}")
     journal = harness_transaction.prepare_transaction(
         root,
         application_outputs(application),

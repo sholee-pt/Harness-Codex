@@ -24,6 +24,7 @@ class CheckpointTests(unittest.TestCase):
         self.root = Path(temporary.name) / 'project'
         self.root.mkdir()
         self.store = self.root.parent / 'state'
+        self.attempts = {}
         self.plan = {'schemaVersion': 1, 'tasks': [self.task('alpha'), self.task('beta'), self.task('qa', ['alpha', 'beta'])]}
         for name in ('alpha', 'beta', 'qa'):
             (self.root / (name + '.in')).write_text(name)
@@ -35,7 +36,13 @@ class CheckpointTests(unittest.TestCase):
                 'checks': [[sys.executable, '-c', "from pathlib import Path; assert Path('" + name + ".out').read_text() == 'ok'"]]}
 
     def call(self, action, run='first', **kwargs):
-        return checkpoint.operate(self.root, self.store, self.plan, action, run, **kwargs)
+        key = (run, kwargs.get('task'))
+        if action in {'record', 'quiesce'}:
+            kwargs.setdefault('attempt', self.attempts.get(key))
+        result = checkpoint.operate(self.root, self.store, self.plan, action, run, **kwargs)
+        if action == 'start':
+            self.attempts[key] = result['attemptId']
+        return result
 
     def finish(self, name):
         self.call('start', task=name)
@@ -54,6 +61,23 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(set(result['pending']), {'beta', 'qa'})
         self.assertEqual(checkpoint.read_json(self.store / 'checkpoint.json')['runs'][checkpoint.digest('first')], old)
         self.assertEqual((self.root / 'alpha.out').stat().st_mtime_ns, before)
+
+    def test_stale_attempt_reports_cannot_release_current_writer(self):
+        first = self.call('start', task='alpha')['attemptId']
+        self.call('quiesce', task='alpha', observed='stopped', attempt=first)
+        second = self.call('start', task='alpha')['attemptId']
+        self.assertNotEqual(first, second)
+        before = (self.store / 'checkpoint.json').read_bytes()
+        for action in ('record', 'quiesce'):
+            for token in (None, first):
+                with self.subTest(action=action, token=token):
+                    with self.assertRaisesRegex(ValueError, 'current --attempt'):
+                        self.call(action, task='alpha', observed='stopped', attempt=token)
+                    self.assertEqual(before, (self.store / 'checkpoint.json').read_bytes())
+        with self.assertRaisesRegex(ValueError, 'single-writer'):
+            self.call('start', task='beta')
+        self.call('quiesce', task='alpha', observed='stopped', attempt=second)
+        self.assertEqual(self.call('start', task='beta')['status'], 'running')
 
     def test_changed_result_is_not_reusable_and_blocks_consumer(self):
         self.finish('alpha')
@@ -138,7 +162,7 @@ class CheckpointTests(unittest.TestCase):
                 self.call('status')
             with self.assertRaisesRegex(ValueError, 'active'):
                 self.call('remove')
-            checkpoint.operate(self.root, self.store, None, 'quiesce', 'first', task='alpha', observed='closed')
+            checkpoint.operate(self.root, self.store, None, 'quiesce', 'first', task='alpha', observed='closed', attempt=self.attempts[('first', 'alpha')])
             checkpoint.operate(self.root, self.store, None, 'remove', 'first')
 
     def test_read_only_status_preserves_bytes_and_mtime(self):

@@ -7,6 +7,7 @@ from typing import Any, Iterable
 
 
 EXECUTION_CLASSES = {"direct", "delegated", "coordinated"}
+MAX_REVISION_ROUNDS = 2
 COLLABORATION_PATTERNS = {
     "pipeline",
     "fan-out/fan-in",
@@ -35,7 +36,7 @@ WORKFLOW_GUIDANCE = """## Workflow activation and progress
 
 A workflow name in a question, quotation, log or example is not an instruction to activate it. Follow the actual request and keep an already authorized task in progress; do not introduce planning, checkpointing or an autonomous loop from keywords alone.
 
-Reassignment may use only ready, unowned tasks and observed available workers. Stop-requested is not stopped: confirm the prior worker is quiescent and invalidate stale handoffs before transferring ownership. Receiving a result is not integration; verify the combined result against current inputs.
+Reassignment may use only ready, unowned tasks and observed available workers. Stop-requested is not stopped: confirm the prior worker is quiescent and invalidate stale handoffs before transferring ownership. This also applies to a same-scope writing fallback after a wait budget expires; a timeout or task-accounting receipt does not release the writer. Read-only fallback may continue without acquiring write ownership. Receiving a result is not integration; verify the combined result against current inputs.
 
 Choose checks for the changed behavior. For stateful changes, consider interruption/resume, stale state, concurrent ownership and timeout paths. Keep existing retry budgets; if the same failure recurs without a new hypothesis or changed evidence, report the blocker instead of repeating the loop or weakening the check."""
 

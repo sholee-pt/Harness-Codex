@@ -35,10 +35,11 @@ Keep a reviewed contract in a temporary file. For delegated work, derive its tas
 ```bash
 harness-codex checkpoint init --project /project --store ~/.local/state/harness-checkpoints/example --plan /tmp/tasks.json --run first --keep-days 7
 harness-codex checkpoint start --project /project --store ~/.local/state/harness-checkpoints/example --plan /tmp/tasks.json --run first --task evaluate
+# Retain attemptId from start as ATTEMPT_ID; each retry returns a different token.
 # Perform the approved work through native Codex and wait for its actual result.
-harness-codex checkpoint record --project /project --store ~/.local/state/harness-checkpoints/example --plan /tmp/tasks.json --run first --task evaluate
+harness-codex checkpoint record --project /project --store ~/.local/state/harness-checkpoints/example --plan /tmp/tasks.json --run first --task evaluate --attempt ATTEMPT_ID
 # Only after observing the native child turn is idle:
-harness-codex checkpoint quiesce --project /project --store ~/.local/state/harness-checkpoints/example --run first --task evaluate --observed idle
+harness-codex checkpoint quiesce --project /project --store ~/.local/state/harness-checkpoints/example --run first --task evaluate --observed idle --attempt ATTEMPT_ID
 harness-codex checkpoint status --project /project --store ~/.local/state/harness-checkpoints/example --plan /tmp/tasks.json --run first
 # After a blocker or input change, supply the updated reviewed contract:
 harness-codex checkpoint resume --project /project --store ~/.local/state/harness-checkpoints/example --plan /tmp/tasks.json --run second --previous first --keep-days 7
@@ -46,6 +47,8 @@ harness-codex checkpoint remove --project /project --store ~/.local/state/harnes
 ```
 
 `resume` preserves the previous run record and copies only valid accepted results. An input, contract, context or output change invalidates that task and dependent consumers. A newly added task does not invalidate independent work. `status` recomputes validity without rewriting state. Source evidence changes do not automatically block ordinary native conversation resume.
+
+`record` and `quiesce` must receive the `--attempt` returned for that execution. Missing or stale tokens cannot update a new attempt. Legacy entries without a token remain readable; new starts always issue one.
 
 A completed result does not establish that an agent stopped writing. Record `idle`, `stopped` or `closed` only from an actual native observation. `stop-requested` retains ownership. These records are explicitly caller-observed; the helper cannot authenticate native tool activity by itself. Use existing runtime receipts for stronger evidence. The store enforces one active writer and at most eight active tasks across its runs. This is advisory coordination, not an OS sandbox or a registry of unrelated Codex sessions/stores. Preserve actual native isolation and existing permissions; if other writers cannot be ruled out, do not dispatch another writer.
 

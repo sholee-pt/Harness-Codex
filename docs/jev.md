@@ -168,8 +168,7 @@ harness-codex jev clear --project /path/to/project --yes
 
 Disable preserves observations. Clear disables Jev and removes cached advice,
 labels and aggregate counters, preserving the current daily call reservation so
-clearing cannot bypass its budget. An interrupted parent may leave a local lock;
-after ensuring no Jev command is running, remove only that owned Jev lock to retry.
+clearing cannot bypass its budget. OS advisory locks are released when their process exits; retained `.state.lock` files are not stale ownership and must not be deleted to bypass locking. A legacy `.install.lock` is removed automatically only when its recorded process is demonstrably absent. If legacy ownership cannot be determined, preserve it for review.
 
 The reviewed default is the versioned `jev-1.13.0`; `--model jev-X.Y.Z` permits
 explicit version changes with cache invalidation and strict response-shape/model

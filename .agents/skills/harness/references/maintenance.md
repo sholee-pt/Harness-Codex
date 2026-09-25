@@ -62,7 +62,7 @@ Only an `auto` project permits this path. Read safe-update.md and follow the nor
 plan builder/dry-run workflow. Keep the topology, capabilities, instruction pointer
 and workspace contracts unchanged. Preserve user edits. At most two existing managed
 SKILL.md files and 8 KiB of changed content can be applied per lease. Native agents,
-new skills, permissions, instructions outside those skills, and deletion are excluded.
+new skills, permissions (including file modes), instructions outside those skills, and deletion are excluded.
 Use a bounded temporary plan; do not persist model conversation or project content
 in the maintenance store. Run task-relevant validation before applying; structural
 validation alone does not prove a semantic improvement. If that cannot be verified

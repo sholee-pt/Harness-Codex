@@ -24,32 +24,32 @@ The manifest binding uses SHA-256 over the raw `.harness/manifest.json` bytes. T
     "topologySha256": "<sha256>"
   },
   "task": {
-    "summary": "Integrate an API and storage contract change.",
-    "completionCriteria": ["schema checks pass", "migration checks pass"],
+    "summary": "Prepare and review a contract change.",
+    "completionCriteria": ["proposal produced", "review completed"],
     "criticality": "high"
   },
   "execution": {
     "class": "coordinated",
     "pattern": "producer-reviewer",
     "adapter": "runtime-probed",
-    "capabilityPolicyRef": "coordinated-teamplay",
+    "capabilityPolicyRef": "direct-default",
     "retention": "ephemeral",
-    "leader": "contract_integrator"
+    "leader": "api_producer"
   },
   "participants": [
     {
       "agent": "api_producer",
       "runtimeRole": "producer",
       "boundaryRefs": ["api-contract"],
-      "readScopes": ["contracts/**"],
-      "writeScopes": ["contracts/api/**"],
+      "readScopes": ["contracts/api.schema"],
+      "writeScopes": ["contracts/api.schema"],
       "isolation": "worktree"
     },
     {
-      "agent": "storage_reviewer",
+      "agent": "contract_reviewer",
       "runtimeRole": "reviewer",
-      "boundaryRefs": ["storage-contract"],
-      "readScopes": ["contracts/**"],
+      "boundaryRefs": ["api-contract", "storage-contract"],
+      "readScopes": ["contracts/generated/**"],
       "writeScopes": [],
       "isolation": "read-only"
     }
@@ -59,14 +59,14 @@ The manifest binding uses SHA-256 over the raw `.harness/manifest.json` bytes. T
       "id": "prepare-change",
       "owner": "api_producer",
       "dependsOn": [],
-      "inputs": ["contracts/**"],
+      "inputs": ["contracts/api.schema"],
       "outputs": ["change-proposal"],
       "required": true,
       "verification": ["schema-check"]
     },
     {
       "id": "review-change",
-      "owner": "storage_reviewer",
+      "owner": "contract_reviewer",
       "dependsOn": ["prepare-change"],
       "inputs": ["change-proposal"],
       "outputs": ["review-findings"],
@@ -75,7 +75,7 @@ The manifest binding uses SHA-256 over the raw `.harness/manifest.json` bytes. T
     }
   ],
   "communication": {
-    "allowedTypes": ["finding", "challenge", "request", "handoff", "blocker", "decision", "complete"],
+    "allowedTypes": ["blocker", "challenge", "complete", "decision", "finding", "handoff", "request"],
     "maxRounds": 2,
     "maxMessagesPerAgent": 8,
     "broadcastPolicy": "leader-only",
@@ -108,7 +108,7 @@ conda run -n harness python <harness-skill-root>/scripts/validate_runtime_plan.p
   --plan RUNTIME_PLAN.json
 ```
 
-The command is no-write. A valid result proves source binding, references, task graph, scopes, communication budgets, fallback declaration, and retention shape. It does not prove that a native collaboration adapter exists or ran. Harness for Codex v9.6 keeps this schema unchanged and places its fixed liveness budget—three waits and 300000 total milliseconds per agent—in the runtime observation policy rather than adding optional Schema 1 fields.
+The command is no-write. A valid result proves source binding, references, task graph, selected scope structure, communication budgets (at most two revision rounds), fallback declaration, and retention shape. Existing path ancestors are checked without scanning descendants; missing targets remain allowed for new outputs. This check is not a sandbox against concurrent filesystem replacement. It does not prove that a native collaboration adapter exists or ran. The current generator keeps this schema unchanged and places its fixed liveness budget—three waits and 300000 total milliseconds per agent—in the runtime observation policy rather than adding optional Schema 1 fields.
 
 After each delegated task, validate the returned parent-facing packet against the same plan:
 

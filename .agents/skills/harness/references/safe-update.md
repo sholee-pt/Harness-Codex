@@ -23,7 +23,8 @@ An existing dedicated target path without a valid matching manifest entry is use
 5. Put the proposed content in a schema 3 plan and run `harness_apply.py --dry-run`.
 6. Apply only when managed entries are unchanged and new target paths are unused. Git-root alignment, nested repositories, registered worktree count, and tracking do not replace ownership checks.
 7. Let the apply script stage desired content and verified backups, write the transaction journal, and replace exactly the outputs classified as create or update.
-8. Let the apply script write the derived manifest last and remove the journal only after every output is committed.
+8. Review `removalCandidates`; omitted owned files are retained until explicit removal. Subsequent validator/doctor reports `pendingRetirement` for retained native entry points outside topology. Do not infer that removal from topology disables native discovery.
+9. Let the apply script write the derived manifest last and remove the journal only after every output is committed.
 9. Run status again; a second identical plan must perform no file write.
 
 Do not automatically delete obsolete managed files. List them as removal candidates and require explicit authorization. Never use a recursive delete against a repository root.

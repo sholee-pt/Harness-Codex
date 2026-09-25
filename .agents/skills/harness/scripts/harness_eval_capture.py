@@ -533,8 +533,6 @@ def run_codex_jsonl(
         creationflags=creationflags,
         start_new_session=os.name != "nt",
     )
-    if process.stdin is None or process.stdout is None:
-        raise CaptureError("Codex process pipes were not created")
     event_queue: queue.Queue[str | None] = queue.Queue()
 
     def read_stdout() -> None:
@@ -545,50 +543,73 @@ def run_codex_jsonl(
         finally:
             event_queue.put(None)
 
-    reader = threading.Thread(target=read_stdout, name="harness-codex-jsonl", daemon=True)
-    reader.start()
-    try:
-        process.stdin.write(prompt)
-        process.stdin.close()
-    except OSError:
+    def write_stdin() -> None:
+        assert process.stdin is not None
         try:
-            process.stdin.close()
+            process.stdin.write(prompt)
         except OSError:
             pass
-    accumulator = JsonlAccumulator(capture_final_message=capture_final_message)
-    deadline = started + timeout_seconds
-    timed_out = False
-    stream_closed = False
-    while not stream_closed:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            timed_out = True
-            break
-        try:
-            item = event_queue.get(timeout=min(0.1, remaining))
-        except queue.Empty:
-            if process.poll() is not None and not reader.is_alive():
+        finally:
+            try:
+                process.stdin.close()
+            except OSError:
+                pass
+
+    reader = threading.Thread(target=read_stdout, name="harness-codex-jsonl", daemon=True)
+    writer = threading.Thread(target=write_stdin, name="harness-codex-prompt", daemon=True)
+    finished = False
+    try:
+        if process.stdin is None or process.stdout is None:
+            raise CaptureError("Codex process pipes were not created")
+        reader.start()
+        writer.start()
+        accumulator = JsonlAccumulator(capture_final_message=capture_final_message)
+        deadline = started + timeout_seconds
+        timed_out = False
+        stream_closed = False
+        while not stream_closed:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
                 break
-            continue
-        if item is None:
-            stream_closed = True
-        else:
-            accumulator.feed(item)
-    cleanup_verified = True
-    if timed_out:
-        cleanup_verified = _terminate_process_tree(process)
-    else:
-        try:
-            process.wait(timeout=max(0.1, deadline - time.monotonic()))
-        except subprocess.TimeoutExpired:
-            timed_out = True
+            try:
+                item = event_queue.get(timeout=min(0.1, remaining))
+            except queue.Empty:
+                if process.poll() is not None and not reader.is_alive():
+                    break
+                continue
+            if item is None:
+                stream_closed = True
+            else:
+                accumulator.feed(item)
+        cleanup_verified = True
+        if timed_out:
             cleanup_verified = _terminate_process_tree(process)
-    reader.join(timeout=1.0)
-    elapsed_ms = max(0, int(round((time.monotonic() - started) * 1000)))
-    summary = accumulator.summary()
-    if timed_out:
-        summary.completion = "interrupted"
-    return summary, process.returncode, elapsed_ms, cleanup_verified, version
+        else:
+            try:
+                process.wait(timeout=max(0.1, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                cleanup_verified = _terminate_process_tree(process)
+        elapsed_ms = max(0, int(round((time.monotonic() - started) * 1000)))
+        summary = accumulator.summary()
+        if timed_out:
+            summary.completion = "interrupted"
+        finished = True
+        return summary, process.returncode, elapsed_ms, cleanup_verified, version
+    finally:
+        if not finished:
+            _terminate_process_tree(process)
+        if reader.ident is not None:
+            reader.join(timeout=1.0)
+        if writer.ident is not None:
+            writer.join(timeout=1.0)
+        for stream in (process.stdin if not writer.is_alive() else None, process.stdout if not reader.is_alive() else None):
+            if stream is not None:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
 
 
 def apply_capture_to_record(

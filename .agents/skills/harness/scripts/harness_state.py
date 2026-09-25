@@ -8,12 +8,14 @@ import errno
 import hashlib
 import json
 import os
+import posixpath
 import re
 import stat
 import tempfile
 import tomllib
 from pathlib import Path, PurePosixPath
 from typing import Iterable
+from urllib.parse import unquote, urlsplit
 
 import harness_metadata
 
@@ -41,6 +43,47 @@ class StateError(ValueError):
 
 def digest_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def native_entrypoints(paths: Iterable[str]) -> set[str]:
+    return {path for path in paths if re.fullmatch(r"\.codex/agents/[^/]+\.toml|\.agents/skills/[^/]+/SKILL\.md", path)}
+
+
+def undeclared_entrypoints(paths: Iterable[str], topology: dict) -> list[str]:
+    declared = {item["path"] for kind in ("agents", "skills")
+                for item in (topology.get(kind, []) if isinstance(topology.get(kind, []), list) else [])
+                if isinstance(item, dict) and isinstance(item.get("path"), str)}
+    return sorted(native_entrypoints(paths) - declared)
+
+
+def missing_markdown_references(root: Path, artifacts: dict[str, str]) -> list[str]:
+    """Check generated support links; project source drift has separate diagnostics."""
+    errors = []
+    planned = set(artifacts)
+    planned.update(str(parent) for name in artifacts for parent in PurePosixPath(name).parents)
+    for name, content in artifacts.items():
+        if not name.endswith(".md"):
+            continue
+        body = re.sub(r"(?ms)^\s*(`{3,}|~{3,})[^\n]*\n.*?^\s*\1\s*$", "", content)
+        body = re.sub(r"(`+).*?\1", "", body)
+        for match in re.finditer(r"\[[^\]\n]+\]\((?:<([^>\n]+)>|([^\s)]+))(?:\s+\"[^\"\n]*\")?\)", body):
+            target = match.group(1) or match.group(2)
+            if re.match(r"[A-Za-z][A-Za-z0-9+.-]*:", target) or target.startswith(("/", "#")):
+                continue
+            parsed = urlsplit(target)
+            if parsed.scheme or parsed.netloc or not parsed.path or parsed.path.startswith("/"):
+                continue
+            relative = posixpath.normpath(posixpath.join(posixpath.dirname(name), unquote(parsed.path)))
+            if not relative.startswith((".agents/skills/", ".codex/agents/")):
+                continue
+            try:
+                path = resolve_inside(root, relative)
+                if relative in planned or path.exists():
+                    continue
+                errors.append(f"missing local Markdown reference in {name}: {target}")
+            except (OSError, StateError) as exc:
+                errors.append(f"invalid local Markdown reference in {name}: {target}: {exc}")
+    return errors
 
 
 class EvidenceSnapshot:

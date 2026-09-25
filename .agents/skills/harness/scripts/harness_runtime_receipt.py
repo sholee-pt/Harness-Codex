@@ -1057,12 +1057,19 @@ def _parse_local_events(
     }, conflict
 
 
+def _fallback_warnings(participant: str, state: dict[str, Any]) -> list[str]:
+    warnings = [f"fallback for {participant} is task-accounted but agent-reported"]
+    if state["receiverHandleAcknowledged"] and state["lifecycleState"] not in {"terminal", "closed"}:
+        warnings.append(f"fallback for {participant} has no observed quiescence; task accounting does not authorize same-scope writes")
+    return warnings
+
+
 def _normalize_fallbacks(
     value: Any,
     *,
     states: dict[str, dict[str, Any]],
     task_records: list[dict[str, Any]],
-) -> list[str]:
+) -> None:
     fallback_tasks = {
         item["taskId"]
         for item in task_records
@@ -1071,12 +1078,11 @@ def _normalize_fallbacks(
     if value is None:
         if fallback_tasks:
             raise RuntimeReceiptError("fallback task accounting requires a fallback report")
-        return []
+        return
     if not isinstance(value, list):
         raise RuntimeReceiptError("fallback report must be an array")
     seen_participants: set[str] = set()
     covered_tasks: set[str] = set()
-    warnings: list[str] = []
     by_task = {item["taskId"]: item for item in task_records}
     for index, raw in enumerate(value):
         entry = _object(raw, f"fallbacks[{index}]")
@@ -1112,14 +1118,10 @@ def _normalize_fallbacks(
         state["fallbackAdapter"] = entry["adapter"]
         state["fallbackReasonCode"] = reason
         state["_failureSources"].add("agent-reported")
-        warnings.append(
-            f"fallback for {participant} is task-accounted but agent-reported"
-        )
         seen_participants.add(participant)
         covered_tasks.update(task_ids)
     if covered_tasks != fallback_tasks:
         raise RuntimeReceiptError("fallback report does not account for every fallback task")
-    return warnings
 
 
 def _task_accounting_status(task_records: list[dict[str, Any]]) -> str:
@@ -1206,11 +1208,13 @@ def build_runtime_receipt(
         binding_conflict = True
         for state in states.values():
             _add_failure(state, "binding-conflict", "binding")
-    warnings = _normalize_fallbacks(
-        fallbacks, states=states, task_records=task_records
+    _normalize_fallbacks(
+        fallbacks, states=states, task_records=task_records,
     )
     conflict = binding_conflict or public_conflict or local_conflict
     agent_records = [_finalize_state(states[name]) for name in participants]
+    warnings = [warning for agent in agent_records if agent["fallback"]
+                for warning in _fallback_warnings(agent["participant"], agent)]
     if any("completion-conflict" in item["failureCodes"] for item in agent_records):
         conflict = True
     profiles = [public_profile] + ([local_profile] if local_profile is not None else [])
@@ -1523,9 +1527,7 @@ def _validate_schema2(receipt: dict[str, Any]) -> dict[str, Any]:
             reason = _text(agent.get("fallbackReasonCode"), "fallbackReasonCode")
             if reason not in FALLBACK_REASON_CODES:
                 raise RuntimeReceiptError("fallbackReasonCode is unsupported")
-            expected_warnings.append(
-                f"fallback for {participant} is task-accounted but agent-reported"
-            )
+            expected_warnings.extend(_fallback_warnings(participant, agent))
         elif agent.get("fallbackAdapter") is not None or agent.get("fallbackReasonCode") is not None:
             raise RuntimeReceiptError("non-fallback agent cannot retain fallback metadata")
         if agent["completed"]:

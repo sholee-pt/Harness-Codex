@@ -15,7 +15,7 @@ import time
 from types import SimpleNamespace
 
 from .locking import process_alive, state_lock
-from .graft import _load, _save, storage
+from .graft import _load, _save, _settings_lock, storage
 from .paths import checked_path
 from .jev_auth import resolve
 
@@ -154,18 +154,22 @@ def execute(args, source_root, *, preserve_existing=False):
                 raise ValueError('Enable Graft for this project first')
             if not re.fullmatch(r'jev-\d+\.\d+\.\d+', args.model) or not 1 <= args.daily_calls <= 100:
                 raise ValueError('Use a versioned Jev model and daily calls from 1 to 100')
-            if state is None and path.parent.exists():
-                raise ValueError('Unowned Jev directory; preserved')
-            path.parent.mkdir(parents=True, exist_ok=True)
+            with _settings_lock(path.parent):
+                if _read(path) is None:
+                    if path.parent.exists():
+                        raise ValueError('Unowned Jev directory; preserved')
+                    initial = {'owner': OWNER, 'policy': POLICY, 'secret': secrets.token_hex(32),
+                        'mode': args.mode, 'model': args.model, 'dailyCalls': args.daily_calls, 'day': 0, 'callsToday': 0,
+                        'backoffUntil': 0, 'cache': {}, 'metrics': dict.fromkeys(('calls', 'failures', 'cacheHits', 'inputTokens', 'outputTokens', 'milliseconds'), 0)}
+                    _save(path, initial)
         elif state is None:
             raise ValueError('Jev is not configured')
         with _lock(path.parent):
             state = _read(path)
             if preserve_existing and state is not None:
                 return _result(state)
-            state = state or {'owner': OWNER, 'policy': POLICY, 'secret': secrets.token_hex(32),
-                'mode': 'off', 'model': args.model, 'dailyCalls': args.daily_calls, 'day': 0, 'callsToday': 0,
-                'backoffUntil': 0, 'cache': {}, 'metrics': dict.fromkeys(('calls', 'failures', 'cacheHits', 'inputTokens', 'outputTokens', 'milliseconds'), 0)}
+            if state is None:
+                raise ValueError('Jev state disappeared; preserve the directory for review')
             if action == 'enable':
                 if state['model'] != args.model:
                     state['cache'] = {}

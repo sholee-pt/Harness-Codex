@@ -24,6 +24,16 @@ def response(payload):
 
 
 class JevTests(unittest.TestCase):
+    def test_first_state_save_failure_can_retry_without_claiming_user_directory(self):
+        args = main.build_parser(REPO).parse_args(['graft', 'enable', '--package', str(self.root), '--project', str(self.root)])
+        with mock.patch.object(graft.shutil, 'which', return_value='/node'), mock.patch.object(graft, '_invoke', return_value={}):
+            graft.execute(args, REPO)
+        with mock.patch.object(graft.os, 'replace', side_effect=OSError('initial-save')):
+            with self.assertRaisesRegex(OSError, 'initial-save'):
+                self.command('enable')
+        self.assertFalse(jev._path(self.root).parent.exists())
+        self.assertEqual(self.command('enable')['mode'], 'shadow')
+
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)

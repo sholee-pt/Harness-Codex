@@ -9,6 +9,37 @@ from test_harness_tools import harness_apply, harness_state, minimal_plan, valid
 
 
 class EvidenceSnapshotTests(unittest.TestCase):
+    def test_pointer_edit_during_merge_is_preserved_and_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = minimal_plan(root)
+            harness_apply.apply_application(harness_apply.build_application(root, plan))
+            path = root / 'AGENTS.md'
+            original = harness_apply.merge_managed_block
+            def edit(before, block):
+                merged = original(before, block)
+                path.write_bytes(path.read_bytes() + b'\nUser edit during preparation.\n')
+                return merged
+            with mock.patch.object(harness_apply, 'merge_managed_block', edit):
+                application = harness_apply.build_application(root, plan)
+            before = path.read_bytes()
+            with self.assertRaises(ValueError):
+                harness_apply.apply_application(application)
+            self.assertEqual(path.read_bytes(), before)
+            self.assertFalse((root / '.harness/transaction.json').exists())
+
+    def test_apply_rechecks_evidence_after_preparation_without_writes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            application = harness_apply.build_application(root, minimal_plan(root))
+            path = root / 'pyproject.toml'
+            path.write_bytes(path.read_bytes() + b'\n# changed\n')
+            before = {p: p.read_bytes() for p in root.rglob('*') if p.is_file()}
+            with self.assertRaisesRegex(ValueError, 'source evidence changed before apply'):
+                harness_apply.apply_application(application)
+            self.assertEqual(before, {p: p.read_bytes() for p in root.rglob('*') if p.is_file()})
+            self.assertFalse((root / '.harness').exists())
+
     def test_plan_shares_hash_and_reads_across_project_and_topology(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

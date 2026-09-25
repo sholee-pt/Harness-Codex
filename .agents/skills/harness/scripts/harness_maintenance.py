@@ -251,6 +251,9 @@ class Maintenance:
         if not changed:
             raise ValueError('No skill correction was proposed; finish the review as unchanged')
         changed_bytes = 0
+        old_modes = {item['path']: item.get('mode') for item in old['managedFiles']}
+        if any(item.get('mode') != old_modes.get(item['path']) for item in new['managedFiles']):
+            raise ValueError('Automatic maintenance cannot change file permissions')
         import difflib
         for item in changed:
             name = item['path']

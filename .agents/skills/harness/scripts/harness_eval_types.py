@@ -746,11 +746,13 @@ def _validate_comparison_record_v1(value: Any, *, verify_hash: bool = True) -> d
         raise EvaluationError("unavailable primary outcomes require null delta and unknown direction")
 
     gate = _require_object(record["correctnessGate"], "correctnessGate")
-    _require_keys(gate, {"policy", "passed", "criticalRegression"}, {"policy", "passed", "criticalRegression"}, "correctnessGate")
+    _require_keys(gate, {"policy", "passed", "criticalRegression", "status"}, {"policy", "passed", "criticalRegression"}, "correctnessGate")
     if gate["policy"] not in {"no-regression", "none"}:
         raise EvaluationError("correctnessGate.policy is invalid")
     if not isinstance(gate["passed"], bool) or not isinstance(gate["criticalRegression"], bool):
         raise EvaluationError("correctnessGate booleans are invalid")
+    if "status" in gate and (gate["status"] not in {"passed", "failed", "unknown"} or gate["passed"] != (gate["status"] == "passed")):
+        raise EvaluationError("correctnessGate status is inconsistent")
     confounders = record["confounders"]
     if not isinstance(confounders, list) or any(item not in CONFOUNDERS for item in confounders):
         raise EvaluationError("confounders must contain only known values")

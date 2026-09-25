@@ -56,7 +56,7 @@ Use the templates in `assets/` as structural starting points, then tailor them t
 - `.agents/skills/project-harness/SKILL.md` for orchestration
 - a single managed pointer block in the active root `AGENTS.md` or `AGENTS.override.md`
 
-The apply script derives `.harness/manifest.json` from the validated plan. It creates a managed root pointer only when the instruction path is absent or already owned by Harness. If an existing instruction file is user-owned, preserve it and use explicit `$project-harness` activation instead.
+The apply script derives `.harness/manifest.json` from the validated plan. Reviewed configuration appends or updates only the Harness-owned root activation block, preserving all surrounding user text. Existing unowned or modified marker blocks remain conflicts. `explicit-skill` is a readable legacy activation state, not the default for new configuration.
 
 Codex agent definitions require `name`, `description`, and `developer_instructions`. Inherit the current model and permissions by default. Add an override only when supported and justified. Keep review-only agents read-only through instructions and supported configuration, without inventing tool names.
 

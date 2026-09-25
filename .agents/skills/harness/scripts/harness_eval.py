@@ -927,6 +927,7 @@ def _proposal_eligibility(
             exclude(comparison_id, "result-fingerprint-incomplete")
 
         runs: dict[str, dict[str, Any]] = {}
+        effective_runs: dict[str, dict[str, Any]] = {}
         for key, arm in (("baselineRunId", "baseline"), ("treatmentRunId", "treatment")):
             try:
                 run = evaluation_store.read_run(
@@ -944,6 +945,7 @@ def _proposal_eligibility(
             if not view["proposalEligible"]:
                 for reason in view["proposalIneligibilityReasons"]:
                     exclude(comparison_id, reason)
+            effective_runs[arm] = evaluation_view.materialize_run_view(run, view)
             if (
                 types.digest_bytes(types.canonical_bytes(view))
                 != comparison_record["derivedViewFingerprints"][arm]
@@ -951,6 +953,10 @@ def _proposal_eligibility(
                 exclude(comparison_id, "derived-view-changed")
         if len(runs) != 2:
             continue
+        if len(effective_runs) == 2 and compare.correctness_gate(
+            effective_runs["baseline"], effective_runs["treatment"], comparison_record["correctnessGate"]["policy"]
+        )["status"] == "unknown":
+            exclude(comparison_id, "correctness-verification-unknown")
         if any(
             run["runtime"]["harnessVersion"]
             not in schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS

@@ -43,6 +43,25 @@ def _complete_token_counter(record: dict[str, Any], name: str) -> float | None:
     return _measured(record, name)
 
 
+def correctness_gate(baseline: dict, treatment: dict, policy: str) -> dict:
+    signatures = []
+    for record in (baseline, treatment):
+        checks = record["outcome"].get("verification", [])
+        signature = {(check.get("checkRef"), check.get("profileFingerprint")) for check in checks}
+        complete = bool(checks) and len(signature) == len(checks) and all(
+            check.get("result") in {"passed", "failed"}
+            and check.get("profileFingerprint") == record.get("result", {}).get("verificationProfileFingerprint")
+            for check in checks
+        )
+        signatures.append(signature if complete else None)
+    known = signatures[0] is not None and signatures[0] == signatures[1]
+    regression = (known and _verification_pass_rate(treatment) < _verification_pass_rate(baseline)) or (
+        not baseline["outcome"]["criticalFailure"] and treatment["outcome"]["criticalFailure"]
+    )
+    status = "passed" if policy == "none" else "failed" if regression else "passed" if known else "unknown"
+    return {"policy": policy, "passed": status == "passed", "criticalRegression": bool(regression), "status": status}
+
+
 def outcome_value(
     record: dict[str, Any],
     metric: str,
@@ -455,13 +474,8 @@ def _compare_runs_v2(
         delta_value = treatment_value - baseline_value
         direction = _direction(delta_value, outcome["direction"], float(outcome["minimumEffect"]))
         completeness = 1.0
-    baseline_rate = _verification_pass_rate(effective_baseline)
-    treatment_rate = _verification_pass_rate(effective_treatment)
-    regression = (
-        baseline_rate is not None and treatment_rate is not None and treatment_rate < baseline_rate
-    ) or (not baseline["outcome"]["criticalFailure"] and treatment["outcome"]["criticalFailure"])
-    gate_passed = plan["correctnessGate"] == "none" or not regression
-    if not gate_passed and direction == "beneficial":
+    gate = correctness_gate(effective_baseline, effective_treatment, plan["correctnessGate"])
+    if gate["status"] == "failed" and direction == "beneficial":
         direction = "harmful"
 
     configuration_delta, deviations = _configuration_delta(effective_baseline, effective_treatment, plan)
@@ -518,11 +532,7 @@ def _compare_runs_v2(
             "direction": direction,
             "completeness": completeness,
         },
-        "correctnessGate": {
-            "policy": plan["correctnessGate"],
-            "passed": gate_passed,
-            "criticalRegression": regression,
-        },
+        "correctnessGate": gate,
         "confounders": sorted(set(_confounders(gaps)) | patch_scope_confounders),
         "causalClaimAllowed": False,
         "taskStratum": plan["taskStratum"],

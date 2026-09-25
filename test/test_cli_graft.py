@@ -15,6 +15,55 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 class GraftTests(unittest.TestCase):
+    def test_failed_initial_settings_replace_allows_retry(self):
+        with mock.patch.object(graft.os, 'replace', side_effect=OSError('initial-save')):
+            with self.assertRaisesRegex(OSError, 'initial-save'):
+                self.enable()
+        self.assertFalse(graft.storage(self.root).exists())
+        self.assertTrue(self.enable()['enabled'])
+
+    def test_failed_save_preserves_existing_directory_and_concurrent_content(self):
+        path = graft.storage(self.root) / 'settings.json'
+        path.parent.mkdir(parents=True)
+        with mock.patch.object(graft.os, 'replace', side_effect=OSError('save')):
+            with self.assertRaises(OSError):
+                graft._save(path, {})
+        self.assertTrue(path.parent.is_dir())
+        path.parent.rmdir()
+        def fail(*args):
+            (path.parent / 'user.txt').write_text('preserve')
+            raise OSError('save')
+        with mock.patch.object(graft.os, 'replace', side_effect=fail):
+            with self.assertRaises(OSError):
+                graft._save(path, {})
+        self.assertEqual((path.parent / 'user.txt').read_text(), 'preserve')
+
+    def test_failed_settings_commit_rolls_back_only_unchanged_new_skill(self):
+        save = graft._save
+        def fail(path, value):
+            if value['enabled']:
+                raise OSError('settings-commit')
+            return save(path, value)
+        with mock.patch.object(graft, '_save', side_effect=fail):
+            with self.assertRaisesRegex(OSError, 'settings-commit'):
+                self.enable()
+        self.assertFalse((self.root / graft.SKILL_PATH).exists())
+        self.assertTrue(self.enable()['enabled'])
+
+    def test_failed_settings_commit_preserves_concurrent_user_skill_edit(self):
+        save = graft._save
+        def fail(path, value):
+            if value['enabled']:
+                (self.root / graft.SKILL_PATH).write_text('User edit')
+                raise OSError('settings-commit')
+            return save(path, value)
+        with mock.patch.object(graft, '_save', side_effect=fail):
+            with self.assertRaisesRegex(OSError, 'settings-commit'):
+                self.enable()
+        self.assertEqual((self.root / graft.SKILL_PATH).read_text(), 'User edit')
+        with self.assertRaisesRegex(ValueError, 'user-owned or modified'):
+            self.enable()
+
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)

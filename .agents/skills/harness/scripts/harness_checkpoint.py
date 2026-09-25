@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import secrets
 import signal
 import subprocess
 import tempfile
@@ -210,7 +211,7 @@ def run_check(command, root, timeout):
         raise
 
 
-def operate(root, store, plan, action, run, *, task=None, previous=None, keep_days=None, observed=None, timeout=60):
+def operate(root, store, plan, action, run, *, task=None, previous=None, keep_days=None, observed=None, timeout=60, attempt=None):
     root, store = checked(root), checked(store)
     if not root.is_dir() or store.is_relative_to(root) or root.is_relative_to(store):
         raise ValueError("Use a dedicated user-local checkpoint store outside the project")
@@ -253,7 +254,7 @@ def operate(root, store, plan, action, run, *, task=None, previous=None, keep_da
             for key, item in tasks.items():
                 entries[key] = {**item, "status": "completed" if key in accepted else "pending",
                                 "verification": "passed" if key in accepted else "not-run",
-                                "lifecycle": "idle", "attempts": 0}
+                                "lifecycle": "idle", "attempts": 0, "attemptId": None}
             runs[run_key] = {"createdAt": now, "expiresAt": now + keep_days * 86400, "tasks": entries}
             save(path, state)
             return {"run": run, "reused": [names[k] for k in tasks if k in accepted],
@@ -267,6 +268,10 @@ def operate(root, store, plan, action, run, *, task=None, previous=None, keep_da
             del runs[run_key]
             save(path, state)
             return {"removed": run}
+        if action in {"record", "quiesce"} and task_key in current["tasks"]:
+            expected = current["tasks"][task_key].get("attemptId")
+            if expected is not None and attempt != expected:
+                raise ValueError("Provide the current --attempt returned by start; stale observations cannot release ownership")
         if action == "quiesce":
             if observed not in {"idle", "stopped", "closed", "stop-requested"} or task_key not in current["tasks"]:
                 raise ValueError("Provide an observed native lifecycle state and existing task")
@@ -299,7 +304,7 @@ def operate(root, store, plan, action, run, *, task=None, previous=None, keep_da
             active = [t for r in runs.values() for t in r["tasks"].values() if t["lifecycle"] in ACTIVE]
             if len(active) >= 8 or actual["outputs"] and any(t["outputs"] for t in active):
                 raise ValueError("Checkpoint capacity or single-writer ownership is occupied")
-            entry.update(status="running", lifecycle="running", attempts=entry["attempts"] + 1, verification="not-run")
+            entry.update(status="running", lifecycle="running", attempts=entry["attempts"] + 1, verification="not-run", attemptId=secrets.token_hex(16))
         elif action == "record":
             if entry["status"] != "running" or entry["lifecycle"] != "running":
                 raise ValueError("Only a running task can record a result")
@@ -328,7 +333,7 @@ def operate(root, store, plan, action, run, *, task=None, previous=None, keep_da
             raise ValueError("Unknown checkpoint action")
         save(path, state)
         return {"task": task, "status": entry["status"], "verification": entry["verification"],
-                "lifecycle": entry["lifecycle"], "attempts": entry["attempts"]}
+                "lifecycle": entry["lifecycle"], "attempts": entry["attempts"], "attemptId": entry.get("attemptId")}
 
 
 def main(argv=None):
@@ -339,6 +344,7 @@ def main(argv=None):
     parser.add_argument("--plan", type=Path, help="Required except for quiesce/remove")
     parser.add_argument("--run", required=True)
     parser.add_argument("--task")
+    parser.add_argument("--attempt", help="Execution attempt token returned by start; required for new record/quiesce reports")
     parser.add_argument("--previous")
     parser.add_argument("--keep-days", type=int)
     parser.add_argument("--observed", choices=("idle", "stopped", "closed", "stop-requested"))
@@ -346,7 +352,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         result = operate(args.root, args.store, read_json(args.plan) if args.plan else None, args.action, args.run, task=args.task,
-            previous=args.previous, keep_days=args.keep_days, observed=args.observed, timeout=args.timeout)
+            previous=args.previous, keep_days=args.keep_days, observed=args.observed, timeout=args.timeout, attempt=args.attempt)
         print(json.dumps(result, indent=2))
         return 1 if result.get("verification") == "failed" else 0
     except (ValueError, OSError, TimeoutError) as error:

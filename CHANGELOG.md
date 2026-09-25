@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.21.1‑beta`](#harness-for-codex-v0211-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve concurrent user edits, fence checkpoint attempts, recover partial setup and align generated/runtime contracts |
 | [`v0.21.0‑beta`](#harness-for-codex-v0210-beta) | Schema 3 | Schema 7 | Schema 2 | Serialize transaction ownership, recover Jev locks, preserve Graft opt-outs, complete-run checkpoints and bounded workflow guidance |
 | [`v0.20.2‑beta`](#harness-for-codex-v0202-beta) | Schema 3 | Schema 7 | Schema 2 | Correct usable swap capacity and handle unavailable native source evidence |
 | [`v0.20.1‑beta`](#harness-for-codex-v0201-beta) | Schema 3 | Schema 7 | Schema 2 | Bound Linux native build concurrency, reserve memory headroom and log runner resources |
@@ -63,6 +64,17 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.21.1-beta
+
+- Preserve concurrent root-instruction edits and reject source evidence drift before apply.
+- Terminate and reap evaluator children on interruption/parser failures; keep unknown correctness evidence out of concrete attribution.
+- Bind checkpoint result/lifecycle reports to the execution attempt returned by start. Pass `--attempt` to record/quiesce; legacy stored state remains readable.
+- Make failed initial Jev saves and failed Graft settings commits retryable while preserving user files and explicit opt-outs.
+- Reject undeclared new native entry points and missing explicit local Markdown resources; report retained native removal candidates in later diagnostics.
+- Preserve file modes during automatic skill maintenance, recheck selected runtime scope structure and enforce the existing two-round revision contract.
+- Exclude mandatory writer contracts from duplicate-prose suggestions, clarify writing-fallback quiescence and validate linked runtime/packet documentation examples.
+- Align current generation/evaluation/upgrade guidance with implementation. Keep existing artifact contracts and compare only against v0.21.0-beta.
 
 ## Harness for Codex v0.21.0-beta
 

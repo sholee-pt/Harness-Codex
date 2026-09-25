@@ -19,6 +19,7 @@ def register(commands):
     parser.add_argument('--plan', type=Path, help='Reviewed task contract; required except for quiesce/remove. record executes its checks.')
     parser.add_argument('--run', required=True)
     parser.add_argument('--task')
+    parser.add_argument('--attempt', help='Execution attempt token returned by start; pass it to record/quiesce.')
     parser.add_argument('--previous')
     parser.add_argument('--keep-days', type=int, help='Explicit retention consent: 1-30 days for init/resume.')
     parser.add_argument('--observed', choices=('idle', 'stopped', 'closed', 'stop-requested'))
@@ -31,7 +32,7 @@ def run(args, source_root):
                '--store', str(args.store), '--run', args.run, '--timeout', str(args.timeout)]
     if args.plan:
         command.extend(['--plan', str(args.plan)])
-    for name in ('task', 'previous', 'keep_days', 'observed'):
+    for name in ('task', 'previous', 'keep_days', 'observed', 'attempt'):
         value = getattr(args, name)
         if value is not None:
             command.extend(['--' + name.replace('_', '-'), str(value)])

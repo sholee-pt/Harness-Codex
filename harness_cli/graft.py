@@ -57,14 +57,29 @@ def _save(path, value):
     data = (json.dumps(value, indent=2) + '\n').encode()
     if path.exists() and path.read_bytes() == data:
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(prefix='.pending-', dir=path.parent)
+    created = None
     try:
+        path.parent.mkdir(parents=True)
+        info = path.parent.stat()
+        created = (info.st_dev, info.st_ino)
+    except FileExistsError:
+        pass
+    name = None
+    try:
+        fd, name = tempfile.mkstemp(prefix='.pending-', dir=path.parent)
         with os.fdopen(fd, 'wb') as stream:
             stream.write(data)
         os.replace(name, path)
     finally:
-        Path(name).unlink(missing_ok=True)
+        if name is not None:
+            Path(name).unlink(missing_ok=True)
+        if created is not None:
+            try:
+                info = path.parent.stat()
+                if (info.st_dev, info.st_ino) == created:
+                    path.parent.rmdir()  # Only our still-empty directory after a failed save.
+            except OSError:
+                pass
 
 
 def _load(path):
@@ -237,10 +252,25 @@ def execute(args, source_root):
                             'guidance': 'A newer retrieval preference was preserved; this build did not change it.'}
                 _check_skill(skill, current)
                 skill.parent.mkdir(parents=True, exist_ok=True)
-                if not skill.exists():
-                    with skill.open('x', encoding='utf-8', newline='\n') as stream:
-                        stream.write(SKILL)
-                _save(state_path, settings)
+                created = None
+                try:
+                    if not skill.exists():
+                        with skill.open('x', encoding='utf-8', newline='\n') as stream:
+                            metadata = os.fstat(stream.fileno())
+                            created = (metadata.st_dev, metadata.st_ino)
+                            stream.write(SKILL)
+                    _save(state_path, settings)
+                except BaseException:
+                    if created is not None:
+                        try:
+                            checked_path(skill)
+                            metadata = skill.stat()
+                            if ((metadata.st_dev, metadata.st_ino) == created and skill.read_bytes() == SKILL.encode()
+                                    and _load(state_path) == current):
+                                skill.unlink()
+                        except (OSError, ValueError):
+                            pass
+                    raise
                 result.update(state='enabled', enabled=True)
     return result
 

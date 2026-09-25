@@ -155,6 +155,18 @@ class MaintenanceTests(unittest.TestCase):
             self.manager.finish(self.lease()['id'], 'apply', plan=self.updated_plan())
         self.assertEqual(before, self.snapshot())
 
+    def test_automatic_content_update_cannot_change_file_mode(self):
+        self.manager.configure('auto')
+        self.signal(); self.hook()
+        path = self.updated_plan()
+        plan = json.loads(path.read_text())
+        plan['artifacts'][0]['mode'] = '0777'
+        path.write_text(json.dumps(plan))
+        before = self.snapshot()
+        with self.assertRaisesRegex(ValueError, 'file permissions'):
+            self.manager.finish(self.lease()['id'], 'apply', plan=path)
+        self.assertEqual(before, self.snapshot())
+
     def test_apply_rejects_topology_change_and_large_content(self):
         for change in ('topology', 'large'):
             with self.subTest(change=change):

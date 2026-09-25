@@ -275,6 +275,50 @@ class MeasurementTests(unittest.TestCase):
 
 
 class JsonlCaptureTests(unittest.TestCase):
+    def test_prompt_backpressure_cannot_bypass_capture_timeout(self):
+        children = []
+        popen = subprocess.Popen
+        def child(command, **options):
+            process = popen([sys.executable, '-B', '-c', 'import time; time.sleep(30)'], **options)
+            children.append(process)
+            return process
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                with mock.patch.object(capture, 'codex_preflight', return_value='fixture'), mock.patch.object(capture.subprocess, 'Popen', side_effect=child):
+                    summary, _, elapsed, cleanup, _ = capture.run_codex_jsonl(repository=Path(directory), prompt='x' * (1024 * 1024), sandbox='read-only', timeout_seconds=1)
+                self.assertEqual(summary.completion, 'interrupted')
+                self.assertTrue(cleanup)
+                self.assertLess(elapsed, 15000)
+                self.assertIsNotNone(children[0].poll())
+                self.assertTrue(children[0].stdin.closed)
+            finally:
+                for process in children:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait(timeout=5)
+
+    def test_interruption_and_parser_error_terminate_and_reap_real_child(self):
+        for error in (KeyboardInterrupt, ValueError):
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as directory:
+                children = []
+                popen = subprocess.Popen
+                def child(command, **options):
+                    process = popen([sys.executable, '-B', '-c', "import sys,time; print('{}',flush=True); sys.stdin.read(); time.sleep(30)"], **options)
+                    children.append(process)
+                    return process
+                try:
+                    with mock.patch.object(capture, 'codex_preflight', return_value='fixture'), mock.patch.object(capture.subprocess, 'Popen', side_effect=child), mock.patch.object(capture.JsonlAccumulator, 'feed', side_effect=error):
+                        with self.assertRaises(error):
+                            capture.run_codex_jsonl(repository=Path(directory), prompt='fixture', sandbox='read-only', timeout_seconds=10)
+                    self.assertIsNotNone(children[0].poll())
+                    self.assertTrue(children[0].stdin.closed)
+                    self.assertTrue(children[0].stdout.closed)
+                finally:
+                    for process in children:
+                        if process.poll() is None:
+                            process.kill()
+                            process.wait(timeout=5)
+
     def _lines(self, name: str) -> list[str]:
         return (FIXTURES / "jsonl" / name).read_text(encoding="utf-8").splitlines()
 
@@ -754,6 +798,52 @@ class StoreTests(unittest.TestCase):
 
 
 class ComparisonTests(unittest.TestCase):
+    def test_unknown_correctness_is_descriptive_and_cannot_support_proposal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evaluation_store = store_module.EvaluationStore(root / 'state')
+            project = root / 'project'
+            project.mkdir()
+            repository_id = evaluation_store.register_repository(project)
+            plan = self.comparison_plan()
+            plan['primaryOutcome'] = {'metric': 'output-tokens', 'direction': 'lower-is-better', 'minimumEffect': 1}
+            plan['secondaryOutcomes'] = []
+            pair_id = uuid_text(80)
+            baseline = manual_record(repository_id, uuid_text(81), arm='baseline', pair_id=pair_id, output_tokens=100)
+            treatment = manual_record(repository_id, uuid_text(82), arm='harness', pair_id=pair_id, output_tokens=10)
+            for record in (baseline, treatment):
+                record['outcome']['verification'] = []
+                record.update(types.seal_record(record))
+                persist_completed(evaluation_store, record)
+            value = compare.compare_runs(baseline=baseline, treatment=treatment, plan=plan,
+                comparison_id=uuid_text(83), pair_id=pair_id, repository_id=repository_id, created_at='2026-09-25T00:00:00Z')
+            self.assertEqual(value['correctnessGate']['status'], 'unknown')
+            self.assertFalse(value['correctnessGate']['passed'])
+            self.assertEqual(value['primaryOutcome']['delta'], -90)
+            # Old stored comparisons without the new status must also be rechecked.
+            value['correctnessGate'].pop('status')
+            value['correctnessGate']['passed'] = True
+            value = types.seal_record(value)
+            eligibility = harness_eval._proposal_eligibility(evaluation_store=evaluation_store, repository_id=repository_id,
+                comparisons=[value], comparison_plan=plan, task_category='test', complexity_level='unknown', impact_level='unknown')
+            self.assertFalse(eligibility.attribution_basis_ids)
+            self.assertIn('correctness-verification-unknown', str(eligibility.exclusion_reasons))
+            self.assertTrue(compare.correctness_gate(baseline, treatment, 'none')['passed'])
+
+    def test_correctness_requires_matching_complete_check_sets(self):
+        baseline = manual_record(uuid_text(80), uuid_text(1), arm='baseline')
+        treatment = manual_record(uuid_text(80), uuid_text(2), arm='harness')
+        self.assertEqual(compare.correctness_gate(baseline, treatment, 'no-regression')['status'], 'passed')
+        for change in ('missing', 'not-run', 'different-check'):
+            altered = copy.deepcopy(treatment)
+            if change == 'missing':
+                altered['outcome']['verification'] = []
+            elif change == 'not-run':
+                altered['outcome']['verification'][0]['result'] = 'not-run'
+            else:
+                altered['outcome']['verification'][0]['checkRef'] = 'check:' + '5' * 32
+            self.assertEqual(compare.correctness_gate(baseline, altered, 'no-regression')['status'], 'unknown')
+
     def comparison_plan(self) -> dict:
         return {
             "schemaVersion": 2,

@@ -189,6 +189,36 @@ def local_activity_lines(
 
 
 class RuntimeReceiptV2Tests(unittest.TestCase):
+    def test_running_writer_fallback_warns_without_claiming_quiescence(self):
+        control = control_plane_report(self.plan, agent_overrides={
+            'api_producer': {'waitAttempts': 3, 'waitTimeMs': 300000, 'waitStatus': 'running', 'resultCollected': False}},
+            task_resolutions={'prepare-change': ('fallback-output', True)})
+        fallbacks = [{'participant': 'api_producer', 'taskIds': ['prepare-change'], 'adapter': 'direct',
+                      'preserves': ['input', 'output', 'verification'], 'reasonCode': 'wait-budget-exhausted', 'source': 'agent-reported'}]
+        result = self._build(control_plane=control, fallbacks=fallbacks)
+        self.assertEqual(result['collaborationCompleteness'], 'partial')
+        self.assertTrue(any('no observed quiescence' in message for message in result['warnings']))
+        self.assertTrue(receipt2.validate_runtime_receipt(result)['valid'])
+
+        result = self._build(control_plane=control, fallbacks=fallbacks,
+            lines=public_collab_lines(self.plan, terminal_statuses={'api_producer': 'failed'}),
+            public_profile_id=receipt2.PUBLIC_COLLAB_PROFILE,
+            observation_bindings=local_bindings(self.plan, control))
+        self.assertFalse(any('no observed quiescence' in message for message in result['warnings']))
+        self.assertTrue(receipt2.validate_runtime_receipt(result)['valid'])
+
+    def test_fallback_report_order_does_not_change_canonical_warnings(self):
+        participants = participant_names(self.plan)
+        control = control_plane_report(self.plan,
+            agent_overrides={name: {'waitStatus': 'running', 'resultCollected': False} for name in participants},
+            task_resolutions={item['id']: ('fallback-output', True) for item in self.plan['tasks']})
+        fallbacks = [{'participant': name, 'taskIds': [item['id'] for item in self.plan['tasks'] if item['owner'] == name],
+                      'adapter': 'direct', 'preserves': ['input', 'output', 'verification'],
+                      'reasonCode': 'wait-budget-exhausted', 'source': 'agent-reported'} for name in participants]
+        forward = self._build(control_plane=control, fallbacks=fallbacks)
+        reverse = self._build(control_plane=control, fallbacks=list(reversed(fallbacks)))
+        self.assertEqual(forward['warnings'], reverse['warnings'])
+
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

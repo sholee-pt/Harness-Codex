@@ -474,6 +474,29 @@ class Validator:
         }
         for relative in sorted(topology_paths - managed_paths):
             self.error(f"topology path is not recorded as managed: {relative}")
+        self.pending_retirement = sorted(harness_state.native_entrypoints(managed_paths) - topology_paths)
+        for relative in self.pending_retirement:
+            self.warning(f"pending-retirement: retained native entry point is no longer in topology; review explicit removal: {relative}")
+            try:
+                path = harness_state.resolve_inside(self.root, relative, must_exist=True)
+                if relative.endswith(".toml"):
+                    data = tomllib.loads(path.read_text(encoding="utf-8"))
+                    if not all(isinstance(data.get(key), str) and data[key].strip() for key in ("name", "description", "developer_instructions")):
+                        raise ValueError(f"invalid retained native agent: {relative}")
+                else:
+                    harness_frontmatter.parse(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, ValueError) as exc:
+                self.error(str(exc))
+        contents = {}
+        dedicated_paths = {item.get("path") for item in entry_items if isinstance(item, dict) and item.get("kind", "file") == "file"}
+        for relative in sorted((managed_paths & dedicated_paths) - set(self.pending_retirement)):
+            if relative.endswith(".md"):
+                try:
+                    contents[relative] = harness_state.resolve_inside(self.root, relative, must_exist=True).read_text(encoding="utf-8")
+                except (OSError, UnicodeError, ValueError) as exc:
+                    self.error(str(exc))
+        for error in harness_state.missing_markdown_references(self.root, contents):
+            self.error(error)
 
     def validate_root_pointer(self) -> None:
         workspace = self.manifest.get("workspace")
@@ -690,6 +713,7 @@ class Validator:
             "externalCapabilities": external_capabilities,
             "errors": self.errors,
             "warnings": self.warnings,
+            "pendingRetirement": getattr(self, "pending_retirement", []),
         }
 
 

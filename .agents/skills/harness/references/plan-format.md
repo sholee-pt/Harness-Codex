@@ -1,6 +1,6 @@
 # Generation Plan Format
 
-Create one UTF-8 JSON draft with `authoringContractVersion: 3`, materialize its deterministic contracts, and pass the resulting plan to `scripts/harness_apply.py`. Harness for Codex v9.6 retains Plan Schema 3 but requires `artifactContractVersion: 2`. The builder removes the authoring-only revision and emits the artifact revision. Read [generated-contracts.md](generated-contracts.md): outer schema stability does not imply artifact compatibility.
+Create one UTF-8 JSON draft with `authoringContractVersion: 3`, materialize its deterministic contracts, and pass the resulting plan to `scripts/harness_apply.py`. The current generator retains Plan Schema 3 but requires `artifactContractVersion: 2`. The builder removes the authoring-only revision and emits the artifact revision. Read [generated-contracts.md](generated-contracts.md): outer schema stability does not imply artifact compatibility.
 
 Read [topology-contract.md](topology-contract.md) before filling the topology. Use the installed [minimal draft-plan example](minimal-draft-plan.json) as the packaging-safe starting point, then materialize its placeholders with `scripts/harness_plan_builder.py`.
 
@@ -88,7 +88,7 @@ Every specialist agent or skill has `scope` and `boundaryRefs`. `project-harness
 }
 ```
 
-Agent entry points use `.codex/agents/<snake_case_name>.toml`. Skill entry points use `.agents/skills/<kebab-case-name>/SKILL.md`. Every topology entry point must have a matching artifact.
+Agent entry points use `.codex/agents/<snake_case_name>.toml`. Skill entry points use `.agents/skills/<kebab-case-name>/SKILL.md`. Every topology entry point must have a matching artifact, and every newly generated native agent/skill entry point must be declared in topology. Supporting references, scripts and assets are not additional native roles. Explicit relative Markdown links into generated agent/skill support paths outside code examples must resolve to planned artifacts or existing resources. Ordinary project source links remain subject to source-evidence diagnostics, not managed-file integrity checks.
 
 ## File access and handoff
 

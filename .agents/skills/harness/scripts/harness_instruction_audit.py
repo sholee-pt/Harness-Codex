@@ -8,6 +8,7 @@ import re
 import tomllib
 
 import harness_frontmatter
+import harness_change_discipline
 import harness_state
 import harness_teamplay
 
@@ -41,6 +42,7 @@ def summarize(contents, skipped=None):
         # away independently of its artifact contract.
         body = re.sub(r'<!-- harness:[^>]+:begin -->.*?<!-- harness:[^>]+:end -->', '', body, flags=re.S)
         body = body.replace(harness_teamplay.AGENT_BLOCK, '')
+        body = body.replace(harness_change_discipline.WRITER_BLOCK, '')
         for paragraph in re.split(r'\n\s*\n', body):
             normalized = ' '.join(paragraph.split())
             if len(normalized) < 160 or normalized.startswith('```'):

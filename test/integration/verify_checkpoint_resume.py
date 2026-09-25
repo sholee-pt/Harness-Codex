@@ -57,12 +57,12 @@ def verify(output, *, live=False, codex='codex', timeout=300):
                 'alpha.spec', 'beta.spec', 'check.py', 'alpha.txt', 'beta.txt'}, 'Unexpected project writes'
 
         def finish(name, run, failed=False):
-            call('start', run, '--task', name)
+            attempt = call('start', run, '--task', name)['attemptId']
             if name != 'qa':
                 (project / (name + '.txt')).write_text(name.upper())
-            result = call('record', run, '--task', name, failed=failed)
+            result = call('record', run, '--task', name, '--attempt', attempt, failed=failed)
             assert result['status'] == ('blocked' if failed else 'completed')
-            call('quiesce', run, '--task', name, '--observed', 'idle')
+            call('quiesce', run, '--task', name, '--observed', 'idle', '--attempt', attempt)
 
         def native_phase(run, names):
             help_result = subprocess.run([codex, 'exec', '--help'], capture_output=True, text=True,
@@ -75,6 +75,7 @@ def verify(output, *, live=False, codex='codex', timeout=300):
                 'Do not commit, push, change permissions, or recursively delegate. Require an observed native handle; '
                 'if subagents are unavailable, stop and report the limitation. For each task the parent runs: ' + invocation +
                 ' --task TASK, replacing ACTION with start before dispatch and record after the child returns. '
+                'Retain the attemptId from start and pass --attempt ID to record and quiesce for that execution. '
                 'Child alpha or beta writes only TASK.txt containing TASK uppercased, without a newline. '
                 'Child qa is read-only and reviews both outputs. The first beta check deliberately fails: preserve it, '
                 'report blocked, and do not fix its spec. After observing each child turn is idle, the parent runs '

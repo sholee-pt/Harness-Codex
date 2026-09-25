@@ -517,6 +517,10 @@ class RuntimePlanValidator:
                 if participant.get("isolation") not in {"read-only", "frozen-diff"}:
                     raise RuntimePlanError("read-only participants use read-only or frozen-diff isolation")
             participants[identifier] = participant
+        try:
+            harness_topology.validate_scope_paths(self.root, {"boundaries": list(participants.values())})
+        except (OSError, harness_topology.TopologyError) as exc:
+            raise RuntimePlanError(f"current participant scope is invalid: {exc}") from exc
         return participants, persistent_agents
 
     def _validate_tasks(
@@ -653,6 +657,8 @@ class RuntimePlanValidator:
         if allowed_types != harness_teamplay.MESSAGE_TYPES:
             raise RuntimePlanError("communication.allowedTypes must contain the complete semantic set")
         max_rounds = _require_integer(communication.get("maxRounds"), "communication.maxRounds")
+        if max_rounds > harness_teamplay.MAX_REVISION_ROUNDS:
+            raise RuntimePlanError(f"communication.maxRounds exceeds the {harness_teamplay.MAX_REVISION_ROUNDS}-round revision contract")
         max_messages = _require_integer(
             communication.get("maxMessagesPerAgent"), "communication.maxMessagesPerAgent"
         )

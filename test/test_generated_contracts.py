@@ -156,6 +156,58 @@ class FrontmatterTests(unittest.TestCase):
 
 
 class AgentContractTests(unittest.TestCase):
+    def test_new_native_entrypoints_require_topology_membership(self):
+        for name, content in (('.codex/agents/undeclared.toml', 'not valid TOML'),
+                              ('.agents/skills/undeclared/SKILL.md', '---\nname: undeclared\ndescription: Example\n---\nBody')):
+            with self.subTest(path=name), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                plan = minimal_plan(root)
+                plan['artifacts'].append({'path': name, 'mode': '0644', 'content': content})
+                before = snapshot(root)
+                with self.assertRaisesRegex(ValueError, 'native entry points'):
+                    apply.build_application(root, plan)
+                plan['authoringContractVersion'] = metadata.AUTHORING_CONTRACT_VERSION
+                with self.assertRaisesRegex(ValueError, 'native entry points'):
+                    builder.materialize_plan(plan, root=root)
+                self.assertEqual(before, snapshot(root))
+
+    def test_missing_skill_reference_rejected_and_support_file_allowed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = minimal_plan(root, skill_suffix='\nRead [required check](references/check.md).\n')
+            with self.assertRaisesRegex(ValueError, 'missing local Markdown reference'):
+                apply.build_application(root, plan)
+            resource = '.agents/skills/project-harness/references/check.md'
+            plan['artifacts'].append({'path': resource, 'mode': '0644', 'content': 'Run the project checks.\n'})
+            # User-owned instruction links are outside this generated-resource check.
+            (root / 'AGENTS.md').write_text('[user reference](unavailable-user-file.md)\n')
+            apply.apply_application(apply.build_application(root, plan))
+            self.assertTrue(validate_harness.Validator(root).run()['valid'])
+            (root / resource).unlink()
+            report = validate_harness.Validator(root).run()
+            self.assertFalse(report['valid'])
+            self.assertTrue(any('missing local Markdown reference' in error for error in report['errors']))
+
+    def test_markdown_examples_and_external_links_are_not_required_local_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = minimal_plan(root, skill_suffix='\n```md\n[example](missing.md)\n```\n`[example](also-missing.md)`\n[web](https://example.com)\n[heading](#example)\n[project source](../../../source.py)\n')
+            self.assertTrue(apply.build_application(root, plan)['report']['valid'])
+
+    def test_retired_agents_remain_owned_and_visible_in_diagnostics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = coordinated(root)
+            apply.apply_application(apply.build_application(root, plan))
+            paths = sorted(item['path'] for item in plan['topology']['agents'])
+            before = {path: (root / path).read_bytes() for path in paths}
+            apply.apply_application(apply.build_application(root, minimal_plan(root)))
+            report = validate_harness.Validator(root).run()
+            self.assertTrue(report['valid'], report['errors'])
+            self.assertEqual(report['pendingRetirement'], paths)
+            self.assertTrue(any('pending-retirement' in warning for warning in report['warnings']))
+            self.assertEqual(before, {path: (root / path).read_bytes() for path in paths})
+
     def test_full_builder_supports_escaped_toml_strings_and_repeated_materialization(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
