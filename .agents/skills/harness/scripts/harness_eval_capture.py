@@ -419,6 +419,7 @@ def _terminate_process_tree(process: subprocess.Popen[str], *, grace_seconds: fl
         except PermissionError:
             return False
         while time.monotonic() < deadline:
+            process.poll()  # Reap the parent before checking for remaining group members.
             try:
                 os.killpg(process.pid, 0)
             except ProcessLookupError:
@@ -445,7 +446,8 @@ def _terminate_process_tree(process: subprocess.Popen[str], *, grace_seconds: fl
         except PermissionError:
             return False
         return False
-    return process.poll() is not None
+    # Parent exit and taskkill cannot prove that already orphaned children exited.
+    return False
 
 
 def windows_cleanup_implementation_sha256() -> str:
@@ -582,15 +584,12 @@ def run_codex_jsonl(
                 stream_closed = True
             else:
                 accumulator.feed(item)
-        cleanup_verified = True
-        if timed_out:
-            cleanup_verified = _terminate_process_tree(process)
-        else:
+        if not timed_out:
             try:
                 process.wait(timeout=max(0.1, deadline - time.monotonic()))
             except subprocess.TimeoutExpired:
                 timed_out = True
-                cleanup_verified = _terminate_process_tree(process)
+        cleanup_verified = _terminate_process_tree(process)
         elapsed_ms = max(0, int(round((time.monotonic() - started) * 1000)))
         summary = accumulator.summary()
         if timed_out:

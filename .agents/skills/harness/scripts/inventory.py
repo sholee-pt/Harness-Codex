@@ -345,7 +345,9 @@ def _file_role(path: Path, parts: tuple[str, ...]) -> str:
     return "unknown"
 
 
-def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = False) -> dict:
+def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = False, max_directories: int = 5000) -> dict:
+    if max_files < 1 or max_directories < 1:
+        raise ValueError("file and directory budgets must be positive")
     root_context = require_workspace_root(root)
     root = root.resolve()
     nested_paths = {item["path"] for item in root_context["nestedRepositories"]}
@@ -369,8 +371,22 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
     non_artifact_file_count = 0
     artifact_file_count = 0
     truncated = False
+    directory_count = 0
+    scan_errors: list[str] = []
+    directory_limit_reached = False
 
-    for current, dirs, files in os.walk(root, followlinks=False):
+    def record_error(error: OSError) -> None:
+        try:
+            label = Path(error.filename).resolve().relative_to(root).as_posix() if error.filename else "[unknown]"
+        except (OSError, ValueError):
+            label = "[outside-workspace]"
+        scan_errors.append(label)
+
+    for current, dirs, files in os.walk(root, followlinks=False, onerror=record_error):
+        if directory_count >= max_directories:
+            directory_limit_reached = truncated = True
+            break
+        directory_count += 1
         current_path = Path(current)
         kept_dirs: list[str] = []
         for directory in sorted(dirs):
@@ -385,7 +401,8 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
                 continue
             try:
                 linked = _is_link_or_reparse(path)
-            except OSError:
+            except OSError as exc:
+                record_error(exc)
                 continue
             if linked:
                 excluded_by_policy.append(
@@ -413,7 +430,8 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
             path = current_path / filename
             try:
                 linked = _is_link_or_reparse(path)
-            except OSError:
+            except OSError as exc:
+                record_error(exc)
                 continue
             if linked:
                 continue
@@ -507,6 +525,13 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
         "artifactFileCount": artifact_file_count,
         "fileRoleSummary": {role: file_roles.get(role, 0) for role in FILE_ROLES},
         "truncated": truncated,
+        "fileScanCompleteness": {
+            "status": "unknown" if scan_errors else "truncated" if truncated else "scanned",
+            "scannedDirectories": directory_count,
+            "maxDirectories": max_directories,
+            "directoryLimitReached": directory_limit_reached,
+            "unreadablePaths": sorted(set(scan_errors)),
+        },
         "sensitiveFilesSkipped": sensitive_skipped,
         "excludedByPolicy": sorted(excluded_by_policy, key=lambda item: item["path"]),
         "extensions": dict(sorted(extensions.items(), key=lambda item: (-item[1], item[0]))),
@@ -539,6 +564,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", nargs="?", default=".")
     parser.add_argument("--max-files", type=int, default=5000)
+    parser.add_argument("--max-directories", type=int, default=5000)
     parser.add_argument(
         "--include-artifacts",
         action="store_true",
@@ -548,13 +574,15 @@ def main() -> int:
 
     if args.max_files < 1:
         parser.error("--max-files must be positive")
+    if args.max_directories < 1:
+        parser.error("--max-directories must be positive")
 
     root = Path(args.root)
     if not root.is_dir():
         parser.error(f"workspace root is not a directory: {root}")
 
     try:
-        report = build_inventory(root, args.max_files, include_artifacts=args.include_artifacts)
+        report = build_inventory(root, args.max_files, include_artifacts=args.include_artifacts, max_directories=args.max_directories)
     except ValueError as exc:
         parser.error(str(exc))
     print(json.dumps(report, indent=2, ensure_ascii=False))

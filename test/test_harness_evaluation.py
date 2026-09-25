@@ -275,6 +275,34 @@ class MeasurementTests(unittest.TestCase):
 
 
 class JsonlCaptureTests(unittest.TestCase):
+    def test_normal_capture_checks_cleanup_instead_of_assuming_success(self):
+        popen = subprocess.Popen
+        def child(command, **options):
+            return popen([sys.executable, '-B', '-c', 'import sys; sys.stdin.read(); print(\'{"type":"turn.completed"}\')'], **options)
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(capture, 'codex_preflight', return_value='fixture'), mock.patch.object(capture.subprocess, 'Popen', side_effect=child), mock.patch.object(capture, '_terminate_process_tree', return_value=False) as cleanup:
+                summary, exit_code, _, verified, _ = capture.run_codex_jsonl(repository=Path(directory), prompt='fixture', sandbox='read-only', timeout_seconds=10)
+            self.assertEqual(summary.completion, 'completed')
+            self.assertEqual(exit_code, 0)
+            self.assertFalse(verified)
+            cleanup.assert_called_once()
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX process-group cleanup')
+    def test_normal_capture_terminates_a_surviving_descendant(self):
+        popen = subprocess.Popen
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            descendant = "import time; from pathlib import Path; time.sleep(1); Path('escaped.txt').write_text('escaped')"
+            parent = f"import subprocess,sys; subprocess.Popen([sys.executable,'-c',{descendant!r}],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); sys.stdin.read(); print('{{\"type\":\"turn.completed\"}}')"
+            def child(command, **options):
+                return popen([sys.executable, '-B', '-c', parent], cwd=root, **options)
+            with mock.patch.object(capture, 'codex_preflight', return_value='fixture'), mock.patch.object(capture.subprocess, 'Popen', side_effect=child):
+                summary, exit_code, _, _, _ = capture.run_codex_jsonl(repository=root, prompt='fixture', sandbox='read-only', timeout_seconds=10)
+            self.assertEqual(summary.completion, 'completed')
+            self.assertEqual(exit_code, 0)
+            time.sleep(1.1)
+            self.assertFalse((root / 'escaped.txt').exists())
+
     def test_prompt_backpressure_cannot_bypass_capture_timeout(self):
         children = []
         popen = subprocess.Popen
@@ -287,7 +315,7 @@ class JsonlCaptureTests(unittest.TestCase):
                 with mock.patch.object(capture, 'codex_preflight', return_value='fixture'), mock.patch.object(capture.subprocess, 'Popen', side_effect=child):
                     summary, _, elapsed, cleanup, _ = capture.run_codex_jsonl(repository=Path(directory), prompt='x' * (1024 * 1024), sandbox='read-only', timeout_seconds=1)
                 self.assertEqual(summary.completion, 'interrupted')
-                self.assertTrue(cleanup)
+                self.assertEqual(cleanup, os.name != 'nt')
                 self.assertLess(elapsed, 15000)
                 self.assertIsNotNone(children[0].poll())
                 self.assertTrue(children[0].stdin.closed)
@@ -1678,6 +1706,15 @@ class ComparisonTests(unittest.TestCase):
 
 
 class PairedIsolationTests(unittest.TestCase):
+    def test_verification_interruption_always_cleans_up(self):
+        process = mock.Mock()
+        process.wait.side_effect = KeyboardInterrupt
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(harness_eval.subprocess, 'Popen', return_value=process), mock.patch.object(capture, '_terminate_process_tree', return_value=False) as cleanup:
+                with self.assertRaises(KeyboardInterrupt):
+                    harness_eval._run_verification(root=Path(directory), profile={'argv': ['fixture'], 'timeoutSeconds': 1, 'kind': 'custom'}, profile_digest=HASH, check_ref='check:' + '4' * 32)
+            cleanup.assert_called_once_with(process)
+
     @staticmethod
     def _verification_repository(parent: Path) -> tuple[Path, str]:
         root = parent / "repo"
@@ -2436,7 +2473,7 @@ class PairedIsolationTests(unittest.TestCase):
                 quiescent=True,
             )
             self.assertEqual(result["result"], "passed")
-            self.assertTrue(cleanup_verified)
+            self.assertEqual(cleanup_verified, os.name != 'nt')
             self.assertEqual(task_fingerprint, post_fingerprint)
             self.assertEqual(pre_signature, post_signature)
             self.assertEqual(record["comparison"]["isolationStatus"], "complete")
@@ -2489,7 +2526,7 @@ class PairedIsolationTests(unittest.TestCase):
                     quiescent=True,
                 )
                 self.assertEqual(result["result"], "passed")
-                self.assertTrue(cleanup_verified)
+                self.assertEqual(cleanup_verified, os.name != 'nt')
                 self.assertNotEqual(task_fingerprint, post_fingerprint)
                 self.assertEqual(
                     record["result"]["resultFingerprint"]["value"],
@@ -2561,7 +2598,7 @@ class PairedIsolationTests(unittest.TestCase):
                     quiescent=True,
                 )
                 self.assertEqual(result["result"], "passed")
-                self.assertTrue(cleanup_verified)
+                self.assertEqual(cleanup_verified, os.name != 'nt')
                 self.assertEqual(task_fingerprint, post_fingerprint)
                 self.assertNotEqual(pre_signature, post_signature)
                 self.assertEqual(record["comparison"]["isolationStatus"], "partial")
@@ -2599,7 +2636,7 @@ class PairedIsolationTests(unittest.TestCase):
             )
             self.assertEqual(result["result"], "failed")
             self.assertEqual(result["exitCode"]["state"], "unavailable")
-            self.assertTrue(cleanup_verified)
+            self.assertEqual(cleanup_verified, os.name != 'nt')
 
     @unittest.skipIf(os.name == "nt", "Windows process-tree assurance is receipt-gated")
     def test_verification_timeout_terminates_descendants(self) -> None:
@@ -2626,7 +2663,7 @@ class PairedIsolationTests(unittest.TestCase):
                 check_ref="check:" + "4" * 32,
             )
             time.sleep(0.7)
-            self.assertTrue(cleanup_verified)
+            self.assertEqual(cleanup_verified, os.name != 'nt')
             self.assertFalse((root / "escaped.txt").exists())
 
 
@@ -2977,6 +3014,19 @@ class ObservationLifecycleTests(unittest.TestCase):
                 run_id=uuid_text(2),
             )
             self.assertEqual(state["active"]["annotationId"], uuid_text(22))
+            successor = evaluation_store.repository_root(repository_id) / "annotations" / uuid_text(2) / f"{uuid_text(22)}.json"
+            original = successor.read_bytes()
+            for corrupt in (b'{', b'[]', b'{}'):
+                with self.subTest(corrupt=corrupt):
+                    successor.write_bytes(corrupt)
+                    with self.assertRaisesRegex(store_module.StoreError, "invalid"):
+                        evaluation_store.annotations_for_run(repository_id, uuid_text(2))
+                    with self.assertRaisesRegex(store_module.StoreError, "invalid"):
+                        evaluation_store.add_annotation(repository_id, annotation(uuid_text(23), uuid_text(20)))
+                    self.assertEqual(successor.read_bytes(), corrupt)
+                    self.assertTrue(evaluation_store.repair_repository(repository_id)["invalid"])
+                    self.assertEqual(evaluation_store.export_repository(repository_id)["excludedCount"], 1)
+            successor.write_bytes(original)
 
             legacy = []
             for number in (30, 31):
@@ -3034,6 +3084,28 @@ class ObservationLifecycleTests(unittest.TestCase):
                 evaluation_store.observations_for_run(repository_id, uuid_text(2)), repository_id=repository_id, run_id=uuid_text(2)
             )
             self.assertEqual(state["active"], [])
+            successor = evaluation_store.repository_root(repository_id) / "observations" / f"{uuid_text(12)}.json"
+            original = successor.read_bytes()
+            wrong_hash = json.loads(original)
+            wrong_hash["integrity"]["recordSha256"] = "0" * 64
+            for corrupt in (b'{', b'[]', b'{}', json.dumps(wrong_hash).encode()):
+                with self.subTest(corrupt=corrupt):
+                    successor.write_bytes(corrupt)
+                    with self.assertRaisesRegex(store_module.StoreError, "invalid"):
+                        evaluation_store.observations_for_run(repository_id, uuid_text(2))
+                    with self.assertRaisesRegex(store_module.StoreError, "invalid"):
+                        evaluation_store.add_observation(repository_id, observation_record(repository_id, uuid_text(2), uuid_text(15), kind="replacement", supersedes=uuid_text(11)))
+                    report = evaluation_store.repair_repository(repository_id)
+                    self.assertEqual(len(report["invalid"]), 1)
+                    self.assertEqual(report["quarantined"], 0)
+                    self.assertEqual(successor.read_bytes(), corrupt)
+                    self.assertEqual(evaluation_store.export_repository(repository_id)["excludedCount"], 1)
+            successor.write_bytes(original)
+            self.assertEqual(evaluation_store.repair_repository(repository_id)["invalid"], [])
+            successor.write_bytes(b'{')
+            self.assertEqual(evaluation_store.repair_repository(repository_id, quarantine=True)["quarantined"], 1)
+            self.assertFalse(successor.exists())
+            self.assertEqual(len(evaluation_store.observations_for_run(repository_id, uuid_text(2))), 2)
 
     def test_equal_authority_observations_conflict_but_runtime_value_wins_over_report(self) -> None:
         repository_id = uuid_text(1)

@@ -56,6 +56,21 @@ def contract_source(root, version):
 
 
 class SourceContractTests(unittest.TestCase):
+    def test_generator_imports_and_entrypoints_are_required_before_writes(self):
+        for name in ("harness_state", "validate_harness", "harness_doctor", "harness_eval_capture"):
+            with self.subTest(module=name):
+                source = write_source(self.base / name, dist._snapshot(REPO))
+                (source / f".agents/skills/harness/scripts/{name}.py").unlink()
+                self.assert_rejected_before_writes(source, name)
+
+    def test_generator_imports_are_checked_without_executing_source(self):
+        source = contract_source(self.base / "generator-imports", "9.8")
+        scripts = source / ".agents/skills/harness/scripts"
+        (scripts / "harness_probe.py").write_text("import harness_dependency\n", encoding="utf-8")
+        self.assert_rejected_before_writes(source, "harness_dependency")
+        (scripts / "harness_dependency.py").write_text("raise RuntimeError('must not execute')\n", encoding="utf-8")
+        self.assertEqual(dist._source_info(dist._snapshot(source))[0], "9.8")
+
     def test_current_release_requires_the_native_runtime_cleanup_helper(self):
         source = write_source(self.base / 'missing-cleanup', dist._snapshot(REPO))
         (source / 'harness_cli/runtime_cleanup.ps1').unlink()

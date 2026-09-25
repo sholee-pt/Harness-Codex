@@ -32,10 +32,21 @@ def directory_metadata(path):
 
 
 class ProjectInstallTests(unittest.TestCase):
+    def test_missing_generator_dependency_preserves_project_before_receipt(self):
+        source = self.base / "current source"
+        shutil.copytree(REPO_ROOT / ".agents/skills/harness", source, ignore=shutil.ignore_patterns("__pycache__"))
+        (source / "scripts/harness_state.py").unlink()
+        before = state(self.root)
+        for dry_run in (True, False):
+            with self.subTest(dry_run=dry_run), self.assertRaisesRegex(installer.InstallError, "harness_state"):
+                installer.install(self.root, source=source, dry_run=dry_run)
+            self.assertEqual(state(self.root), before)
+        self.assertFalse(self.target.exists())
+
     def test_legacy_entrypoint_from_copied_source_is_readonly_without_python_flags(self):
         release = self.base / "copied release"
         (release / "harness_cli").mkdir(parents=True)
-        for name in ("install.py", "harness_cli/__init__.py", "harness_cli/project_installer.py"):
+        for name in ("install.py", "harness_cli/__init__.py", "harness_cli/project_installer.py", "harness_cli/versions.py"):
             shutil.copyfile(REPO_ROOT / name, release / name)
         shutil.copytree(self.source, release / ".agents/skills/harness")
         environment = os.environ.copy()
@@ -144,7 +155,7 @@ class ProjectInstallTests(unittest.TestCase):
         (self.target / "references/user.md").write_text("user documentation")
         preserved = {name: value for name, value in state(self.target).items() if name in {"notes.txt", "references/user.md", "SKILL.md"}}
         (self.source / "references/readme.md").unlink()
-        (self.source / "scripts/harness_metadata.py").write_text('HARNESS_VERSION = "next-test-release"\n')
+        (self.source / "scripts/harness_metadata.py").write_text('HARNESS_VERSION = "8.2"\n')
         (self.source / "assets/template.md").write_text("updated template")
         (self.source / "references/new.md").write_text("new documentation")
         before = state(self.root)
@@ -157,7 +168,7 @@ class ProjectInstallTests(unittest.TestCase):
         self.assertEqual((self.target / "assets/template.md").read_text(), "updated template")
         self.assertEqual({name: state(self.target)[name] for name in preserved}, preserved)
         receipt = json.loads((self.target / installer.RECEIPT).read_text())
-        self.assertEqual(receipt["generatorVersion"], "next-test-release")
+        self.assertEqual(receipt["generatorVersion"], "8.2")
         self.assertNotIn("notes.txt", receipt["files"])
         self.assertEqual(self.install()["writes"], 0)
 

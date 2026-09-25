@@ -25,6 +25,7 @@ import time
 
 from .paths import checked_path, is_link as _linked
 from .versions import BRANCH_RE, VERSION_RE, version_key, branch_version
+from .project_installer import GENERATOR_ENTRYPOINTS, InstallError, validate_generator_source
 
 
 DEFAULT_REPOSITORY = "https://github.com/sholee-pt/Harness-Codex.git"
@@ -43,6 +44,9 @@ REQUIRED = frozenset({"harness.py", "install.py", "harness_cli/__init__.py", "ha
 # Keep the original common set valid for complete v9.2 and v9.3 distributions.
 # Later releases inherit each dependency from its numeric introduction version.
 VERSION_REQUIRED = (
+    (version_key("0.23.0-beta"), frozenset({"harness_cli/project_installer.py", *(
+        ".agents/skills/harness/scripts/" + name + ".py" for name in GENERATOR_ENTRYPOINTS
+    )})),
     (version_key("0.22.1-beta"), frozenset({"harness_cli/helper.py"})),
     (version_key("0.22.0-beta"), frozenset({"harness_cli/skills.py", ".agents/skills/harness/scripts/harness_external_skills.py", ".agents/skills/harness/references/external-skills.md", ".agents/skills/harness/references/scientific-workflows.md", ".agents/skills/harness/references/contract-review.md"})),
     (version_key("0.21.0-beta"), frozenset({"harness_cli/locking.py", ".agents/skills/harness/scripts/harness_eval_lock.py", ".agents/skills/harness/scripts/harness_instruction_audit.py"})),
@@ -265,7 +269,7 @@ def _source_info(snapshot: dict[str, bytes]) -> tuple[str, str | None]:
                     tree = ast.parse(data, name)
                     imports.update(_cli_imports(name, tree))
                     compile(tree, name, "exec")
-                else:
+                elif not name.startswith(".agents/skills/harness/scripts/"):
                     compile(data, name, "exec")
         commit = None
         if "_release.json" in snapshot:
@@ -290,6 +294,11 @@ def _source_info(snapshot: dict[str, bytes]) -> tuple[str, str | None]:
                              if module + ".py" not in snapshot and module + "/__init__.py" not in snapshot)
     if missing_imports:
         raise DistributionError("source is missing imported CLI modules: " + ", ".join(missing_imports))
+    prefix = ".agents/skills/harness/"
+    try:
+        validate_generator_source({name[len(prefix):]: data for name, data in snapshot.items() if name.startswith(prefix)}, version)
+    except InstallError as exc:
+        raise DistributionError(str(exc)) from exc
     return version, commit
 
 

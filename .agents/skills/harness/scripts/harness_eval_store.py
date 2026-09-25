@@ -338,7 +338,7 @@ class EvaluationStore:
         with self.repository_lock(repository_id):
             if path.exists():
                 raise StoreError("annotation id already exists")
-            existing = self._read_json_records(directory)
+            existing = self._read_json_records(directory, types.validate_annotation)
             if sealed["schemaVersion"] == 2:
                 state = evaluation_view.annotation_state(
                     existing, repository_id=repository_id, run_id=sealed["runId"]
@@ -354,17 +354,19 @@ class EvaluationStore:
             _atomic_json(path, sealed)
         return path
 
-    def _read_json_records(self, directory: Path) -> list[dict[str, Any]]:
+    def _read_json_records(self, directory: Path, validator, *, skip_invalid: bool = False) -> list[dict[str, Any]]:
         if not directory.is_dir():
             return []
         records: list[dict[str, Any]] = []
         for path in sorted(directory.rglob("*.json")):
             try:
                 value = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, UnicodeError, json.JSONDecodeError):
-                continue
-            if isinstance(value, dict):
-                records.append(value)
+                validator(value)
+            except (OSError, UnicodeError, json.JSONDecodeError, types.EvaluationError) as exc:
+                if skip_invalid:  # Repair has already reported these files explicitly.
+                    continue
+                raise StoreError(f"evaluation record is invalid: {path.relative_to(directory).as_posix()}; run repair before interpreting or changing this history") from exc
+            records.append(value)
         return records
 
     def add_observation(self, repository_id: str, observation: dict[str, Any]) -> Path:
@@ -379,7 +381,7 @@ class EvaluationStore:
             if path.exists():
                 raise StoreError("observation id already exists")
             existing = [
-                item for item in self._read_json_records(directory)
+                item for item in self._read_json_records(directory, types.validate_observation_record)
                 if item.get("runId") == sealed["runId"]
             ]
             state = evaluation_view.observation_graph(
@@ -400,9 +402,7 @@ class EvaluationStore:
         self.read_run(repository_id, run_id, allow_pending=False)
         directory = self._ensure_repository_dirs(repository_id) / "observations"
         with self.repository_lock(repository_id):
-            values = [item for item in self._read_json_records(directory) if item.get("runId") == run_id]
-        for value in values:
-            types.validate_observation_record(value)
+            values = [item for item in self._read_json_records(directory, types.validate_observation_record) if item.get("runId") == run_id]
         return values
 
     def find_observation(self, observation_id: str) -> tuple[str, dict[str, Any]]:
@@ -432,9 +432,7 @@ class EvaluationStore:
         self.read_run(repository_id, run_id, allow_pending=False)
         directory = self._ensure_repository_dirs(repository_id) / "annotations" / run_id
         with self.repository_lock(repository_id):
-            values = self._read_json_records(directory)
-        for value in values:
-            types.validate_annotation(value)
+            values = self._read_json_records(directory, types.validate_annotation)
         return values
 
     def write_auxiliary(self, repository_id: str, kind: str, record_id: str, value: dict[str, Any]) -> Path:
@@ -460,11 +458,8 @@ class EvaluationStore:
                 raise StoreError(f"{kind[:-1]} id already exists")
             if kind == "comparisons":
                 identity = _comparison_identity(sealed)
-                for existing in self._read_json_records(path.parent):
-                    try:
-                        existing_identity = _comparison_identity(existing)
-                    except (KeyError, TypeError):
-                        continue
+                for existing in self._read_json_records(path.parent, types.validate_comparison_record):
+                    existing_identity = _comparison_identity(existing)
                     if existing_identity == identity:
                         raise StoreError(
                             "comparison already exists for this run pair and plan with the same derived views"
@@ -638,7 +633,7 @@ class EvaluationStore:
                         target.parent.mkdir(parents=True, exist_ok=True)
                         os.replace(path, target)
                         moved += 1
-            observation_records = self._read_json_records(root / "observations")
+            observation_records = self._read_json_records(root / "observations", types.validate_observation_record, skip_invalid=True)
             observation_runs = {
                 item.get("runId") for item in observation_records if isinstance(item.get("runId"), str)
             }
@@ -658,7 +653,7 @@ class EvaluationStore:
             annotation_runs = [item for item in annotation_root.iterdir() if item.is_dir()] if annotation_root.is_dir() else []
             for run_directory in annotation_runs:
                 state = evaluation_view.annotation_state(
-                    self._read_json_records(run_directory),
+                    self._read_json_records(run_directory, types.validate_annotation, skip_invalid=True),
                     repository_id=repository_id,
                     run_id=run_directory.name,
                 )

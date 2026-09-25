@@ -27,6 +27,7 @@ import time
 RECEIPT = ".harness-install.json"
 COMPONENTS = ("SKILL.md", "scripts", "references", "assets")
 IGNORED = {".git", "__pycache__", RECEIPT}
+GENERATOR_ENTRYPOINTS = frozenset({"inventory", "harness_state", "harness_plan_builder", "harness_apply", "validate_harness", "harness_doctor", "harness_metadata"})
 
 
 class InstallError(ValueError):
@@ -122,6 +123,36 @@ def source_version(entries: dict[str, Entry]) -> str:
 
 def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def validate_generator_source(files: dict[str, bytes], version: str) -> None:
+    """Check generator entrypoints and local imports without executing source."""
+    from harness_cli.versions import version_key
+
+    try:
+        current = version_key(version) >= version_key("0.23.0-beta")
+    except ValueError as exc:
+        raise InstallError("invalid generator release version") from exc
+    required = set(GENERATOR_ENTRYPOINTS) if current else set()
+    modules = {Path(name).stem for name in files if name.startswith("scripts/") and name.endswith(".py")}
+    local_names = modules | GENERATOR_ENTRYPOINTS | {"validate_runtime_plan", "validate_coordination_packet", "evaluate_topology"}
+    for name, data in files.items():
+        if not name.startswith("scripts/") or not name.endswith(".py"):
+            continue
+        try:
+            tree = ast.parse(data, name)
+            compile(tree, name, "exec")
+        except (SyntaxError, UnicodeError, ValueError) as exc:
+            raise InstallError(f"invalid generator Python source: {name}") from exc
+        for node in ast.walk(tree):
+            imports = [alias.name for alias in node.names] if isinstance(node, ast.Import) else [node.module] if isinstance(node, ast.ImportFrom) and node.module else []
+            for module in imports:
+                module = module.split(".", 1)[0]
+                if module in local_names or module.startswith("harness_"):
+                    required.add(module)
+    missing = sorted(f"scripts/{module}.py" for module in required if f"scripts/{module}.py" not in files)
+    if missing:
+        raise InstallError("source is missing required generator modules: " + ", ".join(missing))
 
 
 def managed_path(value: object) -> str:
@@ -290,6 +321,7 @@ def install(root: Path, *, dry_run: bool = False, source: Path | None = None) ->
         if name not in incoming or incoming[name].data is not None:
             raise InstallError(f"source {name} must be a directory")
     version = source_version(incoming)
+    validate_generator_source({name: entry.data for name, entry in incoming.items() if entry.data is not None}, version)
     destination = checked_path(root / ".agents/skills/harness")
     report = {"valid": True, "generatorVersion": version, "destination": str(destination), "dryRun": dry_run,
               "writes": 0, "removes": 0, "directoriesCreated": 0,

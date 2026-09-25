@@ -7,8 +7,8 @@ Read this reference before creating or validating a current-task execution plan.
 1. Bind the plan to the exact manifest bytes and canonical persistent topology.
 2. Classify the current task by interaction value.
 3. Assign temporary runtime roles and a bounded task graph.
-4. Probe capability with the first real selected task agent and choose `codex-subagent-relay`, `sequential-relay`, or a contract-preserving direct fallback.
-5. Run `validate_runtime_plan.py` before execution.
+4. Declare the intended adapter, capability probe, and contract-preserving fallback, then run `validate_runtime_plan.py` before spawning any participant.
+5. Probe capability with the first real selected task agent, without a separate disposable probe agent. Choose `codex-subagent-relay`, `sequential-relay`, or the declared direct fallback; validate any revised plan before further execution.
 6. Replan when the manifest, topology, task scope, or a frozen input changes.
 7. Delete the plan and workspace after completion unless the user selected a stricter disclosed retention mode.
 

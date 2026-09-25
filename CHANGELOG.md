@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.23.0‑beta`](#harness-for-codex-v0230-beta) | Schema 3 | Schema 7 | Schema 2 | Reject incomplete generator payloads and corrupt evaluation histories, clean up evaluation children and bound directory traversal |
 | [`v0.22.1‑beta`](#harness-for-codex-v0221-beta) | Schema 3 | Schema 7 | Schema 2 | Use the installed helper interpreter, preserve concurrent edits, reject per-check regressions and recover bounded maintenance/retrieval failures |
 | [`v0.22.0‑beta`](#harness-for-codex-v0220-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve external specialist skills, reuse relevant procedures and strengthen scientific and cross-contract review |
 | [`v0.21.1‑beta`](#harness-for-codex-v0211-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve concurrent user edits, fence checkpoint attempts, recover partial setup and align generated/runtime contracts |
@@ -66,6 +67,15 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.23.0-beta
+
+- Validate generator entrypoints and transitive local imports before tool or project installation creates a receipt; retain previous-release compatibility.
+- Clean up evaluation process groups after normal completion and interruptions; do not label an unverified Windows descendant tree as cleaned up.
+- Reject corrupt observation, annotation and comparison histories before deriving state or writing successors; preserve explicit repair and quarantine.
+- Bound file inventory by directories as well as files and report unreadable or truncated coverage separately from root discovery.
+- Align runtime-plan validation before the first participant, current-version attribution eligibility and unsupported/degraded runtime evidence guidance.
+- Preserve Plan Schema 3, Manifest Schema 7, Transaction Schema 2 and Artifact Contract 2; compare upgrades against v0.22.1-beta.
 
 ## Harness for Codex v0.22.1-beta
 

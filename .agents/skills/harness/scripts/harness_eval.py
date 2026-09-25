@@ -1140,9 +1140,10 @@ def _run_verification(
         result = "failed"
     except OSError as exc:
         raise types.EvaluationError("verification process could not be started") from exc
-    cleanup_verified = (
-        capture._terminate_process_tree(process) if process is not None else False
-    )
+    finally:
+        cleanup_verified = (
+            capture._terminate_process_tree(process) if process is not None else False
+        )
     exit_measurement = (
         types.measurement(
             exit_code,

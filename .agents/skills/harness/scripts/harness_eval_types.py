@@ -219,6 +219,8 @@ def seal_record(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def verify_integrity(record: dict[str, Any]) -> None:
+    if not isinstance(record, dict):
+        raise EvaluationError("evaluation record must be an object")
     integrity = record.get("integrity")
     recorded = integrity.get("recordSha256") if isinstance(integrity, dict) else None
     if not isinstance(recorded, str) or not HASH_RE.fullmatch(recorded):

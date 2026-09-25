@@ -151,6 +151,33 @@ def minimal_plan(root: Path, *, skill_suffix: str = "", skill_mode: str = "0644"
 
 
 class InventoryTests(unittest.TestCase):
+    def test_empty_directories_consume_a_separate_inventory_budget(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for index in range(8):
+                (root / f"empty-{index}").mkdir()
+            bounded = inventory.build_inventory(root, max_files=1, max_directories=3)
+            self.assertEqual(bounded["fileCount"], 0)
+            self.assertTrue(bounded["truncated"])
+            self.assertTrue(bounded["fileScanCompleteness"]["directoryLimitReached"])
+            self.assertEqual(bounded["fileScanCompleteness"]["scannedDirectories"], 3)
+            self.assertEqual(bounded["rootContext"]["scanCompleteness"]["status"], "scanned")
+            complete = inventory.build_inventory(root, max_files=1, max_directories=9)
+            self.assertFalse(complete["truncated"])
+            self.assertEqual(complete["fileScanCompleteness"]["status"], "scanned")
+
+    def test_unreadable_inventory_path_is_reported_as_unknown(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            context = inventory.require_workspace_root(root)
+            def walk(path, **options):
+                options["onerror"](PermissionError(13, "fixture", str(root / "unreadable")))
+                yield str(root), [], []
+            with mock.patch.object(inventory, "require_workspace_root", return_value=context), mock.patch.object(inventory.os, "walk", side_effect=walk):
+                result = inventory.build_inventory(root, max_files=1)
+            self.assertEqual(result["fileScanCompleteness"]["status"], "unknown")
+            self.assertEqual(result["fileScanCompleteness"]["unreadablePaths"], ["unreadable"])
+
     def test_inventory_is_bounded_and_ignores_dependencies_and_secrets(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

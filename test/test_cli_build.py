@@ -194,12 +194,9 @@ class ReleaseBuildTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_release.build(self.root, self.output)
         self.assertFalse(self.output.exists())
-        report = build_release.build(self.root, self.output, allow_dirty=True)
-        self.assertIsNone(report["commit"])
-        self.assertTrue(report["developmentBuild"])
-        files = self.contents(report["artifact"])
-        self.assertNotIn(name, files)
-        self.assertIsNone(json.loads(files["_release.json"])["commit"])
+        with self.assertRaisesRegex(ValueError, "harness_doctor"):
+            build_release.build(self.root, self.output, allow_dirty=True)
+        self.assertFalse(self.output.exists())
 
     def test_existing_output_content_is_preserved(self):
         self.output.mkdir()

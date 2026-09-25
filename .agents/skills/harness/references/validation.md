@@ -31,7 +31,7 @@ Read this reference after artifacts have been generated or updated.
 - A runtime plan is bound to the exact current manifest and canonical topology, references only allowed persistent agents or explicitly provisional participants, and does not modify either file.
 - Coordinated runtime plans have finite communication and reassignment budgets, evidence-backed challenges, stopping conditions, capability fallback, isolated writers, and ephemeral retention by default.
 - Draft plans materialize every deterministic change-discipline, teamplay, and topology-derived agent contract exactly once before apply checks the Schema 3 plan and Artifact Contract 2.
-- Runtime receipts reject empty receivers, duplicate spawns, role/parent/session-source mismatch, unknown receivers, missing agent states, unrecognized event profiles, malformed or unknown critical events, and exhausted or inconsistent fixed wait budgets.
+- Runtime receipts reject invalid receiver/control-plane state, duplicate spawns, verified role/parent/session-source contradictions, and exhausted or inconsistent fixed wait budgets. Unregistered event profiles are unsupported; malformed or unknown event structures degrade evidence. Missing optional evidence alone is not a verified conflict.
 - Relay receipts bind reviews to input packet hashes, invalidate stale reviews, and account for exactly the affected agents without changing Coordination Packet Schema 1.
 - Builder, apply, and installed-state validation accept selected Git-contained folders, nested independent repositories, and linked worktrees while rejecting paths outside the selected root.
 - Authoring Contract 3 drafts materialize to Schema 3 plans with Artifact Contract 2 and cannot reach apply with the draft-only version field intact.
