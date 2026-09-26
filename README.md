@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="environment.yml"><img src="https://img.shields.io/badge/Python-3.11-3776AB.svg?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.11"></a>
-  <a href="#for-linux"><img src=".github/badges/platform.svg" alt="Platform: Linux"></a>
+  <a href="#installation-guide"><img src=".github/badges/platform.svg" alt="Platform: Linux and Windows"></a>
 </p>
 
 <p align="center">
