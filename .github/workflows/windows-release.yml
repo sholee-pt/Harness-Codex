@@ -28,9 +28,6 @@ jobs:
         working-directory: source
     env:
       SOURCE_COMMIT: ${{ inputs.source_commit }}
-      # Avoid runneradmin's 8.3 home alias breaking path-based fault injection.
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
       CARGO_BUILD_JOBS: '1'
       NEXTEST_TEST_THREADS: '1'
       CARGO_INCREMENTAL: '0'
@@ -52,6 +49,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$SOURCE_COMMIT" -f state=pending -f 'context=Harness / Windows release' -f 'description=Explicit one-off Windows verification' -f "target_url=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+      - name: Use canonical Windows temporary paths
+        shell: pwsh
+        run: |
+          # Avoid runneradmin's 8.3 home alias breaking path-based fault injection.
+          "TEMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+          "TMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
       - uses: conda-incubator/setup-miniconda@v4.0.1
         with:
           activate-environment: harness
