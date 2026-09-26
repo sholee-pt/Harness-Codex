@@ -28,6 +28,9 @@ jobs:
         working-directory: source
     env:
       SOURCE_COMMIT: ${{ inputs.source_commit }}
+      # Avoid runneradmin's 8.3 home alias breaking path-based fault injection.
+      TEMP: ${{ runner.temp }}
+      TMP: ${{ runner.temp }}
       CARGO_BUILD_JOBS: '1'
       NEXTEST_TEST_THREADS: '1'
       CARGO_INCREMENTAL: '0'
@@ -58,6 +61,7 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
           conda run -n harness python -B build/native_ui/source.py
+          conda run -n harness python -B -c 'import pathlib,tempfile; p=pathlib.Path(tempfile.gettempdir()); assert p == p.resolve(), "Windows test temporary directory must use its canonical path"'
           conda run -n harness python -B install.py --root "$RUNNER_TEMP" --dry-run
       - name: Run complete Windows regression tests
         timeout-minutes: 20
