@@ -79,7 +79,8 @@ class ReleaseConsistencyTests(unittest.TestCase):
         self.assertIn('v' + current + '/install_harness_codex.sh', readme)
         self.assertIn('| [`v' + current.replace('-beta', '‑beta') + '`](#harness-for-codex-v' + current.replace('.', '') + ')', versions)
         self.assertIn('This branch contains Harness for Codex v' + current, agents)
-        self.assertIn('name: Harness for Codex v' + current + ' checks', workflow)
+        self.assertEqual(workflow.splitlines()[0], 'name: Harness for Codex')
+        self.assertIn("run-name: ${{ inputs.publish && 'Linux release' || 'Checks' }} · ${{ github.base_ref || github.ref_name }}", workflow)
         self.assertIn('- v' + current, workflow)
         self.assertEqual(sorted(workflow_path.parent.glob('codex-*.yml')), [workflow_path])
 
