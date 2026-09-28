@@ -263,15 +263,19 @@ class MeasurementTests(unittest.TestCase):
                 completeness="partial",
             )
 
-    def test_reasoning_effort_uses_current_codex_labels(self) -> None:
+    def test_reasoning_effort_preserves_future_labels_and_rejects_malformed_values(self) -> None:
         repository_id = uuid_text(1)
         valid = manual_record(repository_id, uuid_text(2))
         types.validate_run_record(valid)
-        invalid = copy.deepcopy(valid)
-        invalid["runtime"]["reasoningEffort"] = "extra-high"
-        invalid = types.seal_record(invalid)
-        with self.assertRaises(types.EvaluationError):
-            types.validate_run_record(invalid)
+        for effort in ("extra-high", "adaptive", "none", "max", "ultra"):
+            record = copy.deepcopy(valid)
+            record["runtime"]["reasoningEffort"] = effort
+            types.validate_run_record(types.seal_record(record))
+        for effort in ("", "high\n", "x" * 257, [], None):
+            invalid = copy.deepcopy(valid)
+            invalid["runtime"]["reasoningEffort"] = effort
+            with self.subTest(effort=effort), self.assertRaises(types.EvaluationError):
+                types.validate_run_record(types.seal_record(invalid))
 
 
 class JsonlCaptureTests(unittest.TestCase):
