@@ -110,8 +110,8 @@ def compatible(binary, args):
     from .configuration import Server
     dependency()
     result = subprocess.run([str(binary), '--help'], capture_output=True, text=True, timeout=10, check=True)
-    if '--remote' not in result.stdout:
-        raise ValueError('This Codex does not advertise a remote app-server connection')
+    if '--remote' not in result.stdout or '--remote-auth-token-env' not in result.stdout:
+        raise ValueError('This Codex does not advertise an authenticated remote app-server connection')
     server = Server([str(binary), *server_arguments(args)], working_directory(args), Progress('Checking Auto compatibility', compact=True))
     try:
         server.initialize(timeout=10)

@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.23.1‑beta`](#harness-for-codex-v0231-beta) | Schema 3 | Schema 7 | Schema 2 | Fix official Codex relay authentication without URL path tokens |
 | [`v0.23.0‑beta`](#harness-for-codex-v0230-beta) | Schema 3 | Schema 7 | Schema 2 | Independent official Codex updates, published-release choices and an external Auto adapter without Codex compilation |
 | [`v0.22.3‑beta`](#harness-for-codex-v0223-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve concurrent configuration during maintenance, enforce the apply deadline after lock waits and correct unsupported-platform guidance |
 | [`v0.22.2‑beta`](#harness-for-codex-v0222-beta) | Schema 3 | Schema 7 | Schema 2 | Reject incomplete generator payloads and corrupt evaluation histories, clean up evaluation children and bound directory traversal |
@@ -69,6 +70,12 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.23.1-beta
+
+- Use the supported remote bearer-token environment option and a root WebSocket URL; the official Codex address parser rejects path tokens.
+- Keep the ephemeral token out of command arguments and backend environment, reject unauthorized or browser-origin connections, and require the authentication capability before Auto launch.
+- Exercise the same production connection arguments in the Linux terminal release gate and add authentication regression coverage.
 
 ## Harness for Codex v0.23.0-beta
 

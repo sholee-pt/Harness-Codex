@@ -207,11 +207,21 @@ class Relay:
         self.cwd = working_directory(args)
         self.policy = policy or Policy()
         self.token = secrets.token_urlsafe(32)
+        self.auth_env = 'HARNESS_CODEX_RELAY_TOKEN_' + secrets.token_hex(8).upper()
         self.connected = False
         self.error = None
 
+    def client(self, port, args=()):
+        command = [self.binary, '--remote', f'ws://127.0.0.1:{port}', '--remote-auth-token-env', self.auth_env, *args]
+        return command, {**self.env, self.auth_env: self.token}
+
     async def connect(self, websocket):
-        if self.connected or websocket.request.path != '/' + self.token or websocket.request.headers.get('Origin'):
+        try:
+            authorization = websocket.request.headers.get('Authorization', '')
+        except ValueError:
+            authorization = ''
+        if (self.connected or websocket.request.path != '/' or 'Origin' in websocket.request.headers
+                or not secrets.compare_digest(authorization.encode(), ('Bearer ' + self.token).encode())):
             await websocket.close(code=1008, reason='Local Codex client required')
             return
         self.connected = True
@@ -274,7 +284,8 @@ async def run(binary, args, env, policy):
     relay = Relay(binary, env, args=args, policy=policy)
     async with serve(relay.connect, '127.0.0.1', 0, max_size=MAX_MESSAGE, max_queue=16, compression=None) as server:
         port = server.sockets[0].getsockname()[1]
-        process = await asyncio.create_subprocess_exec(str(binary), '--remote', f'ws://127.0.0.1:{port}/{relay.token}', *args, env=env)
+        command, client_env = relay.client(port, args)
+        process = await asyncio.create_subprocess_exec(*command, env=client_env)
         try:
             code = await process.wait()
         finally:

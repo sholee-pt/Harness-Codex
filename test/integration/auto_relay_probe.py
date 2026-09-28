@@ -381,8 +381,13 @@ class Terminal:
 
 
 def drive(binary, env, project, output, port, relay, provider):
-    remote = f'ws://127.0.0.1:{port}' + ('/' + relay.token if hasattr(relay, 'token') else '')
-    terminal = Terminal(binary, ['--remote', remote, '--no-alt-screen', '-C', str(project)], env, output)
+    args = ['--no-alt-screen', '-C', str(project)]
+    if hasattr(relay, 'client'):
+        command, env = relay.client(port, args)
+        binary, args = command[0], command[1:]
+    else:
+        args = ['--remote', f'ws://127.0.0.1:{port}', *args]
+    terminal = Terminal(binary, args, env, output)
     findings = {'realModelInference': 'not-tested; local synthetic Responses provider', 'linuxTui': True}
     try:
         findings['startupChoices'] = terminal.startup(relay)

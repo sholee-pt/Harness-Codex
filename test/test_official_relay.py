@@ -235,6 +235,32 @@ class IntegrationMigrationTests(unittest.TestCase):
 
 
 class RelayProcessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_authenticated_endpoint_has_no_path_secret_or_backend_environment_change(self):
+        env = {'PATH': 'project-bin', 'CONDA_PREFIX': 'project-env'}
+        adapter = relay.Relay('codex', env)
+        command, child_env = adapter.client(12345, ['resume', 'thread-id'])
+        self.assertEqual(command[:4], ['codex', '--remote', 'ws://127.0.0.1:12345', '--remote-auth-token-env'])
+        self.assertEqual(command[4:], [adapter.auth_env, 'resume', 'thread-id'])
+        self.assertNotIn(adapter.token, ' '.join(command))
+        self.assertEqual(child_env, {**env, adapter.auth_env: adapter.token})
+        self.assertNotIn(adapter.auth_env, adapter.env)
+        self.assertEqual(env, {'PATH': 'project-bin', 'CONDA_PREFIX': 'project-env'})
+        self.assertNotEqual(adapter.token, relay.Relay('codex', env).token)
+
+    async def test_unauthenticated_or_browser_connections_never_start_backend(self):
+        adapter = relay.Relay('codex', {})
+        for path, headers in [('/', {}), ('/', {'Authorization': 'Bearer wrong'}),
+                ('/', {'Authorization': 'Bearer \N{GRINNING FACE}'}),
+                ('/' + adapter.token, {'Authorization': 'Bearer ' + adapter.token}),
+                ('/', {'Authorization': 'Bearer ' + adapter.token, 'Origin': ''})]:
+            with self.subTest(path=path, header_names=list(headers)), \
+                 mock.patch.object(relay.asyncio, 'create_subprocess_exec') as start:
+                socket = SimpleNamespace(request=SimpleNamespace(path=path, headers=headers), close=mock.AsyncMock())
+                await adapter.connect(socket)
+                socket.close.assert_awaited_once_with(code=1008, reason='Local Codex client required')
+                start.assert_not_called()
+                self.assertFalse(adapter.connected)
+
     async def test_real_stdio_process_keeps_approval_ids_and_inference_separate(self):
         script = """import json, sys
 catalog = CATALOG
@@ -255,7 +281,7 @@ for line in sys.stdin:
         adapter = relay.Relay(sys.executable, dict(os.environ), args=['-c', script], policy=policy)
 
         class Socket:
-            request = SimpleNamespace(path='/' + adapter.token, headers={})
+            request = SimpleNamespace(path='/', headers={'Authorization': 'Bearer ' + adapter.token})
             def __init__(self):
                 self.queue = asyncio.Queue()
                 self.messages = []
