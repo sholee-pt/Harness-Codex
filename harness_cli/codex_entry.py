@@ -18,22 +18,17 @@ def interactive(args):
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         return False
     # Help, automation, login and explicit remote connections remain native/offline.
-    options = {'-c', '--config', '-C', '--cd', '-m', '--model', '-p', '--profile', '-s', '--sandbox',
-               '-a', '--ask-for-approval', '--image', '-i', '--enable', '--disable', '--add-dir'}
-    skip = False
-    for value in args:
-        if skip:
-            skip = False
-            continue
-        if value in {'--help', '-h', '--version', '-V', '--remote'} or value.startswith('--remote='):
+    from .auto_relay import native_arguments
+    first = True
+    for option, value in native_arguments(args):
+        if option in {'--help', '-h', '--version', '-V', '--remote'}:
             return False
-        if value in options:
-            skip = True
-        elif value in {'exec', 'e', 'review', 'login', 'logout', 'mcp', 'mcp-server', 'app-server', 'completion',
-                       'sandbox', 'debug', 'apply', 'cloud', 'features', 'update'}:
-            return False
-        elif value == '--' or not value.startswith('-'):
-            break
+        if option is None and first:
+            if value in {'exec', 'e', 'review', 'login', 'logout', 'mcp', 'mcp-server', 'app-server', 'completion',
+                         'sandbox', 'debug', 'apply', 'cloud', 'features', 'update', 'agents', 'queue', 'archive',
+                         'delete', 'unarchive', 'exec-server', 'help'}:
+                return False
+            first = False
     return True
 
 
@@ -124,7 +119,7 @@ def main(args):
     from .main import default_data_root
     from . import codex_integration
     from .environment import codex_environment
-    from .auto_relay import Policy, run
+    from .auto_relay import Policy, run, profile_requested, native_arguments
     root = default_data_root()
     integration = codex_integration.read(root)
     if not integration or integration['schema'] != 2:
@@ -142,6 +137,9 @@ def main(args):
     env = codex_environment()
     if not interactive(args) or os.environ.get('HARNESS_CODEX_NATIVE') == '1':
         os.execve(str(binary), [str(binary), *args], env)
+    if profile_requested(args):
+        print('Using native Codex to preserve the selected profile. Harness Auto is unavailable for this launch.', file=sys.stderr)
+        os.execve(str(binary), [str(binary), *args], env)
     # Harness owns this package's update transaction; avoid a second native prompt.
     args = ['-c', 'check_for_update_on_startup=false', *args]
     try:
@@ -158,7 +156,7 @@ def main(args):
         from .routing import read_json
         profiles = read_json(dist._storage_path(settings['profiles']))
     modes = sessions(root)
-    explicit_model = any(item in {'-m', '--model'} or item.startswith('--model=') for item in args)
+    explicit_model = any(option in {'-m', '--model'} for option, _ in native_arguments(args))
     policy = Policy(mode='manual' if explicit_model else settings['mode'], profiles=profiles, session_modes={} if explicit_model else modes,
                     remember=lambda thread, enabled: remember(root, thread, enabled))
     return asyncio.run(run(binary, args, env, policy))

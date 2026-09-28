@@ -170,34 +170,51 @@ class Policy:
         return message
 
 
-def server_arguments(args):
-    """Forward native configuration flags, never invent sandbox or approval settings."""
-    result, index = [], 0
+def native_arguments(args):
+    """Read native options without treating their values or escaped prompts as flags."""
+    valued = {'-c', '--config', '-C', '--cd', '-m', '--model', '-p', '--profile', '-s', '--sandbox',
+              '-a', '--ask-for-approval', '-i', '--image', '--enable', '--disable', '--add-dir',
+              '--local-provider', '--remote', '--remote-auth-token-env'}
+    index = 0
     while index < len(args):
         value = args[index]
-        if value == '--':
-            break
-        if value in {'-c', '--config', '--enable', '--disable', '-p', '--profile'}:
-            if index + 1 >= len(args):
-                raise ValueError('Missing native configuration argument')
-            result += [value, args[index + 1]]
-            index += 2
-            continue
-        if value.startswith(('--config=', '--enable=', '--disable=', '--profile=')):
-            result.append(value)
         index += 1
+        if value == '--':
+            return
+        if value.startswith('--') and '=' in value:
+            yield tuple(value.split('=', 1))
+        elif not value.startswith('--') and len(value) > 2 and value[:2] in valued:
+            yield value[:2], value[2:].removeprefix('=')
+        elif value in valued:
+            argument = args[index] if index < len(args) else None
+            index += 1
+            yield value, argument
+        else:
+            yield (value, None) if value.startswith('-') else (None, value)
+
+
+def profile_requested(args):
+    return any(option in {'-p', '--profile'} for option, _ in native_arguments(args))
+
+
+def server_arguments(args):
+    """Forward native configuration flags, never invent sandbox or approval settings."""
+    result = []
+    for option, value in native_arguments(args):
+        if option in {'-p', '--profile'}:
+            raise ValueError('Selected profiles require native Codex; the Auto backend cannot preserve profile settings')
+        if option in {'-c', '--config', '--enable', '--disable'}:
+            if value is None:
+                raise ValueError('Missing native configuration argument')
+            result += [option, value]
     return result
 
 
 def working_directory(args):
     directory = Path.cwd()
-    for index, value in enumerate(args):
-        if value == '--':
-            break
-        if value in {'-C', '--cd'} and index + 1 < len(args):
-            directory = Path(args[index + 1]).expanduser().absolute()
-        elif value.startswith('--cd='):
-            directory = Path(value.split('=', 1)[1]).expanduser().absolute()
+    for option, value in native_arguments(args):
+        if option in {'-C', '--cd'} and value is not None:
+            directory = Path(value).expanduser().absolute()
     return directory
 
 

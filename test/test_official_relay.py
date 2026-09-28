@@ -118,10 +118,30 @@ class UpdateTests(unittest.TestCase):
             selected = {'updateAvailable': True, 'release': {'tag_name': 'rust-v0.158.0', 'assets': [value]}}
             with mock.patch.object(official, 'target', return_value='x86_64-unknown-linux-musl'), \
                  mock.patch.object(updates, 'request', side_effect=lambda *args, **kw: io.BytesIO(archive.read_bytes())), \
+                 mock.patch.object(entry, 'compatible') as compatible, \
                  mock.patch.object(official.subprocess, 'run', return_value=SimpleNamespace(stdout='codex-cli 0.158.0\n')):
+                with mock.patch.object(entry, 'compatible', side_effect=ValueError('unsupported Auto protocol')):
+                    with self.assertRaisesRegex(ValueError, 'unsupported Auto'):
+                        official.install(data, selected=selected)
+                self.assertFalse((data / official.POINTER).exists())
+                self.assertFalse((data / 'official-codex').exists())
                 binary = official.install(data, selected=selected)
                 before = (data / official.POINTER).read_bytes()
+                before_mtime = (data / official.POINTER).stat().st_mtime_ns
+                self.assertEqual(compatible.call_count, 1)
+                self.assertIn('.pending-', str(compatible.call_args.args[0]))
                 self.assertEqual(binary.read_bytes(), executable.read_bytes())
+                for error in (ValueError('unsupported Auto protocol'), TimeoutError('probe timed out')):
+                    with self.subTest(error=type(error).__name__), mock.patch.object(entry, 'compatible', side_effect=error), \
+                         mock.patch.object(official.subprocess, 'run', return_value=SimpleNamespace(stdout='codex-cli 0.159.0\n')):
+                        with self.assertRaises(type(error)):
+                            official.install(data, selected={'updateAvailable': True, 'release': {'tag_name': 'rust-v0.159.0', 'assets': [value]}})
+                    self.assertEqual((data / official.POINTER).read_bytes(), before)
+                    self.assertEqual((data / official.POINTER).stat().st_mtime_ns, before_mtime)
+                    self.assertFalse((data / 'official-codex/0.159.0').exists())
+                    self.assertFalse(list((data / 'official-codex').rglob('.pending-*')))
+                official.install(data, selected=selected)
+                compatible.assert_called_with(binary, ())
                 with mock.patch.object(updates, 'request', side_effect=lambda *args, **kw: io.BytesIO(b'bad asset')):
                     with self.assertRaisesRegex(ValueError, 'mismatch'):
                         official.install(data, selected={'updateAvailable': True, 'release': {'tag_name': 'rust-v0.159.0', 'assets': [value]}})
@@ -189,10 +209,57 @@ class UpdateTests(unittest.TestCase):
 
     def test_noninteractive_help_remote_and_automation_remain_offline(self):
         with mock.patch.object(sys.stdin, 'isatty', return_value=True), mock.patch.object(sys.stdout, 'isatty', return_value=True):
-            for args in (['--help'], ['--version'], ['exec', 'task'], ['app-server'], ['--remote', 'ws://fixture'], ['login']):
+            for args in (['--help'], ['--version'], ['exec', 'task'], ['app-server'], ['--remote', 'ws://fixture'], ['login'],
+                         ['resume', '--help'], ['fork', '-h'], ['resume', '--remote=ws://fixture'],
+                         ['resume', 'thread-id', '--remote', 'ws://fixture'], ['agents'], ['archive', '--all'],
+                         ['--local-provider', 'ollama', 'queue'], ['--cd=project', 'unarchive', 'thread-id']):
                 self.assertFalse(entry.interactive(args), args)
-            for args in ([], ['resume', 'thread-id'], ['-C', 'a path', 'resume', '--last'], ['--model', 'model', 'a prompt']):
+            for args in ([], ['resume', 'thread-id'], ['-C', 'a path', 'resume', '--last'], ['--model', 'model', 'a prompt'],
+                         ['-marchive', 'resume', '--last'], ['--', '--help'], ['resume', '--', '--remote'],
+                         ['--model', '--help'], ['resume', 'queue'], ['a prompt', 'exec']):
                 self.assertTrue(entry.interactive(args), args)
+
+    def test_native_arguments_do_not_promote_option_values_or_escaped_prompts(self):
+        self.assertEqual(relay.server_arguments(['-C', '--profile', '-cmodel="fixture"', '--enable=test', 'resume', '--', '--disable', 'keep']),
+                         ['-c', 'model="fixture"', '--enable', 'test'])
+        self.assertEqual(relay.working_directory(['-c', '--cd=/unrelated', '--', '--cd', '/ignored']), Path.cwd())
+        self.assertEqual(relay.working_directory(['resume', '--cd=project']), (Path.cwd() / 'project').absolute())
+        for args in (['--profile', 'work'], ['resume', '--profile=work'], ['-pwork']):
+            self.assertTrue(relay.profile_requested(args))
+            with self.assertRaisesRegex(ValueError, 'preserve profile'):
+                relay.server_arguments(args)
+        for args in (['--', '--profile', 'work'], ['-m', '--profile']):
+            self.assertFalse(relay.profile_requested(args))
+
+    def test_passthrough_and_profile_launch_keep_original_native_arguments(self):
+        from harness_cli import main
+        for args in (['resume', '--help'], ['fork', '--remote=ws://fixture'], ['archive', '--all'],
+                     ['resume', 'thread-id', '--profile', 'work'], ['-pwork'], ['--profile=work']):
+            with self.subTest(args=args), mock.patch.object(sys.stdin, 'isatty', return_value=True), \
+                 mock.patch.object(sys.stdout, 'isatty', return_value=True), mock.patch.object(sys, 'stderr', io.StringIO()), \
+                 mock.patch.object(main, 'default_data_root', return_value=Path('unused')), \
+                 mock.patch.object(integration, 'read', return_value={'schema': 2}), \
+                 mock.patch.object(official, 'binary', return_value=Path('official-codex')), \
+                 mock.patch.object(entry, 'update_choices', return_value=False) as updates_check, \
+                 mock.patch.object(entry, 'compatible') as compatible, mock.patch.object(relay, 'run') as run, \
+                 mock.patch.object(entry.os, 'execve', side_effect=RuntimeError('native executed')) as execute:
+                with self.assertRaisesRegex(RuntimeError, 'native executed'):
+                    entry.main(args)
+                self.assertEqual(execute.call_args.args[1], ['official-codex', *args])
+                compatible.assert_not_called()
+                run.assert_not_called()
+                if not relay.profile_requested(args):
+                    updates_check.assert_not_called()
+
+    def test_candidate_probe_closes_backend_after_incompatible_catalog(self):
+        from harness_cli.configuration import Server
+        with mock.patch.object(relay, 'dependency'), mock.patch.object(entry.subprocess, 'run',
+                return_value=SimpleNamespace(stdout='--remote --remote-auth-token-env')), \
+             mock.patch('harness_cli.configuration.Server', autospec=Server) as server:
+            server.return_value.call.return_value = {'data': [], 'nextCursor': None}
+            with self.assertRaisesRegex(ValueError, 'complete'):
+                entry.compatible(Path('candidate-codex'), ())
+            server.return_value.close.assert_called_once()
 
     def test_auto_resume_preferences_contain_only_bounded_boolean_state(self):
         with tempfile.TemporaryDirectory() as temporary:

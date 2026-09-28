@@ -7,9 +7,10 @@ import os
 from pathlib import Path
 import sys
 import threading
+from unittest import mock
 
 import auto_relay_probe as probe
-from harness_cli import auto_relay
+from harness_cli import auto_relay, codex_entry
 
 
 class ObservedPolicy(auto_relay.Policy):
@@ -67,10 +68,12 @@ async def experiment(binary, output):
     relay = auto_relay.Relay(binary, env, policy=policy)
     relay.events, relay.thread_ids = policy.events, policy.thread_ids
     try:
+        with mock.patch.dict(os.environ, env, clear=True):
+            codex_entry.compatible(binary, ['--cd', str(project)])
         async with serve(relay.connect, '127.0.0.1', 0, max_size=auto_relay.MAX_MESSAGE, compression=None) as server:
             port = server.sockets[0].getsockname()[1]
             result = await asyncio.to_thread(probe.drive, binary, env, project, output, port, relay, provider)
-        result.update(protocolErrors=policy.errors, adapterError=relay.error, providerErrors=provider.errors)
+        result.update(protocolErrors=policy.errors, adapterError=relay.error, providerErrors=provider.errors, candidateProbe='passed')
         probe.save(output / 'events.json', policy.events)
         return result
     finally:

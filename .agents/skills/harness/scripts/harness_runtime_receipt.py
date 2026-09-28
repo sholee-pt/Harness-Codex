@@ -729,7 +729,7 @@ def _parse_public_events(
     malformed = 0
     unknown = 0
     relevant = 0
-    terminal_relevant = 0
+    terminal_participants: set[str] = set()
     terminal_status: str | None = None
     parent: str | None = None
     signatures: set[str] = set()
@@ -845,10 +845,10 @@ def _parse_public_events(
                     unknown += 1
                     continue
                 if child_status == "completed":
-                    terminal_relevant += 1
+                    terminal_participants.add(participant)
                     _add_completion(state, "public-event")
                 elif child_status in {"failed", "errored", "interrupted"}:
-                    terminal_relevant += 1
+                    terminal_participants.add(participant)
                     _record_outcome(
                         state,
                         "public-event",
@@ -868,7 +868,7 @@ def _parse_public_events(
         completeness = "conflicted"
     elif visibility == "none":
         completeness = "not-exposed"
-    elif terminal_relevant and terminal_relevant >= len(states):
+    elif terminal_participants and terminal_participants == set(states):
         completeness = "complete"
     elif relevant:
         completeness = "partial"
@@ -956,7 +956,7 @@ def _parse_local_events(
     malformed = 0
     unknown = 0
     relevant = 0
-    terminal_relevant = 0
+    terminal_participants: set[str] = set()
     signatures: set[str] = set()
     conflict = False
     line_count = 0
@@ -1012,10 +1012,10 @@ def _parse_local_events(
         if kind in {"started", "interacted"} and state["lifecycleState"] != "terminal":
             state["lifecycleState"] = "running"
         elif kind == "completed":
-            terminal_relevant += 1
+            terminal_participants.add(participant)
             _add_completion(state, "local-session-terminal")
         elif kind in {"interrupted", "errored"}:
-            terminal_relevant += 1
+            terminal_participants.add(participant)
             _record_outcome(
                 state,
                 "local-session-terminal",
@@ -1029,7 +1029,7 @@ def _parse_local_events(
     elif conflict:
         compatibility = "degraded"
         completeness = "conflicted"
-    elif terminal_relevant and terminal_relevant >= len(child_to_participant):
+    elif terminal_participants and terminal_participants == set(child_to_participant.values()):
         completeness = "complete"
     elif relevant:
         completeness = "partial"

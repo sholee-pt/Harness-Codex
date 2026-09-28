@@ -355,6 +355,34 @@ class RuntimeReceiptV2Tests(unittest.TestCase):
         self.assertIn("wait-on-unknown-handle", receipt["agents"][0]["failureCodes"])
         self.assertFalse(receipt["provesLiveSubagentExecution"])
 
+    def test_duplicate_terminal_events_do_not_complete_missing_participant_coverage(self) -> None:
+        bindings = local_bindings(self.plan, control_plane_report(self.plan))
+        public = public_collab_lines(self.plan)
+        public_waits = [line for line in public if json.loads(line).get("item", {}).get("tool") == "wait"]
+        public_other = [line for line in public if line not in public_waits]
+        local = local_activity_lines(self.plan)
+        local_terminals = [line for line in local if json.loads(line)["payload"]["item"]["kind"] == "completed"]
+        local_other = [line for line in local if line not in local_terminals]
+        for repetitions in (1, 2, 5):
+            for source in ("public-jsonl", "local-rollout"):
+                with self.subTest(source=source, repetitions=repetitions):
+                    arguments = {"observation_bindings": bindings}
+                    if source == "public-jsonl":
+                        arguments.update(lines=[*public_other[:-1], *([public_waits[0]] * repetitions), public_other[-1]],
+                                         public_profile_id=receipt2.PUBLIC_COLLAB_PROFILE)
+                    else:
+                        arguments.update(local_lines=[*local_other, *([local_terminals[0]] * repetitions)],
+                                         local_profile_id=receipt2.LOCAL_SUBAGENT_PROFILE)
+                    receipt = self._build(**arguments)
+                    profile = next(item for item in receipt["eventProfiles"] if item["source"] == source)
+                    self.assertEqual(profile["collaborationCompleteness"], "partial")
+                    self.assertTrue(receipt2.validate_runtime_receipt(receipt)["valid"])
+        complete = self._build(lines=[*public, *public_waits], public_profile_id=receipt2.PUBLIC_COLLAB_PROFILE,
+                               observation_bindings=bindings, local_lines=[*local, *local_terminals],
+                               local_profile_id=receipt2.LOCAL_SUBAGENT_PROFILE)
+        self.assertEqual([item["collaborationCompleteness"] for item in complete["eventProfiles"]], ["complete", "complete"])
+        self.assertTrue(receipt2.validate_runtime_receipt(complete)["valid"])
+
     def test_started_without_terminal_is_partial(self) -> None:
         plan = self._single_agent_plan()
         participant = participant_names(plan)[0]

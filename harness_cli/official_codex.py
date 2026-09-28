@@ -77,6 +77,7 @@ def check(root, *, timeout=5):
 
 
 def install(root, *, selected=None):
+    from .codex_entry import compatible
     root = dist._storage_path(root)
     before = read(root)
     selected = selected or check(root)
@@ -111,6 +112,7 @@ def install(root, *, selected=None):
                 raise ValueError('Official Codex changed during download; retry')
             if destination.exists():
                 verify(destination)
+                compatible(destination / 'bin/codex', ())
             else:
                 created = [path for path in (destination.parent.parent, destination.parent) if not path.exists()]
                 destination.parent.mkdir(parents=True, exist_ok=True)
@@ -118,6 +120,8 @@ def install(root, *, selected=None):
                 try:
                     shutil.copytree(unpacked, staging, dirs_exist_ok=True)
                     verify(staging)
+                    # Keep the active package until the candidate's Auto protocol probe succeeds.
+                    compatible(staging / 'bin/codex', ())
                     os.replace(staging, destination)
                 finally:
                     if staging.exists():

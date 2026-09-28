@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.23.2‑beta`](#harness-for-codex-v0232-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve native arguments and profiles, reject incompatible Codex candidates before activation, and count unique participant observations |
 | [`v0.23.1‑beta`](#harness-for-codex-v0231-beta) | Schema 3 | Schema 7 | Schema 2 | Fix official Codex relay authentication without URL path tokens |
 | [`v0.23.0‑beta`](#harness-for-codex-v0230-beta) | Schema 3 | Schema 7 | Schema 2 | Independent official Codex updates, published-release choices and an external Auto adapter without Codex compilation |
 | [`v0.22.3‑beta`](#harness-for-codex-v0223-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve concurrent configuration during maintenance, enforce the apply deadline after lock waits and correct unsupported-platform guidance |
@@ -70,6 +71,14 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.23.2-beta
+
+- Recognize help and explicit remote options after resume/fork arguments, keep native utility commands offline, and avoid treating option values or escaped prompts as routing flags.
+- Preserve explicit Codex profiles by launching the native terminal unchanged with a concise Auto limitation notice; never pass an unsupported profile flag to app-server or flatten profile settings into permission overrides.
+- Probe a candidate official Codex package's remote capabilities and model catalog before activating it. Failed or timed-out probes preserve the previous pointer and remove only newly staged files.
+- Count terminal observations by unique bound participant in public and local receipts so repeated completion events cannot hide missing participant observations.
+- Add regression cases for the audited failures, exercise the candidate probe in the Linux terminal gate, and compare upgrades only with v0.23.1-beta.
 
 ## Harness for Codex v0.23.1-beta
 
