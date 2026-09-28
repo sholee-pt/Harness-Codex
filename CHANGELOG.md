@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.25.1‑beta`](#harness-for-codex-v0251-beta) | Schema 3 | Schema 7 | Schema 2 | Exclude mixed or stale Auto observations and preserve native execution provenance |
 | [`v0.25.0‑beta`](#harness-for-codex-v0250-beta) | Schema 3 | Schema 7 | Schema 2 | Adaptive maintenance cadence and opt-in observed Auto advice without additional model calls |
 | [`v0.24.1‑beta`](#harness-for-codex-v0241-beta) | Schema 3 | Schema 7 | Schema 2 | Fix installation races, workspace evidence isolation, corrected observations and inference compatibility |
 | [`v0.24.0‑beta`](#harness-for-codex-v0240-beta) | Schema 3 | Schema 7 | Schema 2 | Dynamic model catalogs and inference recovery, bounded maintenance outcome tracking and guarded rollback |
@@ -74,6 +75,14 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.25.1-beta
+
+- Exclude Auto performance observations when a harness revision changes during a turn, requests overlap, delegation or compaction occurs, or another turn contaminates usage attribution.
+- Bind comparable observations to the native provider, service tier and permission context; unknown provider metadata preserves ordinary routing without inventing comparable evidence.
+- Reset usage baselines on resume/fork and update workspace bindings when native settings change. Preserve unknown token counts instead of attributing unobserved history to the current turn.
+- Align privacy/retention guidance with workspace-scoped records and stable opaque registry identities. Preserve current project contracts and all manual permission/model choices.
+- Add regressions for mixed-turn exclusion and resumed/unknown native metadata. No model calls or paid evaluation trials are added.
 
 ## Harness for Codex v0.25.0-beta
 

@@ -110,7 +110,8 @@ class AdaptiveEvidenceTests(unittest.TestCase):
             observer = routing_feedback.Observer(ROOT, self.root, 'dynamic-runtime', clock=lambda: self.now)
             policy = auto_relay.Policy(mode='auto', observer=observer)
             policy.model_list(catalog())
-            policy.response({'result': {'thread': {'id': 'thread', 'cwd': str(self.root)}, 'model': 'gpt-5.6-sol', 'reasoningEffort': 'medium'}}, 'thread/start', {})
+            policy.response({'result': {'thread': {'id': 'thread', 'cwd': str(self.root)}, 'modelProvider': 'fixture', 'serviceTier': None,
+                                       'model': 'gpt-5.6-sol', 'reasoningEffort': 'medium'}}, 'thread/start', {})
             params = {'threadId': 'thread', 'input': [{'type': 'text', 'text': 'Implement a function'}]}
             policy.request('turn/start', params)
             policy.response({'result': {'turn': {'id': 'turn'}}}, 'turn/start', params)
@@ -124,6 +125,60 @@ class AdaptiveEvidenceTests(unittest.TestCase):
             self.assertEqual(report['workItems'][0]['milliseconds'], 2000)
             policy.response({'method': 'turn/completed', 'params': {'threadId': 'thread', 'turn': {'id': 'turn', 'status': 'completed'}}}, None, {})
             self.assertEqual(self.manager.status()['samples'], 1)
+
+    def test_changed_or_mixed_turns_are_excluded_from_performance_evidence(self):
+        manifest = self.root / '.harness/manifest.json'
+        original = manifest.read_bytes()
+        with mock.patch.dict(os.environ, {'HARNESS_STATE_HOME': str(self.store)}):
+            for scenario in ('revision', 'overlap', 'delegation', 'compaction', 'provider', 'foreign-usage'):
+                with self.subTest(scenario=scenario):
+                    self.manager.clear()
+                    self.manager.configure(True)
+                    observer = routing_feedback.Observer(ROOT, self.root, 'dynamic-runtime', clock=lambda: self.now)
+                    policy = auto_relay.Policy(mode='auto', observer=observer)
+                    policy.model_list(catalog())
+                    settings = {'thread': {'id': 'thread', 'cwd': str(self.root)}, 'modelProvider': 'fixture', 'serviceTier': None,
+                                'model': 'gpt-5.6-sol', 'reasoningEffort': 'medium'}
+                    policy.response({'result': settings}, 'thread/start', {})
+                    params = {'threadId': 'thread', 'input': [{'type': 'text', 'text': 'Implement a function'}]}
+                    policy.request('turn/start', params)
+                    if scenario == 'overlap':
+                        policy.request('turn/start', params)
+                    policy.response({'result': {'turn': {'id': 'turn'}}}, 'turn/start', params)
+                    if scenario == 'revision':
+                        value = json.loads(original)
+                        value['review-fixture-change'] = True
+                        manifest.write_text(json.dumps(value))
+                    elif scenario in {'delegation', 'compaction'}:
+                        item = 'collabAgentToolCall' if scenario == 'delegation' else 'contextCompaction'
+                        policy.response({'method': 'item/started', 'params': {'threadId': 'thread', 'turnId': 'turn', 'item': {'type': item}}}, None, {})
+                    elif scenario == 'provider':
+                        policy.response({'method': 'thread/settings/updated', 'params': {'threadId': 'thread', 'threadSettings': {'modelProvider': 'different'}}}, None, {})
+                    elif scenario == 'foreign-usage':
+                        policy.response({'method': 'thread/tokenUsage/updated', 'params': {'threadId': 'thread', 'turnId': 'other', 'tokenUsage': {'total': {'totalTokens': 100}}}}, None, {})
+                    policy.response({'method': 'turn/completed', 'params': {'threadId': 'thread', 'turn': {'id': 'turn', 'status': 'completed'}}}, None, {})
+                    self.assertEqual(self.manager.status()['samples'], 0)
+                    self.assertIsNotNone(policy.observer)
+                    manifest.write_bytes(original)
+
+    def test_resuming_discards_stale_usage_and_missing_provider_is_not_guessed(self):
+        with mock.patch.dict(os.environ, {'HARNESS_STATE_HOME': str(self.store)}):
+            self.manager.configure(True)
+            observer = routing_feedback.Observer(ROOT, self.root, 'dynamic-runtime', clock=lambda: self.now)
+            policy = auto_relay.Policy(mode='auto', observer=observer)
+            policy.model_list(catalog())
+            settings = {'thread': {'id': 'thread', 'cwd': str(self.root)}, 'model': 'gpt-5.6-sol', 'reasoningEffort': 'medium'}
+            policy.response({'result': settings}, 'thread/start', {})
+            params = {'threadId': 'thread', 'input': [{'type': 'text', 'text': 'Implement a function'}]}
+            policy.request('turn/start', params)
+            self.assertEqual(observer.pending, {})
+            observer.usage['thread'] = 1000
+            policy.response({'result': {**settings, 'modelProvider': 'fixture'}}, 'thread/resume', params)
+            policy.request('turn/start', params)
+            policy.response({'result': {'turn': {'id': 'turn'}}}, 'turn/start', params)
+            policy.response({'method': 'thread/tokenUsage/updated', 'params': {'threadId': 'thread', 'turnId': 'turn', 'tokenUsage': {'total': {'totalTokens': 1600}, 'last': {'totalTokens': 100}}}}, None, {})
+            policy.response({'method': 'turn/completed', 'params': {'threadId': 'thread', 'turn': {'id': 'turn', 'status': 'completed'}}}, None, {})
+            self.assertIsNone(self.manager.status()['workItems'][0]['tokens'])
 
     def test_optional_observation_failure_cannot_change_native_task_or_permissions(self):
         observer = mock.Mock()

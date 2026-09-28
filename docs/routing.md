@@ -70,7 +70,9 @@ native cumulative baseline is available, a token delta. Unknown token usage stay
 null. The first resumed turn may lack that baseline; the native last-model-call
 usage is never mislabeled as the whole turn. Completion alone leaves quality
 unknown. Images, oversized routing requests, interrupted/failed native turns and
-mixed-inference turns do not become efficiency evidence. Duration includes tool
+mixed-inference turns do not become efficiency evidence. Overlapping requests,
+delegation/compaction and a harness revision change during a turn also exclude
+that turn. Resume/fork discard any older usage baseline. Duration includes tool
 and approval delays and is not a pure model speed measurement; tokens are not a
 billing total.
 
@@ -81,7 +83,9 @@ failures and unknown causes never do. Do not infer quality from reassuring prose
 or generate a model-based rating after every conversation.
 
 Advice groups evidence by workspace, harness revision, actual runtime version,
-catalog revision, task category and routing tier. Model/reasoning names are hashed
+catalog revision, observed provider/service tier/permission settings, task category
+and routing tier. Missing provider metadata leaves ordinary routing active without
+collecting comparable performance evidence. Model/reasoning names are hashed
 in local records and matched to the current advertised catalog in memory. A new
 catalog/runtime/revision starts without transferable performance confidence.
 Unrated models keep the ordinary rule/profile/default behavior; no universal model
