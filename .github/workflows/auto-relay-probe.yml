@@ -1,0 +1,43 @@
+name: Auto relay feasibility
+run-name: Linux Auto relay experiment · ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: conda-incubator/setup-miniconda@v4.0.1
+        with:
+          activate-environment: harness
+          auto-activate: false
+          environment-file: environment.yml
+      - name: Install terminal experiment dependencies
+        shell: bash -el {0}
+        run: conda run --no-capture-output -n harness python -m pip install -r test/integration/requirements-auto-relay.txt
+      - name: Exercise official Codex without a native build
+        shell: bash -el {0}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: conda run --no-capture-output -n harness python -B -u test/integration/auto_relay_probe.py --output "${RUNNER_TEMP}/auto-relay-evidence"
+      - name: Preserve experiment evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: auto-relay-evidence
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/auto-relay-evidence/SUMMARY.md
+            ${{ runner.temp }}/auto-relay-evidence/results.json
+            ${{ runner.temp }}/auto-relay-evidence/*/*.json
+            ${{ runner.temp }}/auto-relay-evidence/*/*.txt
+            ${{ runner.temp }}/auto-relay-evidence/*/*.ansi
+            ${{ runner.temp }}/auto-relay-evidence/*/*.log
