@@ -45,7 +45,7 @@ class RoutingTests(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 decision = routing.choose(prompt, CATALOG)
                 self.assertEqual(decision.tier, expected)
-                self.assertEqual(decision.model, {'fast': 'gpt-5.6-luna', 'balanced': 'recommended-model', 'deep': 'gpt-6-astra'}[expected])
+                self.assertEqual(decision.model, 'recommended-model')
                 self.assertEqual(decision.effort, {'fast': 'low', 'balanced': 'medium', 'deep': 'high'}[expected])
 
     def test_followup_does_not_downgrade_difficult_work(self):
@@ -104,12 +104,25 @@ class RoutingTests(unittest.TestCase):
         for profiles in ({'permissions': ['all']}, {'fast': 'model'}, {'deep': [None]}):
             with self.assertRaises(ValueError):
                 routing.choose('hello', CATALOG, profiles=profiles)
-        for context in (routing.Context(failures=-1), routing.Context(effort='invented'), routing.Context(active_task=1)):
+        for context in (routing.Context(failures=-1), routing.Context(effort='bad\neffort'), routing.Context(active_task=1)):
             with self.assertRaises(ValueError):
                 routing.choose('hello', CATALOG, context=context)
         for fixed in (('unknown', 'low'), ('recommended-model', 'ultra')):
             with self.assertRaises(ValueError):
                 routing.choose('hello', CATALOG, fixed=fixed)
+
+    def test_new_ids_efforts_successors_and_catalog_order_need_no_source_change(self):
+        future = model('future-provider/reasoner', True, ('adaptive-v3',))
+        for catalog in ([*CATALOG, future], [future, *CATALOG]):
+            catalog = [dict(item, isDefault=item is future) for item in catalog]
+            for prompt in ('Fix a typo.', 'Implement a function.', 'Review security.'):
+                decision = routing.choose(prompt, catalog)
+                self.assertEqual(decision.turn_overrides(), {'model': future['model'], 'effort': 'adaptive-v3'})
+        removed = dict(model('retired'), hidden=True, upgrade=future['model'])
+        decision = routing.choose('Continue.', [removed, future], context=routing.Context(model='retired', effort='old'))
+        self.assertEqual(decision.model, future['model'])
+        self.assertEqual(routing.choose('hello', [future], fixed=(future['model'], 'adaptive-v3')).effort, 'adaptive-v3')
+        self.assertEqual(routing.choose('hello', []).turn_overrides(), {})
 
     def test_context_contains_no_task_text_and_feedback_is_explicit(self):
         decision = routing.choose('PRIVATE TASK: investigate a bug', CATALOG)

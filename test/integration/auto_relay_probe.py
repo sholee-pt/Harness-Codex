@@ -198,7 +198,8 @@ class Policy:
         if not self.auto.get(thread_id):
             self.decisions.append({**identity, 'auto': False, 'selected': selected, 'model': selected, 'effort': result.get('effort')})
             return result
-        decision = choose(prompt, self.catalog, context=self.contexts.get(thread_id, Context()))
+        decision = choose(prompt, self.catalog, context=self.contexts.get(thread_id, Context()),
+                          profiles={'fast': ['gpt-5.6-luna'], 'balanced': ['gpt-5.6-sol'], 'deep': ['gpt-6-astra']})
         if not decision.model or decision.model == ALIAS:
             raise ValueError('Auto failed to resolve to a real catalog model')
         result.update(decision.turn_overrides())

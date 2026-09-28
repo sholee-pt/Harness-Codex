@@ -10,16 +10,30 @@ import copy
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import signal
 import subprocess
 import sys
 
-from .model_routing import Context, choose, catalog_entries, MAX_PROMPT
+from .model_routing import Context, choose, catalog_entries, available_model, MAX_PROMPT
 
 ALIAS = 'codex-auto-harness'
 MAX_MESSAGE = 16 * 1024 * 1024
+
+
+class SelectionRequired(ValueError):
+    """A recoverable selection error; never forward or replay the user's task."""
+
+
+def inference_error(message):
+    error = message.get('error')
+    if message.get('method') == 'error':
+        error = (message.get('params') or {}).get('error')
+    text = str((error or {}).get('message', ''))[:4096].casefold() if isinstance(error, dict) else ''
+    return bool(re.search(r'model|reasoning|effort', text) and re.search(
+        r'not found|not available|unavailable|no longer|does not exist|unsupported|not supported|invalid|not have access', text))
 
 
 def dependency(*, install=False):
@@ -60,14 +74,22 @@ class Policy:
         self.auto, self.contexts, self.catalog, self.aliases = dict(session_modes or {}), {}, [], {}
         self.default_model = self.default_effort = None
         self.pending_modes = {}
+        self.raw_catalog, self.loaded, self.refresh_needed = [], False, False
+        self.notices = []
         self.remember = remember or (lambda thread, enabled: None)
 
-    def model_list(self, result):
+    def model_list(self, result, *, update=True):
         result = copy.deepcopy(result)
         entries = catalog_entries(result.get('data'))
-        if not entries or result.get('nextCursor') or any(name.startswith(ALIAS) for name in entries):
+        if result.get('nextCursor') or any(name.startswith(ALIAS) for name in entries):
             raise ValueError('Auto needs a complete, distinct model catalog; use native mode')
-        self.catalog = list(entries.values())
+        if update:
+            self.catalog = list(entries.values())
+            self.raw_catalog, self.loaded, self.refresh_needed = copy.deepcopy(result['data']), True, False
+        # Old aliases are display identifiers only; retain them to recognize a
+        # removed selection until the UI has fetched its new menu.
+        if not self.catalog:
+            return result
         first = copy.deepcopy(self.catalog[0])
         first.update(id=ALIAS, model=ALIAS, displayName='Auto', hidden=False, isDefault=False,
             description='Harness selects model and reasoning for each request.', defaultReasoningEffort='medium',
@@ -80,6 +102,11 @@ class Policy:
             alias.update(id=name, model=name, hidden=True, isDefault=False,
                          displayName='Auto selected: ' + entry.get('displayName', entry['model']))
             aliases.append(alias)
+        if len(self.aliases) > 2048:
+            current = {item['model'] for item in aliases}
+            obsolete = [name for name in self.aliases if name not in current]
+            for name in obsolete[:len(self.aliases) - 2048]:
+                del self.aliases[name]
         result['data'] = [first, *result['data'], *aliases]
         return result
 
@@ -87,8 +114,60 @@ class Policy:
         if model == ALIAS:
             visible = {entry['model'] for entry in self.catalog}
             model = self.default_model if self.default_model in visible else next((x['model'] for x in self.catalog if x.get('isDefault')), None)
-            return model or (self.catalog[0]['model'] if self.catalog else None)
+            return model
         return self.aliases.get(model, model)
+
+    def warn(self, thread, text):
+        self.notices.append({'method': 'warning', 'params': {'threadId': thread, 'message': text}})
+
+    def seed(self, thread, settings):
+        model = selected_model(settings)
+        if model:
+            effort = settings.get('reasoningEffort') or settings.get('effort') or settings.get('reasoning_effort')
+            self.contexts[thread] = Context(model=self.real(model), effort=effort, active_task=True)
+
+    def reconcile(self, method, result, auto):
+        thread = result.get('threadId')
+        context = self.contexts.get(thread, Context())
+        explicit = self.real(selected_model(result))
+        model = explicit or context.model or self.default_model
+        if model is None:
+            model = next((item['model'] for item in self.catalog if item.get('isDefault')), None)
+        settings = (result.get('collaborationMode') or {}).get('settings') or {}
+        effort = settings.get('reasoning_effort', result.get('effort'))
+        if method in {'thread/start', 'thread/resume', 'thread/fork'}:
+            effort = (result.get('config') or {}).get('model_reasoning_effort', effort)
+        inherited = effort is None
+        if effort is None:
+            effort = context.effort if model == context.model else self.default_effort if model == self.default_model else None
+        entries = catalog_entries(self.catalog)
+        entry = entries.get(model)
+        options = [item['reasoningEffort'] for item in entry.get('supportedReasoningEfforts', [])] if entry else []
+        if entry and inherited and explicit and context.model and model != context.model:
+            default = entry.get('defaultReasoningEffort')
+            if default not in options:
+                raise SelectionRequired('Select a supported reasoning level for the new model. No task was submitted.')
+            effort = default
+            if method in {'thread/start', 'thread/resume', 'thread/fork'}:
+                result['config'] = {**(result.get('config') or {}), 'model_reasoning_effort': default}
+            else:
+                set_model(result, model, default)
+        if entry and (effort is None or effort in options):
+            return
+        if not auto:
+            raise SelectionRequired('The selected model or reasoning option is no longer available. Use /model to select an available pair; '
+                'if resume cannot open, use codex --model MODEL resume SESSION_ID. No task was submitted.')
+        replacement = available_model(model, self.raw_catalog, entries) or next((item for item in self.catalog if item.get('isDefault')), None)
+        default = replacement.get('defaultReasoningEffort') if replacement else None
+        if not replacement or default not in [item['reasoningEffort'] for item in replacement.get('supportedReasoningEfforts', [])]:
+            raise SelectionRequired('Auto has no supported default model/reasoning pair. Select one with /model or use native mode. No task was submitted.')
+        if method in {'thread/start', 'thread/resume', 'thread/fork'}:
+            result['model'] = replacement['model']
+            result['config'] = {**(result.get('config') or {}), 'model_reasoning_effort': default}
+        else:
+            set_model(result, replacement['model'], default)
+        self.contexts[thread] = Context(tier=context.tier, model=replacement['model'], effort=default, active_task=context.active_task)
+        self.warn(thread, 'Harness Auto replaced an unavailable model/reasoning selection with ' + replacement['model'] + ' / ' + default + '.')
 
     def enabled(self, thread):
         return self.auto.get(thread, self.mode == 'auto')
@@ -104,6 +183,10 @@ class Policy:
         result = copy.deepcopy(params)
         selected = selected_model(result)
         thread = result.get('threadId')
+        inference = method in {'thread/start', 'thread/resume', 'thread/fork', 'thread/settings/update', 'turn/start'}
+        auto = selected == ALIAS or selected in self.aliases or self.enabled(thread)
+        if method == 'thread/settings/update' and selected:
+            auto = selected == ALIAS or selected in self.aliases
         if method in {'config/batchWrite', 'config/value/write'}:
             edits = result.get('edits', []) if method == 'config/batchWrite' else [result]
             virtual = any(item.get('keyPath') == 'model' and (item.get('value') == ALIAS or item.get('value') in self.aliases) for item in edits)
@@ -112,13 +195,14 @@ class Policy:
                 result = {key: value for key, value in result.items() if key not in {'keyPath', 'value', 'mergeStrategy'}}
                 result['edits'] = kept
             return result
-        if method == 'thread/settings/update' and selected:
-            self.pending_modes[thread] = selected == ALIAS or selected in self.aliases
         if selected == ALIAS or selected in self.aliases:
             real = self.real(selected)
-            if not real:
-                raise ValueError('Auto has no available real model')
-            set_model(result, real)
+            if real:
+                set_model(result, real)
+        if inference and self.loaded:
+            self.reconcile(method, result, auto)
+        if method == 'thread/settings/update' and selected:
+            self.pending_modes[thread] = selected == ALIAS or selected in self.aliases
         if method == 'turn/start' and (selected == ALIAS or selected in self.aliases or self.enabled(thread)):
             if self.auto.get(thread) is not True:
                 self.auto[thread] = True
@@ -127,7 +211,7 @@ class Policy:
             # Image-only and large inputs retain native inference settings, never reject the user's task.
             has_images = any(item.get('type') in {'image', 'localImage'} for item in result.get('input', []))
             if text.strip() and '\0' not in text and len(text.encode()) <= MAX_PROMPT and not has_images:
-                decision = choose(text, self.catalog, context=self.contexts.get(thread, Context()), profiles=self.profiles)
+                decision = choose(text, self.raw_catalog, context=self.contexts.get(thread, Context()), profiles=self.profiles)
                 if decision.model:
                     set_model(result, decision.model, decision.effort)
                     self.contexts[thread] = Context(tier=decision.tier, model=decision.model, effort=decision.effort,
@@ -142,6 +226,10 @@ class Policy:
                 set_model(settings, alias)
 
     def response(self, message, method, params):
+        if inference_error(message):
+            self.refresh_needed = True
+            self.warn(params.get('threadId') or (message.get('params') or {}).get('threadId'),
+                'Harness will refresh model availability before the next request. No failed task was replayed. Review its outcome before retrying.')
         result = message.get('result')
         if method == 'config/read' and isinstance(result, dict):
             config = result.get('config') or {}
@@ -151,14 +239,16 @@ class Policy:
             message['result'] = self.model_list(result)
         if method == 'thread/settings/update' and 'result' in message:
             self.settings(params)
+            settings = result.get('threadSettings', result) if isinstance(result, dict) else {}
+            self.seed(params.get('threadId'), settings if selected_model(settings) else params)
         if method == 'thread/settings/update':
             self.pending_modes.pop(params.get('threadId'), None)
-        if method in {'thread/start', 'thread/resume'} and isinstance(result, dict):
+        if method in {'thread/start', 'thread/resume', 'thread/fork'} and isinstance(result, dict):
             thread = (result.get('thread') or {}).get('id')
             if thread:
                 model = selected_model(result)
                 effort = result.get('reasoningEffort') or result.get('effort')
-                if method == 'thread/resume' and model and effort:
+                if model:
                     tier = 'deep' if effort in {'high', 'xhigh', 'max', 'ultra'} else 'fast' if effort in {'none', 'minimal', 'low'} else 'balanced'
                     self.contexts[thread] = Context(tier=tier, model=self.real(model), effort=effort, active_task=True)
                 if selected_model(params) == ALIAS or selected_model(params) in self.aliases:
@@ -243,31 +333,104 @@ class Relay:
             return
         self.connected = True
         pending = {}
+        internal = {}
+        prefix = 'harness-catalog-' + secrets.token_hex(8) + '-'
+        sequence = 0
         process = await asyncio.create_subprocess_exec(self.binary, *self.args, 'app-server', '--listen', 'stdio://',
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
             env=self.env, cwd=self.cwd, limit=MAX_MESSAGE, start_new_session=True)
+
+        async def write(message):
+            process.stdin.write((json.dumps(message) + '\n').encode())
+            await process.stdin.drain()
+
+        async def call(method, params):
+            nonlocal sequence
+            sequence += 1
+            identity = prefix + str(sequence)
+            future = asyncio.get_running_loop().create_future()
+            internal[identity] = future
+            try:
+                await write({'id': identity, 'method': method, 'params': params})
+                response = await asyncio.wait_for(future, 15)
+                if 'error' in response:
+                    raise SelectionRequired('Codex metadata is unavailable. Use native mode or retry the metadata lookup; no task was submitted.')
+                return response.get('result') or {}
+            finally:
+                internal.pop(identity, None)
+
+        async def refresh():
+            data, cursors, cursor = [], set(), None
+            for _ in range(20):
+                params = {'limit': 50, 'includeHidden': True}
+                if cursor:
+                    params['cursor'] = cursor
+                page = await call('model/list', params)
+                catalog_entries(page.get('data'))
+                data.extend(page['data'])
+                cursor = page.get('nextCursor')
+                if cursor is None:
+                    self.policy.model_list({'data': data, 'nextCursor': None})
+                    return
+                if not isinstance(cursor, str) or not cursor or cursor in cursors or len(data) > 1000:
+                    break
+                cursors.add(cursor)
+            raise SelectionRequired('Codex model catalog pagination did not finish. No task was submitted.')
+
+        async def notices():
+            while self.policy.notices:
+                await websocket.send(json.dumps(self.policy.notices.pop(0)))
 
         async def incoming():
             async for raw in websocket:
                 message = json.loads(raw)
                 method, params = message.get('method'), message.get('params') or {}
                 if method and 'id' in message:
-                    if len(pending) >= 1024 or message['id'] in pending:
+                    if len(pending) >= 1024 or message['id'] in pending or str(message['id']).startswith(prefix):
                         raise ValueError('Unsupported outstanding Codex requests')
+                try:
+                    if method == 'model/list':
+                        await asyncio.wait_for(refresh(), 20)
+                        data = self.policy.raw_catalog
+                        if not params.get('includeHidden'):
+                            data = [item for item in data if not item.get('hidden')]
+                        result = self.policy.model_list({'data': data, 'nextCursor': None}, update=False)
+                        await websocket.send(json.dumps({'id': message['id'], 'result': result}))
+                        continue
+                    if method in {'thread/start', 'thread/resume', 'thread/fork', 'thread/settings/update', 'turn/start'}:
+                        if not self.policy.loaded or self.policy.refresh_needed:
+                            await asyncio.wait_for(refresh(), 20)
+                        if method in {'thread/resume', 'thread/fork'} and params.get('threadId'):
+                            saved = await call('thread/read', {'threadId': params['threadId'], 'includeTurns': False})
+                            self.policy.seed(params['threadId'], saved.get('thread') or {})
+                    if method and 'params' in message:
+                        message['params'] = self.policy.request(method, params)
+                        if method == 'config/value/write' and 'edits' in message['params']:
+                            message['method'] = 'config/batchWrite'
+                except (ValueError, TimeoutError) as error:
+                    if 'id' not in message:
+                        raise
+                    await websocket.send(json.dumps({'id': message['id'], 'error': {'code': -32602,
+                        'message': str(error) or 'Model metadata lookup timed out; no task was submitted.'}}))
+                    continue
+                if method and 'id' in message:
                     pending[message['id']] = (method, copy.deepcopy(params))
-                if method and 'params' in message:
-                    message['params'] = self.policy.request(method, params)
-                    if method == 'config/value/write' and 'edits' in message['params']:
-                        message['method'] = 'config/batchWrite'
-                process.stdin.write((json.dumps(message) + '\n').encode())
-                await process.stdin.drain()
+                await notices()
+                await write(message)
 
         async def outgoing():
             while raw := await process.stdout.readline():
                 message = json.loads(raw)
+                identity = message.get('id')
+                if 'method' not in message and isinstance(identity, str) and identity.startswith(prefix):
+                    future = internal.get(identity)
+                    if future is not None and not future.done():
+                        future.set_result(message)
+                    continue
                 # Server requests also have IDs; they are never client responses.
                 method, params = pending.pop(message.get('id'), (None, {})) if 'method' not in message else (None, {})
                 await websocket.send(json.dumps(self.policy.response(message, method, params)))
+                await notices()
 
         tasks = [asyncio.create_task(incoming()), asyncio.create_task(outgoing())]
         try:

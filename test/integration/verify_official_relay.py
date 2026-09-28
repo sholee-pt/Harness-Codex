@@ -15,7 +15,7 @@ from harness_cli import auto_relay, codex_entry
 
 class ObservedPolicy(auto_relay.Policy):
     def __init__(self):
-        super().__init__()
+        super().__init__(profiles={'fast': ['gpt-5.6-luna'], 'deep': ['gpt-6-astra']})
         self.decisions, self.events, self.errors, self.thread_ids, self.config_rewrites = [], [], [], [], []
 
     def request(self, method, params):

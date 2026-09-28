@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 
 from . import distribution as dist, official_codex, release_updates
 from .presentation import Progress, clean
@@ -110,7 +111,11 @@ def compatible(binary, args):
     server = Server([str(binary), *server_arguments(args)], working_directory(args), Progress('Checking Auto compatibility', compact=True))
     try:
         server.initialize(timeout=10)
-        Policy().model_list(server.call('model/list', {}, timeout=10))
+        from .session_settings import model_catalog
+        policy = Policy()
+        policy.model_list({'data': model_catalog(server, time.monotonic() + 10), 'nextCursor': None})
+        if not policy.catalog:
+            raise ValueError('No visible Codex models are available')
     finally:
         server.close()
 

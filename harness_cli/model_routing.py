@@ -9,13 +9,12 @@ from dataclasses import asdict, dataclass
 import re
 
 TIERS = ('fast', 'balanced', 'deep')
-EFFORTS = ('none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra')
-PROFILE_CANDIDATES = {
-    'fast': ('gpt-5.6-luna', 'gpt-5.3-codex-spark'),
-    'balanced': (),
-    'deep': ('gpt-6-astra',),
-}
+PROFILE_CANDIDATES = dict.fromkeys(TIERS, ())
 MAX_PROMPT = 32 * 1024
+
+
+def identifier(value):
+    return isinstance(value, str) and 0 < len(value) <= 256 and value.isprintable() and not any(c.isspace() for c in value)
 
 
 @dataclass(frozen=True)
@@ -50,8 +49,8 @@ def validate_context(context):
     if (context.tier not in TIERS or type(context.failures) is not int
             or not 0 <= context.failures <= 100 or type(context.active_task) is not bool
             or type(context.lighter_requests) is not int or not 0 <= context.lighter_requests <= 1
-            or context.effort is not None and context.effort not in EFFORTS
-            or context.model is not None and (not isinstance(context.model, str) or not context.model.strip())):
+            or context.effort is not None and not identifier(context.effort)
+            or context.model is not None and not identifier(context.model)):
         raise ValueError('Invalid routing task context.')
 
 
@@ -60,7 +59,7 @@ def catalog_entries(catalog):
         raise ValueError('Routing requires a bounded model catalog list.')
     result = {}
     for entry in catalog:
-        if not isinstance(entry, dict) or not isinstance(entry.get('model'), str) or not entry['model'].strip():
+        if not isinstance(entry, dict) or not identifier(entry.get('model')):
             raise ValueError('Invalid model catalog entry.')
         if entry.get('hidden'):
             continue
@@ -68,10 +67,24 @@ def catalog_entries(catalog):
         if name in result:
             raise ValueError('Duplicate visible model catalog entry.')
         options = entry.get('supportedReasoningEfforts', [])
-        if not isinstance(options, list) or any(not isinstance(item, dict) or item.get('reasoningEffort') not in EFFORTS for item in options):
+        if (not isinstance(options, list) or len(options) > 64
+                or any(not isinstance(item, dict) or not identifier(item.get('reasoningEffort')) for item in options)
+                or len({item['reasoningEffort'] for item in options}) != len(options)):
             raise ValueError('Invalid supported reasoning options.')
         result[name] = entry
     return result
+
+
+def available_model(name, catalog, entries):
+    """Follow advertised successors only when the original is no longer visible."""
+    seen = set()
+    source = {item['model']: item for item in catalog}
+    while name not in entries and name in source and name not in seen:
+        seen.add(name)
+        name = source[name].get('upgrade')
+        if not identifier(name):
+            return None
+    return entries.get(name)
 
 
 def classify(prompt, context, *, new_task=False):
@@ -154,10 +167,10 @@ def choose(prompt, catalog, *, context=Context(), new_task=False, profiles=None,
     if reason in {'continue-task', 'lighter-request-pending'} and context.model in entries and context.effort in _efforts(entries[context.model]):
         return Decision(tier, context.model, context.effort, reason, 'retained', False)
     default = next((entry for entry in entries.values() if entry.get('isDefault') is True), None)
-    selected = next((entries[name] for name in preferences[tier] if name in entries), None)
+    selected = next((entry for name in preferences[tier] if (entry := available_model(name, catalog, entries))), None)
     selection = 'profile'
     if selected is None:
-        selected = default or entries.get(context.model)
+        selected = available_model(context.model, catalog, entries) or default
         selection = 'available-default'
     if selected is None:
         return Decision(tier, None, None, reason, 'native-unresolved', False)

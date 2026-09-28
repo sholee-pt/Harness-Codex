@@ -72,3 +72,22 @@ Status reports unknown quality honestly. If maintenance conflicts, times out or
 finds no justified change, keep the harness and continue project work. Recovery
 of an interrupted file transaction uses the existing `doctor`/recovery protocol.
 See the [generator maintenance protocol](../.agents/skills/harness/references/maintenance.md).
+
+## Change outcomes and recovery
+
+Each automatic correction records an opaque change ID, before/after manifest revisions, reason/evidence references and the prior/new hashes of affected skills. The bounded user-local history stores no skill text, model IDs, paths or transcripts. Local state schema 1 is read as schema 2 in memory; a status read does not rewrite it and existing off/suggest/auto choices remain unchanged. Init/config display the maintenance mode and the separate opt-in evaluation state.
+
+Applied changes start as `observing`: instructions updated, effect not established. The next hooked request carries a one-time revision notice and change ID. Record an outcome only when it is explicitly related to that correction, with the revision actually used by the task. Known model, effort, task category and runtime identity are hashed into a context group; unknown context remains descriptive and cannot trigger a comparison. Multiple records of one work item count once. Two independent, externally reported adverse outcomes in one known context group pause further automatic changes (`review-required`); they do not prove causality or stop ordinary work. Positive reports never automatically become a measured quality/cost benefit.
+
+```sh
+harness-codex maintenance --json
+harness-codex maintenance observe --change CHANGE_ID --revision REVISION \
+  --observation WORK_ITEM_ID --outcome failed --source verification \
+  --model OBSERVED_MODEL --effort OBSERVED_EFFORT --category testing --runtime OBSERVED_CODEX_VERSION
+harness-codex maintenance resolve --change CHANGE_ID --decision keep
+harness-codex maintenance resolve --change CHANGE_ID --decision rollback --plan REVIEWED_PRIOR_PLAN.json
+```
+
+`resolve` is an explicit review action. Rollback requires an independently reviewed plan restoring exactly the prior recorded skill bytes; no project backup is hidden in evaluation state. It refuses changed revisions, user edits, topology changes, observed live writers and pending transactions. Interrupted apply/rollback leaves an intent record that pauses new changes; recover any file transaction, wait for the review lease to expire, then explicitly resolve it. A completed rollback can close its intent without repeating writes. If explicit config has already replaced that revision, inspect it and use `keep` to close the prior record as `superseded`; rollback cannot overwrite the newer configuration. Without a prior plan, use explicit config review rather than guessing old content. The history retains at most 16 changes with 32 outcome records each; only reviewed, rolled-back or superseded entries can be retired to make space. Local state is bounded at 512 KiB, with oversized writes refused before replacing the previous record.
+
+Existing operations annotations can optionally carry `--maintenance-reason` plus `--maintenance-evidence`, or `--maintenance-change` plus `--maintenance-revision` and observed model/effort/runtime. They reuse the existing work-item ID. An ordinary failed task does not create a maintenance signal. Maintenance failures preserve the independent operations record, and neither path enables the other automatically. Controlled before/after evaluation remains separate; this history does not learn model-routing policy or automatically tune Jev/Graft.

@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -22,7 +23,11 @@ def request(prompt='Fix README wording.'):
 
 class NativeRouterTests(unittest.TestCase):
     def setUp(self):
-        self.environment = mock.patch.dict(os.environ, {'HARNESS_ROUTER_RESUME': '0'})
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        profiles = Path(temporary.name) / 'profiles.json'
+        profiles.write_text(json.dumps({'fast': ['gpt-5.6-luna'], 'balanced': ['gpt-6-astra'], 'deep': ['gpt-6-astra']}))
+        self.environment = mock.patch.dict(os.environ, {'HARNESS_ROUTER_RESUME': '0', 'HARNESS_ROUTER_PROFILES': str(profiles)})
         self.environment.start()
         self.addCleanup(self.environment.stop)
 

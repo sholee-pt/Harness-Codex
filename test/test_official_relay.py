@@ -30,7 +30,7 @@ def catalog():
 class PolicyTests(unittest.TestCase):
     def setUp(self):
         self.saved = []
-        self.policy = relay.Policy(remember=lambda *args: self.saved.append(args))
+        self.policy = relay.Policy(profiles={'fast': ['gpt-5.6-luna'], 'deep': ['gpt-6-astra']}, remember=lambda *args: self.saved.append(args))
         self.policy.model_list(catalog())
         self.policy.response({'result': {'config': {'model': 'gpt-5.6-sol', 'model_reasoning_effort': 'high'}}}, 'config/read', {})
 
@@ -97,6 +97,63 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(self.policy.response(copy.deepcopy(packet), None, {}), packet)
         self.assertEqual(relay.server_arguments(['-c', 'approval_policy="on-request"', '--disable', 'test', 'resume', '--last']),
                          ['-c', 'approval_policy="on-request"', '--disable', 'test'])
+
+    def test_catalog_replacement_revalidates_auto_and_manual_without_replaying(self):
+        self.policy.seed('t1', {'model': 'gpt-5.6-sol', 'reasoningEffort': 'high'})
+        self.policy.auto['t1'] = True
+        future = {'data': [{'model': 'new-model', 'isDefault': True, 'defaultReasoningEffort': 'adaptive',
+            'supportedReasoningEfforts': [{'reasoningEffort': 'adaptive'}]}], 'nextCursor': None}
+        self.policy.model_list(future)
+        params = {'threadId': 't1', 'input': [{'type': 'text', 'text': 'Continue.'}], 'model': 'gpt-5.6-sol', 'effort': 'high'}
+        result = self.policy.request('turn/start', params)
+        self.assertEqual((result['model'], result['effort']), ('new-model', 'adaptive'))
+        self.assertTrue(self.policy.notices)
+        self.assertEqual(result['input'], params['input'])
+        self.policy.auto['t1'] = False
+        with self.assertRaisesRegex(relay.SelectionRequired, '/model'):
+            self.policy.request('turn/start', params)
+        self.policy.model_list({'data': [], 'nextCursor': None})
+        with self.assertRaises(relay.SelectionRequired):
+            self.policy.request('turn/start', {**params, 'model': relay.ALIAS})
+
+    def test_resume_model_and_effort_changes_preserve_all_other_settings(self):
+        self.policy.auto['t1'] = True
+        self.policy.seed('t1', {'model': 'removed', 'reasoningEffort': 'retired-effort'})
+        params = {'threadId': 't1', 'config': {'approval_policy': 'on-request'}, 'cwd': '/project'}
+        result = self.policy.request('thread/resume', params)
+        self.assertEqual(result['model'], 'gpt-5.6-sol')
+        self.assertEqual(result['config'], {'approval_policy': 'on-request', 'model_reasoning_effort': 'medium'})
+        self.assertEqual(result['cwd'], params['cwd'])
+        self.policy.seed('t1', {'model': 'gpt-5.6-sol', 'reasoningEffort': 'removed-effort'})
+        self.assertEqual(self.policy.request('thread/resume', params)['config']['model_reasoning_effort'], 'medium')
+        self.policy.auto['t1'] = False
+        self.policy.seed('t1', {'model': 'gpt-5.6-sol', 'reasoningEffort': 'removed-effort'})
+        with self.assertRaises(relay.SelectionRequired):
+            self.policy.request('thread/resume', params)
+
+    def test_availability_error_requests_refresh_but_does_not_retry(self):
+        message = {'id': 1, 'error': {'code': -1, 'message': 'Model is no longer available'}}
+        self.assertEqual(self.policy.response(copy.deepcopy(message), 'turn/start', {'threadId': 't1'}), message)
+        self.assertTrue(self.policy.refresh_needed)
+        self.policy.model_list(catalog())
+        self.assertFalse(self.policy.refresh_needed)
+        self.policy.response({'error': {'message': 'approval rejected'}}, 'turn/start', {})
+        self.assertFalse(self.policy.refresh_needed)
+
+    def test_manual_reselection_uses_new_models_reasoning_and_keeps_native_permissions(self):
+        self.policy.seed('t1', {'model': 'removed', 'reasoningEffort': 'retired'})
+        params = {'threadId': 't1', 'model': 'gpt-5.6-luna', 'config': {'approval_policy': 'on-request'}}
+        result = self.policy.request('thread/resume', params)
+        self.assertEqual(result['config'], {'approval_policy': 'on-request', 'model_reasoning_effort': 'medium'})
+        params = {'threadId': 't1', 'model': 'gpt-5.6-luna', 'effort': 'low'}
+        self.policy.response({'result': {}}, 'thread/settings/update', params)
+        self.assertEqual(self.policy.contexts['t1'].effort, 'low')
+        self.assertEqual(self.policy.request('turn/start', {'threadId': 't1', 'input': []}), {'threadId': 't1', 'input': []})
+
+    def test_empty_native_configuration_uses_catalog_for_validation_without_overrides(self):
+        policy = relay.Policy()
+        policy.model_list(catalog())
+        self.assertEqual(policy.request('thread/start', {'cwd': '/project'}), {'cwd': '/project'})
 
 
 class UpdateTests(unittest.TestCase):
@@ -257,7 +314,7 @@ class UpdateTests(unittest.TestCase):
                 return_value=SimpleNamespace(stdout='--remote --remote-auth-token-env')), \
              mock.patch('harness_cli.configuration.Server', autospec=Server) as server:
             server.return_value.call.return_value = {'data': [], 'nextCursor': None}
-            with self.assertRaisesRegex(ValueError, 'complete'):
+            with self.assertRaisesRegex(ValueError, 'visible Codex models'):
                 entry.compatible(Path('candidate-codex'), ())
             server.return_value.close.assert_called_once()
 
@@ -379,9 +436,79 @@ for line in sys.stdin:
         self.assertIsNone(adapter.error)
         self.assertEqual(socket.messages[1]['method'], 'item/commandExecution/requestApproval')
         result = socket.messages[-1]['result']
-        self.assertEqual(result['received']['model'], 'gpt-5.6-luna')
+        self.assertEqual(result['received']['model'], 'gpt-5.6-sol')
         self.assertEqual(result['received']['approvalPolicy'], 'on-request')
         self.assertEqual(result['approval'], {'id': 2, 'result': {'decision': 'decline'}})
+
+    async def test_paginated_refresh_resume_and_removed_model_never_replay_inference(self):
+        script = """import json, sys
+calls, turns = [], 0
+for line in sys.stdin:
+    message = json.loads(line)
+    method, params = message['method'], message['params']
+    calls.append({'method': method, 'params': params})
+    if method == 'model/list':
+        model, effort = ('future-model', 'adaptive') if turns else ('old-model', 'medium')
+        entry = {'model': model, 'id': model, 'isDefault': True, 'defaultReasoningEffort': effort,
+                 'supportedReasoningEfforts': [{'reasoningEffort': effort}]}
+        result = {'data': [entry] if params.get('cursor') else [], 'nextCursor': None if params.get('cursor') else 'page2'}
+    elif method == 'thread/read':
+        result = {'thread': {'id': 't1', 'model': 'old-model', 'reasoningEffort': 'medium'}}
+    elif method == 'thread/resume':
+        result = {'thread': {'id': 't1'}, 'model': 'old-model', 'reasoningEffort': 'medium'}
+    elif method == 'turn/start':
+        turns += 1
+        if turns == 1:
+            print(json.dumps({'id': message['id'], 'error': {'code': -1, 'message': 'Model is no longer available'}}), flush=True)
+            continue
+        result = {'turn': {'id': str(turns)}, 'received': params, 'calls': calls}
+    print(json.dumps({'id': message['id'], 'result': result}), flush=True)
+"""
+        policy = relay.Policy(session_modes={'t1': True})
+        adapter = relay.Relay(sys.executable, dict(os.environ), args=['-c', script], policy=policy)
+        task = {'threadId': 't1', 'model': 'old-model', 'effort': 'medium', 'approvalPolicy': 'on-request',
+                'input': [{'type': 'text', 'text': 'Continue.'}]}
+
+        class Socket:
+            request = SimpleNamespace(path='/', headers={'Authorization': 'Bearer ' + adapter.token})
+            def __init__(self):
+                self.queue, self.messages = asyncio.Queue(), []
+                self.queue.put_nowait({'id': 1, 'method': 'thread/resume', 'params': {'threadId': 't1'}})
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                value = await self.queue.get()
+                if value is None:
+                    raise StopAsyncIteration
+                return json.dumps(value)
+            async def send(self, raw):
+                message = json.loads(raw)
+                self.messages.append(message)
+                if 'id' not in message:
+                    return
+                if message['id'] == 4:
+                    self.queue.put_nowait(None)
+                else:
+                    self.queue.put_nowait({'id': message['id'] + 1, 'method': 'turn/start', 'params': task})
+            async def close(self, **kwargs):
+                pass
+
+        socket = Socket()
+        await asyncio.wait_for(adapter.connect(socket), 10)
+        self.assertIsNone(adapter.error)
+        responses = {item['id']: item for item in socket.messages if 'id' in item}
+        self.assertIn('error', responses[2])
+        self.assertEqual(responses[3]['result']['received']['model'], 'future-model')
+        self.assertEqual(responses[3]['result']['received']['effort'], 'adaptive')
+        calls = responses[4]['result']['calls']
+        self.assertEqual([item['params']['includeTurns'] for item in calls if item['method'] == 'thread/read'], [False])
+        self.assertEqual(sum(item['method'] == 'model/list' for item in calls), 4)
+        submitted = [item['params'] for item in calls if item['method'] == 'turn/start']
+        self.assertEqual(len(submitted), 3)
+        for item in submitted:
+            self.assertEqual(item['input'], task['input'])
+            self.assertEqual(item['approvalPolicy'], 'on-request')
+        self.assertTrue(any('No failed task was replayed' in item.get('params', {}).get('message', '') for item in socket.messages))
 
 
 if __name__ == '__main__':

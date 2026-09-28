@@ -19,11 +19,11 @@ def register(commands):
     parser.add_argument('--codex-binary', default='codex')
     parser.add_argument('--previous-tier', choices=policy.TIERS, default='balanced')
     parser.add_argument('--previous-model')
-    parser.add_argument('--previous-effort', choices=policy.EFFORTS)
+    parser.add_argument('--previous-effort', help='A reasoning option advertised by the model catalog.')
     parser.add_argument('--continue-task', action='store_true', help='Keep the previous task selection unless escalation is justified.')
     parser.add_argument('--failures', type=int, default=0, help='Verified consecutive failures in this task, not model self-ratings.')
     parser.add_argument('--model', help='Preview a manual fixed model; requires --effort.')
-    parser.add_argument('--effort', choices=policy.EFFORTS)
+    parser.add_argument('--effort', help='A reasoning option advertised by the selected model.')
 
 
 def read_text(path, limit):

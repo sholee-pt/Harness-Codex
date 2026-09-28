@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.24.0‑beta`](#harness-for-codex-v0240-beta) | Schema 3 | Schema 7 | Schema 2 | Dynamic model catalogs and inference recovery, bounded maintenance outcome tracking and guarded rollback |
 | [`v0.23.2‑beta`](#harness-for-codex-v0232-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve native arguments and profiles, reject incompatible Codex candidates before activation, and count unique participant observations |
 | [`v0.23.1‑beta`](#harness-for-codex-v0231-beta) | Schema 3 | Schema 7 | Schema 2 | Fix official Codex relay authentication without URL path tokens |
 | [`v0.23.0‑beta`](#harness-for-codex-v0230-beta) | Schema 3 | Schema 7 | Schema 2 | Independent official Codex updates, published-release choices and an external Auto adapter without Codex compilation |
@@ -71,6 +72,13 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.24.0-beta
+
+- Remove built-in model-ID preferences; consume available models, advertised successors and reasoning options without rejecting new effort names.
+- Refresh bounded catalog pages at launch/menu lookup and after inference-availability errors; validate saved selections and never replay a failed task.
+- Record bounded, private maintenance change/outcome history; connect explicitly linked operations evidence, pause on recurring adverse observations and require verified prior content for rollback.
+- Preserve maintenance opt-outs and make observation, automatic-change and unmeasured-effect states visible during setup and status.
 
 ## Harness for Codex v0.23.2-beta
 

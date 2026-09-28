@@ -230,6 +230,132 @@ class MaintenanceTests(unittest.TestCase):
         self.hook('Stop')
         self.assertEqual(self.hook(), '')
 
+    def applied_change(self):
+        self.manager.configure('auto')
+        self.signal()
+        self.hook()
+        result = self.manager.finish(self.lease()['id'], 'apply', plan=self.updated_plan())
+        self.hook('Stop')
+        return result
+
+    def test_effect_observations_are_deduplicated_stratified_and_pause_only_related_changes(self):
+        result = self.applied_change()
+        identity, revision = result['changeId'], result['revision']
+        def observe(reference, **kwargs):
+            context = dict(model='private-model', effort='adaptive', category='testing', runtime='cli-future')
+            context.update(kwargs)
+            return self.manager.observe(identity, reference, 'failed', 'verification', revision, **context)
+        self.assertEqual(observe('one')['status'], 'observing')
+        self.assertFalse(observe('one')['recorded'])
+        self.assertEqual(observe('different', model='other-model')['status'], 'observing')
+        self.assertEqual(observe('unknown', runtime=None)['status'], 'observing')
+        self.assertEqual(observe('two')['status'], 'review-required')
+        self.assertTrue(self.manager.status()['automaticChangesPaused'])
+        self.assertEqual(self.manager.begin()['status'], 'deferred')
+        self.assertEqual(self.manager.resolve(identity, 'keep')['status'], 'reviewed')
+        self.assertFalse(self.manager.status()['automaticChangesPaused'])
+        self.assertEqual(observe('three')['status'], 'reviewed')
+        self.assertFalse(observe('two')['recorded'])
+        self.assertEqual(observe('four')['status'], 'review-required')
+        stored = self.manager._location().read_text()
+        self.assertNotIn('private-model', stored)
+        self.assertNotIn('SKILL.md', stored)
+        self.assertEqual(self.manager.status()['changes'][0]['effect'], 'not-established')
+        self.assertFalse(self.manager.observe(identity, 'stale', 'failed', 'verification', '0' * 64)['recorded'])
+
+    def test_guarded_rollback_restores_only_recorded_content_and_preserves_user_edits(self):
+        result = self.applied_change()
+        previous = self.base / 'previous-plan.json'
+        previous.write_text(json.dumps(self.plan), encoding='utf-8')
+        skill = self.root / '.agents/skills/project-harness/SKILL.md'
+        before = skill.read_bytes()
+        with self.assertRaises(ValueError):
+            self.manager.resolve(result['changeId'], 'rollback', plan=self.updated_plan('\nUnrelated correction.\n'))
+        self.assertEqual(skill.read_bytes(), before)
+        skill.write_bytes(before + b'\nuser edit\n')
+        with self.assertRaisesRegex(ValueError, 'Modified'):
+            self.manager.resolve(result['changeId'], 'rollback', plan=previous)
+        self.assertTrue(skill.read_bytes().endswith(b'user edit\n'))
+        skill.write_bytes(before)
+        self.assertEqual(self.manager.resolve(result['changeId'], 'rollback', plan=previous)['status'], 'rolled-back')
+        self.assertEqual(skill.read_text(encoding='utf-8'), self.plan['artifacts'][0]['content'])
+
+    def test_previous_state_migrates_in_memory_and_interrupted_apply_blocks_new_changes(self):
+        self.manager.configure('suggest')
+        path = self.manager._location()
+        old = json.loads(path.read_text())
+        old.pop('changes')
+        old['schema'] = 1
+        path.write_text(json.dumps(old))
+        before = path.read_bytes()
+        self.assertEqual(self.manager.status()['mode'], 'suggest')
+        self.assertEqual(path.read_bytes(), before)
+        self.manager.configure('auto')
+        self.signal()
+        self.hook()
+        identity = self.lease()['id']
+        with mock.patch.object(harness_apply, 'apply_application', side_effect=OSError('interrupted')):
+            with self.assertRaises(OSError):
+                self.manager.finish(identity, 'apply', plan=self.updated_plan())
+        self.assertTrue(self.manager.status()['automaticChangesPaused'])
+        self.hook('Stop')
+        self.now += 181
+        self.assertEqual(self.manager.resolve(identity, 'keep')['writes'], 0)
+
+    def test_completed_rollback_recovers_its_intent_and_external_config_can_close_old_review(self):
+        result = self.applied_change()
+        previous = self.base / 'previous-plan.json'
+        previous.write_text(json.dumps(self.plan), encoding='utf-8')
+        apply = harness_apply.apply_application
+        def interrupted(application):
+            apply(application)
+            raise OSError('Interrupted after the project transaction completed')
+        with mock.patch.object(harness_apply, 'apply_application', side_effect=interrupted):
+            with self.assertRaises(OSError):
+                self.manager.resolve(result['changeId'], 'rollback', plan=previous)
+        self.assertTrue(self.manager.status()['automaticChangesPaused'])
+        self.assertEqual(self.manager.resolve(result['changeId'], 'rollback')['writes'], 0)
+        self.assertFalse(self.manager.status()['automaticChangesPaused'])
+        self.now += 3700
+        (self.root / 'review.txt').write_text('An explicitly reviewed workflow gap')
+        self.manager.signal('user-request', 'review.txt', 'next-review')
+        self.hook()
+        result = self.manager.finish(self.lease()['id'], 'apply', plan=self.updated_plan())
+        self.hook('Stop')
+        newer = minimal_plan(self.root, skill_suffix='\nExplicit user-requested configuration.\n')
+        apply(harness_apply.build_application(self.root, newer))
+        before = self.snapshot()
+        with self.assertRaisesRegex(ValueError, 'revision changed'):
+            self.manager.resolve(result['changeId'], 'rollback', plan=previous)
+        self.assertEqual(self.manager.resolve(result['changeId'], 'keep')['status'], 'superseded')
+        self.assertEqual(self.snapshot(), before)
+
+    def test_oversized_history_write_preserves_previous_state(self):
+        self.manager.configure('suggest')
+        path = self.manager._location()
+        before = path.read_bytes()
+        with mock.patch.object(maintenance, 'MAX_STATE', len(before) + 10):
+            with self.assertRaisesRegex(ValueError, 'size limit'):
+                self.signal()
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_operations_annotation_links_only_explicit_harness_concerns(self):
+        import harness_ops
+        self.manager.configure('auto')
+        def annotate(turn, linked):
+            event = harness_ops.record_hook_event({'hook_event_name': 'UserPromptSubmit', 'session_id': 'ops-session',
+                'turn_id': turn, 'cwd': str(self.root), 'prompt': 'fixture task'}, state_root=self.state)
+            return harness_ops.annotate(root=self.root, state_root=self.state, work_item_ref=event['workItemRef'],
+                relation='new-task', category='unknown', execution_class='direct', agent_selection='not-applicable',
+                outcome='failed', verification='failed', evidence_source='verification',
+                **({'maintenance_reason': 'verification-gap', 'maintenance_evidence': 'pyproject.toml'} if linked else {}))
+        annotate('code-bug', False)
+        self.assertEqual(self.manager.status()['pending'], 0)
+        annotate('gap-one', True)
+        self.assertEqual(self.manager.status()['pending'], 0)
+        self.assertIn('signal', annotate('gap-two', True)['maintenance'])
+        self.assertEqual(self.manager.status()['pending'], 1)
+
     def test_apply_rejects_user_edits_without_overwrite(self):
         self.manager.configure('auto')
         self.signal(); self.hook()

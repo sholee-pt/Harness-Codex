@@ -36,10 +36,14 @@ An explicit native `--profile`/`-p` selection runs the original Codex terminal w
 
 Routing uses the current request, advertised model catalog and a small in-memory continuation context. Clear complex work can raise the tier immediately; two clearly lighter requests permit lowering it. Ambiguous continuations retain the current pair. “New task:” or “다음 작업:” allows immediate reassessment. Resume seeds its context from native saved inference settings, not a replayed transcript. These are deterministic preferences, not measured performance rankings.
 
+There are no built-in model-ID preferences. Without a user preference file, Auto retains an available continuation model or uses the catalog's recommended default. It does not infer speed or quality from model names or list order. Known effort meanings (`low`, `medium`, `high`) remain task preferences only, never an availability allowlist: each selection must be advertised by that model, otherwise its supported default is used. New effort names are accepted without a source edit. User preference IDs remain explicit configuration, not built-in assumptions; an advertised `upgrade` can resolve a no-longer-visible preference when the catalog includes its successor information.
+
+Catalog pages are bounded and combined at launch, when the native model menu requests them, and before the next request after a model/effort availability error. Ordinary turns reuse metadata and make no extra routing-model call. CLI versions and server-side catalog changes are independent. Resume reads metadata only (`thread/read`, without turns); when a server omits saved inference metadata, settings returned by resume are checked before the next task. Auto replaces unavailable selections with a supported catalog default and displays a warning. Manual selections require a new `/model` choice; if resume cannot open, use `codex --model AVAILABLE_MODEL resume SESSION_ID`. A failed inference request is never automatically replayed. Empty catalogs and missing usable defaults request a manual selection/native mode rather than inventing a model. Major protocol changes can still require a Harness update.
+
 Image-containing, image-only and oversized text requests keep the current native inference settings. The 32 KiB routing bound does not truncate or reject their content. Optional preference files use real visible catalog model IDs:
 
 ```json
-{"fast":["gpt-5.6-luna"],"balanced":["gpt-5.6-sol"],"deep":["gpt-6-astra"]}
+{"fast":["YOUR_AVAILABLE_FAST_MODEL"],"balanced":[],"deep":["YOUR_AVAILABLE_DEEP_MODEL"]}
 ```
 
 ```bash

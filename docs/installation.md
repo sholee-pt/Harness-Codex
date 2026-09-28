@@ -23,8 +23,10 @@ Current releases and CI target Linux. Windows installation code and the option r
 
 `reuse` retains the repository transport and automatic-update policy. Branch pins are retained except for the [one-time legacy-to-beta migration](versioning.md). `reset` applies the supplied/default preferences, clears the update-check cache and rebuilds the exact managed PATH registration. Both preserve verified releases and runtime files, project harnesses, unrelated shell/registry settings and modified user content. Reset does not authorize removing unknown directories. Without a terminal, an existing installation requires an explicit choice.
 
+Choose an existing published tag from Releases for `RELEASE_TAG`; the current development branch is source-only.
+
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.23.2-beta/install_harness_codex.sh | sh -s -- --existing reuse
+curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/RELEASE_TAG/install_harness_codex.sh | sh -s -- --existing reuse
 source ~/.bashrc
 ```
 
@@ -37,7 +39,7 @@ For Windows source development, run from an existing checkout:
 ## Source installation
 
 ```bash
-git clone --branch v0.23.2-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
+git clone --branch v0.24.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
 bash Harness-Codex/installer/install.sh
 source ~/.bashrc
 ```

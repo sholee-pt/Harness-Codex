@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v0.23.2-beta, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
+- This branch contains Harness for Codex v0.24.0-beta, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add telemetry or marketplace dependencies. The separately authorized CLI distribution layer may check/fetch this repository and publish verified GitHub release assets; project generation never performs those operations.
 - Keep general task evaluation default-off, user-local, and isolated from generation/apply failure handling. The owner-authorized init default may enable bounded Jev shadow advice and its local counters after Graft is ready and preserves explicit opt-outs. Only explicit new-key entry permits a fixed, bounded non-project authentication probe; existing credentials never trigger an init API call. Store credentials separately from project artifacts, metrics and shell profiles.
@@ -31,6 +31,8 @@
 - Report any validation that could not be executed.
 
 ## Git conventions
+
+- Never include CI-skipping directives in commit messages. A deferred release does not authorize publishing; keep ordinary checks separate from manual release dispatch.
 
 - After dispatching GitHub Actions, report the workflow link and stop. Do not poll, watch, schedule monitoring, or wait for completion unless the owner explicitly asks for another status check. The owner checks release progress directly.
 - Keep shared workflow names version-independent; put the triggering version/ref only in new run titles. Preserve historical job/run labels as they currently stand, including earlier label corrections. Never rename or rerun past jobs just to align their labels with a newer version. Do not cancel, restart or alter an in-flight release for naming-only maintenance; prevent that maintenance push from starting another Actions run.

@@ -20,10 +20,11 @@ import uuid
 import harness_eval_store as storage
 from harness_eval_lock import FileLock, project_lock
 import harness_state
+import harness_maintenance_history as history
 
 REASONS = ('scope-changed', 'workflow-gap', 'routing-mismatch', 'verification-gap', 'user-request')
 MODES = ('off', 'suggest', 'auto')
-MAX_STATE = 256 * 1024
+MAX_STATE = 512 * 1024
 MAX_CANDIDATES = 32
 MAX_SESSIONS = 32
 REVIEW_SECONDS = 180
@@ -45,7 +46,7 @@ def digest(value):
 
 
 def default_state():
-    return {'schema': 1, 'mode': 'off', 'candidates': {}, 'sessions': {}, 'lease': None,
+    return {'schema': 2, 'mode': 'off', 'candidates': {}, 'sessions': {}, 'lease': None, 'changes': [],
             'attempts': [], 'notified': None, 'appliedRevision': None,
             'metrics': {'reviews': 0, 'applied': 0, 'unchanged': 0, 'reviewSeconds': 0,
                         'reportedTokens': 0, 'unmeasuredReviews': 0}}
@@ -83,13 +84,16 @@ class Maintenance:
             raise ValueError('Maintenance state exceeds its size limit')
         value = json.loads(path.read_text(encoding='utf-8'))
         expected = default_state()
-        if (not isinstance(value, dict) or set(value) != set(expected) or value['schema'] != 1
+        if isinstance(value, dict) and value.get('schema') == 1 and set(value) == set(expected) - {'changes'}:
+            value = {**value, 'schema': 2, 'changes': []}
+        if (not isinstance(value, dict) or set(value) != set(expected) or value['schema'] != 2
                 or value['mode'] not in MODES or not isinstance(value['candidates'], dict)
                 or len(value['candidates']) > MAX_CANDIDATES or not isinstance(value['sessions'], dict)
                 or len(value['sessions']) > MAX_SESSIONS or not isinstance(value['attempts'], list)
                 or len(value['attempts']) > REVIEWS_PER_DAY or not isinstance(value['metrics'], dict)
                 or set(value['metrics']) != set(expected['metrics'])):
             raise ValueError('Invalid maintenance state; preserve it for inspection')
+        history.validate(value['changes'])
         for key, item in value['candidates'].items():
             if (not re.fullmatch(r'[0-9a-f]{64}', key) or not isinstance(item, dict)
                     or set(item) != {'reason', 'evidence', 'observations', 'status'}
@@ -140,7 +144,14 @@ class Maintenance:
             before = digest(value)
             yield value
             if digest(value) != before or not path.exists():
-                harness_state.atomic_write_text(path, json.dumps(value, sort_keys=True) + '\n', mode=0o600)
+                self._write(path, value)
+
+    def _write(self, path, value):
+        history.validate(value['changes'])
+        content = json.dumps(value, sort_keys=True) + '\n'
+        if len(content.encode('utf-8')) > MAX_STATE:
+            raise ValueError('Maintenance state exceeds its size limit; existing state preserved')
+        harness_state.atomic_write_text(path, content, mode=0o600)
 
     def manifest(self):
         path = checked(self.root / '.harness/manifest.json')
@@ -180,7 +191,83 @@ class Maintenance:
                 'reviewInProgress': state['lease'] is not None and not expired, 'reviewExpired': expired, 'metrics': state['metrics'],
                 'automaticScope': 'existing-skill-content-only', 'qualityBenefit': 'not-established',
                 'tokenBudgetEnforcement': 'not-available-in-native-interactive-session',
-                'reviewTimeLimitSeconds': REVIEW_SECONDS, 'reviewsPerDay': REVIEWS_PER_DAY}
+                'reviewTimeLimitSeconds': REVIEW_SECONDS, 'reviewsPerDay': REVIEWS_PER_DAY,
+                **history.summary(state['changes'])}
+
+    def observe(self, change, observation, outcome, source, revision, *, model=None, effort=None, category=None, runtime=None):
+        if not isinstance(observation, str) or not observation or len(observation) > 256:
+            raise ValueError('Provide a bounded work-item reference, not task text')
+        with self.transaction() as state:
+            if state['mode'] == 'off':
+                return {'recorded': False, 'reason': 'disabled'}
+            item = history.find(state['changes'], change)
+            if item is None or revision != item['after'] or digest(self.manifest()) != revision or item['status'] in {'applying', 'rolling-back', 'rolled-back', 'superseded'}:
+                return {'recorded': False, 'reason': 'change-revision-not-current'}
+            values = (model, effort, category, runtime)
+            if any(value is not None and (not isinstance(value, str) or not value or len(value) > 256 or not value.isprintable()) for value in values):
+                raise ValueError('Invalid observation context')
+            stratum = self.store.fingerprint(json.dumps(values).encode()) if all(values) and 'unknown' not in values else None
+            recorded = history.observe(item, self.store.fingerprint(observation.encode()), outcome, source, stratum)
+            return {'recorded': recorded, 'status': item['status'], 'effect': 'not-established'}
+
+    def resolve(self, change, decision, *, plan=None):
+        if decision not in {'keep', 'rollback'}:
+            raise ValueError('Choose keep or rollback after reviewing the change')
+        with self.transaction() as state:
+            self._expire(state)
+            item = history.find(state['changes'], change)
+            if item is None or item['status'] in {'rolled-back', 'superseded'}:
+                raise ValueError('No current maintenance change has that identity')
+            if state['lease'] or self._busy(state, None):
+                raise ValueError('Wait until observed tasks and maintenance reviews are idle')
+            with project_lock(self.root):
+                if (self.root / '.harness/transaction.json').exists():
+                    raise ValueError('Recover the pending Harness transaction before resolving maintenance')
+                manifest = self.manifest()
+                revision = digest(manifest)
+                unstarted = item['status'] == 'applying' and revision == item['before']
+                restored = item['status'] == 'rolling-back' and revision == item.get('rollbackRevision')
+                for managed in manifest['managedFiles']:
+                    if harness_state.entry_status(self.root, managed).get('state') != 'unchanged':
+                        raise ValueError('Modified managed files preserved; resolve their ownership before maintenance')
+                if unstarted or restored:
+                    item['status'] = 'rolled-back'
+                    state['appliedRevision'] = revision
+                    return {'status': 'rolled-back', 'effect': 'not-established', 'writes': 0}
+                if revision != item['after']:
+                    if decision != 'keep':
+                        raise ValueError('Project revision changed; inspect the current config and explicitly keep it to close the prior change')
+                    item['status'] = 'superseded'
+                    state['appliedRevision'] = revision
+                    return {'status': 'superseded', 'effect': 'not-established', 'writes': 0}
+                if decision == 'rollback':
+                    if plan is None:
+                        raise ValueError('Rollback requires a reviewed plan restoring the recorded skill hashes')
+                    application = self._limited_application(plan)
+                    files = self._change_files(application)
+                    if files != {key: list(reversed(pair)) for key, pair in item['files'].items()}:
+                        raise ValueError('Rollback may only restore the unchanged managed skills to their recorded prior bytes')
+                    import harness_apply
+                    item['status'] = 'rolling-back'
+                    item['rollbackRevision'] = digest(json.loads(application['manifestText']))
+                    self._write(self._location(), state)
+                    harness_apply.apply_application(application)
+                    state['appliedRevision'] = digest(self.manifest())
+                    item['status'] = 'rolled-back'
+                else:
+                    item['status'] = 'reviewed'
+                    item['reviewed'] = len(item['observations'])
+            return {'status': item['status'], 'effect': 'not-established'}
+
+    def _change_files(self, application):
+        files = {}
+        for item in application['report']['actions']:
+            name = item['path']
+            if item['action'] != 'unchanged' and name != '.harness/manifest.json':
+                before = hashlib.sha256(harness_state.resolve_inside(self.root, name).read_bytes()).hexdigest()
+                after = hashlib.sha256(application['artifacts'][name].encode('utf-8')).hexdigest()
+                files[self.store.fingerprint(name.encode())] = [before, after]
+        return files
 
     def signal(self, reason, evidence, observation):
         if reason not in REASONS or not observation or len(observation) > 256:
@@ -223,7 +310,7 @@ class Maintenance:
         self._expire(state)
         now = self.clock()
         state['attempts'] = [t for t in state['attempts'] if now - t < 86400]
-        if state['lease'] or self._busy(state, session):
+        if state['lease'] or self._busy(state, session) or history.summary(state['changes'])['automaticChangesPaused']:
             return None
         candidates = self._eligible(state)
         if (not candidates or len(state['attempts']) >= REVIEWS_PER_DAY
@@ -290,6 +377,8 @@ class Maintenance:
             if decision == 'apply':
                 if state['mode'] != 'auto':
                     raise ValueError('Automatic apply was not enabled for this project')
+                if history.summary(state['changes'])['automaticChangesPaused']:
+                    raise ValueError('Review the unresolved previous maintenance change before applying another')
                 if self._busy(state, lease['session']):
                     raise ValueError('Another task or child agent is active; defer maintenance')
                 if plan is None:
@@ -304,8 +393,22 @@ class Maintenance:
                     application = self._limited_application(plan)
                     if self.clock() > lease['deadline']:
                         raise ValueError('Review deadline passed before apply')
+                    if len(state['changes']) >= history.LIMIT:
+                        discard = next((i for i, item in enumerate(state['changes']) if item['status'] in {'reviewed', 'rolled-back', 'superseded'}), None)
+                        if discard is None:
+                            raise ValueError('Review existing maintenance changes before extending the bounded history')
+                        state['changes'].pop(discard)
+                    state['changes'].append({'id': lease['id'], 'before': lease['revision'],
+                        'after': digest(json.loads(application['manifestText'])),
+                        'reasons': sorted({state['candidates'][key]['reason'] for key in lease['candidates']}),
+                        'evidence': sorted({state['candidates'][key]['evidence'] for key in lease['candidates']}),
+                        'files': self._change_files(application), 'status': 'applying', 'observations': {}, 'reviewed': 0})
+                    # Record intent before project writes. An interruption pauses future
+                    # changes until ordinary transaction recovery and explicit review.
+                    self._write(self._location(), state)
                     harness_apply.apply_application(application)
                     state['appliedRevision'] = digest(self.manifest())
+                    state['changes'][-1]['status'] = 'observing'
                 state['metrics']['applied'] += 1
             for key in lease['candidates']:
                 state['candidates'][key]['status'] = 'resolved'
@@ -317,7 +420,8 @@ class Maintenance:
             else:
                 state['metrics']['reportedTokens'] += tokens
             state['lease'] = None
-            return {'status': decision, 'revision': state['appliedRevision'], 'taskQuality': 'not-measured'}
+            return {'status': decision, 'revision': state['appliedRevision'], 'taskQuality': 'not-measured',
+                    'changeId': lease_id if decision == 'apply' else None, 'effect': 'not-established'}
 
     def hook(self, event):
         kind = event.get('hook_event_name')
@@ -368,6 +472,18 @@ class Maintenance:
                 messages.append('Harness skill content changed. Re-read the current project-harness and relevant skills before this task. '
                                 'This is a reload instruction, not proof of native discovery or task quality.')
                 session['seenRevision'] = revision
+                current = next((item for item in reversed(state['changes']) if item['after'] == revision
+                                and item['status'] in {'observing', 'review-required', 'reviewed'}), None)
+                if current:
+                    messages.append('Maintenance change ' + current['id'] + ' at revision ' + revision
+                        + ' is being observed, not proven beneficial. Record explicitly related outcomes only; '
+                        'read the maintenance protocol for observe/operations annotation. Do not run an extra evaluation model.')
+            if history.summary(state['changes'])['automaticChangesPaused']:
+                if state['notified'] != '0' * 64:
+                    messages.append('Harness automatic changes paused: a prior change needs review or recovery. '
+                        'Continue project work; use harness-codex maintenance to inspect and resolve it.')
+                    state['notified'] = '0' * 64
+                return '\n'.join(messages)
             eligible = self._eligible(state)
             if eligible:
                 if state['mode'] == 'auto':
@@ -398,10 +514,32 @@ def find_root(cwd):
     return None
 
 
+def register_effect_commands(commands):
+    observe = commands.add_parser('observe', help='Record an explicitly related outcome; never infer causal benefit.')
+    for name in ('change', 'observation', 'revision'):
+        observe.add_argument('--' + name, required=True)
+    observe.add_argument('--outcome', choices=sorted(history.OUTCOMES), required=True)
+    observe.add_argument('--source', choices=sorted(history.SOURCES), required=True)
+    for name in ('model', 'effort', 'category', 'runtime'):
+        observe.add_argument('--' + name)
+    resolve = commands.add_parser('resolve', help='Review a change, or restore a verified previous skill plan.')
+    resolve.add_argument('--change', required=True)
+    resolve.add_argument('--decision', choices=('keep', 'rollback'), required=True)
+    resolve.add_argument('--plan', type=Path)
+
+
+def effect_command(manager, args, action):
+    if action == 'resolve':
+        return manager.resolve(args.change, args.decision, plan=args.plan)
+    return manager.observe(args.change, args.observation, args.outcome, args.source, args.revision,
+                           model=args.model, effort=args.effort, category=args.category, runtime=args.runtime)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=Path.cwd())
     commands = parser.add_subparsers(dest='command', required=True)
+    register_effect_commands(commands)
     commands.add_parser('status')
     clear = commands.add_parser('clear')
     clear.add_argument('--yes', action='store_true', required=True)
@@ -444,6 +582,8 @@ def main():
             result = manager.signal(args.reason, args.evidence, args.observation)
         elif args.command == 'begin':
             result = manager.begin(args.session)
+        elif args.command in {'observe', 'resolve'}:
+            result = effect_command(manager, args, args.command)
         else:
             result = manager.finish(args.lease, args.decision, plan=args.plan, tokens=args.reported_tokens)
         print(json.dumps(result, indent=2))

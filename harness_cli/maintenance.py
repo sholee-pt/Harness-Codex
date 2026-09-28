@@ -23,6 +23,15 @@ def register(commands):
     parser.add_argument('--json', action='store_true', default=False)
     parser.add_argument('--hook', action='store_true', help=__import__('argparse').SUPPRESS)
     actions = parser.add_subparsers(dest='maintenance_action', metavar='ACTION')
+    observe = actions.add_parser('observe', help='Record a related outcome without claiming measured benefit.')
+    for name in ('change', 'observation', 'revision', 'outcome', 'source'):
+        observe.add_argument('--' + name, required=True)
+    for name in ('model', 'effort', 'category', 'runtime'):
+        observe.add_argument('--' + name)
+    resolve = actions.add_parser('resolve', help='Review a change or roll back with a verified prior skill plan.')
+    resolve.add_argument('--change', required=True)
+    resolve.add_argument('--decision', choices=('keep', 'rollback'), required=True)
+    resolve.add_argument('--plan', type=Path)
     clear = actions.add_parser('clear', help='Disable maintenance and reset this project\'s local observations; project files are retained.')
     clear.add_argument('--yes', action='store_true', required=True)
     signal = actions.add_parser('signal', help='Record a specifically identified recurring concern without launching a review.')
@@ -41,7 +50,7 @@ def helper(source_root, root, arguments, *, capture=True):
     script = Path(source_root) / '.agents/skills/harness/scripts/harness_maintenance.py'
     result = subprocess.run([sys.executable, '-B', str(script), '--root', str(root), *arguments],
                             env=helper_environment(), capture_output=capture, text=True,
-                            timeout=190 if arguments[0] == 'finish' else 10)
+                            timeout=190 if arguments[0] in {'finish', 'resolve'} else 10)
     if not capture:
         return result.returncode
     if result.returncode:
@@ -207,6 +216,13 @@ def run(args, source_root):
                 arguments += ['--plan', str(args.plan)]
             if args.reported_tokens is not None:
                 arguments += ['--reported-tokens', str(args.reported_tokens)]
+        elif args.maintenance_action in {'observe', 'resolve'}:
+            names = ('change', 'decision', 'plan') if args.maintenance_action == 'resolve' else (
+                'change', 'observation', 'revision', 'outcome', 'source', 'model', 'effort', 'category', 'runtime')
+            for name in names:
+                value = getattr(args, name, None)
+                if value is not None:
+                    arguments += ['--' + name, str(value)]
         result = helper(source_root, args.project, arguments)
         if args.json:
             print(json.dumps(result, indent=2))
@@ -214,6 +230,8 @@ def run(args, source_root):
             print('Maintenance: ' + str(result.get('status', 'signal recorded' if result.get('recorded') else result.get('reason', 'unchanged'))))
             if result.get('id'):
                 print('Review lease: ' + result['id'])
+            if result.get('changeId'):
+                print('Change: ' + result['changeId'] + ' | Instructions updated; effect under observation.')
         return 0
     if args.mode is not None:
         result = enable(source_root, args.project, args.mode, quiet=args.json)
@@ -226,4 +244,16 @@ def run(args, source_root):
     else:
         print(f'Maintenance: {result["mode"]}; eligible concerns: {result["pending"]}; reviews: {result["metrics"]["reviews"]}.')
         print('Automatic changes: existing skills only. Quality benefit is unmeasured; token counts are not a billing total.')
+        print('Automatic changes paused: ' + ('yes' if result.get('automaticChangesPaused') else 'no'))
+        for change in result.get('changes', []):
+            print(f"  {change['id']}: {change['status']} | observations: {change['observations']} | effect: not established")
     return 0
+
+
+def report_policy(source_root, root):
+    try:
+        result = helper(source_root, root, ['status'])
+        print('Maintenance: ' + result['mode'] + '. Existing preferences preserved; use harness-codex maintenance --mode suggest|auto to opt in.')
+        print('Task-effect comparison: opt-in. Automatic model-efficiency learning: not implemented.')
+    except (ValueError, OSError, subprocess.SubprocessError):
+        print('Maintenance status unavailable; run harness-codex maintenance. No preference was changed.')

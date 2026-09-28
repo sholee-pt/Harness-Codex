@@ -476,6 +476,13 @@ def annotate(
     evidence_source: str,
     related_work_item_ref: str | None = None,
     state_root: Path | None = None,
+    maintenance_reason: str | None = None,
+    maintenance_evidence: str | None = None,
+    maintenance_change: str | None = None,
+    maintenance_revision: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
+    runtime: str | None = None,
 ) -> dict[str, Any]:
     selected_root = _find_harness_root(root)
     if selected_root is None:
@@ -549,7 +556,7 @@ def annotate(
         _write_exclusive(
             _events_root(store, repository_id) / f"{event['eventId']}.json", event
         )
-    return {
+    result = {
         "valid": True,
         "repositoryId": repository_id,
         "workItemRef": work_item_ref,
@@ -557,6 +564,24 @@ def annotate(
         "supersedesEventId": payload["supersedesEventId"],
         "rawContentStored": False,
     }
+    if maintenance_reason or maintenance_evidence or maintenance_change:
+        # Optional, explicitly linked evidence only. A task failure alone never
+        # declares a harness defect. A maintenance error cannot erase the record.
+        try:
+            if bool(maintenance_reason) != bool(maintenance_evidence):
+                raise ValueError('Maintenance signal requires both reason and evidence')
+            from harness_maintenance import Maintenance
+            manager = Maintenance(selected_root, state_root)
+            linked = {}
+            if maintenance_reason and maintenance_evidence:
+                linked['signal'] = manager.signal(maintenance_reason, maintenance_evidence, work_item_ref)
+            if maintenance_change:
+                linked['observation'] = manager.observe(maintenance_change, work_item_ref, outcome, evidence_source,
+                    maintenance_revision, model=model, effort=effort, category=category, runtime=runtime)
+            result['maintenance'] = linked
+        except (OSError, ValueError, TimeoutError):
+            result['maintenance'] = {'available': False, 'recordPreserved': True}
+    return result
 
 
 def audit(root: Path, *, state_root: Path | None = None) -> dict[str, Any]:
@@ -835,6 +860,13 @@ def command_annotate(args: argparse.Namespace) -> int:
         outcome=args.outcome,
         verification=args.verification,
         evidence_source=args.evidence_source,
+        maintenance_reason=args.maintenance_reason,
+        maintenance_evidence=args.maintenance_evidence,
+        maintenance_change=args.maintenance_change,
+        maintenance_revision=args.maintenance_revision,
+        model=args.model,
+        effort=args.effort,
+        runtime=args.runtime,
         related_work_item_ref=args.related_work_item_ref,
         state_root=Path(args.state_home).resolve() if args.state_home else None,
     )
@@ -916,6 +948,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--evidence-source", choices=sorted(EVIDENCE_SOURCES), default="agent-reported"
     )
     annotation.add_argument("--state-home")
+    for name in ('maintenance-reason', 'maintenance-evidence', 'maintenance-change', 'maintenance-revision', 'model', 'effort', 'runtime'):
+        annotation.add_argument('--' + name)
     annotation.set_defaults(handler=command_annotate)
 
     audit_parser = subparsers.add_parser(

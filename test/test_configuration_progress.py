@@ -46,7 +46,10 @@ for line in sys.stdin:
     elif method == 'thread/archive':
         send({'id': value['id'], 'result': {}})
     elif method == 'thread/read':
-        send({'id': value['id'], 'result': {'thread': {'cwd': os.environ['TEST_THREAD_CWD']}}})
+        saved = {'cwd': os.environ.get('TEST_THREAD_CWD', str(pathlib.Path.cwd())),
+                 'model': 'removed-model' if mode == 'removed-model' else 'native-configured-model',
+                 'reasoningEffort': 'removed-effort' if mode == 'removed-effort' else 'medium'}
+        send({'id': value['id'], 'result': {'thread': saved}})
     elif method == "model/list":
         native = {"model": "native-configured-model", "isDefault": True, "defaultReasoningEffort": "medium", "supportedReasoningEfforts": [{"reasoningEffort": "medium"}, {"reasoningEffort": "high"}]}
         alternate = {"model": "catalog-alternative", "defaultReasoningEffort": "low", "supportedReasoningEfforts": [{"reasoningEffort": "low"}, {"reasoningEffort": "ultra"}]}
@@ -277,9 +280,27 @@ class ConfigurationProgressTests(unittest.TestCase):
         self.log.unlink()
         self.assertEqual(self.invoke(settings='auto', resume_id='saved'), 0)
         self.assertFalse(self.result.created_session)
-        self.assertNotIn('model/list', [r['method'] for r in self.records()])
+        self.assertIn('model/list', [r['method'] for r in self.records()])
         turn = next(r['params'] for r in self.records() if r['method'] == 'turn/start')
         self.assertNotIn('model', turn)
+
+    def test_resume_revalidates_removed_model_or_effort_before_opening_without_permission_changes(self):
+        for mode in ('removed-model', 'removed-effort'):
+            for settings in ('auto', 'manual'):
+                with self.subTest(mode=mode, settings=settings):
+                    self.log.unlink(missing_ok=True)
+                    self.assertEqual(self.invoke(mode, settings=settings, resume_id='saved', answers=['', '', '']), 0)
+                    calls = self.records()
+                    resumed = next(r['params'] for r in calls if r['method'] == 'thread/resume')
+                    turn = next(r['params'] for r in calls if r['method'] == 'turn/start')
+                    self.assertEqual(resumed['config'], {'model_reasoning_effort': 'medium'})
+                    if mode == 'removed-model' or settings == 'auto':
+                        self.assertEqual(resumed['model'], 'native-configured-model')
+                    self.assertEqual(turn['effort'], 'medium')
+                    for params in (resumed, turn):
+                        self.assertNotIn('sandboxPolicy', params)
+                        self.assertNotIn('approvalPolicy', params)
+                    self.assertEqual(next(r['params'] for r in calls if r['method'] == 'thread/read')['includeTurns'], False)
 
     def test_configuration_menu_discovery_never_creates_threads_and_native_starts_no_server(self):
         from harness_cli.native_session import settings_arguments

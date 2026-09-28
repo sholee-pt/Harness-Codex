@@ -14,6 +14,8 @@ If `~/.codex/hooks.json` does not exist, it may be created explicitly with `--ou
 
 The hook stores no raw prompt, response, transcript, agent name, or absolute path. Local HMAC references and finite enums are written only to the user-local Harness state directory. Completion is not treated as success, agent-reported success is not user acceptance, and missing evidence remains `unknown`. Operations evidence never changes topology or regenerates agents automatically.
 
+An annotation can explicitly link a recurring harness concern or a particular maintenance change using the [maintenance options](maintenance.md#change-outcomes-and-recovery). This reuses an existing work-item observation rather than adding another per-turn evaluator. The bridge does not infer a persistent defect from an ordinary task failure, enable maintenance, or automatically apply a comparison proposal. Model/runtime differences remain separate context groups and descriptive observations never establish causal benefit.
+
 ```shell
 harness-codex helper harness_ops audit --root TARGET_WORKSPACE
 harness-codex helper harness_ops purge --root TARGET_WORKSPACE

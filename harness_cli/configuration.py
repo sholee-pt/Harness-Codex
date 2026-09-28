@@ -300,14 +300,22 @@ def run(command: list[str], root: Path, prompt: str, *, timeout=1800, resume_id=
             from .session_settings import automatic, current_settings, mode_choice, select
             mode = mode_choice(progress, settings)
             overrides = {}
+            current = {}
+            if resume_id and mode != 'native':
+                saved = server.call('thread/read', {'threadId': resume_id, 'includeTurns': False}, timeout=min(30, deadline-time.monotonic()))
+                current = saved.get('thread') or {}
             if mode == 'manual':
-                overrides = select(server, {} if resume_id else current_settings(server, root, deadline), root, deadline)
+                overrides = select(server, current if resume_id else current_settings(server, root, deadline), root, deadline)
             elif mode == 'auto':
-                overrides = automatic(server, deadline, resume=bool(resume_id))
+                overrides = automatic(server, deadline, resume=bool(resume_id), current=current)
             # Selecting/cancelling settings must not create an empty stored thread.
             params = {'cwd': str(root)}
             if resume_id:
                 params['threadId'] = resume_id
+            if overrides.get('model'):
+                params['model'] = overrides['model']
+            if overrides.get('effort'):
+                params['config'] = {'model_reasoning_effort': overrides['effort']}
             result = server.call('thread/resume' if resume_id else 'thread/start', params, timeout=min(30, deadline-time.monotonic()))
             thread = result.get('thread')
             if not isinstance(thread, dict) or not isinstance(thread.get('id'), str) or not thread['id']:

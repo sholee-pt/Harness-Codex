@@ -574,6 +574,8 @@ def _finish_configuration(source_root: Path, root: Path, command: list[str], goa
     if getattr(args, 'maintenance', None) is not None:
         from .maintenance import enable
         enable(source_root, root, args.maintenance)
+    from .maintenance import report_policy
+    report_policy(source_root, root)
     _configure_retrieval(args, source_root, root)
     _configure_integration(args, source_root)
     print('Next: codex (from this project).')
@@ -624,13 +626,16 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                 else:
                     print("Review harness-codex status/doctor before use. For a supported upgrade or stale evidence, supply --goal/--goal-file to init for a reviewed update.")
                 if args._existing_init_noop:
+                    from .maintenance import report_policy
                     if existing_status['state'] in {'configured', 'stale-evidence'}:
                         _configure_retrieval(args, source_root, root)
                     _configure_integration(args, source_root)
                     if getattr(args, 'maintenance', None) is not None:
                         from .maintenance import enable
                         enable(source_root, root, args.maintenance)
+                        report_policy(source_root, root)
                         return 0
+                    report_policy(source_root, root)
                     print("The generated harness was retained and Codex was not launched. Supply --goal/--goal-file to init for an explicit reviewed update.")
                     return 1 if existing_status["state"] == "invalid" else 0
             elif os.path.lexists(root / ".agents/skills/harness"):

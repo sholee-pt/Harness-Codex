@@ -84,6 +84,38 @@ Subsequent hooked turns receive a revision notice once per observed session.
 Do not equate a notice with actual native discovery or correct execution. A broader
 explicit `config` may require reload/resume or a fresh session for new native roles.
 
+## Follow-up to a specific correction
+
+Treat an applied change as instructions updated, effect under observation. Retain the
+change ID and revision from the helper/revision notice in the current context.
+Record only outcomes explicitly related to that correction, once per work item.
+Do not infer a harness defect from an ordinary code bug, compare unrelated tasks,
+guess a model/runtime identity, or call an extra evaluation model each turn.
+
+```sh
+harness-codex maintenance observe --change CHANGE_ID --revision USED_REVISION \
+  --observation WORK_ITEM_ID --outcome failed --source verification \
+  --model OBSERVED_MODEL --effort OBSERVED_EFFORT --category testing --runtime OBSERVED_RUNTIME
+```
+
+Use `unknown` or omit unavailable context. A verification source requires an actual
+verification result; agent prose is `agent-reported`, never external ground truth.
+If operations evidence is already enabled, attach `--maintenance-reason` and
+`--maintenance-evidence` to its existing annotation for a specifically identified
+gap, or `--maintenance-change` and `--maintenance-revision` for a related outcome;
+include known `--model`, `--effort` and `--runtime`. Do not enable either feature
+merely to create a record. The existing category and work-item ID are reused.
+
+On `review-required`, `applying` or `rolling-back`, preserve the current project and stop automatic
+corrections. Explain the status and request an explicit review. `resolve --decision
+keep` acknowledges that review without claiming benefit. `resolve --decision
+rollback --plan REVIEWED_PRIOR_PLAN.json` restores only the recorded prior bytes
+after the normal ownership/revision checks. Never invent the previous content or
+overwrite intervening user edits. Use config review if restoration is unavailable.
+If explicit config superseded the recorded revision, inspect the current files and
+use `keep` to close the old record without replacing the newer configuration.
+Controlled effect evaluation remains optional and separate from these observations.
+
 ## Cost and limitations
 
 Status separates counts, wall-clock review duration, optional agent-reported token
