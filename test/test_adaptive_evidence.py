@@ -192,6 +192,56 @@ class AdaptiveEvidenceTests(unittest.TestCase):
         self.assertIsNone(policy.observer)
         self.assertEqual(len(policy.notices), 1)
 
+    def test_request_context_overrides_wait_for_acceptance_and_one_turn_modes_are_excluded(self):
+        with mock.patch.dict(os.environ, {'HARNESS_STATE_HOME': str(self.store)}):
+            self.manager.configure(True)
+            observer = routing_feedback.Observer(ROOT, self.root, 'dynamic-runtime', clock=lambda: self.now)
+            policy = auto_relay.Policy(mode='auto', observer=observer)
+            policy.model_list(catalog())
+            settings = {'thread': {'id': 'thread', 'cwd': str(self.root)}, 'modelProvider': 'fixture', 'serviceTier': None,
+                        'sandbox': {'type': 'readOnly'}, 'model': 'gpt-5.6-sol', 'reasoningEffort': 'medium'}
+            policy.response({'result': settings}, 'thread/start', {})
+            request = {'threadId': 'thread', 'input': [{'type': 'text', 'text': 'Implement a function'}]}
+            for extra in ({'serviceTierForTurn': 'priority'}, {'outputSchema': {'type': 'object'}}, {'toolOutput': {'value': 'fixture'}},
+                          {'cwd': str(self.root / 'different')}, {'approvalPolicy': 'never'}, {'serviceTier': 'priority'},
+                          {'sandboxPolicy': {'type': 'workspaceWrite'}}):
+                with self.subTest(extra=extra):
+                    before = copy.deepcopy(observer.provenance)
+                    result = policy.request('turn/start', {**request, **extra})
+                    self.assertEqual(observer.pending, {})
+                    for key, value in extra.items():
+                        self.assertEqual(result[key], value)
+                    policy.response({'error': {'message': 'rejected'}}, 'turn/start', {**request, **extra})
+                    self.assertEqual(observer.provenance, before)
+            accepted = {**request, 'serviceTier': 'priority'}
+            policy.request('turn/start', accepted)
+            policy.response({'result': {'turn': {'id': 'changed'}}}, 'turn/start', accepted)
+            self.assertEqual(observer.provenance['thread']['serviceTier'], 'priority')
+            policy.request('turn/start', request)
+            self.assertIn('thread', observer.pending)
+            self.assertIsNotNone(policy.observer)
+
+    def test_steering_and_unclassified_followups_exclude_the_active_observation(self):
+        with mock.patch.dict(os.environ, {'HARNESS_STATE_HOME': str(self.store)}):
+            self.manager.configure(True)
+            for method, followup in (('turn/steer', [{'type': 'text', 'text': 'Additional direction'}]),
+                                     ('turn/start', [{'type': 'image', 'url': 'fixture'}])):
+                with self.subTest(method=method):
+                    observer = routing_feedback.Observer(ROOT, self.root, 'dynamic-runtime', clock=lambda: self.now)
+                    policy = auto_relay.Policy(mode='auto', observer=observer)
+                    policy.model_list(catalog())
+                    policy.response({'result': {'thread': {'id': 'thread', 'cwd': str(self.root)}, 'modelProvider': 'fixture',
+                                               'model': 'gpt-5.6-sol', 'reasoningEffort': 'medium'}}, 'thread/start', {})
+                    params = {'threadId': 'thread', 'input': [{'type': 'text', 'text': 'Implement a function'}]}
+                    policy.request('turn/start', params)
+                    policy.response({'result': {'turn': {'id': 'turn'}}}, 'turn/start', params)
+                    result = policy.request(method, {'threadId': 'thread', 'input': followup})
+                    self.assertEqual(result['input'], followup)
+                    self.assertTrue(observer.active['thread']['mixed'])
+                    policy.response({'method': 'turn/completed', 'params': {'threadId': 'thread', 'turn': {'id': 'turn', 'status': 'completed'}}}, None, {})
+                    self.assertEqual(self.manager.status()['samples'], 0)
+                    self.assertIsNotNone(policy.observer)
+
     def test_adaptive_maintenance_backs_off_but_respects_explicit_budget(self):
         manager = maintenance.Maintenance(self.root, self.store, clock=lambda: self.now)
         manager.configure('auto', {'reviewsPerDay': 4})

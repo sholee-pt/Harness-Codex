@@ -7,6 +7,11 @@ import time
 
 from .model_routing import catalog_entries, _effort, identifier
 
+CONTEXT_SETTINGS = (('modelProvider', 'provider'), ('serviceTier', 'serviceTier'), ('sandbox', 'sandbox'),
+                    ('sandboxPolicy', 'sandbox'), ('approvalPolicy', 'approval'), ('activePermissionProfile', 'permissions'),
+                    ('approvalsReviewer', 'reviewer'), ('summary', 'summary'), ('personality', 'personality'),
+                    ('collaborationMode', 'collaboration'))
+
 
 def category(prompt):
     if re.search(r'\breadme\b|documentation|문서|오탈자|오타', prompt, re.I):
@@ -42,8 +47,7 @@ class Observer:
             return
         previous = self.provenance.get(thread, {})
         current = dict(previous)
-        for source, target in (('modelProvider', 'provider'), ('serviceTier', 'serviceTier'), ('sandbox', 'sandbox'),
-                               ('sandboxPolicy', 'sandbox'), ('approvalPolicy', 'approval'), ('activePermissionProfile', 'permissions')):
+        for source, target in CONTEXT_SETTINGS:
             if source in value:
                 current[target] = value[source]
         if len(self.provenance) < 512 or thread in self.provenance:
@@ -69,14 +73,32 @@ class Observer:
             self.managers[folder] = self.module.RoutingEvidence(root) if root else None
         return self.managers[folder]
 
-    def decision(self, thread, prompt, decision, catalog, context, profiles, *, allow_advice=True):
+    def request(self, method, params):
+        if method in {'turn/start', 'turn/steer'}:
+            for collection in (self.pending, self.active):
+                if params.get('threadId') in collection:
+                    collection[params['threadId']]['mixed'] = True
+
+    def decision(self, thread, prompt, decision, catalog, context, profiles, *, allow_advice=True, params=None):
+        params = params or {}
+        if thread in self.pending or thread in self.active:
+            return decision
+        provenance = self.provenance.get(thread, {})
+        if params.get('cwd') not in (None, self.roots.get(thread)):
+            return decision
+        # A requested override is not yet an observed execution setting. Wait for
+        # acceptance before using persistent changes; one-turn modes stay excluded.
+        for source, target in CONTEXT_SETTINGS:
+            if source in params and (params[source] is not None or source == 'serviceTier') and params[source] != provenance.get(target):
+                return decision
+        if provenance.get('collaboration') is not None or any(params.get(name) is not None for name in ('serviceTierForTurn', 'outputSchema', 'toolOutput', 'collaborationMode')):
+            return decision
         manager = self.manager(thread)
         if manager is None or not identifier(self.runtime):
             return decision
         state = manager.read()
         if not state['enabled']:
             return decision
-        provenance = self.provenance.get(thread, {})
         if not identifier(provenance.get('provider')):
             return decision
         revision = self.revision(manager)
@@ -95,11 +117,7 @@ class Observer:
             model, effort = recommendation['pair']
             decision = replace(decision, model=model, effort=effort, reason=recommendation['reason'], selection='observed-policy',
                                changed=(model, effort) != (context.model, context.effort))
-        if thread in self.pending or thread in self.active:
-            for collection in (self.pending, self.active):
-                if thread in collection:
-                    collection[thread]['mixed'] = True
-        elif len(self.pending) < 64:
+        if len(self.pending) < 64:
             self.pending[thread] = {'manager': manager, 'context': group, 'model': decision.model, 'effort': decision.effort,
                                     'revision': revision, 'started': self.clock(), 'baseline': self.usage.get(thread), 'latest': None, 'mixed': False}
         return decision
@@ -124,6 +142,9 @@ class Observer:
             thread = params.get('threadId')
             turn = (result or {}).get('turn') if isinstance(result, dict) else None
             if isinstance(turn, dict) and identifier(turn.get('id')):
+                accepted = {name: params[name] for name in {source for source, _ in CONTEXT_SETTINGS} | {'cwd'}
+                            if name in params and (params[name] is not None or name == 'serviceTier')}
+                self.settings(thread, accepted)
                 self.start(thread, turn['id'])
             elif 'error' in message:
                 self.pending.pop(thread, None)

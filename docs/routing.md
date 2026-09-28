@@ -72,8 +72,13 @@ usage is never mislabeled as the whole turn. Completion alone leaves quality
 unknown. Images, oversized routing requests, interrupted/failed native turns and
 mixed-inference turns do not become efficiency evidence. Overlapping requests,
 delegation/compaction and a harness revision change during a turn also exclude
-that turn. Resume/fork discard any older usage baseline. Duration includes tool
-and approval delays and is not a pure model speed measurement; tokens are not a
+that turn. Resume/fork discard any older usage baseline. Steering an active turn
+(including image/oversized follow-ups)
+also excludes it. Changed per-request execution settings wait for native acceptance
+before later observations; rejected requests never become settings. One-turn service
+tier, structured-output/tool-output overrides and legacy collaboration modes remain
+outside comparable evidence. Ordinary routing and native request fields are preserved.
+Duration includes tool and approval delays and is not a pure model speed measurement; tokens are not a
 billing total.
 
 Existing operations annotations with external verification/user evidence can

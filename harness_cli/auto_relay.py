@@ -213,6 +213,7 @@ class Policy:
             self.reconcile(method, result, auto)
         if method == 'thread/settings/update' and selected:
             self.pending_modes[thread] = selected == ALIAS or selected in self.aliases
+        self.observe('request', method, result)
         if method == 'turn/start' and (selected == ALIAS or selected in self.aliases or self.enabled(thread)):
             if self.auto.get(thread) is not True:
                 self.auto[thread] = True
@@ -223,7 +224,7 @@ class Policy:
             if text.strip() and '\0' not in text and len(text.encode()) <= MAX_PROMPT and not has_images:
                 decision = choose(text, self.raw_catalog, context=self.contexts.get(thread, Context()), profiles=self.profiles)
                 if decision.model:
-                    decision = self.observe('decision', thread, text, decision, self.raw_catalog, self.contexts.get(thread, Context()), self.profiles) or decision
+                    decision = self.observe('decision', thread, text, decision, self.raw_catalog, self.contexts.get(thread, Context()), self.profiles, params=result) or decision
                     set_model(result, decision.model, decision.effort)
                     self.contexts[thread] = Context(tier=decision.tier, model=decision.model, effort=decision.effort,
                         active_task=True, lighter_requests=int(decision.reason == 'lighter-request-pending'))
@@ -239,7 +240,7 @@ class Policy:
                     and entry and effort in [item['reasoningEffort'] for item in entry.get('supportedReasoningEfforts', [])]):
                 tier, _ = classify(text, context)
                 decision = Decision(tier, model, effort, 'manual-fixed', 'manual', False)
-                self.observe('decision', thread, text, decision, self.raw_catalog, context, self.profiles, allow_advice=False)
+                self.observe('decision', thread, text, decision, self.raw_catalog, context, self.profiles, allow_advice=False, params=result)
         return result
 
     def display(self, settings, thread):

@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.25.2‑beta`](#harness-for-codex-v0252-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve per-request execution context in adaptive routing evidence |
 | [`v0.25.1‑beta`](#harness-for-codex-v0251-beta) | Schema 3 | Schema 7 | Schema 2 | Exclude mixed or stale Auto observations and preserve native execution provenance |
 | [`v0.25.0‑beta`](#harness-for-codex-v0250-beta) | Schema 3 | Schema 7 | Schema 2 | Adaptive maintenance cadence and opt-in observed Auto advice without additional model calls |
 | [`v0.24.1‑beta`](#harness-for-codex-v0241-beta) | Schema 3 | Schema 7 | Schema 2 | Fix installation races, workspace evidence isolation, corrected observations and inference compatibility |
@@ -75,6 +76,13 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.25.2-beta
+
+- Keep requested execution-context changes out of adaptive Auto advice until native acceptance. Rejected changes preserve observed settings; later turns use accepted settings.
+- Exclude one-turn service tiers, output constraints, tool-output overrides and legacy collaboration modes from comparable observations instead of pooling them with ordinary tasks.
+- Exclude steered turns and overlapping image/oversized requests without changing their native payload, permissions or ordinary routing.
+- Extend boundary regressions and retain the immediately preceding version as the upgrade comparison baseline. No additional routing model calls or automatic quality claims.
 
 ## Harness for Codex v0.25.1-beta
 
