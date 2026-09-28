@@ -39,6 +39,38 @@ def sha256(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+def text_input(items):
+    if isinstance(items, str):
+        return items
+    return '\n'.join(item.get('text', '') for item in items or [] if item.get('type') in {'text', 'input_text'})
+
+
+def input_digest(text):
+    return hashlib.sha256(text.strip().encode()).hexdigest()
+
+
+def footer_lines(screen):
+    lines = screen.splitlines()
+    prompts = [index for index, line in enumerate(lines) if re.match(r'^\s*›\s', line)]
+    return [line.strip() for line in lines[prompts[-1] + 1:] if line.strip()] if prompts else []
+
+
+def turn_evidence(relay, provider, thread_id, prompt):
+    digest = input_digest(prompt)
+    decisions = [item for item in relay.policy.decisions
+                 if item.get('threadId') == thread_id and item.get('inputSha256') == digest]
+    if not decisions or not decisions[-1].get('turnId'):
+        return None
+    decision = decisions[-1]
+    completed = [event for event in relay.events if event.get('method') == 'turn/completed'
+                 and event.get('threadId') == thread_id and event.get('turnId') == decision['turnId']]
+    requests = [item for item in provider.records if item.get('inputSha256') == digest
+                and item.get('threadId') == thread_id]
+    if not completed or not requests:
+        return None
+    return {**decision, 'turnStatus': completed[-1].get('status')}, requests[-1]
+
+
 def api(path):
     headers = {'User-Agent': 'Harness-Auto-feasibility-probe', 'Accept': 'application/vnd.github+json'}
     if os.environ.get('GH_TOKEN'):
@@ -86,7 +118,11 @@ class Provider(BaseHTTPRequestHandler):
                 body = gzip.decompress(body)
             value = json.loads(body)
             sequence = len(self.server.records) + 1
-            self.server.records.append({'model': value.get('model'), 'reasoning': value.get('reasoning'), 'sequence': sequence})
+            users = [item for item in value.get('input', []) if item.get('role') == 'user']
+            prompt = text_input(users[-1].get('content')) if users else ''
+            self.server.records.append({'model': value.get('model'), 'reasoning': value.get('reasoning'), 'sequence': sequence,
+                'inputSha256': input_digest(prompt), 'threadId': self.headers.get('thread-id'),
+                'sessionId': self.headers.get('session-id')})
             response_id, item_id = f'probe_response_{sequence}', f'probe_message_{sequence}'
             message = {'type': 'message', 'role': 'assistant', 'id': item_id,
                        'content': [{'type': 'output_text', 'text': f'PROBE_OK_{sequence}'}]}
@@ -110,7 +146,9 @@ class Provider(BaseHTTPRequestHandler):
 class Policy:
     def __init__(self):
         self.catalog = []
-        self.context = Context()
+        self.contexts, self.auto = {}, {}
+        self.default_model = None
+        self.config_rewrites = []
         self.decisions = []
 
     def model_list(self, result):
@@ -126,24 +164,49 @@ class Policy:
         result['data'].insert(0, alias)
         return result
 
-    def turn(self, params):
+    @staticmethod
+    def selected_model(params):
+        settings = (params.get('collaborationMode') or {}).get('settings') or {}
+        return settings.get('model') or params.get('model')
+
+    def settings(self, params):
+        selected = self.selected_model(params)
+        if selected:
+            self.auto[params['threadId']] = selected == ALIAS
+
+    def config_write(self, method, params):
+        result = copy.deepcopy(params)
+        edits = result.get('edits', []) if method == 'config/batchWrite' else [result]
+        for edit in edits:
+            if edit.get('keyPath') == 'model' and edit.get('value') == ALIAS:
+                if not self.default_model or self.default_model == ALIAS:
+                    raise ValueError('Cannot preserve the existing real default model')
+                edit['value'] = self.default_model
+                self.config_rewrites.append({'keyPath': 'model', 'replacement': self.default_model})
+        return result
+
+    def turn(self, params, request_id=None):
         result = copy.deepcopy(params)
         mode = result.get('collaborationMode') or {}
         settings = mode.get('settings') or {}
-        selected = settings.get('model') or result.get('model')
-        if selected != ALIAS:
-            self.decisions.append({'auto': False, 'selected': selected, 'model': result.get('model'), 'effort': result.get('effort')})
+        selected = self.selected_model(result)
+        thread_id = result['threadId']
+        if selected == ALIAS:
+            self.auto[thread_id] = True
+        prompt = text_input(result.get('input'))
+        identity = {'threadId': thread_id, 'requestId': request_id, 'inputSha256': input_digest(prompt)}
+        if not self.auto.get(thread_id):
+            self.decisions.append({**identity, 'auto': False, 'selected': selected, 'model': selected, 'effort': result.get('effort')})
             return result
-        prompt = '\n'.join(item.get('text', '') for item in result.get('input', []) if item.get('type') == 'text')
-        decision = choose(prompt, self.catalog, context=self.context)
+        decision = choose(prompt, self.catalog, context=self.contexts.get(thread_id, Context()))
         if not decision.model or decision.model == ALIAS:
             raise ValueError('Auto failed to resolve to a real catalog model')
         result.update(decision.turn_overrides())
         if settings:
             settings['model'] = decision.model
             settings['reasoning_effort'] = decision.effort
-        self.context = Context(tier=decision.tier, model=decision.model, effort=decision.effort, active_task=True)
-        self.decisions.append({'auto': True, **decision.report()})
+        self.contexts[thread_id] = Context(tier=decision.tier, model=decision.model, effort=decision.effort, active_task=True)
+        self.decisions.append({**identity, 'auto': True, **decision.report()})
         return result
 
 
@@ -164,23 +227,43 @@ class Relay:
                 message = json.loads(raw)
                 method = message.get('method')
                 if method:
-                    self.events.append({'direction': 'client', 'method': method})
-                    pending[message.get('id')] = method
+                    params = message.get('params') or {}
+                    self.events.append({'direction': 'client', 'method': method, 'threadId': params.get('threadId'),
+                                        'selectedModel': self.policy.selected_model(params)})
+                    if 'id' in message:
+                        pending[message['id']] = (method, copy.deepcopy(message.get('params') or {}))
                 if method == 'turn/start':
-                    message['params'] = self.policy.turn(message['params'])
+                    message['params'] = self.policy.turn(message['params'], message['id'])
+                if method in {'config/batchWrite', 'config/value/write'}:
+                    message['params'] = self.policy.config_write(method, message['params'])
                 process.stdin.write((json.dumps(message) + '\n').encode())
                 await process.stdin.drain()
 
         async def outgoing():
             while raw := await process.stdout.readline():
                 message = json.loads(raw)
-                method = pending.pop(message.get('id'), None) if 'id' in message else None
+                method, params = pending.pop(message.get('id'), (None, {})) if 'id' in message else (None, {})
+                result = message.get('result') or {}
+                if method == 'config/read':
+                    model = (result.get('config') or {}).get('model')
+                    if model and model != ALIAS:
+                        self.policy.default_model = model
+                if method == 'thread/settings/update' and 'result' in message:
+                    self.policy.settings(params)
+                if method == 'turn/start' and 'result' in message:
+                    for decision in reversed(self.policy.decisions):
+                        if decision['requestId'] == message['id'] and decision['threadId'] == params.get('threadId'):
+                            decision['turnId'] = (result.get('turn') or {}).get('id')
+                            break
                 if method == 'model/list' and 'result' in message:
                     message['result'] = self.policy.model_list(message['result'])
                 if method in {'thread/start', 'thread/resume'} and 'result' in message:
                     self.thread_ids.append(message['result']['thread']['id'])
                 if message.get('method'):
-                    self.events.append({'direction': 'server', 'method': message['method']})
+                    event = message.get('params') or {}
+                    turn = event.get('turn') or {}
+                    self.events.append({'direction': 'server', 'method': message['method'], 'threadId': event.get('threadId'),
+                                        'turnId': event.get('turnId') or turn.get('id'), 'status': turn.get('status')})
                 if 'error' in message:
                     self.errors.append({'method': method, 'error': message['error']})
                 await websocket.send(json.dumps(message))
@@ -259,6 +342,20 @@ class Terminal:
         self.process.send('\r')
         self.read(0.8)
 
+    def startup(self, relay):
+        dismissed = []
+
+        def ready(text):
+            if not dismissed and 'Try new model' in text and 'Use existing model' in text:
+                self.snapshot('00-model-announcement')
+                self.select('Use existing model')
+                dismissed.append('Use existing model')
+                return False
+            return bool(relay.thread_ids) and 'Connecting' not in text
+
+        self.wait(ready)
+        return dismissed
+
     def select(self, label):
         text = self.read(0.4)
         rows = [line for line in text.splitlines() if re.search(r'\b\d+\.\s', line)]
@@ -287,10 +384,12 @@ def drive(binary, env, project, output, port, relay, provider):
     terminal = Terminal(binary, ['--remote', f'ws://127.0.0.1:{port}', '--no-alt-screen', '-C', str(project)], env, output)
     findings = {'realModelInference': 'not-tested; local synthetic Responses provider', 'linuxTui': True}
     try:
-        terminal.wait(lambda text: bool(relay.thread_ids) and 'Connecting' not in text)
+        findings['startupChoices'] = terminal.startup(relay)
+        thread_id = relay.thread_ids[0]
+        findings['mainThreadId'] = thread_id
         terminal.snapshot('01-startup')
         terminal.command('/model')
-        terminal.wait(lambda text: 'Select Model' in text)
+        terminal.wait(lambda text: 'select model' in text.lower())
         menu = terminal.snapshot('02-model-menu')
         findings['autoMenuLabel'] = 'Auto' if re.search(r'\b\d+\.\s+Auto(?:\s{2,}|\s+\((?:current|default)\)|\s*$)', menu, re.MULTILINE) else ALIAS if ALIAS in menu else None
         findings['exactAutoLabel'] = findings['autoMenuLabel'] == 'Auto'
@@ -298,7 +397,7 @@ def drive(binary, env, project, output, port, relay, provider):
         findings['autoMenuPosition'] = int(position[1]) if position else None
         terminal.select(findings['autoMenuLabel'] or 'Auto')
         selected = terminal.snapshot('03-auto-selected')
-        findings['autoSelectedFooter'] = [line.strip() for line in selected.splitlines() if 'Auto' in line or ALIAS in line]
+        findings['autoSelectedFooter'] = footer_lines(selected)
         try:
             import tomllib
             settings = tomllib.loads((Path(env['CODEX_HOME']) / 'config.toml').read_text())
@@ -308,24 +407,27 @@ def drive(binary, env, project, output, port, relay, provider):
         prompts = ['New task: Fix a typo in README.',
                    'New task: Investigate a distributed concurrency race and design a cross-service architecture migration.']
         for index, prompt in enumerate(prompts, 1):
-            completed = sum(event['method'] == 'turn/completed' for event in relay.events)
-            requests = len(provider.records)
             terminal.command(prompt)
-            terminal.wait(lambda text: len(provider.records) > requests and
-                          sum(event['method'] == 'turn/completed' for event in relay.events) > completed, 45)
+            terminal.wait(lambda text: turn_evidence(relay, provider, thread_id, prompt) is not None, 45)
             screen = terminal.snapshot(f'04-turn-{index}')
-            decision = relay.policy.decisions[-1]
-            received = provider.records[-1]
-            findings[f'turn{index}'] = {'decision': decision, 'providerRequest': received,
-                'modelReachedProvider': received['model'] == decision.get('model'),
-                'effortReachedProvider': (received.get('reasoning') or {}).get('effort') == decision.get('effort'),
-                'footerShowsActualModel': any(decision.get('model', 'UNSET') in line for line in screen.splitlines()[-6:]),
-                'footerShowsActualEffort': any(str(decision.get('effort', 'UNSET')).lower() in line.lower() for line in screen.splitlines()[-6:]),
-                'footerShowsAuto': any('Auto' in line or ALIAS in line for line in screen.splitlines()[-6:])}
-        findings['twoDistinctPairs'] = len({(item.get('model'), item.get('effort')) for item in relay.policy.decisions if item['auto']}) >= 2
-        findings['menuRoutingFooterSatisfied'] = findings['exactAutoLabel'] and findings['autoMenuPosition'] == 1 and all(
+            decision, received = turn_evidence(relay, provider, thread_id, prompt)
+            footer = footer_lines(screen)
+            model, effort = decision.get('model'), decision.get('effort')
+            findings[f'turn{index}'] = {'decision': decision, 'providerRequest': received, 'footer': footer,
+                'turnCompleted': decision.get('turnStatus') == 'completed',
+                'modelReachedProvider': bool(model) and received['model'] == model,
+                'effortReachedProvider': bool(effort) and (received.get('reasoning') or {}).get('effort') == effort,
+                'footerShowsActualModel': bool(model) and any(model in line for line in footer),
+                'footerShowsActualEffort': bool(effort) and any(effort.lower() in line.lower() for line in footer),
+                'footerShowsAuto': any('auto' in line.lower() for line in footer)}
+        main_decisions = [findings[f'turn{index}']['decision'] for index in (1, 2)]
+        findings['autoMaintainedAcrossTurns'] = all(item['auto'] for item in main_decisions)
+        findings['twoDistinctPairs'] = len({(item.get('model'), item.get('effort')) for item in main_decisions if item['auto']}) == 2
+        findings['menuRoutingFooterSatisfied'] = (findings['exactAutoLabel'] and findings['autoMenuPosition'] == 1
+            and findings['autoMaintainedAcrossTurns'] and findings['twoDistinctPairs']
+            and findings['virtualModelPersistedAsDefault'] is False and all(
             findings[f'turn{index}'][key] for index in (1, 2)
-            for key in ('modelReachedProvider', 'effortReachedProvider', 'footerShowsActualModel', 'footerShowsActualEffort', 'footerShowsAuto'))
+            for key in ('turnCompleted', 'modelReachedProvider', 'effortReachedProvider', 'footerShowsActualModel', 'footerShowsActualEffort', 'footerShowsAuto')))
         findings['fullRequestedUX'] = 'not-established' if findings['menuRoutingFooterSatisfied'] else False
         findings['resumeAndApprovals'] = 'not-tested; this first-stage probe does not establish production compatibility'
     except Exception as exc:
@@ -363,7 +465,7 @@ async def experiment(binary, output):
             port = server.sockets[0].getsockname()[1]
             result = await asyncio.to_thread(drive, binary, env, project, output, port, relay, provider)
         result.update(protocolErrors=relay.errors, providerErrors=provider.errors,
-                      providerRequests=provider.records, decisions=relay.policy.decisions)
+                      providerRequests=provider.records, decisions=relay.policy.decisions, configRewrites=relay.policy.config_rewrites)
         save(output / 'events.json', relay.events)
         return result
     finally:
