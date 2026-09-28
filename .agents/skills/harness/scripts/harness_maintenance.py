@@ -21,15 +21,13 @@ import harness_eval_store as storage
 from harness_eval_lock import FileLock, project_lock
 import harness_state
 import harness_maintenance_history as history
+import harness_maintenance_policy as cadence
 
 REASONS = ('scope-changed', 'workflow-gap', 'routing-mismatch', 'verification-gap', 'user-request')
 MODES = ('off', 'suggest', 'auto')
 MAX_STATE = 512 * 1024
 MAX_CANDIDATES = 32
 MAX_SESSIONS = 32
-REVIEW_SECONDS = 180
-COOLDOWN_SECONDS = 3600
-REVIEWS_PER_DAY = 2
 SIGNAL_POLICY = '1'
 
 
@@ -46,7 +44,8 @@ def digest(value):
 
 
 def default_state():
-    return {'schema': 2, 'mode': 'off', 'candidates': {}, 'sessions': {}, 'lease': None, 'changes': [],
+    return {'schema': 3, 'mode': 'off', 'candidates': {}, 'sessions': {}, 'lease': None, 'changes': [],
+            'policy': dict(cadence.DEFAULTS), 'recentReviews': [], 'retired': {},
             'attempts': [], 'notified': None, 'appliedRevision': None,
             'metrics': {'reviews': 0, 'applied': 0, 'unchanged': 0, 'reviewSeconds': 0,
                         'reportedTokens': 0, 'unmeasuredReviews': 0}}
@@ -84,16 +83,23 @@ class Maintenance:
             raise ValueError('Maintenance state exceeds its size limit')
         value = json.loads(path.read_text(encoding='utf-8'))
         expected = default_state()
-        if isinstance(value, dict) and value.get('schema') == 1 and set(value) == set(expected) - {'changes'}:
+        new_fields = {'policy', 'recentReviews', 'retired'}
+        if isinstance(value, dict) and value.get('schema') == 1 and set(value) == set(expected) - {'changes', *new_fields}:
             value = {**value, 'schema': 2, 'changes': []}
-        if (not isinstance(value, dict) or set(value) != set(expected) or value['schema'] != 2
+        if isinstance(value, dict) and value.get('schema') == 2 and set(value) == set(expected) - new_fields:
+            value = {**value, 'schema': 3, **{name: expected[name] for name in new_fields}}
+        if (not isinstance(value, dict) or set(value) != set(expected) or value['schema'] != 3
                 or value['mode'] not in MODES or not isinstance(value['candidates'], dict)
                 or len(value['candidates']) > MAX_CANDIDATES or not isinstance(value['sessions'], dict)
                 or len(value['sessions']) > MAX_SESSIONS or not isinstance(value['attempts'], list)
-                or len(value['attempts']) > REVIEWS_PER_DAY or not isinstance(value['metrics'], dict)
+                or len(value['attempts']) > cadence.MAX_REVIEWS or not isinstance(value['metrics'], dict)
                 or set(value['metrics']) != set(expected['metrics'])):
             raise ValueError('Invalid maintenance state; preserve it for inspection')
         history.validate(value['changes'])
+        cadence.validate(value['policy'], value['recentReviews'])
+        if (not isinstance(value['retired'], dict) or len(value['retired']) > 128
+                or any(not history.hashed(key) or not cadence.valid_number(at) for key, at in value['retired'].items())):
+            raise ValueError('Invalid retired maintenance candidates')
         for key, item in value['candidates'].items():
             if (not re.fullmatch(r'[0-9a-f]{64}', key) or not isinstance(item, dict)
                     or set(item) != {'reason', 'evidence', 'observations', 'status'}
@@ -123,7 +129,7 @@ class Maintenance:
                     or not isinstance(lease['candidates'], list)
                     or any(key not in value['candidates'] for key in lease['candidates'])
                     or type(lease['started']) not in (int, float) or type(lease['deadline']) not in (int, float)
-                    or not 0 < lease['deadline'] - lease['started'] <= REVIEW_SECONDS):
+                    or not 0 < lease['deadline'] - lease['started'] <= cadence.MAX_SECONDS):
                 raise ValueError('Invalid maintenance lease')
         for name in ('notified', 'appliedRevision'):
             if value[name] is not None and not re.fullmatch(r'[0-9a-f]{64}', value[name]):
@@ -162,12 +168,17 @@ class Maintenance:
         harness_metadata.artifact_contract_state(value)
         return value
 
-    def configure(self, mode):
-        if mode not in MODES:
+    def configure(self, mode=None, policy=None):
+        if mode is not None and mode not in MODES:
             raise ValueError('Unknown maintenance mode')
         self.manifest()
         with self.transaction(create=True) as state:
-            state['mode'] = mode
+            if mode is not None:
+                state['mode'] = mode
+            if policy is not None:
+                candidate = {**state['policy'], **policy}
+                cadence.validate(candidate, state['recentReviews'])
+                state['policy'] = candidate
             state['lease'] = None
         return self.status()
 
@@ -191,7 +202,8 @@ class Maintenance:
                 'reviewInProgress': state['lease'] is not None and not expired, 'reviewExpired': expired, 'metrics': state['metrics'],
                 'automaticScope': 'existing-skill-content-only', 'qualityBenefit': 'not-established',
                 'tokenBudgetEnforcement': 'not-available-in-native-interactive-session',
-                'reviewTimeLimitSeconds': REVIEW_SECONDS, 'reviewsPerDay': REVIEWS_PER_DAY,
+                'reviewTimeLimitSeconds': state['policy']['reviewSeconds'], 'reviewsPerDay': state['policy']['reviewsPerDay'],
+                'policy': state['policy'], 'scheduling': cadence.schedule(state, self.clock(), [state['candidates'][key] for key in self._eligible(state)]),
                 **history.summary(state['changes'])}
 
     def observe(self, change, observation, outcome, source, revision, *, model=None, effort=None, category=None, runtime=None):
@@ -283,9 +295,18 @@ class Maintenance:
             evidence_hash = self.store.fingerprint(path.read_bytes())
             key = self.store.fingerprint((reason + '\0' + evidence + '\0' + evidence_hash).encode())
             ref = self.store.fingerprint(observation.encode())
+            state['retired'] = {key: at for key, at in state['retired'].items() if at > self.clock()}
+            if key in state['retired']:
+                return {'recorded': False, 'reason': 'recently-reviewed-with-this-evidence'}
             if key not in state['candidates']:
                 if len(state['candidates']) >= MAX_CANDIDATES:
-                    return {'recorded': False, 'reason': 'candidate-limit; use maintenance clear --yes to disable and reset records'}
+                    retired = next((name for name, item in state['candidates'].items() if item['status'] == 'resolved'), None)
+                    if retired is None:
+                        return {'recorded': False, 'reason': 'pending-candidate-limit; review existing concerns first'}
+                    if len(state['retired']) >= 128:
+                        del state['retired'][min(state['retired'], key=state['retired'].get)]
+                    state['retired'][retired] = self.clock() + 7 * 86400
+                    del state['candidates'][retired]
                 state['candidates'][key] = {'reason': reason, 'evidence': evidence_hash, 'observations': [], 'status': 'pending'}
             candidate = state['candidates'][key]
             if candidate['status'] == 'resolved':
@@ -304,6 +325,7 @@ class Maintenance:
                 state['candidates'][key]['status'] = 'resolved'
             state['metrics']['reviewSeconds'] += lease['deadline'] - lease['started']
             state['metrics']['unmeasuredReviews'] += 1
+            cadence.record(state, lease['deadline'], lease['deadline'] - lease['started'], None, 'expired')
             state['lease'] = None
 
     def _claim(self, state, session):
@@ -313,13 +335,14 @@ class Maintenance:
         if state['lease'] or self._busy(state, session) or history.summary(state['changes'])['automaticChangesPaused']:
             return None
         candidates = self._eligible(state)
-        if (not candidates or len(state['attempts']) >= REVIEWS_PER_DAY
-                or (state['attempts'] and now - state['attempts'][-1] < COOLDOWN_SECONDS)):
+        schedule = cadence.schedule(state, now, [state['candidates'][key] for key in candidates])
+        if (not candidates or schedule['budgetBlocked'] or len(state['attempts']) >= schedule['reviewsPerDay']
+                or (state['attempts'] and now - state['attempts'][-1] < schedule['intervalSeconds'])):
             return None
         manifest = self.manifest()
         state['lease'] = {'id': uuid.uuid4().hex, 'revision': digest(manifest),
                           'candidates': candidates, 'session': session, 'started': now,
-                          'deadline': now + REVIEW_SECONDS}
+                          'deadline': now + schedule['applicationSeconds']}
         state['attempts'].append(now)
         state['metrics']['reviews'] += 1
         return state['lease']
@@ -419,6 +442,7 @@ class Maintenance:
                 state['metrics']['unmeasuredReviews'] += 1
             else:
                 state['metrics']['reportedTokens'] += tokens
+            cadence.record(state, self.clock(), self.clock() - lease['started'], tokens, decision)
             state['lease'] = None
             return {'status': decision, 'revision': state['appliedRevision'], 'taskQuality': 'not-measured',
                     'changeId': lease_id if decision == 'apply' else None, 'effect': 'not-established'}
@@ -544,7 +568,8 @@ def main():
     clear = commands.add_parser('clear')
     clear.add_argument('--yes', action='store_true', required=True)
     settings = commands.add_parser('configure')
-    settings.add_argument('--mode', choices=MODES, required=True)
+    settings.add_argument('--mode', choices=MODES)
+    settings.add_argument('--policy-json', help='Bounded local scheduling overrides; never expands automatic edit scope')
     signal = commands.add_parser('signal')
     signal.add_argument('--reason', choices=REASONS, required=True)
     signal.add_argument('--evidence', required=True)
@@ -577,7 +602,7 @@ def main():
         elif args.command == 'clear':
             result = manager.clear()
         elif args.command == 'configure':
-            result = manager.configure(args.mode)
+            result = manager.configure(args.mode, json.loads(args.policy_json) if args.policy_json else None)
         elif args.command == 'signal':
             result = manager.signal(args.reason, args.evidence, args.observation)
         elif args.command == 'begin':

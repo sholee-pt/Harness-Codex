@@ -483,6 +483,7 @@ def annotate(
     model: str | None = None,
     effort: str | None = None,
     runtime: str | None = None,
+    routing_cause: str | None = None,
 ) -> dict[str, Any]:
     selected_root = _find_harness_root(root)
     if selected_root is None:
@@ -564,6 +565,12 @@ def annotate(
         "supersedesEventId": payload["supersedesEventId"],
         "rawContentStored": False,
     }
+    if evidence_source in {'verification', 'user-reported'}:
+        try:
+            from harness_routing_evidence import RoutingEvidence
+            result['routing'] = RoutingEvidence(selected_root, state_root).feedback(work_item_ref, outcome, evidence_source, routing_cause or 'unknown')
+        except (OSError, ValueError, TimeoutError):
+            result['routing'] = {'available': False, 'recordPreserved': True}
     if maintenance_reason or maintenance_evidence or maintenance_change:
         # Optional, explicitly linked evidence only. A task failure alone never
         # declares a harness defect. A maintenance error cannot erase the record.
@@ -867,6 +874,7 @@ def command_annotate(args: argparse.Namespace) -> int:
         model=args.model,
         effort=args.effort,
         runtime=args.runtime,
+        routing_cause=getattr(args, 'routing_cause', None),
         related_work_item_ref=args.related_work_item_ref,
         state_root=Path(args.state_home).resolve() if args.state_home else None,
     )
@@ -932,6 +940,7 @@ def build_parser() -> argparse.ArgumentParser:
     annotation.add_argument("--root", required=True)
     annotation.add_argument("--work-item-ref")
     annotation.add_argument("--related-work-item-ref")
+    annotation.add_argument("--routing-cause", choices=('unknown', 'inference', 'environment'), default='unknown')
     annotation.add_argument("--relation", choices=sorted(RELATIONS), default="unclassified")
     annotation.add_argument("--category", choices=sorted(TASK_CATEGORIES), default="unknown")
     annotation.add_argument(

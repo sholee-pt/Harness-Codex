@@ -38,12 +38,32 @@ justify a persistent correction before anything is applied.
 
 At a subsequent turn boundary, auto mode may reserve one review batch. The native
 agent reviews only that batch in the existing conversation; it does not spawn an
-extra reviewer. At most two reviews per day, at least an hour apart, may apply a
-change within 180 seconds. Review lease, manifest revision and observed concurrent
+extra reviewer. The default adaptive policy permits at most two reviews in a rolling
+24-hour window. Its interval starts at one hour, backs off after unchanged reviews,
+and shortens as distinct relevant observations accumulate, within five minutes and
+24 hours. Recent completed review duration adjusts the application window up to
+180 seconds by default. Review lease, manifest revision and observed concurrent
 tasks/children are checked before apply. New agents, new skills, topology changes,
 permission changes, instruction-pointer changes and deletion use explicit `config`.
 Automatic changes are limited to two existing managed skills and 8 KiB of changed
 content. Ownership, reference integrity and journaled recovery stay enabled.
+
+Scheduling limits are explicit and independently adjustable; `fixed` restores a
+one-hour interval within those limits. These settings never expand edit scope:
+
+```sh
+harness-codex maintenance --schedule adaptive --max-reviews-per-day 2 \
+  --min-interval-seconds 300 --max-interval-seconds 86400 --max-review-seconds 180
+harness-codex maintenance --reported-token-budget 4000
+harness-codex maintenance --reported-token-budget 0
+```
+
+The optional reported-token budget pauses further reviews after an unmeasured
+review or when the reported daily total reaches the limit. It cannot prevent an
+ongoing native model call from exceeding that limit. Status shows this distinction
+and the currently calculated interval/window. Resolved candidate slots are retired
+as needed with a bounded seven-day suppression record; unresolved concerns are
+never discarded to make room. Ordinary turns do not need another model call.
 
 The same conversation can re-read an updated skill immediately; subsequent hooked
 turns receive a revision notice. A notice is not proof the model followed it.
@@ -75,7 +95,7 @@ See the [generator maintenance protocol](../.agents/skills/harness/references/ma
 
 ## Change outcomes and recovery
 
-Each automatic correction records an opaque change ID, before/after manifest revisions, reason/evidence references and the prior/new hashes of affected skills. The bounded user-local history stores no skill text, model IDs, paths or transcripts. Local state schema 1 is read as schema 2 in memory; a status read does not rewrite it and existing off/suggest/auto choices remain unchanged. Init/config display the maintenance mode and the separate opt-in evaluation state.
+Each automatic correction records an opaque change ID, before/after manifest revisions, reason/evidence references and the prior/new hashes of affected skills. The bounded user-local history stores no skill text, model IDs, paths or transcripts. Local state schemas 1 and 2 are read as schema 3 in memory; a status read does not rewrite them and existing off/suggest/auto choices remain unchanged. Init/config display the maintenance mode and the separate opt-in evaluation state.
 
 Applied changes start as `observing`: instructions updated, effect not established. The next hooked request carries a one-time revision notice and change ID. Record an outcome only when it is explicitly related to that correction, with the revision actually used by the task. Known model, effort, task category and runtime identity are hashed into a context group; unknown context remains descriptive and cannot trigger a comparison. Multiple records of one work item count once. Two independent, externally reported adverse outcomes in one known context group pause further automatic changes (`review-required`); they do not prove causality or stop ordinary work. Positive reports never automatically become a measured quality/cost benefit.
 

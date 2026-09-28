@@ -17,7 +17,7 @@ import signal
 import subprocess
 import sys
 
-from .model_routing import Context, choose, catalog_entries, available_model, MAX_PROMPT
+from .model_routing import Context, Decision, classify, choose, catalog_entries, available_model, MAX_PROMPT
 
 ALIAS = 'codex-auto-harness'
 MAX_MESSAGE = 16 * 1024 * 1024
@@ -69,7 +69,7 @@ def set_model(params, model, effort=None):
 
 
 class Policy:
-    def __init__(self, *, mode='manual', profiles=None, session_modes=None, remember=None):
+    def __init__(self, *, mode='manual', profiles=None, session_modes=None, remember=None, observer=None):
         self.mode, self.profiles = mode, profiles
         self.auto, self.contexts, self.catalog, self.aliases = dict(session_modes or {}), {}, [], {}
         self.default_model = self.default_effort = None
@@ -77,6 +77,16 @@ class Policy:
         self.raw_catalog, self.loaded, self.refresh_needed = [], False, False
         self.notices = []
         self.remember = remember or (lambda thread, enabled: None)
+        self.observer = observer
+
+    def observe(self, operation, *args, **kwargs):
+        if self.observer is not None:
+            try:
+                return getattr(self.observer, operation)(*args, **kwargs)
+            except Exception:
+                self.observer = None
+                self.warn(None, 'Adaptive routing evidence is unavailable; ordinary routing continues. Existing records were preserved.')
+        return None
 
     def model_list(self, result, *, update=True):
         result = copy.deepcopy(result)
@@ -213,9 +223,23 @@ class Policy:
             if text.strip() and '\0' not in text and len(text.encode()) <= MAX_PROMPT and not has_images:
                 decision = choose(text, self.raw_catalog, context=self.contexts.get(thread, Context()), profiles=self.profiles)
                 if decision.model:
+                    decision = self.observe('decision', thread, text, decision, self.raw_catalog, self.contexts.get(thread, Context()), self.profiles) or decision
                     set_model(result, decision.model, decision.effort)
                     self.contexts[thread] = Context(tier=decision.tier, model=decision.model, effort=decision.effort,
                         active_task=True, lighter_requests=int(decision.reason == 'lighter-request-pending'))
+        elif method == 'turn/start' and self.observer is not None:
+            context = self.contexts.get(thread, Context())
+            model = self.real(selected_model(result)) or context.model or self.default_model
+            effort = ((result.get('collaborationMode') or {}).get('settings') or {}).get('reasoning_effort', result.get('effort'))
+            effort = effort or context.effort or self.default_effort
+            text = '\n'.join(item.get('text', '') for item in result.get('input', []) if item.get('type') in {'text', 'input_text'})
+            entry = catalog_entries(self.raw_catalog).get(model)
+            if (text.strip() and '\0' not in text and len(text.encode()) <= MAX_PROMPT
+                    and not any(item.get('type') in {'image', 'localImage'} for item in result.get('input', []))
+                    and entry and effort in [item['reasoningEffort'] for item in entry.get('supportedReasoningEfforts', [])]):
+                tier, _ = classify(text, context)
+                decision = Decision(tier, model, effort, 'manual-fixed', 'manual', False)
+                self.observe('decision', thread, text, decision, self.raw_catalog, context, self.profiles, allow_advice=False)
         return result
 
     def display(self, settings, thread):
@@ -226,6 +250,7 @@ class Policy:
                 set_model(settings, alias)
 
     def response(self, message, method, params):
+        self.observe('response', message, method, params)
         if inference_error(message):
             self.refresh_needed = True
             self.warn(params.get('threadId') or (message.get('params') or {}).get('threadId'),

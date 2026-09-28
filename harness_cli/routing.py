@@ -24,6 +24,27 @@ def register(commands):
     parser.add_argument('--failures', type=int, default=0, help='Verified consecutive failures in this task, not model self-ratings.')
     parser.add_argument('--model', help='Preview a manual fixed model; requires --effort.')
     parser.add_argument('--effort', help='A reasoning option advertised by the selected model.')
+    parser.add_argument('--adaptive', choices=('on', 'off', 'status', 'clear'), help='Manage opt-in local outcome-based Auto advice.')
+    parser.add_argument('--adaptive-policy', type=Path, help='JSON quality/confidence/cost-gain limits; no model names.')
+    parser.add_argument('--feedback', help='An observed work-item reference from adaptive status or operations evidence.')
+    parser.add_argument('--outcome', choices=('unknown', 'verified', 'user-accepted', 'failed', 'needs-revision'))
+    parser.add_argument('--source', choices=('verification', 'user-reported'))
+    parser.add_argument('--cause', choices=('unknown', 'inference', 'environment'), default='unknown')
+    parser.add_argument('--yes', action='store_true', help='Confirm clearing this project\'s adaptive evidence and disabling advice.')
+
+
+def evidence_module(source_root):
+    import importlib
+    import sys
+    scripts = Path(source_root).resolve() / '.agents/skills/harness/scripts'
+    sys.path.insert(0, str(scripts))
+    try:
+        module = importlib.import_module('harness_routing_evidence')
+        if Path(module.__file__).resolve().parent != scripts:
+            raise ValueError('Another Harness evidence helper is loaded; start a fresh command')
+        return module
+    finally:
+        sys.path.remove(str(scripts))
 
 
 def read_text(path, limit):
@@ -65,6 +86,31 @@ def load_catalog(value):
 def run(args, source_root):
     from .main import build_parser
     from .presentation import Progress, clean
+    if args.adaptive or args.adaptive_policy or args.feedback:
+        if args.prompt is not None or args.prompt_file is not None:
+            raise ValueError('Choose an evidence action or a routing preview')
+        manager = evidence_module(source_root).RoutingEvidence(args.project.expanduser().resolve(strict=True))
+        if args.feedback:
+            if args.adaptive or args.adaptive_policy or not args.outcome or not args.source:
+                raise ValueError('Feedback requires outcome/source and cannot change settings')
+            report = manager.feedback(args.feedback, args.outcome, args.source, args.cause)
+        elif args.adaptive == 'clear':
+            if not args.yes or args.adaptive_policy:
+                raise ValueError('Clearing adaptive evidence requires --yes without policy changes')
+            report = manager.clear()
+        elif args.adaptive in {'on', 'off'} or args.adaptive_policy:
+            report = manager.configure(None if args.adaptive not in {'on', 'off'} else args.adaptive == 'on',
+                                       read_json(args.adaptive_policy) if args.adaptive_policy else None)
+        else:
+            report = manager.status()
+        if args.json:
+            print(json.dumps(report, indent=2))
+        else:
+            print('Adaptive Auto: ' + ('enabled' if report.get('enabled') else 'disabled') if 'enabled' in report else 'Routing feedback: ' + ('recorded' if report.get('recorded') else report.get('reason', 'unchanged')))
+            for item in report.get('workItems', []):
+                print(f"  {item['reference']}: {item['outcome']} | tokens: {item['tokens']} | time: {item['milliseconds']:.0f}ms")
+            print('Local evidence only; no additional model call. Quality/cost benefit is not established.')
+        return 0
     if args.prompt is None and args.prompt_file is None:
         # Explicitly offline, like --help; do not start an empty model session.
         build_parser(source_root).parse_args(['routing', '--help'])

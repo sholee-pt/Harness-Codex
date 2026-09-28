@@ -19,6 +19,12 @@ def register(commands):
     parser = commands.add_parser('maintenance', help='Configure bounded project maintenance or inspect its status.')
     parser.add_argument('--project', type=Path, default=Path.cwd())
     parser.add_argument('--mode', choices=('off', 'suggest', 'auto'))
+    parser.add_argument('--schedule', choices=('adaptive', 'fixed'))
+    parser.add_argument('--max-reviews-per-day', type=int)
+    parser.add_argument('--min-interval-seconds', type=int)
+    parser.add_argument('--max-interval-seconds', type=int)
+    parser.add_argument('--max-review-seconds', type=int)
+    parser.add_argument('--reported-token-budget', type=int, help='Pause after unmeasured reviews or reported daily spend; 0 clears this optional limit.')
     parser.add_argument('--install-hooks', action='store_true', help='Merge the maintenance handler into user hooks; native trust review remains required.')
     parser.add_argument('--json', action='store_true', default=False)
     parser.add_argument('--hook', action='store_true', help=__import__('argparse').SUPPRESS)
@@ -202,8 +208,13 @@ def remove_hooks(data_root, *, codex_home=None, dry_run=True):
 def run(args, source_root):
     if args.hook:
         return helper(source_root, args.project, ['hook'], capture=False)
+    fields = {'schedule': 'schedule', 'max_reviews_per_day': 'reviewsPerDay', 'min_interval_seconds': 'minIntervalSeconds',
+              'max_interval_seconds': 'maxIntervalSeconds', 'max_review_seconds': 'reviewSeconds', 'reported_token_budget': 'reportedTokensPerDay'}
+    policy = {target: getattr(args, name) for name, target in fields.items() if getattr(args, name, None) is not None}
+    if policy.get('reportedTokensPerDay') == 0:
+        policy['reportedTokensPerDay'] = None
     if args.maintenance_action:
-        if args.mode is not None or args.install_hooks:
+        if args.mode is not None or args.install_hooks or policy:
             raise ValueError('Choose a maintenance action or settings change, not both')
         arguments = [args.maintenance_action]
         if args.maintenance_action == 'clear':
@@ -233,7 +244,14 @@ def run(args, source_root):
             if result.get('changeId'):
                 print('Change: ' + result['changeId'] + ' | Instructions updated; effect under observation.')
         return 0
-    if args.mode is not None:
+    if policy:
+        arguments = ['configure', '--policy-json', json.dumps(policy)]
+        if args.mode is not None:
+            arguments += ['--mode', args.mode]
+        result = helper(source_root, args.project, arguments)
+        if args.mode is not None and args.mode != 'off':
+            result = enable(source_root, args.project, args.mode, quiet=args.json)
+    elif args.mode is not None:
         result = enable(source_root, args.project, args.mode, quiet=args.json)
     else:
         result = helper(source_root, args.project, ['status'])
@@ -245,6 +263,9 @@ def run(args, source_root):
         print(f'Maintenance: {result["mode"]}; eligible concerns: {result["pending"]}; reviews: {result["metrics"]["reviews"]}.')
         print('Automatic changes: existing skills only. Quality benefit is unmeasured; token counts are not a billing total.')
         print('Automatic changes paused: ' + ('yes' if result.get('automaticChangesPaused') else 'no'))
+        if result.get('scheduling'):
+            timing = result['scheduling']
+            print(f"Schedule: {timing['schedule']}; current interval: {timing['intervalSeconds']}s; application window: {timing['applicationSeconds']}s.")
         for change in result.get('changes', []):
             print(f"  {change['id']}: {change['status']} | observations: {change['observations']} | effect: not established")
     return 0
@@ -254,6 +275,6 @@ def report_policy(source_root, root):
     try:
         result = helper(source_root, root, ['status'])
         print('Maintenance: ' + result['mode'] + '. Existing preferences preserved; use harness-codex maintenance --mode suggest|auto to opt in.')
-        print('Task-effect comparison: opt-in. Automatic model-efficiency learning: not implemented.')
+        print('Task-effect comparison: opt-in. Adaptive Auto evidence: use harness-codex routing --adaptive status.')
     except (ValueError, OSError, subprocess.SubprocessError):
         print('Maintenance status unavailable; run harness-codex maintenance. No preference was changed.')

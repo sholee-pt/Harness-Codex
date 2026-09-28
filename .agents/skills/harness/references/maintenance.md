@@ -32,8 +32,12 @@ ignored. Only HMAC references and enums persist in user-local maintenance state.
 `suggest` emits one notice per eligible batch, without running an automatic review.
 `auto` may supply one review lease at the next user-turn boundary, provided no other
 observed task or child agent is active. Review only those concerns before beginning
-the user's new task. Do not spawn a separate reviewer or model. Maximum two leases
-per day, at least one hour apart, each with a 180-second application deadline.
+the user's new task. Do not spawn a separate reviewer or model. Default policy allows
+two leases per rolling day. Adaptive intervals back off after unchanged reviews and
+shorten with distinct repeated concerns, inside configured limits. Use the actual
+lease deadline and status policy, never assume a fixed interval or time window.
+An application window defaults to at most 180 seconds and can shrink from measured
+review duration. Changing scheduling limits does not authorize broader edits.
 Unknown native-session token usage stays unknown; this interface cannot enforce a
 hard model-token budget. Stop early rather than expanding a maintenance review.
 

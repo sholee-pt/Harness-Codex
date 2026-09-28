@@ -285,6 +285,8 @@ class MaintenanceTests(unittest.TestCase):
         path = self.manager._location()
         old = json.loads(path.read_text())
         old.pop('changes')
+        for name in ('policy', 'recentReviews', 'retired'):
+            old.pop(name)
         old['schema'] = 1
         path.write_text(json.dumps(old))
         before = path.read_bytes()

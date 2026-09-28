@@ -162,6 +162,9 @@ def main(args):
         profiles = read_json(dist._storage_path(settings['profiles']))
     modes = sessions(root)
     explicit_model = any(option in {'-m', '--model'} for option, _ in native_arguments(args))
+    from .routing_feedback import Observer
+    from .auto_relay import working_directory
+    observer = Observer(Path(__file__).resolve().parents[1], working_directory(args), (official_codex.read(root) or {}).get('version'))
     policy = Policy(mode='manual' if explicit_model else settings['mode'], profiles=profiles, session_modes={} if explicit_model else modes,
-                    remember=lambda thread, enabled: remember(root, thread, enabled))
+                    remember=lambda thread, enabled: remember(root, thread, enabled), observer=observer)
     return asyncio.run(run(binary, args, env, policy))

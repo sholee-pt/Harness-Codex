@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.25.0‑beta`](#harness-for-codex-v0250-beta) | Schema 3 | Schema 7 | Schema 2 | Adaptive maintenance cadence and opt-in observed Auto advice without additional model calls |
 | [`v0.24.1‑beta`](#harness-for-codex-v0241-beta) | Schema 3 | Schema 7 | Schema 2 | Fix installation races, workspace evidence isolation, corrected observations and inference compatibility |
 | [`v0.24.0‑beta`](#harness-for-codex-v0240-beta) | Schema 3 | Schema 7 | Schema 2 | Dynamic model catalogs and inference recovery, bounded maintenance outcome tracking and guarded rollback |
 | [`v0.23.2‑beta`](#harness-for-codex-v0232-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve native arguments and profiles, reject incompatible Codex candidates before activation, and count unique participant observations |
@@ -73,6 +74,15 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.25.0-beta
+
+- Add adaptive maintenance scheduling inside explicit daily, interval and application-time limits. Repeated no-change reviews back off, relevant repeated signals can shorten the interval, and observed review duration sizes the next application window. Automatic edit scope, ownership and concurrency checks stay unchanged.
+- Allow an optional reported-token budget that pauses further maintenance when spend reaches its limit or a review has no token measurement; this is not a hard cap on native model inference.
+- Compact resolved candidate slots with bounded suppression records and migrate existing local maintenance state in memory while preserving off/suggest/auto preferences.
+- Add opt-in project-local Auto observations and outcome-based advice. Native duration/available usage, external verification or user outcomes, catalog/runtime/harness revisions and bounded confidence guide next-turn choices without extra model calls or paid exploration.
+- Keep unknown quality/cost unknown, preserve manual choices, exclude environment failures from model-quality evidence, and require current catalog support. Performance records use opaque references without raw prompts, model names or transcripts.
+- Retain the v0.24.1 fixes for installation races, evidence isolation/lifecycle, corrected observations, Auto fork inheritance and reasoning identifiers. Linux publication remains gated on management checks and the official terminal/production adapter test; Windows publication is not requested.
 
 ## Harness for Codex v0.24.1-beta
 

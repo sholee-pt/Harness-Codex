@@ -50,6 +50,58 @@ Image-containing, image-only and oversized text requests keep the current native
 harness-codex config --auto-model auto --routing-profiles models.json
 ```
 
+## Optional outcome-based Auto advice
+
+Adaptive evidence is separately opt-in per selected Harness workspace; existing
+opt-outs and manual model choices are preserved. It makes no extra model call and
+does not run paid comparison trials. Enable it before starting/resuming Codex:
+
+```sh
+harness-codex routing --adaptive on
+harness-codex routing --adaptive status
+harness-codex routing --feedback work-item:OPAQUE_ID --outcome verified --source verification
+harness-codex routing --feedback work-item:OPAQUE_ID --outcome failed --source verification --cause inference
+harness-codex routing --adaptive off
+harness-codex routing --adaptive clear --yes
+```
+
+Completed observed Auto and manual turns contribute duration and, when a reliable
+native cumulative baseline is available, a token delta. Unknown token usage stays
+null. The first resumed turn may lack that baseline; the native last-model-call
+usage is never mislabeled as the whole turn. Completion alone leaves quality
+unknown. Images, oversized routing requests, interrupted/failed native turns and
+mixed-inference turns do not become efficiency evidence. Duration includes tool
+and approval delays and is not a pure model speed measurement; tokens are not a
+billing total.
+
+Existing operations annotations with external verification/user evidence can
+update the same observed work item. `--routing-cause inference` is required before
+a negative result counts against a model. Environment/authentication/network
+failures and unknown causes never do. Do not infer quality from reassuring prose
+or generate a model-based rating after every conversation.
+
+Advice groups evidence by workspace, harness revision, actual runtime version,
+catalog revision, task category and routing tier. Model/reasoning names are hashed
+in local records and matched to the current advertised catalog in memory. A new
+catalog/runtime/revision starts without transferable performance confidence.
+Unrated models keep the ordinary rule/profile/default behavior; no universal model
+ranking or causal benefit is claimed. Existing profiles still limit candidates.
+
+Within a matching group, an alternative needs a quality confidence bound above
+the configured floor and a sufficiently clear token/duration improvement without
+a material measured regression. A reliably poor incumbent can yield to an
+externally verified alternative even if that alternative costs more. Active tasks
+require a larger gain; ambiguous continuations keep their choice. The next turn
+can use advice; running turns and permissions are unchanged. Corrections replace
+the work item's feedback, duplicates do not add confidence, and old evidence ages
+out. There are at most 256 local samples and no raw prompts or transcripts.
+
+Use `--adaptive-policy policy.json` to adjust `qualityFloor` (default 0.8),
+`confidence` (0.95), `minimumGain` (0.15) and `historyDays` (30), inside validated
+limits. Statistical bounds are conservative heuristics over observational data,
+not proof that differently worded tasks have identical difficulty. Inspect with
+`--adaptive status`; use isolated paired evaluation for a causal claim.
+
 ## Compatibility and removal
 
 Before connecting, Harness checks for the official remote interface and a usable model catalog. If those checks fail it offers native mode or exit. Unexpected protocol failure stops the adapter and directs the user to resume; it never silently resubmits a request. Capability checks do not prove all future APIs, account restrictions or live tool behavior. Linux CI uses real official TUI and app-server processes with a synthetic local model provider, not paid inference.
