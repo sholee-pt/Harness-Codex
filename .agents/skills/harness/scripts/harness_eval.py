@@ -2806,7 +2806,7 @@ def _add_runtime(parser: argparse.ArgumentParser, *, require_codex_home: bool = 
     parser.add_argument("--codex-binary", default="codex")
     parser.add_argument("--codex-home", required=require_codex_home)
     parser.add_argument("--model")
-    parser.add_argument("--reasoning-effort", choices=sorted(types.REASONING_EFFORTS), default="unknown")
+    parser.add_argument("--reasoning-effort", type=types.reasoning_effort, default="unknown")
     parser.add_argument("--timeout", type=float, default=900.0)
 
 

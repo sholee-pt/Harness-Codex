@@ -795,7 +795,8 @@ def _install_tool(source_root, data_root, bin_dir, python_executable=sys.executa
     try:
         with _lock(data_root):
             if existing:
-                installed_status(data_root)
+                if installed_status(data_root) != existing:
+                    raise DistributionError("installation changed during setup; retry against the current installation")
             else:
                 if any(path.name != ".install.lock" for path in data_root.iterdir()):
                     raise DistributionError("installation directory changed during setup")

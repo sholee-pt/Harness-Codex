@@ -59,8 +59,15 @@ def observe(item, reference, outcome, source, stratum):
         return False
     if previous is None and len(item['observations']) >= OBSERVATIONS:
         raise ValueError('Maintenance observation limit reached; review this change')
+    if previous:
+        # Corrections are new evidence without counting the same work twice.
+        for value in item['observations'].values():
+            if value['sequence'] > previous['sequence']:
+                value['sequence'] -= 1
+        if previous['sequence'] < item['reviewed']:
+            item['reviewed'] -= 1
     item['observations'][reference] = {'outcome': outcome, 'source': source, 'stratum': stratum,
-                                     'sequence': previous['sequence'] if previous else len(item['observations'])}
+                                     'sequence': len(item['observations']) - int(previous is not None)}
     recent = [value for value in item['observations'].values() if value['sequence'] >= item['reviewed']]
     adverse = [value for value in recent if value['source'] != 'agent-reported'
                and value['outcome'] in {'needs-revision', 'failed'} and value['stratum'] is not None]

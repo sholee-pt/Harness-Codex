@@ -2,6 +2,8 @@
 
 Operations evidence is an opt-in, user-local record of how an installed Harness is used across interactive Codex turns. It does not change generated files, persistent topology, routing, evaluation records, or the manifest.
 
+New records use a separate identity for the exact selected workspace, including nested projects inside one Git repository. Pre-0.24.1 records may mix workspaces under a Git-root identity: retain them in their original user-local repository directory, but never silently import them into a workspace audit or delete them through another workspace's purge. Their original opaque repository ID remains in the local registry; inspect the retained files explicitly when reviewing that legacy evidence. Evaluation purge removes evaluation records only and retains opaque registry identities so concurrent writers and other evidence remain reachable.
+
 ## Work-item boundary
 
 One Codex session may contain unrelated tasks, refinements, corrections, and later verification. The session is therefore not the unit of analysis. Every observed `UserPromptSubmit` turn creates a distinct pseudonymous work item. A later enum-only annotation may classify it as:

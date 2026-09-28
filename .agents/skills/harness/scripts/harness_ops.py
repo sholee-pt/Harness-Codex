@@ -421,7 +421,7 @@ def record_hook_event(
     if root is None:
         return {"recorded": False, "reason": "not-a-local-harness-workspace"}
     store = harness_eval_store.EvaluationStore(state_root=state_root)
-    repository_id = store.register_repository(root)
+    repository_id = store.register_workspace(root)
     session_id = _require_text(hook.get("session_id"), "session_id")
     session_ref = store.pseudonym(repository_id, "session", session_id)
     if event_type == "SessionEnd":
@@ -488,7 +488,7 @@ def annotate(
     if selected_root is None:
         raise OperationsError("--root must be inside a local Harness workspace")
     store = harness_eval_store.EvaluationStore(state_root=state_root)
-    repository_id = store.register_repository(selected_root)
+    repository_id = store.register_workspace(selected_root)
     with store.repository_lock(repository_id):
         events, errors = _read_events(store, repository_id)
         if errors:
@@ -589,7 +589,7 @@ def audit(root: Path, *, state_root: Path | None = None) -> dict[str, Any]:
     if selected_root is None:
         raise OperationsError("--root must be inside a local Harness workspace")
     store = harness_eval_store.EvaluationStore(state_root=state_root)
-    repository_id = store.register_repository(selected_root)
+    repository_id = store.register_workspace(selected_root)
     with store.repository_lock(repository_id):
         events, errors = _read_events(store, repository_id)
     prompts = [event for event in events if event["eventType"] == "UserPromptSubmit"]
@@ -891,7 +891,7 @@ def command_purge(args: argparse.Namespace) -> int:
     store = harness_eval_store.EvaluationStore(
         state_root=Path(args.state_home).resolve() if args.state_home else None
     )
-    repository_id = store.register_repository(selected_root)
+    repository_id = store.register_workspace(selected_root)
     events_root = _events_root(store, repository_id)
     removed = 0
     with store.repository_lock(repository_id):

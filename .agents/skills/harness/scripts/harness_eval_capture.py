@@ -496,8 +496,10 @@ def run_codex_jsonl(
 ) -> tuple[CaptureSummary, int | None, int, bool, str]:
     if sandbox not in {"read-only", "workspace-write"}:
         raise CaptureError("instrumented evaluator sandbox must be read-only or workspace-write")
-    if reasoning_effort not in types.REASONING_EFFORTS:
-        raise CaptureError("unsupported reasoning effort")
+    try:
+        types.reasoning_effort(reasoning_effort)
+    except types.EvaluationError as exc:
+        raise CaptureError(str(exc)) from exc
     if timeout_seconds <= 0:
         raise CaptureError("timeout must be positive")
     environment = _isolated_environment(codex_home=codex_home, user_home=user_home)
@@ -517,7 +519,7 @@ def run_codex_jsonl(
     if model:
         command.extend(["--model", model])
     if reasoning_effort != "unknown":
-        command.extend(["--config", f'model_reasoning_effort="{reasoning_effort}"'])
+        command.extend(["--config", 'model_reasoning_effort=' + json.dumps(reasoning_effort, ensure_ascii=False)])
     if extra_args:
         command.extend(extra_args)
     command.append("-")

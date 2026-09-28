@@ -185,7 +185,7 @@ class Policy:
         thread = result.get('threadId')
         inference = method in {'thread/start', 'thread/resume', 'thread/fork', 'thread/settings/update', 'turn/start'}
         auto = selected == ALIAS or selected in self.aliases or self.enabled(thread)
-        if method == 'thread/settings/update' and selected:
+        if method in {'thread/settings/update', 'thread/fork'} and selected:
             auto = selected == ALIAS or selected in self.aliases
         if method in {'config/batchWrite', 'config/value/write'}:
             edits = result.get('edits', []) if method == 'config/batchWrite' else [result]
@@ -253,6 +253,9 @@ class Policy:
                     self.contexts[thread] = Context(tier=tier, model=self.real(model), effort=effort, active_task=True)
                 if selected_model(params) == ALIAS or selected_model(params) in self.aliases:
                     self.settings({**params, 'threadId': thread})
+                elif method == 'thread/fork':
+                    self.auto[thread] = False if selected_model(params) else params.get('_harnessForkAuto', self.enabled(params.get('threadId')))
+                    self.remember(thread, self.auto[thread])
                 self.display(result, thread)
         if message.get('method') == 'thread/settings/updated':
             event = message.get('params') or {}
@@ -415,6 +418,8 @@ class Relay:
                     continue
                 if method and 'id' in message:
                     pending[message['id']] = (method, copy.deepcopy(params))
+                    if method == 'thread/fork':
+                        pending[message['id']][1]['_harnessForkAuto'] = self.policy.enabled(params.get('threadId'))
                 await notices()
                 await write(message)
 

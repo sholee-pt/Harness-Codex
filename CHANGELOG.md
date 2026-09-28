@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.24.1‑beta`](#harness-for-codex-v0241-beta) | Schema 3 | Schema 7 | Schema 2 | Fix installation races, workspace evidence isolation, corrected observations and inference compatibility |
 | [`v0.24.0‑beta`](#harness-for-codex-v0240-beta) | Schema 3 | Schema 7 | Schema 2 | Dynamic model catalogs and inference recovery, bounded maintenance outcome tracking and guarded rollback |
 | [`v0.23.2‑beta`](#harness-for-codex-v0232-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve native arguments and profiles, reject incompatible Codex candidates before activation, and count unique participant observations |
 | [`v0.23.1‑beta`](#harness-for-codex-v0231-beta) | Schema 3 | Schema 7 | Schema 2 | Fix official Codex relay authentication without URL path tokens |
@@ -72,6 +73,15 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.24.1-beta
+
+- Reject source installations whose active state changed while waiting for the installation lock, preserving a concurrently completed newer installation.
+- Isolate operations records by selected workspace, preserve ambiguous legacy records, and retain opaque registry identities when evaluation data is purged.
+- Treat corrected maintenance observations as fresh evidence without counting the same task twice.
+- Inherit the original conversation's Auto/manual preference on a successful fork and preserve explicit model choices.
+- Accept bounded reasoning identifiers in optional evaluation capture instead of a release-specific list, with safely encoded native overrides.
+- Add focused regressions for these cross-component boundaries. Project artifact and authoring contracts remain unchanged.
 
 ## Harness for Codex v0.24.0-beta
 

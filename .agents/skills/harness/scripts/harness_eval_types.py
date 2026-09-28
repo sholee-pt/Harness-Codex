@@ -45,7 +45,6 @@ MEASUREMENT_SOURCES = {
     "none",
 }
 FIDELITIES = {"exact", "reported", "derived", "unknown"}
-REASONING_EFFORTS = {"minimal", "low", "medium", "high", "xhigh", "unknown"}
 PLATFORMS = {"linux", "windows", "macos", "unknown"}
 SANDBOXES = {"read-only", "workspace-write", "danger-full-access", "unknown"}
 TASK_CATEGORIES = {
@@ -245,6 +244,12 @@ def _require_keys(value: dict[str, Any], allowed: Iterable[str], required: Itera
         raise EvaluationError(f"{label} contains unknown fields: {', '.join(sorted(unknown))}")
     if missing:
         raise EvaluationError(f"{label} is missing fields: {', '.join(sorted(missing))}")
+
+
+def reasoning_effort(value: Any) -> str:
+    if not isinstance(value, str) or not 0 < len(value) <= 256 or not value.isprintable() or any(c.isspace() for c in value):
+        raise EvaluationError("reasoning effort must be a bounded identifier")
+    return value
 
 
 def _require_enum(value: Any, allowed: set[str], label: str) -> str:
@@ -491,7 +496,7 @@ def _validate_run_record_v1(value: Any, *, verify_hash: bool = True) -> dict[str
         raise EvaluationError("runtime.modelRef must be null or a local pseudonym")
     if runtime["surface"] not in {"exec", "interactive", "manual", "unknown"}:
         raise EvaluationError("runtime.surface is invalid")
-    _require_enum(runtime["reasoningEffort"], REASONING_EFFORTS, "runtime.reasoningEffort")
+    reasoning_effort(runtime["reasoningEffort"])
     _require_enum(runtime["platform"], PLATFORMS, "runtime.platform")
     _require_enum(runtime["sandbox"], SANDBOXES, "runtime.sandbox")
     for key in ("ephemeral", "ignoreUserConfig", "ignoreRules"):

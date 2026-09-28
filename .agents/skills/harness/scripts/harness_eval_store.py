@@ -197,6 +197,15 @@ class EvaluationStore:
     def register_repository(self, repository: Path, *, compared_worktrees: Iterable[Path] = ()) -> str:
         ensure_state_outside_repositories(self.root, [repository, *compared_worktrees])
         locator = self._hmac(canonical_repository_root(repository).encode("utf-8"))
+        return self._register_locator(locator, "repositories")
+
+    def register_workspace(self, workspace: Path) -> str:
+        ensure_state_outside_repositories(self.root, [workspace])
+        normalized = os.path.normcase(os.path.normpath(str(workspace.resolve())))
+        locator = self._hmac(normalized.encode("utf-8"))
+        return self._register_locator(locator, "workspaces")
+
+    def _register_locator(self, locator: str, collection: str) -> str:
         with FileLock(self.registry_lock_path, timeout=self.lock_timeout):
             if self.registry_path.exists():
                 try:
@@ -207,7 +216,9 @@ class EvaluationStore:
                 registry = {"schemaVersion": 1, "repositories": {}}
             if not isinstance(registry, dict) or registry.get("schemaVersion") != 1 or not isinstance(registry.get("repositories"), dict):
                 raise StoreError("repository registry must be a schemaVersion 1 object")
-            repositories = registry["repositories"]
+            repositories = registry.setdefault(collection, {})
+            if not isinstance(repositories, dict):
+                raise StoreError("workspace registry must be an object")
             repository_id = repositories.get(locator)
             if repository_id is None:
                 repository_id = str(self.ids.new_uuid())
@@ -546,7 +557,6 @@ class EvaluationStore:
         root = self._ensure_repository_dirs(repository_id)
         removed = 0
         preserved = 0
-        mapping_removed = False
         with self.repository_lock(repository_id):
             pending = list((root / "runs" / "pending").glob("*.json"))
             preserved = len(pending)
@@ -562,27 +572,13 @@ class EvaluationStore:
                         directory_path.rmdir()
                     except OSError:
                         pass
-        if preserved == 0:
-            with FileLock(self.registry_lock_path, timeout=self.lock_timeout):
-                if self.registry_path.is_file():
-                    try:
-                        registry = json.loads(self.registry_path.read_text(encoding="utf-8"))
-                    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-                        raise StoreError(f"repository registry is invalid: {exc}") from exc
-                    repositories = registry.get("repositories") if isinstance(registry, dict) else None
-                    if not isinstance(repositories, dict):
-                        raise StoreError("repository registry must be a schemaVersion 1 object")
-                    locators = [locator for locator, value in repositories.items() if value == repository_id]
-                    for locator in locators:
-                        del repositories[locator]
-                    if locators:
-                        _atomic_json(self.registry_path, registry)
-                        mapping_removed = True
+        # Keep opaque identities stable: a writer may already have registered
+        # before waiting for the record lock, and other record families survive.
         return {
             "repositoryId": repository_id,
             "removed": removed,
             "activePendingPreserved": preserved,
-            "registryMappingRemoved": mapping_removed,
+            "registryMappingRemoved": False,
         }
 
     def repair_repository(self, repository_id: str, *, quarantine: bool = False) -> dict[str, Any]:

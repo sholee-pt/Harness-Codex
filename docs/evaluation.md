@@ -1,5 +1,7 @@
 # Quality evaluation and local evidence
 
+Evaluation purge removes evaluation records while preserving active pending runs and opaque registry identities. Stable identities prevent retained operations evidence and concurrent writes from becoming unreachable. New operations records are scoped to the selected workspace rather than its enclosing Git repository; older shared records are retained separately and are not attributed to a workspace automatically.
+
 ## Optional Local Operations Evidence
 
 The current Harness for Codex can observe long-running interactive use without treating one CLI session as one task. Each `UserPromptSubmit` turn becomes a separate pseudonymous work item. Subagent lifecycle events, enum-only execution and agent-selection assessments, verification state, outcome, and an optional relationship to an earlier turn are attached to that work item. Explicit acceptance, correction, refinement, follow-up, reopened work, cancellation, or an unrelated new task can therefore be distinguished inside the same session.

@@ -860,9 +860,10 @@ class StoreTests(unittest.TestCase):
             self.assertFalse(first["registryMappingRemoved"])
             evaluation_store.complete_run(completed)
             second = evaluation_store.purge_repository(repository_id)
-            self.assertTrue(second["registryMappingRemoved"])
+            self.assertFalse(second["registryMappingRemoved"])
             registry = json.loads(evaluation_store.registry_path.read_text(encoding="utf-8"))
-            self.assertNotIn(repository_id, registry["repositories"].values())
+            self.assertIn(repository_id, registry["repositories"].values())
+            self.assertEqual(evaluation_store.register_repository(repository), repository_id)
 
 
 class ComparisonTests(unittest.TestCase):
