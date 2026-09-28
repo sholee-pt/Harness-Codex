@@ -381,7 +381,8 @@ class Terminal:
 
 
 def drive(binary, env, project, output, port, relay, provider):
-    terminal = Terminal(binary, ['--remote', f'ws://127.0.0.1:{port}', '--no-alt-screen', '-C', str(project)], env, output)
+    remote = f'ws://127.0.0.1:{port}' + ('/' + relay.token if hasattr(relay, 'token') else '')
+    terminal = Terminal(binary, ['--remote', remote, '--no-alt-screen', '-C', str(project)], env, output)
     findings = {'realModelInference': 'not-tested; local synthetic Responses provider', 'linuxTui': True}
     try:
         findings['startupChoices'] = terminal.startup(relay)
@@ -417,7 +418,7 @@ def drive(binary, env, project, output, port, relay, provider):
                 'turnCompleted': decision.get('turnStatus') == 'completed',
                 'modelReachedProvider': bool(model) and received['model'] == model,
                 'effortReachedProvider': bool(effort) and (received.get('reasoning') or {}).get('effort') == effort,
-                'footerShowsActualModel': bool(model) and any(model in line for line in footer),
+                'footerShowsActualModel': bool(model) and any(model.casefold() in line.casefold() for line in footer),
                 'footerShowsActualEffort': bool(effort) and any(effort.lower() in line.lower() for line in footer),
                 'footerShowsAuto': any('auto' in line.lower() for line in footer)}
         main_decisions = [findings[f'turn{index}']['decision'] for index in (1, 2)]

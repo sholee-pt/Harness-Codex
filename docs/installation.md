@@ -1,6 +1,10 @@
 # Installation and troubleshooting
 
-The [README installation guide](../README.md#installation-guide) provides the standard commands. Release installers are version-bound; subsequent `harness-codex update` follows the latest Codex branch unless pinned.
+The [README installation guide](../README.md#installation-guide) provides the standard commands. Release installers are version-bound; subsequent `harness-codex update` follows published Harness releases. Explicit `--branch` pins retain the developer source-update path.
+
+For the transition from a patched Codex installation, run the current release installer with `--existing reuse`, then `harness-codex config` once. This preserves project artifacts and moves the owned PATH entry to the official-release adapter. An older updater can install the new management source but still report a missing old-style native package; running the now-updated `config` completes that transition. Subsequent official Codex updates require no Harness rebuild. Auto's WebSocket dependency is prepared in the selected Harness interpreter during integration setup.
+
+Interactive `codex` launches check both release channels and require a selection before downloads. Both historical `compatible` and `check` settings now request consent; `off` and `HARNESS_NO_UPDATE_CHECK=1` skip checks. Help, version, doctor, dry runs and noninteractive Codex commands do not check releases. For private GitHub access, an explicitly configured `HARNESS_GITHUB_TOKEN` or `GH_TOKEN` can authorize API calls; Git user.name/email are not authentication. Credentials are never forwarded to asset redirects.
 
 Current releases and CI target Linux. Windows installation code and the option references below are retained for future work; no Windows installer or native package is published while Windows validation is paused.
 
@@ -20,7 +24,7 @@ Current releases and CI target Linux. Windows installation code and the option r
 `reuse` retains the repository transport and automatic-update policy. Branch pins are retained except for the [one-time legacy-to-beta migration](versioning.md). `reset` applies the supplied/default preferences, clears the update-check cache and rebuilds the exact managed PATH registration. Both preserve verified releases and runtime files, project harnesses, unrelated shell/registry settings and modified user content. Reset does not authorize removing unknown directories. Without a terminal, an existing installation requires an explicit choice.
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.22.3-beta/install_harness_codex.sh | sh -s -- --existing reuse
+curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.23.0-beta/install_harness_codex.sh | sh -s -- --existing reuse
 source ~/.bashrc
 ```
 
@@ -33,7 +37,7 @@ For Windows source development, run from an existing checkout:
 ## Source installation
 
 ```bash
-git clone --branch v0.22.3-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
+git clone --branch v0.23.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
 bash Harness-Codex/installer/install.sh
 source ~/.bashrc
 ```

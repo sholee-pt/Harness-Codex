@@ -1,0 +1,164 @@
+"""Prelaunch release choices, followed by the unchanged official Codex terminal."""
+from __future__ import annotations
+
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+from . import distribution as dist, official_codex, release_updates
+from .presentation import Progress, clean
+from .terminal_menu import choose
+
+
+def interactive(args):
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return False
+    # Help, automation, login and explicit remote connections remain native/offline.
+    options = {'-c', '--config', '-C', '--cd', '-m', '--model', '-p', '--profile', '-s', '--sandbox',
+               '-a', '--ask-for-approval', '--image', '-i', '--enable', '--disable', '--add-dir'}
+    skip = False
+    for value in args:
+        if skip:
+            skip = False
+            continue
+        if value in {'--help', '-h', '--version', '-V', '--remote'} or value.startswith('--remote='):
+            return False
+        if value in options:
+            skip = True
+        elif value in {'exec', 'e', 'review', 'login', 'logout', 'mcp', 'mcp-server', 'app-server', 'completion',
+                       'sandbox', 'debug', 'apply', 'cloud', 'features', 'update'}:
+            return False
+        elif value == '--' or not value.startswith('-'):
+            break
+    return True
+
+
+def update_choices(root):
+    state = dist.installed_status(root)
+    if state['auto_update'] == 'off' or os.environ.get('HARNESS_NO_UPDATE_CHECK') == '1':
+        return False
+    findings = {}
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        channels = [('Codex', official_codex.check)]
+        if not state.get('branch'):
+            channels.append(('Harness', release_updates.check))
+        pending = {name: executor.submit(check, root, timeout=5) for name, check in channels}
+        for name, future in pending.items():
+            try:
+                value = future.result()
+                if value['updateAvailable']:
+                    findings[name] = value
+            except (OSError, ValueError, TimeoutError):
+                print(name + ' update check unavailable; continuing with installed files.', file=sys.stderr)
+    if not findings:
+        return False
+    progress = Progress('Updates available')
+    for name, result in findings.items():
+        progress.line(f"{name}: {result['currentVersion']} -> {result['availableVersion']}")
+    options = [('Skip this time', ())]
+    if len(findings) == 2:
+        options.append(('Update both', ('Harness', 'Codex')))
+    options.extend(('Update ' + name + ' only', (name,)) for name in findings)
+    selected = options[choose(progress, 'Update before starting Codex?', [item[0] for item in options])][1]
+    changed = False
+    for name in selected:
+        try:
+            with Progress('Updating ' + name):
+                if name == 'Codex':
+                    official_codex.install(root, selected=findings[name])
+                else:
+                    result = release_updates.update(root, selected=findings[name])
+                    changed = result['updated']
+        except (OSError, ValueError, TimeoutError, subprocess.SubprocessError) as error:
+            print(name + ' update was not applied: ' + clean(error), file=sys.stderr)
+    return changed
+
+
+def sessions(root):
+    path = dist._storage_path(root / 'relay-sessions.json')
+    if not path.exists():
+        return {}
+    value = dist._read_json(path)
+    if (set(value) != {'schema', 'threads'} or value['schema'] != 1 or not isinstance(value['threads'], dict)
+            or len(value['threads']) > 512 or any(not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', key)
+                or type(mode) is not bool for key, mode in value['threads'].items())):
+        raise ValueError('Invalid Auto session preferences; preserve and review relay-sessions.json')
+    return value['threads']
+
+
+def remember(root, thread, enabled):
+    if not isinstance(thread, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', thread):
+        return
+    with dist._lock(root):
+        modes = sessions(root)
+        if modes.get(thread) is enabled:
+            return
+        modes.pop(thread, None)
+        if len(modes) >= 512:
+            modes.pop(next(iter(modes)))
+        modes[thread] = enabled
+        dist._write_json(root / 'relay-sessions.json', {'schema': 1, 'threads': modes})
+
+
+def compatible(binary, args):
+    """Probe available operations, not a numeric Codex version allowlist."""
+    from .auto_relay import dependency, server_arguments, working_directory, Policy
+    from .configuration import Server
+    dependency()
+    result = subprocess.run([str(binary), '--help'], capture_output=True, text=True, timeout=10, check=True)
+    if '--remote' not in result.stdout:
+        raise ValueError('This Codex does not advertise a remote app-server connection')
+    server = Server([str(binary), *server_arguments(args)], working_directory(args), Progress('Checking Auto compatibility', compact=True))
+    try:
+        server.initialize(timeout=10)
+        Policy().model_list(server.call('model/list', {}, timeout=10))
+    finally:
+        server.close()
+
+
+def main(args):
+    from .main import default_data_root
+    from . import codex_integration
+    from .environment import codex_environment
+    from .auto_relay import Policy, run
+    root = default_data_root()
+    integration = codex_integration.read(root)
+    if not integration or integration['schema'] != 2:
+        raise ValueError('Run harness-codex config to register the official Codex entry point')
+    if args == ['update']:
+        with Progress('Updating official Codex'):
+            official_codex.install(root)
+        return 0
+    if interactive(args) and update_choices(root):
+        # Load new Python source only between conversations, once per launch.
+        state = dist.installed_status(root)
+        env = {**os.environ, 'HARNESS_NO_UPDATE_CHECK': '1'}
+        os.execve(state['python'], [state['python'], '-B', str(root / 'launcher.py'), '_codex', *args], env)
+    binary = official_codex.binary(root)
+    env = codex_environment()
+    if not interactive(args) or os.environ.get('HARNESS_CODEX_NATIVE') == '1':
+        os.execve(str(binary), [str(binary), *args], env)
+    # Harness owns this package's update transaction; avoid a second native prompt.
+    args = ['-c', 'check_for_update_on_startup=false', *args]
+    try:
+        compatible(binary, args)
+    except (OSError, ValueError, ImportError, TimeoutError, subprocess.SubprocessError) as error:
+        progress = Progress('Auto unavailable')
+        progress.line('Auto compatibility check failed: ' + clean(error))
+        if choose(progress, 'Continue with official Codex?', ['Use native Codex without Harness Auto', 'Exit']) == 1:
+            return 1
+        os.execve(str(binary), [str(binary), *args], env)
+    settings = dist._read_json(root / 'codex-relay.json')
+    profiles = None
+    if settings.get('profiles'):
+        from .routing import read_json
+        profiles = read_json(dist._storage_path(settings['profiles']))
+    modes = sessions(root)
+    explicit_model = any(item in {'-m', '--model'} or item.startswith('--model=') for item in args)
+    policy = Policy(mode='manual' if explicit_model else settings['mode'], profiles=profiles, session_modes={} if explicit_model else modes,
+                    remember=lambda thread, enabled: remember(root, thread, enabled))
+    return asyncio.run(run(binary, args, env, policy))

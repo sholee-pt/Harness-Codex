@@ -146,6 +146,8 @@ def removal_files(data_root):
     root = dist._storage_path(data_root / 'native-ui')
     from .codex_integration import removal_files as integration_files
     files = integration_files(data_root)
+    from .official_codex import removal_files as official_files
+    files.update(official_files(data_root))
     if not root.exists():
         return files
     for release in root.iterdir():

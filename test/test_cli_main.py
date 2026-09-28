@@ -154,8 +154,9 @@ class AutomaticUpdateTests(unittest.TestCase):
                 "state": stack.enter_context(mock.patch.object(distribution, "installed_status", return_value={"auto_update": policy, "release_root": str(REPO), **({"command": command} if command else {})})),
                 "due": stack.enter_context(mock.patch.object(distribution, "check_due", return_value=due)),
                 "mark": stack.enter_context(mock.patch.object(distribution, "mark_check")),
-                "check": stack.enter_context(mock.patch.object(distribution, "check_update", return_value={"updateAvailable": True, "availableVersion": available, "branch": "codex/v" + available})),
-                "update": stack.enter_context(mock.patch.object(distribution, "update_tool", return_value={"updated": True})),
+                "check": stack.enter_context(mock.patch('harness_cli.release_updates.check', return_value={"updateAvailable": True, "availableVersion": available})),
+                "update": stack.enter_context(mock.patch('harness_cli.release_updates.update', return_value={"updated": True})),
+                "choose": stack.enter_context(mock.patch('harness_cli.terminal_menu.choose', return_value=1)),
                 "call": stack.enter_context(mock.patch.object(subprocess, "call", return_value=29)),
                 "stderr": stderr,
             }
@@ -175,8 +176,8 @@ class AutomaticUpdateTests(unittest.TestCase):
                 mocks.check.assert_not_called()
                 mocks.update.assert_not_called()
 
-    def test_off_nonterminal_and_cached_check_never_access_upstream(self):
-        for options in ({"policy": "off"}, {"tty": False}, {"due": False}):
+    def test_off_and_nonterminal_never_access_upstream(self):
+        for options in ({"policy": "off"}, {"tty": False}):
             with self.subTest(options=options), self.fixtures(**options) as mocks:
                 self.assertIsNone(cli._automatic_update(self.arguments(), REPO, ["start"]))
                 mocks.mark.assert_not_called()
@@ -197,16 +198,17 @@ class AutomaticUpdateTests(unittest.TestCase):
             mocks.update.assert_not_called()
             mocks.call.assert_not_called()
 
-    def test_check_policy_and_new_major_only_notify(self):
+    def test_all_policies_and_major_updates_require_explicit_selection(self):
         for options in ({"policy": "check"}, {"available": "1.0.0"},
                         {"policy": "check", "command": "harness-codex"}, {"available": "1.0.0", "command": "harness-codex"}):
             with self.subTest(options=options), self.fixtures(**options) as mocks:
+                mocks.choose.return_value = 0
                 self.assertIsNone(cli._automatic_update(self.arguments(), REPO, ["start"]))
-                mocks.mark.assert_called_once()
+                mocks.mark.assert_not_called()
                 mocks.check.assert_called_once()
                 mocks.update.assert_not_called()
                 mocks.call.assert_not_called()
-                self.assertIn(options.get("command", "harness") + " update", mocks.stderr.getvalue())
+                mocks.choose.assert_called_once()
 
     def test_up_to_date_does_not_download(self):
         with self.fixtures() as mocks:
@@ -220,18 +222,18 @@ class AutomaticUpdateTests(unittest.TestCase):
             with self.subTest(failure=failure), self.fixtures() as mocks:
                 getattr(mocks, failure).side_effect = distribution.DistributionError("offline or invalid candidate")
                 self.assertIsNone(cli._automatic_update(self.arguments(), REPO, ["start"]))
-                mocks.mark.assert_called_once()
+                mocks.mark.assert_not_called()
                 mocks.call.assert_not_called()
                 self.assertIn("continuing with the installed version", mocks.stderr.getvalue())
 
-    def test_compatible_update_relaunches_same_argv_without_permission_overrides(self):
+    def test_confirmed_update_relaunches_same_argv_without_permission_overrides(self):
         with self.fixtures() as mocks:
             newer = REPO.parent / "new release"
             mocks.state.side_effect = [{"auto_update": "compatible"}, {"release_root": str(newer)}]
             arguments = ["start", "--project", "a path with spaces", "Fix $HOME; preserve user choices"]
             self.assertEqual(cli._automatic_update(self.arguments(), REPO, arguments), 29)
             mocks.update.assert_called_once()
-            self.assertEqual(mocks.update.call_args.kwargs["expected_major"], 0)
+            self.assertEqual(mocks.update.call_args.kwargs["selected"], mocks.check.return_value)
             command = mocks.call.call_args.args[0]
             self.assertEqual(command, [sys.executable, "-B", str(newer / "harness.py"), *arguments])
             self.assertEqual(mocks.call.call_args.kwargs["env"]["HARNESS_NO_UPDATE_CHECK"], "1")

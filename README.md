@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.22.3-beta"><img src="https://img.shields.io/badge/Version-v0.22.3--beta-2563EB.svg?style=flat-square" alt="Version: v0.22.3-beta"></a>
+  <a href="https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.23.0-beta"><img src="https://img.shields.io/badge/Version-v0.23.0--beta-2563EB.svg?style=flat-square" alt="Version: v0.23.0-beta"></a>
   <a href="#agent-editions"><img src=".github/badges/agent-codex.svg" alt="Agent: Codex"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Proprietary-64748B.svg?style=flat-square" alt="License: Proprietary"></a>
 </p>
@@ -18,7 +18,7 @@
 <p align="center">
   <a href="#for-linux">Linux install</a> &middot;
   <a href="#quick-start">Quick start</a> &middot;
-  <a href="https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.22.3-beta">Release</a> &middot;
+  <a href="https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.23.0-beta">Release</a> &middot;
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
@@ -31,7 +31,7 @@ Generate and maintain one shared project harness with Codex-native agents and sk
 ### For Linux
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.22.3-beta/install_harness_codex.sh | sh
+curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.23.0-beta/install_harness_codex.sh | sh
 harness-codex --version
 ```
 
@@ -41,7 +41,7 @@ Supports Linux x86_64 and aarch64. Requires curl, Bash, tar and sha256sum. The i
 
 Windows release assets are not currently available. Windows support remains in the source tree, but publication is paused until its separate validation passes. Use Windows release installation only when the [release assets](https://github.com/sholee-pt/Harness-Codex/releases) include `install_harness_codex.ps1`, `harness-codex-VERSION-windows.zip` and the matching Windows native package. See [source installation options](docs/installation.md) for development use.
 
-When migrating from 0.10.0-beta, run this installer once: its updater cannot discover the new unprefixed branches. If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness-Codex/blob/v0.22.3-beta/docs/installation.md).
+When migrating from 0.10.0-beta, run this installer once: its updater cannot discover the new unprefixed branches. If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness-Codex/blob/v0.23.0-beta/docs/installation.md).
 
 ## Quick Start
 
@@ -66,12 +66,17 @@ Choose **Automatic** or **Manual** with the arrow keys and Enter. Automatic uses
 ### Conversations and project maintenance
 
 After `init`, run **`codex`** and select **Auto** at the top of `/model`.
-The integration installs a pinned original Codex CLI 0.154.0 build with a bounded
-Auto extension. It retains the original composer, colors, menus, shortcuts,
-attachments, approvals, authentication and history. Your original Codex binary
-is preserved separately. No Harness conversation launcher is required.
+The integration downloads an unmodified official Codex release and connects its
+original terminal to a local Auto adapter. The composer, colors, shortcuts,
+approvals and native history remain Codex-owned. Your separately installed Codex
+is preserved. Codex updates no longer require a Harness-specific Codex build.
 
-The model footer displays **`Auto selected: MODEL REASONING`** while Auto is enabled.
+Each interactive launch checks official Codex and published Harness releases.
+An arrow-key menu offers **update both**, **Codex only**, **Harness only**, or
+**skip this time** when applicable. Downloads begin only after your selection,
+before the conversation opens. Offline checks continue with installed files.
+
+The model footer identifies **Auto, the selected model and reasoning level** while Auto is enabled.
 Clear new tasks and complexity increases can change the selection immediately;
 two consecutive clearly lighter requests allow a lower tier. Ambiguous follow-ups
 keep the current selection. These are routing rules, not measured performance rankings.
@@ -79,7 +84,8 @@ keep the current selection. These are routing rules, not measured performance ra
 For Auto to start enabled, configure with `--auto-model auto`; otherwise native
 model defaults remain in effect until you select Auto. This preference is owned
 by Harness and does not rewrite global Codex settings. The Auto integration
-is currently released for Linux x86_64. On unsupported architectures, use
+is currently validated on Linux x86_64. Linux aarch64 packages are resolved from
+official releases but are not covered by the x86_64 terminal gate. On unsupported platforms, use
 `--no-codex-integration` with a separately installed Codex; Auto is unavailable.
 See [integration and routing](docs/routing.md).
 
@@ -91,8 +97,8 @@ See [integration and routing](docs/routing.md).
 | `status` | Read-only installation, compatibility and evidence status, with a suggested next command |
 | `doctor` | Read-only ownership, manifest, references and activation checks |
 | `skills` | List project skills; `skills add --source PATH --dry-run` previews a reviewed local specialist skill import |
-| `update --check` | Check for a newer tool version without installing it |
-| `update` | Update the tool and an installed Auto integration; project agents and skills are reviewed separately |
+| `update --check` | Check for a newer published Harness release without installing it |
+| `update` | Update Harness and migrate an existing integration; project agents and skills are reviewed separately |
 | `remove` | Preview removal of the project's unchanged generated harness files |
 | `reset` | Preview removal and fresh configuration of the project harness |
 | `uninstall` | Remove the tool and its recorded installation settings after typing `yes` |
@@ -145,19 +151,19 @@ After reinstalling, run `status` in a project to recognize its retained harness.
 ## Documentation
 
 - [Native Codex integration and automatic model routing](docs/routing.md)
-- [Installation, reinstall choices and troubleshooting](https://github.com/sholee-pt/Harness-Codex/blob/v0.22.3-beta/docs/installation.md)
-- [Project and conversation lifecycle](https://github.com/sholee-pt/Harness-Codex/blob/v0.22.3-beta/docs/sessions.md)
+- [Installation, reinstall choices and troubleshooting](https://github.com/sholee-pt/Harness-Codex/blob/v0.23.0-beta/docs/installation.md)
+- [Project and conversation lifecycle](https://github.com/sholee-pt/Harness-Codex/blob/v0.23.0-beta/docs/sessions.md)
 - [Bounded maintenance and local records](docs/maintenance.md)
 - [Optional task checkpoints and selective resume](.agents/skills/harness/references/task-checkpoints.md)
 - [Optional local Graft retrieval](docs/retrieval.md)
 - [Optional Jev advice, local observations and evaluation limits](docs/jev.md)
 - [Dependency and optimization review](docs/optimization-review.md)
 - [Beta versioning and migration](docs/versioning.md)
-- [Generated structure and design](https://github.com/sholee-pt/Harness-Codex/blob/v0.22.3-beta/docs/architecture.md)
-- [Quality evaluation and optional local evidence](https://github.com/sholee-pt/Harness-Codex/blob/v0.22.3-beta/docs/evaluation.md)
+- [Generated structure and design](https://github.com/sholee-pt/Harness-Codex/blob/v0.23.0-beta/docs/architecture.md)
+- [Quality evaluation and optional local evidence](https://github.com/sholee-pt/Harness-Codex/blob/v0.23.0-beta/docs/evaluation.md)
 - [Workflow efficiency, instruction inventory and selected OMX concepts](docs/workflow-efficiency.md)
 - [External specialist skills and selected upstream improvements](docs/external-skills.md)
-- [Release assets and verification](https://github.com/sholee-pt/Harness-Codex/blob/v0.22.3-beta/docs/distribution.md)
+- [Release assets and verification](https://github.com/sholee-pt/Harness-Codex/blob/v0.23.0-beta/docs/distribution.md)
 - [Changelog](CHANGELOG.md) · [GitHub Releases](https://github.com/sholee-pt/Harness-Codex/releases) · [Contributing](CONTRIBUTING.md)
 
 ## Agent editions

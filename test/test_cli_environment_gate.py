@@ -142,9 +142,10 @@ class UpdateEnvironmentHandoffTests(unittest.TestCase):
                         {"auto_update": "compatible"}, {"release_root": str(next_source)}]), \
                     mock.patch.object(dist, "check_due", return_value=True), \
                     mock.patch.object(dist, "mark_check"), \
-                    mock.patch.object(dist, "check_update", return_value={
+                    mock.patch('harness_cli.release_updates.check', return_value={
                         "updateAvailable": True, "availableVersion": current_version}), \
-                    mock.patch.object(dist, "update_tool"), \
+                    mock.patch('harness_cli.release_updates.update'), \
+                    mock.patch('harness_cli.terminal_menu.choose', return_value=1), \
                     mock.patch.object(subprocess, "call", return_value=31) as reexec:
                 self.assertEqual(cli._automatic_update(args, REPO, ["start"]), 31)
                 self.assertEqual(dict(os.environ), caller)

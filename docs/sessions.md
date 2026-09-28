@@ -1,8 +1,9 @@
 # Project management and native conversations
 
 Harness creates and maintains one project-local harness. Codex uses it through
-its native root instructions, agents and skills. Harness keeps no work-session
-registry and adds no bootstrap user turn.
+its native root instructions, agents and skills. Harness adds no bootstrap user
+turn. Its local Auto preference record contains thread IDs and booleans only;
+Codex remains the owner of conversation history and resume.
 
 ```bash
 cd /path/to/project
@@ -37,7 +38,8 @@ ask Codex to re-read the project instructions; use a fresh conversation when a
 new native component is unavailable. No automatic user turn is inserted to do this.
 
 Strong integrity and compatibility checks run in `init/config/status/doctor`.
-Plain `codex` has no pre-launch Python validation step. Generated instructions
+Plain `codex` checks tool updates and Auto capabilities before launch, without
+validating or regenerating project artifacts. Generated instructions
 require reporting detected managed corruption, preserving the manifest and
 consulting `doctor`; ordinary source drift requires a current source read.
 These instructions do not constitute a deterministic command gate or proof of

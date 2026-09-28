@@ -165,18 +165,19 @@ def _automatic_update(args, source_root: Path, argv: list[str]) -> int | None:
     try:
         state = distribution.installed_status(data_root)
         policy = state.get("auto_update", "compatible")
-        if policy == "off" or not distribution.check_due(data_root):
+        if policy == "off" or state.get('branch'):
             return None
-        distribution.mark_check(data_root)
-        result = distribution.check_update(data_root, timeout=5)
+        from . import release_updates
+        from .terminal_menu import choose
+        result = release_updates.check(data_root, timeout=5)
         if not result.get("updateAvailable"):
             return None
         available = result.get("availableVersion", "")
-        if policy != "compatible" or distribution._version(available)[0] != distribution._version(version(source_root))[0]:
-            print(f"Harness update available: {available}. Run {state.get('command', 'harness')} update to install it.", file=sys.stderr)
+        progress = ui.Progress('Harness update available: ' + available)
+        if choose(progress, 'Update the published Harness release?', ['Skip this time', 'Update Harness']) == 0:
             return None
-        with ui.Progress(f'Installing compatible Harness update {available}'):
-            distribution.update_tool(data_root, timeout=30, expected_major=distribution._version(version(source_root))[0])
+        with ui.Progress(f'Installing Harness release {available}'):
+            release_updates.update(data_root, selected=result)
         active = distribution.installed_status(data_root)
         new_root = Path(active["release_root"])
         if new_root.resolve() != source_root.resolve():
@@ -191,6 +192,15 @@ def _automatic_update(args, source_root: Path, argv: list[str]) -> int | None:
 def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> int:
     source_root = source_root or Path(__file__).resolve().parents[1]
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == '_codex':
+        from .codex_entry import main as codex_main
+        try:
+            return codex_main(argv[1:])
+        except KeyboardInterrupt:
+            return 130
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            print('Harness Codex entry: ' + ui.clean(error), file=sys.stderr)
+            return 1
     parser = build_parser(source_root)
     args = parser.parse_args(argv)
     ui.JSON_MODE.set(args.json)
@@ -257,7 +267,12 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
                 return 0
             if args.timeout <= 0 or args.timeout > 600:
                 raise ValueError("--timeout must be greater than zero and at most 600 seconds.")
+            from . import release_updates
+            pinned = args.branch or distribution.installed_status(args.data_dir)['branch']
             action = distribution.check_update if args.check else distribution.update_tool
+            if not pinned:
+                action = ((lambda data_root, **kw: release_updates.check(data_root, timeout=kw['timeout'])) if args.check else
+                          (lambda data_root, **kw: release_updates.update(data_root, timeout=kw['timeout'])))
             with ui.Progress('Checking for Harness updates' if args.check else 'Updating Harness'):
                 result = action(args.data_dir, branch=args.branch, repository=args.repository, timeout=args.timeout)
             ui.report(result, title='Tool update')

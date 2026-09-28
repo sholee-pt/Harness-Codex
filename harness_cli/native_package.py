@@ -36,7 +36,7 @@ def fingerprint(path):
     return {'sha256': digest, 'size': before.st_size}
 
 
-def extract(archive, output):
+def extract(archive, output, *, max_files=MAX_FILES, max_tree=MAX_TREE):
     """Extract only portable regular files/directories into a new directory."""
     output = checked_path(output)
     output.mkdir(parents=True, exist_ok=False)
@@ -45,13 +45,13 @@ def extract(archive, output):
         for member in incoming:
             name = relative(member.name.rstrip('/'))
             folded = name.casefold()
-            if folded in seen or len(seen) >= MAX_FILES:
+            if folded in seen or len(seen) >= max_files:
                 raise ValueError('Duplicate or excessive native UI archive entries')
             seen.add(folded)
             if not (member.isdir() or member.isfile()) or not 0 <= member.size <= MAX_FILE:
                 raise ValueError('Unsupported native UI archive member')
             total += member.size
-            if total > MAX_TREE:
+            if total > max_tree:
                 raise ValueError('Native UI archive exceeds the unpacked size bound')
             target = checked_path(output / name)
             if member.isdir():

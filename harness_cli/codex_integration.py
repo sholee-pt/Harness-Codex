@@ -1,4 +1,4 @@
-"""Manage native Codex resolution. This module never owns or launches a conversation."""
+"""Owned Codex resolution, including migration from legacy native packages."""
 from __future__ import annotations
 
 import os
@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import shutil
 import re
+import shlex
+import sys
 
 from . import distribution as dist, native_package, native_ui, integration_path
 
@@ -19,7 +21,7 @@ def read(data_root):
         return None
     value = dist._read_json(path)
     if (not isinstance(value, dict) or set(value) != {'schema', 'owner', 'version', 'directory', 'original', 'mode', 'files'}
-            or value['schema'] != 1 or value['owner'] != 'harness-codex-native'
+            or value['schema'] not in {1, 2} or value['owner'] != 'harness-codex-native'
             or not isinstance(value['mode'], str) or value['mode'] not in {'manual', 'auto'}
             or not isinstance(value['version'], str) or not isinstance(value['directory'], str)
             or not isinstance(value['files'], dict) or len(value['files']) > 256):
@@ -27,7 +29,9 @@ def read(data_root):
     dist._version(value['version'])
     directory = dist._storage_path(value['directory'])
     expected = root / 'native-ui' / ('v' + value['version'])
-    if directory.parent.parent != expected or directory.name != 'bin' or directory.parent.name not in native_package.TARGETS:
+    if value['schema'] == 2 and directory != root / 'codex-bin':
+        raise ValueError('Official Codex entry points outside Harness storage')
+    if value['schema'] == 1 and (directory.parent.parent != expected or directory.name != 'bin' or directory.parent.name not in native_package.TARGETS):
         raise ValueError('Native Codex receipt points outside its owned package')
     if value['original'] is not None and (not isinstance(value['original'], str) or not Path(value['original']).is_absolute()
                                           or Path(value['original']).is_relative_to(root)):
@@ -37,13 +41,17 @@ def read(data_root):
             raise ValueError('Invalid native routing settings fingerprint')
         relative = native_package.relative(relative)
         path = dist._storage_path(root / relative)
-        if (path.parent.parent != root / 'native-ui' or not path.parent.name.startswith('v')
+        current = value['schema'] == 2 and relative in {'codex-bin/codex', 'codex-relay.json'}
+        if not current and (path.parent.parent != root / 'native-ui' or not path.parent.name.startswith('v')
                 or path.name not in {platform + '.routing.json' for platform in native_package.TARGETS}):
             raise ValueError('Unrecognized native routing sidecar in receipt')
         if path.stat().st_size > 16384 or native_package.fingerprint(path)['sha256'] != digest:
             raise ValueError('Modified native routing settings preserved; run doctor')
     sidecar = directory.parent.with_name(directory.parent.name + '.routing.json')
-    if sidecar.relative_to(root).as_posix() not in value['files']:
+    if value['schema'] == 2:
+        if not {'codex-bin/codex', 'codex-relay.json'} <= value['files'].keys():
+            raise ValueError('Incomplete official Codex entry ownership')
+    elif sidecar.relative_to(root).as_posix() not in value['files']:
         raise ValueError('Active native routing settings are not owned')
     return value
 
@@ -74,6 +82,8 @@ def install(data_root, source_root, *, archive=None, mode=None, profiles=None, h
     selected_mode = mode or (previous['mode'] if previous else 'manual')
     if selected_mode not in {'manual', 'auto'}:
         raise ValueError('Auto model preference must be manual or auto')
+    if sys.platform == 'linux' and archive is None and registry is None:
+        return _official_install(root, state, previous, selected_mode, profiles, home)
     binary = native_ui.ensure(root, version(source_root), archive=archive)
     directory = binary.parent
     package_receipt = native_package.verify(directory.parent, version(source_root), directory.parent.name)
@@ -143,6 +153,15 @@ def status(data_root, *, verify_package=True):
         if value is None:
             return {'state': 'not-installed', 'runtimeDiscovery': 'not-tested'}
         directory = Path(value['directory'])
+        if value['schema'] == 2:
+            from . import official_codex
+            if verify_package:
+                official_codex.binary(data_root)
+            resolved = shutil.which('codex')
+            return {'state': 'configured' if resolved and Path(resolved).absolute().parent == directory else 'shell-refresh-or-path-review-required',
+                    'version': dist.installed_status(data_root)['version'], 'codexVersion': official_codex.read(data_root)['version'],
+                    'mode': value['mode'], 'directory': str(directory), 'resolvedCodex': resolved,
+                    'runtimeDiscovery': 'not-tested', 'distribution': 'official-prebuilt'}
         if verify_package:
             native_package.verify(directory.parent, value['version'], directory.parent.name)
         tool = dist.installed_status(data_root)
@@ -166,4 +185,76 @@ def removal_files(data_root):
     value = read(root)
     if value is None:
         return {}
-    return {path: native_package.fingerprint(path) for path in [root / RECEIPT, *(root / name for name in value['files'])]}
+    files = {path: native_package.fingerprint(path) for path in [root / RECEIPT, *(root / name for name in value['files'])]}
+    if (root / 'relay-sessions.json').exists():
+        from .codex_entry import sessions
+        sessions(root)
+        files[root / 'relay-sessions.json'] = native_package.fingerprint(root / 'relay-sessions.json')
+    return files
+
+
+def _official_install(root, state, previous, mode, profiles, home):
+    from . import official_codex, auto_relay
+    from .model_routing import choose
+    from .routing import read_json
+    if profiles is not None:
+        profiles = dist._storage_path(profiles)
+        choose('Validate routing preferences.', [], profiles=read_json(profiles))
+    elif previous:
+        old = root / 'codex-relay.json' if previous['schema'] == 2 else Path(previous['directory']).parent.with_suffix('.routing.json')
+        profiles = dist._read_json(old).get('profiles')
+    auto_relay.dependency(install=True)
+    if official_codex.read(root) is None:
+        from .presentation import Progress
+        with Progress('Preparing the official Codex release'):
+            official_codex.install(root)
+    else:
+        official_codex.binary(root)
+    directory = root / 'codex-bin'
+    settings = {'schema': 1, 'mode': mode, 'profiles': str(profiles) if profiles else None}
+    content = {'codex-bin/codex': ('#!/bin/sh\nexec ' + shlex.quote(state['python']) + ' -B '
+               + shlex.quote(str(root / 'launcher.py')) + ' _codex "$@"\n').encode(),
+               'codex-relay.json': (json.dumps(settings, indent=2, sort_keys=True) + '\n').encode()}
+    with dist._lock(root):
+        if read(root) != previous:
+            raise ValueError('Codex integration changed concurrently; retry')
+        change = integration_path.plan(directory, previous=previous['directory'] if previous else None, home=home)
+        files = dict(previous['files']) if previous else {}
+        for name in content:
+            if (root / name).exists() and name not in files:
+                raise ValueError('Unowned Codex entry preserved: ' + name)
+        before = {root / name: ((root / name).read_bytes() if (root / name).exists() else None) for name in content}
+        before[root / RECEIPT] = (root / RECEIPT).read_bytes() if previous else None
+        written = {}
+        directory.mkdir(exist_ok=True)
+        try:
+            from .shell import _replace_profile
+            for name, data in content.items():
+                path = root / name
+                if before[path] != data:
+                    _replace_profile(path, before[path] or b'', data)
+                    written[path] = data
+                if name.endswith('/codex'):
+                    path.chmod(0o755)
+                files[name] = native_package.fingerprint(path)['sha256']
+            receipt = {'schema': 2, 'owner': 'harness-codex-native', 'version': state['version'], 'directory': str(directory),
+                       'original': previous['original'] if previous else original_codex(root), 'mode': mode, 'files': files}
+            data = (json.dumps(receipt, indent=2, sort_keys=True) + '\n').encode()
+            if before[root / RECEIPT] != data:
+                dist._write_json(root / RECEIPT, receipt)
+                written[root / RECEIPT] = data
+            integration_path.apply(change)
+        except BaseException:
+            for path, expected in reversed(written.items()):
+                if path.read_bytes() != expected:
+                    raise ValueError('Concurrent Codex integration edits preserved')
+                if before[path] is None:
+                    path.unlink()
+                else:
+                    _replace_profile(path, expected, before[path])
+            if not any(directory.iterdir()):
+                directory.rmdir()
+            raise
+    return {'state': 'installed', 'version': state['version'], 'directory': str(directory), 'mode': mode,
+            'path': integration_path.describe(change), 'nextStep': 'Apply PATH: source ~/.bashrc',
+            'runtimeDiscovery': 'not-tested', 'distribution': 'official-prebuilt'}
