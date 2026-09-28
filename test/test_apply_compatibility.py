@@ -381,7 +381,7 @@ class PreviousReleaseCompatibilityTests(unittest.TestCase):
                 self.assertFalse(report['valid'])
 
     def test_compatibility_is_explicit_not_a_future_v9_version_range(self):
-        self.assertEqual(metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS, {*(f'9.{p}' for p in range(12)), *(f'0.9.{p}-beta' for p in range(12)), '0.10.0-beta', '0.11.0-beta', '0.12.0-beta', '0.13.0-beta', '0.13.1-beta', '0.13.2-beta', '0.14.0-beta', '0.15.0-beta', '0.16.0-beta', '0.17.0-beta', '0.17.1-beta', '0.18.0-beta', '0.19.0-beta', '0.20.0-beta', '0.20.1-beta', '0.20.2-beta', '0.21.0-beta', '0.21.1-beta', '0.22.0-beta', '0.22.1-beta', metadata.HARNESS_VERSION})
+        self.assertEqual(metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS, {*(f'9.{p}' for p in range(12)), *(f'0.9.{p}-beta' for p in range(12)), '0.10.0-beta', '0.11.0-beta', '0.12.0-beta', '0.13.0-beta', '0.13.1-beta', '0.13.2-beta', '0.14.0-beta', '0.15.0-beta', '0.16.0-beta', '0.17.0-beta', '0.17.1-beta', '0.18.0-beta', '0.19.0-beta', '0.20.0-beta', '0.20.1-beta', '0.20.2-beta', '0.21.0-beta', '0.21.1-beta', '0.22.0-beta', '0.22.1-beta', '0.22.2-beta', metadata.HARNESS_VERSION})
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             plan = previous_plan(root)

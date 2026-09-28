@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.22.3‑beta`](#harness-for-codex-v0223-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve concurrent configuration during maintenance, enforce the apply deadline after lock waits and correct unsupported-platform guidance |
 | [`v0.22.2‑beta`](#harness-for-codex-v0222-beta) | Schema 3 | Schema 7 | Schema 2 | Reject incomplete generator payloads and corrupt evaluation histories, clean up evaluation children and bound directory traversal |
 | [`v0.22.1‑beta`](#harness-for-codex-v0221-beta) | Schema 3 | Schema 7 | Schema 2 | Use the installed helper interpreter, preserve concurrent edits, reject per-check regressions and recover bounded maintenance/retrieval failures |
 | [`v0.22.0‑beta`](#harness-for-codex-v0220-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve external specialist skills, reuse relevant procedures and strengthen scientific and cross-contract review |
@@ -67,6 +68,14 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.22.3-beta
+
+- Hold the project lock across maintenance revision checks, bounded plan construction and journaled apply so an older review cannot overwrite a newer configuration.
+- Recheck the review deadline after acquiring the project lock and before writing; refused attempts preserve project files and the review lease.
+- Replace the removed `--ui native` recovery advice with the supported `init --no-codex-integration` option for unsupported native-extension platforms.
+- Mark Windows release assets as unavailable until separate Windows verification and publication complete.
+- Add focused regression cases for concurrent configuration, lock coverage, expired reviews and executable recovery advice; compare upgrades only with v0.22.2-beta.
 
 ## Harness for Codex v0.22.2-beta
 

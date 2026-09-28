@@ -18,7 +18,7 @@ import time
 import uuid
 
 import harness_eval_store as storage
-from harness_eval_lock import FileLock
+from harness_eval_lock import FileLock, project_lock
 import harness_state
 
 REASONS = ('scope-changed', 'workflow-gap', 'routing-mismatch', 'verification-gap', 'user-request')
@@ -290,20 +290,22 @@ class Maintenance:
             if decision == 'apply':
                 if state['mode'] != 'auto':
                     raise ValueError('Automatic apply was not enabled for this project')
-                if self.clock() > lease['deadline']:
-                    raise ValueError('Review deadline passed; preserve the existing harness and finish as deferred')
-                if digest(self.manifest()) != lease['revision']:
-                    raise ValueError('Project harness changed during review; review the current revision')
                 if self._busy(state, lease['session']):
                     raise ValueError('Another task or child agent is active; defer maintenance')
                 if plan is None:
                     raise ValueError('An independently validated application plan is required')
                 import harness_apply
-                application = self._limited_application(plan)
-                if self.clock() > lease['deadline']:
-                    raise ValueError('Review deadline passed before apply')
-                harness_apply.apply_application(application)
-                state['appliedRevision'] = digest(self.manifest())
+                # Keep the lease checks and application on the same locked revision.
+                with project_lock(self.root):
+                    if self.clock() > lease['deadline']:
+                        raise ValueError('Review deadline passed; preserve the existing harness and finish as deferred')
+                    if digest(self.manifest()) != lease['revision']:
+                        raise ValueError('Project harness changed during review; review the current revision')
+                    application = self._limited_application(plan)
+                    if self.clock() > lease['deadline']:
+                        raise ValueError('Review deadline passed before apply')
+                    harness_apply.apply_application(application)
+                    state['appliedRevision'] = digest(self.manifest())
                 state['metrics']['applied'] += 1
             for key in lease['candidates']:
                 state['candidates'][key]['status'] = 'resolved'

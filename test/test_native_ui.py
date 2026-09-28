@@ -44,6 +44,19 @@ def archive(root, path):
 
 
 class NativeUiTests(unittest.TestCase):
+    def test_unsupported_platform_advice_uses_a_supported_init_option(self):
+        from harness_cli.main import build_parser
+        for system, machine in (('linux', 'aarch64'), ('darwin', 'x86_64')):
+            with self.subTest(system=system, machine=machine), \
+                    mock.patch.object(native_ui.sys, 'platform', system), \
+                    mock.patch.object(native_ui.platform, 'machine', return_value=machine):
+                with self.assertRaisesRegex(ValueError, 'init --no-codex-integration') as caught:
+                    native_ui.platform_key()
+            command = str(caught.exception).split('Use harness-codex ', 1)[1].split(' with ', 1)[0]
+            args = build_parser(Path(__file__).resolve().parents[1]).parse_args(command.split())
+            self.assertEqual(args.command, 'init')
+            self.assertTrue(args.no_codex_integration)
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

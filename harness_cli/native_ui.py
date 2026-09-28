@@ -20,9 +20,9 @@ API = 'https://api.github.com/repos/sholee-pt/Harness-Codex'
 
 def platform_key():
     if platform.machine().lower() not in {'amd64', 'x86_64'}:
-        raise ValueError('The extended native UI currently supports Linux/Windows x86_64. Use --ui native on this architecture.')
+        raise ValueError('The extended native UI currently supports Linux/Windows x86_64. Use harness-codex init --no-codex-integration with a separately installed Codex on this architecture.')
     if sys.platform not in {'win32', 'linux'}:
-        raise ValueError('Use --ui native on this platform.')
+        raise ValueError('The extended native UI currently supports Linux/Windows x86_64. Use harness-codex init --no-codex-integration with a separately installed Codex on this platform.')
     return ('windows-' if sys.platform == 'win32' else 'linux-') + 'x86_64'
 
 

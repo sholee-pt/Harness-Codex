@@ -1,11 +1,13 @@
 """Behavioral checks for no-op cost, bounded updates and ownership protection."""
 import copy
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
 import sys
 import subprocess
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -13,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / '.agents/skills/harness/scripts'))
 import harness_apply
+import harness_eval_lock
 import harness_maintenance as maintenance
 from test_harness_tools import minimal_plan
 from harness_cli import versions
@@ -347,6 +350,90 @@ class MaintenanceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'changed during review'):
             self.manager.finish(self.lease()['id'], 'apply', plan=self.updated_plan())
         self.assertEqual(before, self.snapshot())
+
+    def test_apply_rechecks_revision_and_deadline_after_lock_wait(self):
+        for change in ('revision', 'deadline'):
+            with self.subTest(change=change):
+                self.manager.configure('auto')
+                with (self.root / 'pyproject.toml').open('a') as stream:
+                    stream.write('# ' + change + '\n')
+                self.signal(observation=change)
+                lease = self.manager.begin()
+                candidate = self.updated_plan()
+                self.now = lease['deadline'] - 1
+                preserved = {}
+                @contextmanager
+                def wait_for_lock(root):
+                    if change == 'revision':
+                        newer = minimal_plan(self.root, skill_suffix='\nConcurrent explicit configuration.\n')
+                        harness_apply.apply_application(harness_apply.build_application(self.root, newer))
+                    else:
+                        self.now += 2
+                    preserved.update(self.snapshot())
+                    with harness_eval_lock.project_lock(root):
+                        yield
+                with mock.patch.object(maintenance, 'project_lock', side_effect=wait_for_lock):
+                    with self.assertRaisesRegex(ValueError, 'changed during review|deadline'):
+                        self.manager.finish(lease['id'], 'apply', plan=candidate)
+                self.assertEqual(preserved, self.snapshot())
+                self.assertEqual(self.lease()['id'], lease['id'])
+                self.assertEqual(self.manager.status()['metrics']['applied'], 0)
+                self.now += 86401
+
+    def test_apply_holds_project_lock_through_planning_and_write(self):
+        self.manager.configure('auto')
+        self.signal()
+        lease = self.manager.begin()['id']
+        original_build = self.manager._limited_application
+        original_apply = harness_apply.apply_application
+        attempted, held = threading.Event(), []
+        acquire = harness_eval_lock.FileLock.acquire
+        def inspect_lock():
+            def competing_acquire(lock):
+                lock.timeout = 0.1
+                lock.poll_interval = 0.01
+                attempted.set()
+                return acquire(lock)
+            def compete():
+                try:
+                    with harness_eval_lock.project_lock(self.root):
+                        held.append(False)
+                except harness_eval_lock.LockError:
+                    held.append(True)
+            with mock.patch.object(harness_eval_lock.FileLock, 'acquire', competing_acquire):
+                worker = threading.Thread(target=compete, daemon=True)
+                worker.start()
+                self.assertTrue(attempted.wait(5))
+                worker.join(5)
+                self.assertFalse(worker.is_alive())
+            attempted.clear()
+        def build(plan):
+            inspect_lock()
+            return original_build(plan)
+        def apply(application):
+            inspect_lock()
+            return original_apply(application)
+        with mock.patch.object(self.manager, '_limited_application', side_effect=build), \
+                mock.patch.object(harness_apply, 'apply_application', side_effect=apply):
+            result = self.manager.finish(lease, 'apply', plan=self.updated_plan())
+        self.assertEqual(result['status'], 'apply')
+        self.assertEqual(held, [True, True])
+
+    def test_apply_refuses_deadline_expired_while_building_without_writes(self):
+        self.manager.configure('auto')
+        self.signal()
+        lease = self.manager.begin()
+        build = self.manager._limited_application
+        before = self.snapshot()
+        def expire(plan):
+            application = build(plan)
+            self.now = lease['deadline'] + 1
+            return application
+        with mock.patch.object(self.manager, '_limited_application', side_effect=expire):
+            with self.assertRaisesRegex(ValueError, 'deadline passed before apply'):
+                self.manager.finish(lease['id'], 'apply', plan=self.updated_plan())
+        self.assertEqual(before, self.snapshot())
+        self.assertEqual(self.lease()['id'], lease['id'])
 
     def test_hook_merge_preserves_unrelated_handlers_and_is_idempotent(self):
         home = self.base / 'codex home'; home.mkdir()

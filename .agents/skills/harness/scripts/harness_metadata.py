@@ -5,12 +5,12 @@ from __future__ import annotations
 
 
 RUNTIME = "codex"
-HARNESS_VERSION = "0.22.2-beta"
+HARNESS_VERSION = "0.22.3-beta"
 AUTHORING_CONTRACT_VERSION = 3
 ARTIFACT_CONTRACT_VERSION = 2
 # Installation compatibility follows the artifact contract, not release equality.
 # Only explicitly supported releases may enter the normal update path.
-ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS = frozenset({"9.0", "9.1", "9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8", "9.9", "9.10", "9.11", "0.10.0-beta", "0.11.0-beta", "0.12.0-beta", "0.13.0-beta", "0.13.1-beta", "0.13.2-beta", "0.14.0-beta", "0.15.0-beta", "0.16.0-beta", "0.17.0-beta", "0.17.1-beta", "0.18.0-beta", "0.19.0-beta", "0.20.0-beta", "0.20.1-beta", "0.20.2-beta", "0.21.0-beta", "0.21.1-beta", "0.22.0-beta", "0.22.1-beta", HARNESS_VERSION})
+ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS = frozenset({"9.0", "9.1", "9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8", "9.9", "9.10", "9.11", "0.10.0-beta", "0.11.0-beta", "0.12.0-beta", "0.13.0-beta", "0.13.1-beta", "0.13.2-beta", "0.14.0-beta", "0.15.0-beta", "0.16.0-beta", "0.17.0-beta", "0.17.1-beta", "0.18.0-beta", "0.19.0-beta", "0.20.0-beta", "0.20.1-beta", "0.20.2-beta", "0.21.0-beta", "0.21.1-beta", "0.22.0-beta", "0.22.1-beta", "0.22.2-beta", HARNESS_VERSION})
 ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS |= frozenset(f"0.9.{patch}-beta" for patch in range(12))
 PREVIOUS_ARTIFACT_GENERATOR_VERSIONS = frozenset({"8.0", "8.1"})
 INVENTORY_SCHEMA_VERSION = 5
@@ -26,7 +26,7 @@ OPERATIONS_EVENT_SCHEMA_VERSION = 1
 READABLE_EVALUATION_VERSIONS = frozenset(
     {
         "6.0", "6.1", "6.2", "6.3", "6.4", "6.5", "6.6", "6.7", "6.8", "6.9",
-        "6.10", "7.0", "7.1", "7.2", "7.3", "7.4", "7.5", "7.6", "8.0", "8.1", "9.0", "9.1", "9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8", "9.9", "9.10", "9.11", "0.10.0-beta", "0.11.0-beta", "0.12.0-beta", "0.13.0-beta", "0.13.1-beta", "0.13.2-beta", "0.14.0-beta", "0.15.0-beta", "0.16.0-beta", "0.17.0-beta", "0.17.1-beta", "0.18.0-beta", "0.19.0-beta", "0.20.0-beta", "0.20.1-beta", "0.20.2-beta", "0.21.0-beta", "0.21.1-beta", "0.22.0-beta", "0.22.1-beta", HARNESS_VERSION,
+        "6.10", "7.0", "7.1", "7.2", "7.3", "7.4", "7.5", "7.6", "8.0", "8.1", "9.0", "9.1", "9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8", "9.9", "9.10", "9.11", "0.10.0-beta", "0.11.0-beta", "0.12.0-beta", "0.13.0-beta", "0.13.1-beta", "0.13.2-beta", "0.14.0-beta", "0.15.0-beta", "0.16.0-beta", "0.17.0-beta", "0.17.1-beta", "0.18.0-beta", "0.19.0-beta", "0.20.0-beta", "0.20.1-beta", "0.20.2-beta", "0.21.0-beta", "0.21.1-beta", "0.22.0-beta", "0.22.1-beta", "0.22.2-beta", HARNESS_VERSION,
     }
 )
 ATTRIBUTION_ELIGIBLE_EVALUATION_VERSIONS = frozenset({HARNESS_VERSION})

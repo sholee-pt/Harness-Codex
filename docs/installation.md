@@ -20,23 +20,25 @@ Current releases and CI target Linux. Windows installation code and the option r
 `reuse` retains the repository transport and automatic-update policy. Branch pins are retained except for the [one-time legacy-to-beta migration](versioning.md). `reset` applies the supplied/default preferences, clears the update-check cache and rebuilds the exact managed PATH registration. Both preserve verified releases and runtime files, project harnesses, unrelated shell/registry settings and modified user content. Reset does not authorize removing unknown directories. Without a terminal, an existing installation requires an explicit choice.
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.22.2-beta/install_harness_codex.sh | sh -s -- --existing reuse
+curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.22.3-beta/install_harness_codex.sh | sh -s -- --existing reuse
 source ~/.bashrc
 ```
 
+For Windows source development, run from an existing checkout:
+
 ```powershell
-& ([scriptblock]::Create((irm https://github.com/sholee-pt/Harness-Codex/releases/download/v0.22.2-beta/install_harness_codex.ps1))) -Existing reset
+./installer/install.ps1 -Existing reset
 ```
 
 ## Source installation
 
 ```bash
-git clone --branch v0.22.2-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
+git clone --branch v0.22.3-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
 bash Harness-Codex/installer/install.sh
 source ~/.bashrc
 ```
 
-On Windows, run the verified source installer from PowerShell: `& ./Harness-Codex/installer/install.ps1` under your normal script execution policy. The source scripts install an existing checkout; `install_harness_codex.sh` and `.ps1` first download a release and then invoke the corresponding source installer. Installation does not alter project Git state.
+On Windows, the source installer can be exercised from PowerShell for development: `& ./Harness-Codex/installer/install.ps1` under your normal script execution policy. This does not establish a verified Windows native release. The source scripts install an existing checkout; `install_harness_codex.sh` and `.ps1` first download a release and then invoke the corresponding source installer. Installation does not alter project Git state.
 
 ## PATH and logs
 
