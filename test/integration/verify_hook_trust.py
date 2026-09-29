@@ -30,7 +30,8 @@ def verify(binary):
         root.mkdir()
         harness_apply.apply_application(harness_apply.build_application(root, minimal_plan(root)))
         config = home / 'config.toml'
-        config.write_text('approval_policy = "on-request"\nsandbox_mode = "read-only"\n', encoding='utf-8')
+        config.write_text('approval_policy = "on-request"\nsandbox_mode = "read-only"\n'
+                          '[hooks.state.unrelated-state]\nenabled = false\ntrusted_hash = "prior-unrelated-hash"\n', encoding='utf-8')
         path = home / 'hooks.json'
         unrelated = {'type': 'command', 'command': 'unrelated-fixture-command'}
         path.write_text(json.dumps({'hooks': {'Stop': [{'hooks': [unrelated]}]}}), encoding='utf-8')
@@ -48,7 +49,8 @@ def verify(binary):
             assert all((target.read_bytes(), target.stat().st_mtime_ns) == value for target, value in snapshot.items())
             content = tomllib.loads(config.read_text(encoding='utf-8'))
             assert content['approval_policy'] == 'on-request' and content['sandbox_mode'] == 'read-only'
-            assert len(content['hooks']['state']) == len(maintenance.EVENTS), content
+            assert content['hooks']['state']['unrelated-state'] == {'enabled': False, 'trusted_hash': 'prior-unrelated-hash'}
+            assert len(content['hooks']['state']) == len(maintenance.EVENTS) + 1, content
             native = hook_trust.MetadataServer([str(binary)], root, presentation.Progress('inspect', stream=io.StringIO()))
             try:
                 native.initialize(timeout=10)
@@ -67,9 +69,15 @@ def verify(binary):
             manager.configure('suggest')
             manager.configure('off')
             assert all((target.read_bytes(), target.stat().st_mtime_ns) == value for target, value in snapshot.items())
+            fresh = base / 'fresh-home'
+            fresh.mkdir()
+            with mock.patch.dict(os.environ, {'CODEX_HOME': str(fresh)}):
+                empty = hook_trust.prepare(ROOT, root, binary=str(binary))
+                assert empty['status'] == 'trusted', empty
         return {'passed': True, 'codexVersion': version, 'ownedHandlers': first['count'],
                 'unrelatedHookUntrusted': True, 'repeatWrites': 0, 'offModesPreserved': True,
-                'nativePermissionsPreserved': True, 'liveInference': 'not-run'}
+                'nativePermissionsPreserved': True, 'unrelatedTrustPreserved': True,
+                'freshHomeTrusted': True, 'liveInference': 'not-run'}
 
 
 if __name__ == '__main__':

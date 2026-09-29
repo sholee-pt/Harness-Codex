@@ -45,6 +45,7 @@ class HookTrustTests(unittest.TestCase):
         server = mock.Mock()
         server.call.side_effect = self.call
         server.close.side_effect = lambda: setattr(self, 'closed', True)
+        self.server_type = hook_trust.MetadataServer
         patch = mock.patch.object(hook_trust, 'MetadataServer', return_value=server)
         self.factory = patch.start()
         self.addCleanup(patch.stop)
@@ -196,7 +197,7 @@ class HookTrustTests(unittest.TestCase):
                 self.assertIn(str(error), result['warning'])
 
     def test_metadata_client_rejects_execution_or_approval_requests(self):
-        client = object.__new__(hook_trust.MetadataServer)
+        client = object.__new__(self.server_type)
         client.send = mock.Mock()
         with self.assertRaisesRegex(ValueError, 'Unexpected Codex request'):
             client.answer(1, 'item/commandExecution/requestApproval', {})
