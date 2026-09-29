@@ -4,7 +4,7 @@ from __future__ import annotations
 import subprocess
 import sys
 
-from . import maintenance, presentation as ui, routing
+from . import hook_trust, maintenance, presentation as ui, routing
 from .terminal_menu import choose
 
 
@@ -52,17 +52,29 @@ def configure(args, source_root, root):
         current = maintenance.enable(source_root, root, mode, quiet=True)
     if adaptive is not None and (adaptive == 'on') != observed['enabled']:
         observed = manager.configure(adaptive == 'on')
+    trust = None
+    if getattr(args, 'command', None) == 'init':
+        trust = hook_trust.prepare(source_root, root, binary=getattr(args, 'codex_binary', 'codex'),
+                                   mode=getattr(args, 'hook_trust', 'auto'))
     commands = ['harness-codex maintenance --mode suggest', 'harness-codex routing --adaptive on',
                 'harness-codex maintenance', 'harness-codex routing --adaptive status']
     if getattr(args, 'json', False) or ui.JSON_MODE.get():
         ui.report({'state': 'configured', 'maintenance': current['mode'], 'adaptiveRouting': observed['enabled'],
-                   'hookTrust': 'native-review-required' if current['mode'] != 'off' else 'not-required',
+                   'hookTrust': trust or {'status': 'unchanged'},
                    'changeCommands': commands, 'maintenanceModes': ['off', 'suggest', 'auto'], 'adaptiveModes': ['off', 'on']},
                   title='Project preferences')
         return
     progress.line('Project preferences: maintenance ' + current['mode'] + '; adaptive Auto ' + ('on' if observed['enabled'] else 'off') + '.')
-    if current['mode'] != 'off':
-        progress.line('In Codex, use /hooks to review and trust the maintenance handler. Harness does not grant trust.')
+    if trust:
+        if trust['status'] == 'trusted':
+            progress.line('Harness hook trust: ready. Project modes are independent; off remains off.')
+        else:
+            progress.line('Harness hook trust: manual review required.')
+            if trust.get('warning'):
+                progress.line(trust['warning'])
+            progress.line(trust['guidance'])
+    elif current['mode'] != 'off':
+        progress.line('Hook trust is unchanged. If native hooks are blocked, run init to prepare Harness trust or inspect /hooks.')
     if observed['enabled']:
         progress.line('Auto advice needs the Harness Codex integration and Auto selected in /model; quality feedback must be recorded.')
     progress.line('Change anytime from this project (or add --project PATH):')

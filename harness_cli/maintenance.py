@@ -1,4 +1,4 @@
-"""CLI wiring for opt-in maintenance; never changes native hook trust."""
+"""CLI wiring for opt-in maintenance; init separately prepares owned hook trust."""
 from __future__ import annotations
 
 import json
@@ -75,13 +75,24 @@ def _hook_snapshot(path):
     return content
 
 
+def hook_definition(event, command):
+    handler = {'type': 'command', 'command': command, 'timeout': 3 if event in {'SessionEnd', 'Interrupt'} else 10}
+    if event == 'UserPromptSubmit':
+        handler['additionalContextLimit'] = 1024
+    return handler
+
+
+def hook_command(source_root, tool_home=None):
+    entry = checked_path(Path(tool_home or os.environ['HARNESS_TOOL_HOME']) / 'launcher.py') if (tool_home or os.environ.get('HARNESS_TOOL_HOME')) else checked_path(Path(source_root) / 'harness.py')
+    arguments = [sys.executable, '-B', str(entry), '--no-update-check', 'maintenance', '--hook']
+    return subprocess.list2cmdline(arguments) if os.name == 'nt' else shlex.join(arguments)
+
+
 def install_hooks(source_root, *, codex_home=None, tool_home=None):
     home = checked_path(codex_home or Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))))
     path = checked_path(home / 'hooks.json')
     receipt = checked_path(home / 'harness-maintenance-hooks.json')
-    entry = checked_path(Path(tool_home or os.environ['HARNESS_TOOL_HOME']) / 'launcher.py') if (tool_home or os.environ.get('HARNESS_TOOL_HOME')) else checked_path(Path(source_root) / 'harness.py')
-    arguments = [sys.executable, '-B', str(entry), '--no-update-check', 'maintenance', '--hook']
-    command = subprocess.list2cmdline(arguments) if os.name == 'nt' else shlex.join(arguments)
+    command = hook_command(source_root, tool_home)
     original = _hook_snapshot(path)
     original_receipt = _hook_snapshot(receipt)
     value = json.loads(original.decode('utf-8-sig')) if original is not None else {}
@@ -107,10 +118,7 @@ def install_hooks(source_root, *, codex_home=None, tool_home=None):
                     handler['command'] = command
                     found = True
         if not found:
-            handler = {'type': 'command', 'command': command, 'timeout': 3 if event in {'SessionEnd', 'Interrupt'} else 10}
-            if event == 'UserPromptSubmit':
-                handler['additionalContextLimit'] = 1024
-            groups.append({'hooks': [handler]})
+            groups.append({'hooks': [hook_definition(event, command)]})
     changed = before != json.dumps(value, sort_keys=True)
     # Reuse the same bounded atomic writer as distribution receipts.
     from .distribution import _write_json

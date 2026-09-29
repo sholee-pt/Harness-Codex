@@ -114,6 +114,7 @@ class ConfigurationProgressTests(unittest.TestCase):
         self.log = self.base / 'protocol.jsonl'
         self.command = [sys.executable, '-B', str(self.fake)]
         self.addCleanup(mock.patch.stopall)
+        mock.patch('harness_cli.hook_trust.prepare', return_value={'status': 'trusted', 'count': 7, 'changed': False}).start()
         mock.patch.dict(os.environ, {'TEST_SERVER_MODE': 'noop', 'TEST_SERVER_LOG': str(self.log),
                                    'TEST_SOURCE': str(ROOT)}).start()
         self.output, self.error = Terminal(), io.StringIO()

@@ -33,7 +33,7 @@ class ProjectPreferencesTests(unittest.TestCase):
         harness_apply.apply_application(harness_apply.build_application(self.root, minimal_plan(self.root)))
         self.maintenance = harness_maintenance.Maintenance(self.root, self.store)
         self.routing = harness_routing_evidence.RoutingEvidence(self.root, self.store)
-        environment = mock.patch.dict(os.environ, {'HARNESS_STATE_HOME': str(self.store)})
+        environment = mock.patch.dict(os.environ, {'HARNESS_STATE_HOME': str(self.store), 'CODEX_HOME': str(self.base / 'codex')})
         environment.start()
         self.addCleanup(environment.stop)
         helper = mock.patch.object(preferences.maintenance, 'helper', side_effect=lambda *args: self.maintenance.status())
@@ -42,6 +42,9 @@ class ProjectPreferencesTests(unittest.TestCase):
         enable = mock.patch.object(preferences.maintenance, 'enable', side_effect=lambda source, root, mode, **kwargs: self.maintenance.configure(mode))
         self.enable = enable.start()
         self.addCleanup(enable.stop)
+        trust = mock.patch.object(preferences.hook_trust, 'prepare', return_value={'status': 'trusted', 'count': 7, 'changed': False})
+        self.trust = trust.start()
+        self.addCleanup(trust.stop)
 
     def run_choices(self, selections=(), *, tty=True, **settings):
         args = SimpleNamespace(**{'command': 'init', 'maintenance': None, 'adaptive': None, 'json': False, **settings})
@@ -64,7 +67,7 @@ class ProjectPreferencesTests(unittest.TestCase):
         self.assertEqual(count, 2)
         self.assertEqual(self.maintenance.status()['mode'], 'auto')
         self.assertTrue(self.routing.status()['enabled'])
-        for text in ('--mode suggest', '--adaptive on', '--adaptive status', '/hooks', '/model', 'quality feedback'):
+        for text in ('--mode suggest', '--adaptive on', '--adaptive status', 'hook trust: ready', '/model', 'quality feedback'):
             self.assertIn(text, output)
         self.assertIn('reviews use conversation tokens', output)
         self.assertIn('no extra model call', output)
@@ -92,13 +95,31 @@ class ProjectPreferencesTests(unittest.TestCase):
         self.assertEqual(self.snapshot(), before)
         self.enable.assert_not_called()
         self.assertFalse(self.routing.status()['enabled'])
+        self.trust.assert_not_called()
+
+    def test_init_prepares_trust_even_when_both_modes_are_off_and_manual_is_explicit(self):
+        output, _ = self.run_choices([0, 0])
+        self.trust.assert_called_once_with(ROOT, self.root, binary='codex', mode='auto')
+        self.assertEqual(self.snapshot(), {})
+        self.assertNotIn('/hooks', output)
+        self.assertIn('off remains off', output)
+        self.trust.reset_mock()
+        for command in ('configure', 'reset'):
+            self.run_choices(command=command, tty=False)
+        self.trust.assert_not_called()
+        self.run_choices(tty=False, hook_trust='manual')
+        self.assertEqual(self.trust.call_args.kwargs['mode'], 'manual')
+        args = main.build_parser(ROOT).parse_args(['init', '--hook-trust', 'manual'])
+        self.assertEqual(args.hook_trust, 'manual')
 
     def test_unattended_json_config_and_previews_never_prompt_or_enable(self):
         for settings in ({'tty': False}, {'json': True}, {'command': 'configure'}, {'dry_run': True}, {'install_only': True}):
             with self.subTest(settings=settings):
+                self.trust.reset_mock()
                 _, count = self.run_choices(**settings)
                 self.assertEqual(count, 0)
                 self.assertEqual(self.snapshot(), {})
+                self.assertEqual(self.trust.called, settings in ({'tty': False}, {'json': True}))
         output, count = self.run_choices(tty=False, maintenance='suggest', adaptive='on')
         self.assertEqual(count, 0)
         self.assertEqual(self.maintenance.status()['mode'], 'suggest')
@@ -127,3 +148,4 @@ class ProjectPreferencesTests(unittest.TestCase):
             self.run_choices(adaptive='off')
         self.assertEqual(self.snapshot(), before)
         self.enable.assert_not_called()
+        self.trust.assert_not_called()

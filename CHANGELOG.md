@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.27.0‑beta`](#harness-for-codex-v0270-beta) | Schema 3 | Schema 7 | Schema 2 | Prepare owned hook trust during init without enabling project features |
 | [`v0.26.0‑beta`](#harness-for-codex-v0260-beta) | Schema 3 | Schema 7 | Schema 2 | Choose maintenance and adaptive Auto preferences during init |
 | [`v0.25.2‑beta`](#harness-for-codex-v0252-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve per-request execution context in adaptive routing evidence |
 | [`v0.25.1‑beta`](#harness-for-codex-v0251-beta) | Schema 3 | Schema 7 | Schema 2 | Exclude mixed or stale Auto observations and preserve native execution provenance |
@@ -77,6 +78,13 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.27.0-beta
+
+- Full init registers and trusts only exact Harness maintenance hooks through native Codex metadata and version-checked config writes, including when maintenance and adaptive routing are off. Trust does not enable either project feature.
+- Keep unchanged hook trust across off/on changes and repeated init. Preserve unrelated handlers, native feature restrictions and managed policy. No extra model call or conversation is created for setup.
+- Add init --hook-trust manual and capability-based manual guidance. Successful automatic setup no longer asks users to approve hooks manually; previews, install-only and cancelled preferences do not grant trust.
+- Cross-check native hook metadata, ownership, concurrent edits, idempotency and project-mode isolation; add an isolated native trust check to the official Codex release gate.
 
 ## Harness for Codex v0.26.0-beta
 

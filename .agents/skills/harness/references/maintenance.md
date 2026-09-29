@@ -128,3 +128,6 @@ Use the separate opt-in evaluator for controlled performance comparisons. Operat
 hooks remain separate; maintenance does not enable per-turn outcome annotation.
 Hooks require native trust; disabled/untrusted hooks do not provide concurrency or
 automatic notices. Native sessions not using the trusted hook are outside observation.
+The owner-authorized CLI init may prepare native trust for exact owned maintenance
+hooks even while project modes are off. Trust alone never enables maintenance or
+adaptive routing. The generator must not bypass trust or approve other hooks.

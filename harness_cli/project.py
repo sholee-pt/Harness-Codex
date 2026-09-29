@@ -70,6 +70,8 @@ def register_project_commands(subparsers) -> None:
             goals.add_argument("--goal-file", type=Path, metavar="MARKDOWN",
                                help="Reference a UTF-8 Markdown brief; no file-size limit and no full-text prompt copy.")
         if command == "init":
+            parser.add_argument('--hook-trust', choices=('auto', 'manual'), default='auto',
+                                help='Register Harness maintenance hooks and trust their exact definitions through Codex (default: auto), even with maintenance/adaptive off. Manual leaves native trust unchanged.')
             parser.add_argument("--dry-run", action="store_true",
                                 help="Preview generator installation; do not write or launch Codex.")
             parser.add_argument("--install-only", action="store_true",

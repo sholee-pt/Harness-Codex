@@ -39,6 +39,7 @@ def sync(root, *, version, revision, stale=False):
             '## Maintenance\n\n'
             '- Use `harness-codex config` to review project responsibilities and update the existing harness.\n'
             '- Change maintenance with `harness-codex maintenance --mode suggest` (off/suggest/auto). Auto permits bounded existing-skill corrections and requires trusted native hooks; reviews use conversation tokens.\n'
+            '- Full `harness-codex init` prepares trust for Harness maintenance hooks without enabling project features. Off retains trust for later use. Follow manual guidance only if setup reports it; `init --hook-trust manual` leaves trust unchanged.\n'
             '- Change observed-outcome advice with `harness-codex routing --adaptive on` (on/off). It makes no extra model call, requires recorded quality feedback and only advises Auto selections; manual models are preserved.\n'
             '- Inspect current settings with `harness-codex maintenance` and `harness-codex routing --adaptive status`. These commands do not launch a review. Normal use does not require changing the maintenance schedule.\n'
             '- Ask Codex to re-read current project instructions when an existing conversation needs a configuration refresh; no automatic user turn is added.\n'

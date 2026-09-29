@@ -97,6 +97,7 @@ class ProjectCliTests(unittest.TestCase):
             "TYPESAFE_API_KEY": '',
         }).start()
         self.codex = mock.patch.object(project, "_codex_command", return_value=[sys.executable, "-B", str(self.fake)]).start()
+        mock.patch('harness_cli.hook_trust.prepare', return_value={'status': 'trusted', 'count': 7, 'changed': False}).start()
 
     def run_cli(self, command, *extra, tty=True):
         output = TerminalBuffer() if tty else io.StringIO()

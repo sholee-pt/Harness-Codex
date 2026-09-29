@@ -88,6 +88,8 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     release = probe.api('releases/latest')
     binary, identity = probe.official_package(release, args.output)
+    from verify_hook_trust import verify
+    probe.save(args.output / 'hook-trust.json', verify(binary))
     result = asyncio.run(experiment(binary, args.output))
     result['identity'] = identity
     result['binaryUnmodified'] = probe.sha256(binary) == identity['binarySha256Before']

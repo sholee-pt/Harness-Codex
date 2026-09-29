@@ -27,9 +27,29 @@ harness-codex maintenance clear --yes
 
 `suggest` collects narrowly identified concerns and displays one review notice per
 eligible batch. `auto` authorizes bounded existing-skill corrections after review.
-Both install a user-level native hook without replacing unrelated hooks. Use
-`/hooks` in Codex to review/trust the new or changed handler. Trust is never granted
-by Harness. If hooks are not enabled and trusted, automatic notices and concurrency
+Both install a user-level native hook without replacing unrelated hooks. Full
+`init` registers these hooks even with maintenance and adaptive routing off, and
+uses Codex's native metadata and configuration APIs to trust only their exact
+definitions. It verifies all seven owned handlers; it never bypasses hook trust,
+approves unrelated handlers, enables a disabled native hooks feature, or overrides
+managed policy. This setup makes no inference call and starts no conversation.
+
+When `init` reports hook trust ready, no separate approval step is needed. Trust
+is user-level, while maintenance and adaptive routing are per-project choices.
+Turning a project off retains trust and returns without review, tracking or
+instruction injection; it does not disable hooks needed by other projects.
+The hook still starts a local process to check the project setting. Turning the
+feature back on reuses unchanged trust. Adaptive routing remains separate and is
+not activated by trusting maintenance hooks.
+
+`init --hook-trust manual` registers the definitions but leaves native trust
+unchanged. Dry-run, install-only and cancelled preference choices do not prepare
+trust. `config` and `reset` do not automatically grant trust. On unsupported
+capabilities, modified hook definitions or administrator restrictions, init keeps
+the project usable and reports manual review required. Inspect `/hooks` in that
+case; use administrator-approved settings when policy blocks user hooks. A later
+change to the command or definition can require renewed trust; rerun `init` or
+review it in `/hooks`. If hooks are not enabled and trusted, automatic notices and concurrency
 observation are unavailable. The trusted SessionStart hook supplies concise signal
 instructions once per session/policy; UserPromptSubmit supplies them if startup was
 missed. A mode change or compaction refreshes the guidance. Ordinary later turns
