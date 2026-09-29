@@ -14,9 +14,11 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / '.agents/skills/harness/scripts'))
+sys.path.insert(0, str(ROOT / 'test'))
 from harness_cli import hook_trust, maintenance, presentation
 from harness_maintenance import Maintenance
 from harness_routing_evidence import RoutingEvidence
+from test_harness_tools import harness_apply, minimal_plan
 
 
 def verify(binary):
@@ -26,6 +28,7 @@ def verify(binary):
         home, root, state = base / 'codex', base / 'project', base / 'state'
         home.mkdir()
         root.mkdir()
+        harness_apply.apply_application(harness_apply.build_application(root, minimal_plan(root)))
         config = home / 'config.toml'
         config.write_text('approval_policy = "on-request"\nsandbox_mode = "read-only"\n', encoding='utf-8')
         path = home / 'hooks.json'
