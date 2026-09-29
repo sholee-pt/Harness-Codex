@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.27.2‑beta`](#harness-for-codex-v0272-beta) | Schema 3 | Schema 7 | Schema 2 | Resolve Conda interpreter aliases when identifying owned maintenance hooks |
 | [`v0.27.1‑beta`](#harness-for-codex-v0271-beta) | Schema 3 | Schema 7 | Schema 2 | Restore hook state on failed uninstall and clean owned native trust |
 | [`v0.27.0‑beta`](#harness-for-codex-v0270-beta) | Schema 3 | Schema 7 | Schema 2 | Prepare owned hook trust during init without enabling project features |
 | [`v0.26.0‑beta`](#harness-for-codex-v0260-beta) | Schema 3 | Schema 7 | Schema 2 | Choose maintenance and adaptive Auto preferences during init |
@@ -79,6 +80,12 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.27.2-beta
+
+- Normalize the maintenance-hook Python path to the same resolved interpreter used by installation receipts. Linux Conda symlinks no longer make owned hooks appear to belong to another installation during uninstall.
+- Recognize legacy POSIX hook commands only when their absolute interpreter resolves to the installed Python and their launcher, arguments and shell quoting match exactly. Preserve foreign or modified commands.
+- Add regression coverage for interpreter aliases, real POSIX symlinks, legacy trust cleanup and rejection of changed launchers or command arguments.
 
 ## Harness for Codex v0.27.1-beta
 

@@ -84,8 +84,20 @@ def hook_definition(event, command):
 
 def hook_command(source_root, tool_home=None):
     entry = checked_path(Path(tool_home or os.environ['HARNESS_TOOL_HOME']) / 'launcher.py') if (tool_home or os.environ.get('HARNESS_TOOL_HOME')) else checked_path(Path(source_root) / 'harness.py')
-    arguments = [sys.executable, '-B', str(entry), '--no-update-check', 'maintenance', '--hook']
+    # Match the install receipt, which resolves Conda's bin/python symlink.
+    arguments = [str(Path(sys.executable).resolve()), '-B', str(entry), '--no-update-check', 'maintenance', '--hook']
     return subprocess.list2cmdline(arguments) if os.name == 'nt' else shlex.join(arguments)
+
+
+def _legacy_posix_hook(command, arguments):
+    try:
+        parsed = shlex.split(command)
+        if not parsed or parsed[1:] != arguments[1:] or shlex.join(parsed) != command:
+            return False
+        executable = Path(parsed[0])
+        return executable.is_absolute() and executable.is_file() and str(executable.resolve()) == arguments[0]
+    except (OSError, ValueError, RuntimeError):
+        return False
 
 
 def install_hooks(source_root, *, codex_home=None, tool_home=None):
@@ -179,10 +191,12 @@ def removal_plan(data_root, *, codex_home=None, installed=None):
     original = _hook_snapshot(path)
     saved = read_receipt(original_receipt)
     state = installed if installed is not None else installed_status(data_root)
-    arguments = [state['python'], '-B', str(checked_path(Path(data_root) / 'launcher.py')), '--no-update-check', 'maintenance', '--hook']
+    arguments = [str(Path(state['python']).resolve()), '-B', str(checked_path(Path(data_root) / 'launcher.py')), '--no-update-check', 'maintenance', '--hook']
     expected = subprocess.list2cmdline(arguments) if os.name == 'nt' else shlex.join(arguments)
     if saved['command'] != expected:
-        return {'state': 'another-installation; preserved'}
+        if os.name == 'nt' or not _legacy_posix_hook(saved['command'], arguments):
+            return {'state': 'another-installation; preserved'}
+        expected = saved['command']
     value = json.loads(original.decode('utf-8-sig')) if original is not None else {}
     if not isinstance(value, dict) or not isinstance(value.get('hooks', {}), dict):
         raise ValueError('Existing hooks are malformed; preserve them')

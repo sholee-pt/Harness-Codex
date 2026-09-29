@@ -103,6 +103,58 @@ class UninstallTests(unittest.TestCase):
         (home / 'config.toml').write_bytes(after)
         return home
 
+    def test_hook_registration_resolves_interpreter_alias_before_ownership_comparison(self):
+        executable = Path(sys.executable)
+        alias = executable.parent / '..' / executable.parent.name / executable.name
+        with mock.patch.object(sys, 'executable', str(alias)):
+            self.hooks()
+        plan = uninstall.prepare(self.data)
+        self.assertEqual(plan['hooks']['state'], 'remove')
+        self.assertEqual(plan['hooks']['handlers'], 7)
+
+    def test_legacy_hook_matching_requires_same_interpreter_launcher_and_exact_arguments(self):
+        import shlex
+        from harness_cli.maintenance import _legacy_posix_hook
+        executable = Path(sys.executable).resolve()
+        arguments = [str(executable), '-B', str(self.data / 'launcher.py'), '--no-update-check', 'maintenance', '--hook']
+        alias = str(executable.parent / '..' / executable.parent.name / executable.name)
+        self.assertTrue(_legacy_posix_hook(shlex.join([alias, *arguments[1:]]), arguments))
+        other = self.base / 'another-python'
+        other.write_text('not the installed interpreter')
+        for command in (shlex.join([str(other), *arguments[1:]]), shlex.join(['python', *arguments[1:]]),
+                        shlex.join([arguments[0], '-B', str(self.base / 'another-launcher.py'), *arguments[3:]]),
+                        shlex.join([*arguments, '--extra']), shlex.join(arguments) + '; echo unexpected', "'"):
+            with self.subTest(command=command):
+                self.assertFalse(_legacy_posix_hook(command, arguments))
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX interpreter symlink and shell quoting')
+    def test_legacy_python_symlink_hooks_are_removed_with_their_recorded_trust(self):
+        import json
+        import shlex
+        from harness_cli import maintenance
+        alias = self.base / 'python link'
+        alias.symlink_to(Path(sys.executable).resolve())
+        with mock.patch.object(sys, 'executable', str(alias)):
+            home = self.hooks()
+        self.assertEqual(uninstall.prepare(self.data)['hooks']['handlers'], 7)
+        receipt = home / 'harness-maintenance-hooks.json'
+        saved = json.loads(receipt.read_bytes())
+        old = shlex.join([str(alias), '-B', str(self.data / 'launcher.py'), '--no-update-check', 'maintenance', '--hook'])
+        path = home / 'hooks.json'
+        value = json.loads(path.read_bytes())
+        for groups in value['hooks'].values():
+            for group in groups:
+                for handler in group['hooks']:
+                    handler['command'] = old
+        saved['command'] = old
+        path.write_text(json.dumps(value))
+        receipt.write_text(json.dumps(saved))
+        self.assertEqual(uninstall.prepare(self.data)['hooks']['handlers'], len(maintenance.EVENTS))
+        self.invoke()
+        self.assertFalse(receipt.exists())
+        self.assertNotIn('trusted_hash', (home / 'config.toml').read_text())
+        self.assertTrue(all(not groups for groups in json.loads(path.read_bytes())['hooks'].values()))
+
     def test_path_failure_restores_hooks_receipt_and_tool_together(self):
         home = self.hooks()
         before = {path: path.read_bytes() for path in home.iterdir()}
