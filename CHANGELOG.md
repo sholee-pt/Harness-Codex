@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.27.3‑beta`](#harness-for-codex-v0273-beta) | Schema 3 | Schema 7 | Schema 2 | Remove duplicated Linux installer progress lines |
 | [`v0.27.2‑beta`](#harness-for-codex-v0272-beta) | Schema 3 | Schema 7 | Schema 2 | Resolve Conda interpreter aliases when identifying owned maintenance hooks |
 | [`v0.27.1‑beta`](#harness-for-codex-v0271-beta) | Schema 3 | Schema 7 | Schema 2 | Restore hook state on failed uninstall and clean owned native trust |
 | [`v0.27.0‑beta`](#harness-for-codex-v0270-beta) | Schema 3 | Schema 7 | Schema 2 | Prepare owned hook trust during init without enabling project features |
@@ -80,6 +81,12 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.27.3-beta
+
+- Fix duplicated Linux installer stage labels. Interactive terminals update elapsed time on one line and retain one completion line per stage; redirected output stays free of terminal control sequences.
+- Keep Conda download, preparation and reuse details in the existing detailed log so they do not interrupt the progress display. Preserve error diagnostics, installation steps and activation prompts.
+- Extend the existing installer output and terminal checks without adding another test case.
 
 ## Harness for Codex v0.27.2-beta
 

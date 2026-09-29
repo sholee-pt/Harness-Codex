@@ -160,13 +160,17 @@ esac
                 else:
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     self.assertRegex(result.stdout, r"\[3/3\].*: done \(\d+s\)")
+                    for index in range(1, 4):
+                        self.assertEqual(result.stdout.count(f'[{index}/3]'), 1, result.stdout)
+                    self.assertNotIn('\x1b', result.stdout)
                     self.assertIn("Installed harness-codex in /fixture/bin", result.stdout)
                     self.assertIn("PATH registration skipped", result.stdout)
                     self.assertIn('"treeHash":"internal-receipt"', log)
                     self.assertIn('"writes":0', log)
                     self.assertIn("advisory warning", log)
                     self.assertIn("--no-modify-path", arguments.read_text())
-                    self.assertEqual("Reusing the existing" in result.stdout, existing)
+                    self.assertNotIn("Reusing the existing", result.stdout)
+                    self.assertEqual("Reusing the existing" in log, existing)
                 if os.name == "posix":
                     self.assertEqual(logs[0].stat().st_mode & 0o777, 0o600)
 
@@ -272,6 +276,12 @@ esac
             text = output.decode(errors='replace')
             self.assertEqual(os.waitstatus_to_exitcode(status), 0, text)
             self.assertIn('  1s', text)
+            import re
+            rendered = '\n'.join(re.sub(r'\x1b\[[0-9;]*[mK]', '', line.rsplit('\r', 1)[-1])
+                                 for line in text.replace('\r\n', '\n').split('\n'))
+            for index in range(1, 4):
+                self.assertEqual(rendered.count(f'[{index}/3]'), 1, rendered)
+            self.assertEqual(rendered.count(': done ('), 3, rendered)
             self.assertTrue(answered, text)
             self.assertEqual(marker.read_text(), 'loaded')
             self.assertIn('Harness remains installed', text)

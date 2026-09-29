@@ -55,14 +55,14 @@ if [[ -z "$conda_command" ]]; then
   prefix="$runtime_root/conda"
   [[ ! -e "$prefix" && ! -L "$prefix" ]] || { printf '%s\n' 'Conda setup directory already exists without a usable conda command; preserve and review it.' >&2; exit 1; }
   conda_scratch=$(mktemp -d "${TMPDIR:-/tmp}/harness-codex-conda.XXXXXXXX")
-  printf '      Downloading and verifying the Python environment manager...\n'
+  printf '      Downloading and verifying the Python environment manager...\n' >> "$install_log"
   url="https://github.com/conda-forge/miniforge/releases/download/26.5.3-0/Miniforge3-26.5.3-0-Linux-$arch.sh"
   curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
     --connect-timeout 15 --max-time 600 --retry 2 "$url" -o "$conda_scratch/miniforge.sh" </dev/null >> "$install_log" 2>&1
   actual=$(sha256sum "$conda_scratch/miniforge.sh")
   [[ ${actual%% *} == "$digest" ]] || { printf '%s\n' 'Miniforge checksum mismatch; refusing execution.' >&2; exit 1; }
   mkdir -p -- "$(dirname -- "$prefix")"
-  printf '      Installing the Python environment manager; this may take a few minutes...\n'
+  printf '      Installing the Python environment manager; this may take a few minutes...\n' >> "$install_log"
   bash "$conda_scratch/miniforge.sh" -b -p "$prefix" </dev/null >> "$install_log" 2>&1
   conda_command="$prefix/bin/conda"
 fi
@@ -74,7 +74,7 @@ if [[ ${#owned_runtime[@]} -gt 0 && ! -f "$runtime_root/envs/harness/conda-meta/
   [[ ! -e "$runtime_root/envs/harness" ]] || { printf 'Incomplete runtime environment preserved; inspect it before reinstalling.\n' >&2; exit 1; }
   "$conda_command" create "${environment_selector[@]}" --override-channels --channel conda-forge python=3.11 git --yes >> "$install_log" 2>&1
 else
-  printf '      Reusing the existing Harness environment.\n'
+  printf '      Reusing the existing Harness environment.\n' >> "$install_log"
 fi
 if [[ ${#owned_runtime[@]} -gt 0 ]]; then
   selected_prefix="$runtime_root/envs/harness"
@@ -92,7 +92,7 @@ resolved_python=$(realpath -e -- "$selected_python")
 environment_selector=(--prefix "$selected_prefix")
 printf 'Expected interpreter: %s\nExpected prefix: %s\n' "$selected_python" "$selected_prefix" >> "$install_log"
 if ! command -v git >/dev/null 2>&1 && ! "$conda_command" run "${environment_selector[@]}" git --version >> "$install_log" 2>&1; then
-  printf '      Preparing Git for tool updates...\n'
+  printf '      Preparing Git for tool updates...\n' >> "$install_log"
   "$conda_command" install "${environment_selector[@]}" --override-channels --channel conda-forge git --yes >> "$install_log" 2>&1
 fi
 finish_step

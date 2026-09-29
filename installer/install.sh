@@ -67,9 +67,9 @@ fi
 start_step() {
   step=$1
   step_started=$SECONDS
-  printf '\n%s%s%s\n' "$accent" "$step" "$plain"
   printf '\n%s\n' "$step" >> "$install_log"
   if [[ -t 1 && ${TERM:-dumb} != dumb ]]; then
+    printf '\n'
     (
       frames='|/-\\'; index=0
       while true; do
@@ -80,6 +80,8 @@ start_step() {
       done
     ) &
     spinner_pid=$!
+  else
+    printf '\n%s' "$step"
   fi
 }
 stop_spinner() {
@@ -90,7 +92,10 @@ stop_spinner() {
     printf '\r\033[2K'
   fi
 }
-finish_step() { stop_spinner; printf '  %sOK%s  %s: done (%ss)\n' "$success" "$plain" "$step" "$((SECONDS - step_started))"; }
+finish_step() {
+  if [[ -n "$spinner_pid" ]]; then stop_spinner; printf '%s' "$step"; fi
+  printf ': done (%ss)  %sOK%s\n' "$((SECONDS - step_started))" "$success" "$plain"
+}
 finish_install() {
   local result=$?
   stop_spinner
