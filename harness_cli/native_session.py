@@ -21,8 +21,16 @@ def settings_arguments(command, root, mode):
         try:
             server.initialize()
             deadline = time.monotonic() + 60
-            overrides = (automatic(server, deadline) if mode == 'auto' else
-                         select(server, current_settings(server, root, deadline), root, deadline))
+            overrides = {}
+            while mode == 'manual':
+                selected = select(server, current_settings(server, root, deadline), root, deadline)
+                if selected is not None:
+                    overrides = selected
+                    break
+                mode = mode_choice(progress, 'ask')
+                deadline = time.monotonic() + 60
+            if mode == 'auto':
+                overrides = automatic(server, deadline)
         finally:
             server.close()
     result = []

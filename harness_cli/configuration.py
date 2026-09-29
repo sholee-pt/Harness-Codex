@@ -189,7 +189,7 @@ class Server:
                     value.get('status') in {'failed', 'declined'} or value.get('exitCode')):
                 label = 'command' if kind == 'commandExecution' else 'file change'
                 status = value.get('status') or 'failed'
-                self.progress.line(f'Codex {label} result: {clean(status)} (item {clean(item_id)}).')
+                self.progress.line(f'\nCodex {label} result: {clean(status)} (item {clean(item_id)}).', style='warning' if status == 'declined' else 'error')
                 output = clean(value.get('aggregatedOutput') or '').strip()
                 if output:
                     self.progress.line(output[-2000:])
@@ -220,31 +220,58 @@ class Server:
             for index, item in enumerate(value):
                 self.detail(item, f'{prefix}[{index}]')
         elif value is not None:
-            self.progress.line(f'  {prefix}: {clean(value)}')
+            self.progress.line(f'  {prefix}: {clean(value)}' if prefix else f'  {clean(value)}')
 
     def answer(self, request_id, method, params):
         if method in {'item/commandExecution/requestApproval', 'item/fileChange/requestApproval'}:
-            self.progress.line('Codex requests approval. Review the requested action:')
-            self.detail({k: v for k, v in params.items() if k not in {'threadId', 'turnId', 'itemId', 'startedAtMs'}})
+            file_change = method == 'item/fileChange/requestApproval'
+            title = 'File change approval' if file_change else 'Network approval' if params.get('networkApprovalContext') else 'Command approval'
+            self.progress.line('\n' + title, style='heading')
+            if params.get('cwd'):
+                self.progress.line('  Directory: ' + clean(params['cwd']), style='muted')
+            if params.get('environmentId') and params['environmentId'] != 'local':
+                self.progress.line('  Environment: ' + clean(params['environmentId']))
+            if params.get('reason'):
+                self.progress.line('\n  ' + clean(params['reason']))
+            if params.get('command'):
+                self.progress.line('\n  $ ' + clean(params['command']).replace('\n', '\n    '), style='value')
+            elif params.get('commandActions'):
+                self.detail(params['commandActions'], 'Action')
+            for key, title in (('networkApprovalContext', 'Network access'), ('additionalPermissions', 'Additional access'), ('grantRoot', 'Write access')):
+                if params.get(key):
+                    self.progress.line('\n' + title, style='warning')
+                    self.detail(params[key])
             if method == 'item/commandExecution/requestApproval' and not any(params.get(key) for key in ('command', 'networkApprovalContext', 'commandActions')):
                 self.send({'id': request_id, 'result': {'decision': 'decline'}})
                 raise ValueError('No command or network preview was received. Approval declined; use --interactive.')
-            if method == 'item/fileChange/requestApproval':
+            if file_change:
                 changes = self.items.get(params.get('itemId'), {}).get('changes')
                 if not changes:
                     self.send({'id': request_id, 'result': {'decision': 'decline'}})
                     raise ValueError('No file-change preview was received. Approval declined; use --interactive for native review.')
-                self.detail(changes, 'changes')
+                for change in changes:
+                    if isinstance(change, dict) and change.get('path') and isinstance(change.get('diff'), str):
+                        self.progress.line('\n  File: ' + clean(change['path']), style='value')
+                        self.detail(change.get('kind'), 'Change')
+                        self.progress.line(change['diff'])
+                        self.detail({k: v for k, v in change.items() if k not in {'path', 'kind', 'diff'}})
+                    else:
+                        self.detail(change, 'Change')
             available = params.get('availableDecisions')
             can_accept = available is None or 'accept' in available
             if not can_accept:
                 self.send({'id': request_id, 'result': {'decision': 'cancel'}})
                 raise ValueError('Codex requested an approval scope requiring native review. Use --interactive.')
-            answer = self.progress.ask('Approve this request? Type yes; Enter declines: ').strip()
-            decision = 'accept' if answer == 'yes' else 'decline'
+            self.progress.line('\nEnter: approve this request only   n: decline\n', style='muted')
+            while True:
+                answer = self.progress.ask('Approve? [Y/n]: ').strip().casefold()
+                if answer in {'', 'y', 'yes', 'n', 'no'}:
+                    break
+                self.progress.line('Press Enter or type y to approve; type n to decline.', style='warning')
+            decision = 'decline' if answer in {'n', 'no'} else 'accept'
             self.send({'id': request_id, 'result': {'decision': decision}})
-            self.progress.line('Approval response sent: accept (this request only; execution is not yet confirmed).'
-                               if decision == 'accept' else 'Approval response sent: decline.')
+            self.progress.line('Approved for this request; waiting for the Codex execution result.\n'
+                               if decision == 'accept' else 'Request declined.\n', style='success' if decision == 'accept' else 'warning')
         elif method == 'item/tool/requestUserInput':
             answers = {}
             questions = params.get('questions')
@@ -254,12 +281,13 @@ class Server:
                 if (not isinstance(question, dict) or not isinstance(question.get('question'), str)
                         or not isinstance(question.get('id'), str)):
                     raise ValueError('Codex returned an invalid question.')
-                self.progress.line(question['question'])
+                self.progress.line('\n' + question['question'] + '\n', style='heading')
                 options = question.get('options') or []
                 if not isinstance(options, list) or any(not isinstance(o, dict) or not isinstance(o.get('label'), str) for o in options):
                     raise ValueError('Codex returned invalid question options.')
                 for index, option in enumerate(options, 1):
                     self.progress.line(f"  {index}. {option['label']} — {option.get('description', '')}")
+                self.progress.line('')
                 answer = self.progress.ask('Your answer (number or text): ', secret=bool(question.get('isSecret')))
                 if answer.isdigit() and 1 <= int(answer) <= len(options):
                     answer = options[int(answer) - 1]['label']
@@ -316,9 +344,13 @@ def run(command: list[str], root: Path, prompt: str, *, timeout=1800, resume_id=
             if resume_id and mode != 'native':
                 saved = server.call('thread/read', {'threadId': resume_id, 'includeTurns': False}, timeout=min(30, deadline-time.monotonic()))
                 current = saved.get('thread') or {}
-            if mode == 'manual':
-                overrides = select(server, current if resume_id else current_settings(server, root, deadline), root, deadline)
-            elif mode == 'auto':
+            while mode == 'manual':
+                selected = select(server, current if resume_id else current_settings(server, root, deadline), root, deadline)
+                if selected is not None:
+                    overrides = selected
+                    break
+                mode = mode_choice(progress, 'ask')
+            if mode == 'auto':
                 overrides = automatic(server, deadline, resume=bool(resume_id), current=current)
             # Selecting/cancelling settings must not create an empty stored thread.
             params = {'cwd': str(root)}
@@ -333,8 +365,9 @@ def run(command: list[str], root: Path, prompt: str, *, timeout=1800, resume_id=
             if not isinstance(thread, dict) or not isinstance(thread.get('id'), str) or not thread['id']:
                 raise ValueError('Codex did not return a native session ID; retry with --interactive.')
             server.thread_id = thread['id']
-            progress.line(f"  Model: {clean(overrides.get('model', result.get('model', 'native default')))}"
-                          f" | Reasoning: {clean(overrides.get('effort', result.get('reasoningEffort') or 'native default'))}")
+            if mode != 'manual':
+                progress.line(f"  Model: {clean(overrides.get('model', result.get('model', 'native default')))}"
+                              f" | Reasoning: {clean(overrides.get('effort', result.get('reasoningEffort') or 'native default'))}", style='value')
             progress.phase('Analyzing the project and configuring its harness')
             prompt += ('\n\nReturn the final response using the supplied schema. Set status to needs-input if you need '
                        'a user answer or have not finished the requested configuration; put the question or blocker in message. '

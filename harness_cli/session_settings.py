@@ -81,67 +81,98 @@ def model_catalog(server, deadline):
 
 
 def select(server, current, root, deadline):
-    """No config writes, default model guesses, or fallback permission grants."""
+    """Return selected overrides, or None to revisit mode selection; never write config."""
     progress = server.progress
     models = model_catalog(server, deadline)
-    progress.line('Configuration settings | this Codex conversation only')
-    progress.line('Enter keeps the current setting. Global Codex settings are unchanged.')
-    retained = next((m for m in models if m['model'] == current.get('model')), None)
     if not models:
         raise ValueError('No visible models are available; use native Codex to check account access.')
+    progress.line('\nConfiguration settings | this Codex conversation only', style='heading')
+    progress.line('Review each choice before continuing. Global Codex settings are unchanged.\n', style='muted')
+    retained = next((m for m in models if m['model'] == current.get('model')), None)
     if not retained and current.get('model'):
-        progress.line('The previous model is unavailable. Choose a model from the current catalog.')
+        progress.line('The previous model is unavailable. Choose a model from the current catalog.', style='warning')
     offset = int(retained is not None or not current.get('model'))
-    selected = choose(progress, 'Model', ([f"Keep current: {current.get('model', 'native default')}"] if offset else []) +
-                      [f"{m.get('displayName') or m['model']} ({m['model']})" for m in models])
-    overrides = {}
-    chosen = selected >= offset
-    model = models[selected - offset] if chosen else retained
-    changed_model = bool(chosen and model['model'] != current.get('model'))
-    if chosen:
-        overrides['model'] = model['model']
-    if model:
-        efforts = model.get('supportedReasoningEfforts')
-        if (not isinstance(efforts, list) or any(not isinstance(e, dict) or not isinstance(e.get('reasoningEffort'), str)
-                                               or not e['reasoningEffort'] for e in efforts)):
-            raise ValueError('Codex returned invalid reasoning options; retry with --settings native.')
-        default = model.get('defaultReasoningEffort') if changed_model else current.get('reasoningEffort')
-        reset_effort = changed_model or default is not None and default not in [e['reasoningEffort'] for e in efforts]
-        if reset_effort:
-            default = model.get('defaultReasoningEffort')
-            progress.line('Reasoning options refreshed; select a supported value or the model default.')
-        if reset_effort and (not default or default not in [e['reasoningEffort'] for e in efforts]):
-            raise ValueError('The selected model has no supported default reasoning level. Use --interactive.')
-        selection = choose(progress, 'Reasoning',
-                           [f"{'Model default' if reset_effort else 'Keep current'}: {default or 'native default'}"] +
-                           [f"{e['reasoningEffort']} — {e.get('description', '')}" for e in efforts])
-        if selection:
-            overrides['effort'] = efforts[selection - 1]['reasoningEffort']
-        elif reset_effort:
-            # Do not accidentally inherit an incompatible effort from another model.
-            overrides['effort'] = default
-    else:
-        progress.line('Reasoning: keep current (this model is not in the visible catalog).')
+    labels = ([f"Keep current: {current.get('model') or 'native default'}"] if offset else []) + [
+        f"{m.get('displayName')} ({m['model']})" if m.get('displayName') and m['displayName'] != m['model'] else m['model'] for m in models]
     sandbox = current.get('sandbox') or {}
     approval = current.get('approvalPolicy')
     current_label = sandbox.get('type', 'native profile') if isinstance(sandbox, dict) else 'native profile'
     current_label += ' / ' + (approval if isinstance(approval, str) else 'custom approval policy')
-    selection = choose(progress, 'Permissions', [
+    permission_labels = [
         'Keep current: ' + current_label,
-        'Read only; network restricted; ask you for additional access',
-        'Workspace and temp writes; network restricted; ask you for additional access',
+        'Read-only files; restricted network; ask for extra access',
+        'Project/temp writes; restricted network; ask for extra access',
         'Full access; unrestricted files/network; no command approval prompts',
-    ])
-    if selection == 3:
-        answer = progress.ask('Allow unrestricted Codex access for this conversation? Type yes; Enter keeps current: ')
-        if answer != 'yes':
-            selection = 0
-    if selection:
-        policies = {1: {'type': 'readOnly', 'networkAccess': False},
-                    2: {'type': 'workspaceWrite', 'writableRoots': [str(root)], 'networkAccess': False,
-                        'excludeSlashTmp': False, 'excludeTmpdirEnvVar': False},
-                    3: {'type': 'dangerFullAccess'}}
-        overrides.update(sandboxPolicy=policies[selection], approvalPolicy='never' if selection == 3 else 'on-request',
-                         approvalsReviewer='user')
-    progress.line('Settings selected. Codex enforces any managed policy restrictions.')
-    return overrides
+    ]
+    step = selected = reasoning = permission = 0
+    overrides = {}
+    while True:
+        if step == 0:
+            selection = choose(progress, '1/3  Model', labels, back=True, initial=selected)
+            if selection == -1:
+                return None
+            if selection != selected:
+                reasoning = 0
+            selected = selection
+            chosen = selected >= offset
+            model = models[selected - offset] if chosen else retained
+            changed_model = bool(chosen and model['model'] != current.get('model'))
+            overrides = {'model': model['model']} if chosen else {}
+            model_label = model['model'] if model else current.get('model') or 'native default'
+            default = current.get('reasoningEffort')
+            if model:
+                efforts = model.get('supportedReasoningEfforts')
+                if (not isinstance(efforts, list) or any(not isinstance(e, dict) or not isinstance(e.get('reasoningEffort'), str)
+                                                       or not e['reasoningEffort'] for e in efforts)):
+                    raise ValueError('Codex returned invalid reasoning options; retry with --settings native.')
+                reset_effort = changed_model or default is not None and default not in [e['reasoningEffort'] for e in efforts]
+                if reset_effort:
+                    default = model.get('defaultReasoningEffort')
+                if reset_effort and (not default or default not in [e['reasoningEffort'] for e in efforts]):
+                    raise ValueError('The selected model has no supported default reasoning level. Use --interactive.')
+            step = 1 if model else 2
+        if step == 1:
+            selection = choose(progress, '2/3  Reasoning',
+                               [f"{'Model default' if reset_effort else 'Keep current'}: {default or 'native default'}"] +
+                               [f"{e['reasoningEffort']} — {e.get('description', '')}" for e in efforts],
+                               back=True, summary=[f'Model: {model_label}'], initial=reasoning)
+            if selection == -1:
+                step = 0
+                continue
+            reasoning = selection
+            overrides.pop('effort', None)
+            if selection:
+                overrides['effort'] = efforts[selection - 1]['reasoningEffort']
+            elif reset_effort:
+                # Do not accidentally inherit an incompatible effort from another model.
+                overrides['effort'] = default
+            step = 2
+        summary = [f'Model: {model_label}', f"Reasoning: {overrides.get('effort', default) or 'native default'}"]
+        if step == 2:
+            selection = choose(progress, '3/3  Permissions', permission_labels,
+                               back=True, summary=summary, initial=permission)
+            if selection == -1:
+                step = 1 if model else 0
+                continue
+            permission = selection
+            if permission == 3:
+                answer = progress.ask('Allow unrestricted Codex access for this conversation? Type yes; Enter keeps current: ').strip()
+                if answer != 'yes':
+                    permission = 0
+            step = 3
+        summary.append('Permissions: ' + permission_labels[permission])
+        if choose(progress, 'Review settings', ['Continue with these settings'], back=True, summary=summary) == -1:
+            step = 2
+            continue
+        if permission:
+            policies = {1: {'type': 'readOnly', 'networkAccess': False},
+                        2: {'type': 'workspaceWrite', 'writableRoots': [str(root)], 'networkAccess': False,
+                            'excludeSlashTmp': False, 'excludeTmpdirEnvVar': False},
+                        3: {'type': 'dangerFullAccess'}}
+            overrides.update(sandboxPolicy=policies[permission], approvalPolicy='never' if permission == 3 else 'on-request',
+                             approvalsReviewer='user')
+        progress.line('\nSelected settings', style='heading')
+        for line in summary:
+            progress.line('  ' + line, style='value')
+        progress.line('\nSettings selected. Codex enforces any managed policy restrictions.\n', style='muted')
+        return overrides

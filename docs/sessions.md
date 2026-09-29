@@ -56,7 +56,7 @@ and `--reload-harness` flags do not configure native work sessions; use `/model`
 
 ## Session settings
 
-`init` and `config` first offer Automatic, Manual or Keep native settings. Use Up/Down and Enter on an interactive terminal; redirected or limited terminals use numbered choices. `NO_COLOR` disables selection color. Esc/Ctrl+C cancels before starting a configuration conversation.
+`init` and `config` first offer Automatic, Manual or Keep native settings. Use Up/Down and Enter on an interactive terminal; redirected or limited terminals use numbered choices. Manual selection displays the chosen model and reasoning above the next step, then reviews all settings before starting. Use `b`, Left or the Back option to return to the preceding step; numbered menus also accept `b`. Back navigation preserves choices until changed and never starts a conversation. `NO_COLOR` disables color. Esc/Ctrl+C cancels before starting a configuration conversation.
 
 ```bash
 harness-codex init --settings auto --goal-file PROJECT.md
@@ -86,7 +86,9 @@ A fresh setup conversation is archived only after a completed model outcome and 
 
 The default configuration deadline is 1,800 seconds. Ctrl+C, connection failure and timeout close the child connection and preserve project files for inspection. Continue incomplete setup with `config --resume SESSION_ID`. Harness keeps no transport transcript or project session registry.
 
-Command/file approval accepts `yes` with surrounding whitespace ignored; Enter or another answer declines. The progress display confirms the response sent to Codex. This is one-request approval, not a saved command rule or proof of successful execution. Native `failed`/`declined` outcomes are shown separately, even without an exit code, with at most the final 2,000 characters of command output. A model's final explanation is not an approval receipt. Use `config --resume SESSION_ID --interactive --settings native` to inspect the retained conversation and use native approval controls. Host sandbox restrictions still require separate diagnosis; Harness never automatically grants broader access.
+Command/file approval uses `Approve? [Y/n]`: Enter, `y` or `yes` approves this request; `n` or `no` declines. Surrounding whitespace and letter case are ignored; other input asks again without sending a decision. The display separates the command, directory and reason, and hides unused protocol metadata and persistent-rule proposals. File diffs and additional requested access remain visible. Approval is for this request only, not a saved rule or proof of successful execution; unrestricted conversation access still requires its separate explicit confirmation. Native `failed`/`declined` outcomes are shown separately, even without an exit code, with at most the final 2,000 characters of command output. A model's final explanation is not an approval receipt. Use `config --resume SESSION_ID --interactive --settings native` to inspect the retained conversation and use native approval controls. Host sandbox restrictions still require separate diagnosis; Harness never automatically grants broader access.
+
+Interactive progress uses cyan for headings and selections, green for approval responses, yellow for declined requests or warnings, and red for execution failures. Redirected output, `TERM=dumb` and `NO_COLOR` omit color. Successful command output and transport JSON remain hidden; prompts and diagnostic outcomes are separated with blank lines.
 
 ## Project brief and guide
 

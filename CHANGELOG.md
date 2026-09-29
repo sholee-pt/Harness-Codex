@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.28.0‑beta`](#harness-for-codex-v0280-beta) | Schema 3 | Schema 7 | Schema 2 | Improve approval prompts and reversible configuration menus |
 | [`v0.27.4‑beta`](#harness-for-codex-v0274-beta) | Schema 3 | Schema 7 | Schema 2 | Fix configuration approval whitespace and expose native rejection results |
 | [`v0.27.3‑beta`](#harness-for-codex-v0273-beta) | Schema 3 | Schema 7 | Schema 2 | Remove duplicated Linux installer progress lines |
 | [`v0.27.2‑beta`](#harness-for-codex-v0272-beta) | Schema 3 | Schema 7 | Schema 2 | Resolve Conda interpreter aliases when identifying owned maintenance hooks |
@@ -82,6 +83,13 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.28.0-beta
+
+- Present command approvals with a single command, directory and reason; preserve file diffs and additional access previews while hiding unused protocol/rule metadata.
+- Use Enter/y/yes to approve one request and n/no to decline; invalid input asks again. Full-access conversation settings still require a separate explicit confirmation.
+- Add spaced, colored configuration menus with selected-value summaries, back navigation and a final review before starting a conversation. Changing earlier choices discards incompatible reasoning and withdrawn permission overrides.
+- Clear completed interactive menus and respect NO_COLOR, limited terminals and redirected output. Codex continues to enforce native permissions and managed policy.
 
 ## Harness for Codex v0.27.4-beta
 

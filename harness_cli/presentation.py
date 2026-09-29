@@ -90,7 +90,7 @@ class Progress:
         self.outcome = 'finished'
 
     def __enter__(self):
-        self.line(self.label)
+        self.line(self.label, style='heading')
         if self.tty:
             self.thread = threading.Thread(target=self._animate, daemon=True)
             self.thread.start()
@@ -118,10 +118,14 @@ class Progress:
         if self.tty:
             self.stream.write('\r\033[2K')
 
-    def line(self, message: str):
+    def line(self, message: str, *, style=None):
         with self.lock:
             self.clear()
-            print(clean(message), file=self.stream, flush=True)
+            text = clean(message)
+            colors = {'heading': '1;36', 'value': '36', 'success': '32', 'warning': '33', 'error': '31', 'muted': '2'}
+            if self.tty and 'NO_COLOR' not in os.environ and style in colors:
+                text = f'\033[{colors[style]}m{text}\033[0m'
+            print(text, file=self.stream, flush=True)
 
     def phase(self, label: str):
         with self.lock:
@@ -130,7 +134,7 @@ class Progress:
                 return
             if label != self.label:
                 self.label = label
-                self.line(label)
+                self.line(label, style='heading')
 
     def ask(self, message: str, *, secret=False) -> str:
         from getpass import getpass
@@ -151,6 +155,6 @@ class Progress:
         if self.thread:
             self.thread.join(timeout=2)
         with self.lock:
-            self.clear()
             state = 'stopped' if kind else self.outcome
-            print(f'  {self.label}: {state} ({int(time.monotonic() - self.started)}s)', file=self.stream, flush=True)
+            self.line(f'  {self.label}: {state} ({int(time.monotonic() - self.started)}s)',
+                      style='error' if kind else 'success' if state == 'finished' else 'warning')

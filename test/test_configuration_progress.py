@@ -78,10 +78,12 @@ for line in sys.stdin:
             continue
         if mode == "foreign":
             send({"method": "turn/completed", "params": {"threadId": "other-thread", "turn": {"id": "other", "status": "failed", "error": {"message": "foreign failure"}}}})
-        if mode in {"approve", "approval-declined", "approval-failed", "missing-command"}:
+        if mode in {"approve", "approval-access", "approval-declined", "approval-failed", "missing-command"}:
             request = {"threadId": "native-thread", "turnId": "turn-1", "itemId": "command"}
             if mode != "missing-command":
                 request.update({"command": "cat README.md", "cwd": str(pathlib.Path.cwd()), "availableDecisions": ["accept", {"acceptWithExecpolicyAmendment": {"execpolicy_amendment": ["cat", "README.md"]}}, "cancel"]})
+            if mode == "approval-access":
+                request.update({"environmentId": "remote-test", "reason": "Access the selected source", "commandActions": [{"command": "cat README.md", "type": "read"}], "networkApprovalContext": {"host": "example.invalid", "protocol": "https"}, "additionalPermissions": {"fileSystem": {"read": ["/external/review-source"]}}})
             send({"id": "approval", "method": "item/commandExecution/requestApproval", "params": request})
         elif mode in {"file", "missing-file"}:
             if mode == "file":
@@ -163,14 +165,39 @@ class ConfigurationProgressTests(unittest.TestCase):
                 self.assertEqual(self.invoke(mode), 0)
         self.assertNotIn('foreign failure', self.error.getvalue())
 
-    def test_command_approval_requires_explicit_yes_and_displays_action(self):
-        for answer, decision in [('yes', 'accept'), (' yes \t', 'accept'), ('', 'decline'), ('y', 'decline')]:
+    def test_command_approval_uses_enter_default_and_explicit_decline(self):
+        for answer, decision in [('yes', 'accept'), (' yes \t', 'accept'), ('', 'accept'), ('y', 'accept'), ('n', 'decline'), (' NO ', 'decline')]:
             with self.subTest(answer=answer):
                 self.assertEqual(self.invoke('approve', [answer]), 0)
                 self.assertEqual(self.records()[-1]['params']['decision'], decision)
-                self.assertIn(f'Approval response sent: {decision}', self.error.getvalue())
+                self.assertIn('Approved for this request' if decision == 'accept' else 'Request declined', self.error.getvalue())
         self.assertIn('cat README.md', self.error.getvalue())
         self.assertIn(str(self.root), self.error.getvalue())
+
+    def test_approval_preview_omits_unselected_policy_metadata_and_reprompts_invalid_input(self):
+        self.assertEqual(self.invoke('approve', ['maybe', 'n']), 0)
+        self.assertEqual(self.records()[-1]['params'], {'decision': 'decline'})
+        output = self.error.getvalue()
+        self.assertEqual(output.count('cat README.md'), 1)
+        self.assertNotIn('availableDecisions', output)
+        self.assertNotIn('execpolicy_amendment', output)
+        self.assertIn('\nCommand approval\n', output)
+        self.assertIn('\n  $ cat README.md\n', output)
+        self.assertIn('Press Enter or type y', output)
+
+    def test_compact_approval_keeps_requested_access_and_environment_visible(self):
+        self.assertEqual(self.invoke('approval-access', ['']), 0)
+        output = self.error.getvalue()
+        for detail in ('remote-test', 'Access the selected source', 'example.invalid', 'https', '/external/review-source'):
+            self.assertIn(detail, output)
+        self.assertEqual(output.count('cat README.md'), 1)
+        self.assertEqual(self.records()[-1]['params'], {'decision': 'accept'})
+
+    def test_approval_never_accepts_redirected_or_absent_interactive_input(self):
+        with mock.patch.dict(os.environ, {'TEST_SERVER_MODE': 'approve'}), contextlib.redirect_stderr(self.error), \
+                mock.patch.object(sys, 'stdin', io.StringIO()), self.assertRaisesRegex(ValueError, 'terminal is required'):
+            configuration.run(self.command, self.root, 'PRIVATE BOOTSTRAP TEXT')
+        self.assertFalse(any(r['method'] == 'answer' for r in self.records()))
 
     def test_accepted_requests_report_native_rejection_or_sandbox_failure_without_broader_retry(self):
         for mode, status, detail in [('approval-declined', 'declined', 'rejected by configuration'),
@@ -181,13 +208,13 @@ class ConfigurationProgressTests(unittest.TestCase):
                 records = self.records()
                 self.assertEqual([r['params'] for r in records if r['method'] == 'answer'], [{'decision': 'accept'}])
                 self.assertEqual(sum(r['method'] == 'turn/start' for r in records), 1)
-                self.assertIn('execution is not yet confirmed', self.error.getvalue())
+                self.assertIn('waiting for the Codex execution result', self.error.getvalue())
                 self.assertIn(f'Codex command result: {status}', self.error.getvalue())
                 self.assertIn(detail, self.error.getvalue())
                 self.assertEqual(list(self.root.iterdir()), [])
 
     def test_file_approval_displays_complete_diff(self):
-        self.assertEqual(self.invoke('file', ['yes']), 0)
+        self.assertEqual(self.invoke('file', ['']), 0)
         self.assertIn('AGENTS.md', self.error.getvalue())
         self.assertIn('+ use project harness', self.error.getvalue())
         self.assertEqual(self.records()[-1]['params']['decision'], 'accept')
@@ -249,11 +276,11 @@ class ConfigurationProgressTests(unittest.TestCase):
         self.assertEqual(sum(r['method'] == 'thread/archive' for r in self.records()), 1)
 
     def test_settings_preserve_defaults_and_use_only_catalog_efforts(self):
-        self.assertEqual(self.invoke(settings='manual', answers=['', '', '']), 0)
+        self.assertEqual(self.invoke(settings='manual', answers=['', '', '', '']), 0)
         turn = next(r['params'] for r in self.records() if r['method'] == 'turn/start')
         self.assertEqual(set(turn), {'threadId', 'input', 'outputSchema'})
         self.log.unlink()
-        self.assertEqual(self.invoke(settings='manual', answers=['2', '2', '2']), 0)
+        self.assertEqual(self.invoke(settings='manual', answers=['2', '2', '2', '']), 0)
         turn = next(r['params'] for r in self.records() if r['method'] == 'turn/start')
         self.assertEqual((turn['model'], turn['effort']), ('catalog-alternative', 'ultra'))
         self.assertEqual(turn['sandboxPolicy']['type'], 'workspaceWrite')
@@ -264,7 +291,7 @@ class ConfigurationProgressTests(unittest.TestCase):
         self.assertEqual(list(self.root.iterdir()), [])
 
     def test_changed_model_uses_its_advertised_default_and_invalid_choices_reprompt(self):
-        self.assertEqual(self.invoke(settings='manual', answers=['9999', 'no', '2', '', '1']), 0)
+        self.assertEqual(self.invoke(settings='manual', answers=['9999', 'no', '2', '', '1', '']), 0)
         turn = next(r['params'] for r in self.records() if r['method'] == 'turn/start')
         self.assertEqual(turn['effort'], 'low')
         self.assertEqual(turn['sandboxPolicy'], {'type': 'readOnly', 'networkAccess': False})
@@ -272,7 +299,7 @@ class ConfigurationProgressTests(unittest.TestCase):
     def test_full_access_requires_exact_confirmation_and_is_never_default(self):
         for answer in ('', 'y', 'yes'):
             with self.subTest(answer=answer):
-                self.assertEqual(self.invoke(settings='manual', answers=['', '', '3', answer]), 0)
+                self.assertEqual(self.invoke(settings='manual', answers=['', '', '3', answer, '']), 0)
                 turn = [r['params'] for r in self.records() if r['method'] == 'turn/start'][-1]
                 if answer == 'yes':
                     self.assertEqual(turn['sandboxPolicy'], {'type': 'dangerFullAccess'})
@@ -280,6 +307,46 @@ class ConfigurationProgressTests(unittest.TestCase):
                 else:
                     self.assertNotIn('sandboxPolicy', turn)
                     self.assertNotIn('approvalPolicy', turn)
+
+    def test_settings_back_navigation_replaces_stale_model_reasoning_and_permissions(self):
+        cases = [(['2', 'b', '1', '2', 'b', '1', '2', ''], 'native-configured-model', 'medium', 'workspaceWrite'),
+                 (['2', '2', '3', 'yes', 'b', '0', ''], 'catalog-alternative', 'ultra', None)]
+        for answers, model, effort, sandbox in cases:
+            with self.subTest(answers=answers):
+                self.log.unlink(missing_ok=True)
+                self.assertEqual(self.invoke(settings='manual', answers=answers), 0)
+                records = self.records()
+                turns = [r['params'] for r in records if r['method'] == 'turn/start']
+                self.assertEqual(len(turns), 1)
+                self.assertEqual((turns[0]['model'], turns[0]['effort']), (model, effort))
+                self.assertEqual(turns[0].get('sandboxPolicy', {}).get('type'), sandbox)
+                if sandbox is None:
+                    self.assertNotIn('approvalPolicy', turns[0])
+                output = self.error.getvalue()
+                self.assertIn(f'Model: {model}\nReasoning: {effort}\n', output)
+                self.assertIn('Review settings', output)
+
+    def test_settings_review_cancellation_does_not_create_a_conversation(self):
+        self.assertEqual(self.invoke(settings='manual', answers=['', '', '', KeyboardInterrupt]), 130)
+        self.assertFalse(any(r['method'] in {'thread/start', 'turn/start'} for r in self.records()))
+
+    def test_model_back_can_return_to_mode_selection_without_carrying_manual_overrides(self):
+        for mode in ('0', '2'):
+            with self.subTest(mode=mode):
+                self.log.unlink(missing_ok=True)
+                self.assertEqual(self.invoke(settings='manual', answers=['b', mode]), 0)
+                turns = [r['params'] for r in self.records() if r['method'] == 'turn/start']
+                self.assertEqual(len(turns), 1)
+                self.assertNotIn('sandboxPolicy', turns[0])
+                if mode == '2':
+                    self.assertNotIn('model', turns[0])
+                else:
+                    self.assertEqual(turns[0]['model'], 'native-configured-model')
+        from harness_cli.native_session import settings_arguments
+        self.log.unlink(missing_ok=True)
+        with mock.patch.object(sys, 'stdin', Terminal()), contextlib.redirect_stderr(self.error), mock.patch('builtins.input', side_effect=['b', '2']):
+            self.assertEqual(settings_arguments(self.command, self.root, 'manual'), [])
+        self.assertFalse(any(r['method'] in {'thread/start', 'turn/start'} for r in self.records()))
 
     def test_setting_selection_interruption_never_starts_a_model_turn(self):
         with mock.patch('harness_cli.presentation.Progress.ask', side_effect=KeyboardInterrupt):
@@ -309,7 +376,7 @@ class ConfigurationProgressTests(unittest.TestCase):
             for settings in ('auto', 'manual'):
                 with self.subTest(mode=mode, settings=settings):
                     self.log.unlink(missing_ok=True)
-                    self.assertEqual(self.invoke(mode, settings=settings, resume_id='saved', answers=['', '', '']), 0)
+                    self.assertEqual(self.invoke(mode, settings=settings, resume_id='saved', answers=['', '', '', '']), 0)
                     calls = self.records()
                     resumed = next(r['params'] for r in calls if r['method'] == 'thread/resume')
                     turn = next(r['params'] for r in calls if r['method'] == 'turn/start')
@@ -339,7 +406,7 @@ class ConfigurationProgressTests(unittest.TestCase):
 
     def test_managed_permission_rejection_is_not_retried_or_downgraded(self):
         with self.assertRaisesRegex(ValueError, 'Managed policy'):
-            self.invoke('managed-rejection', settings='manual', answers=['', '', '2'])
+            self.invoke('managed-rejection', settings='manual', answers=['', '', '2', ''])
         turns = [r for r in self.records() if r['method'] == 'turn/start']
         self.assertEqual(len(turns), 1)
         self.assertNotIn(': finished', self.error.getvalue())
@@ -436,6 +503,40 @@ class ConfigurationProgressTests(unittest.TestCase):
             os.close(master)
 
 class PresentationTests(unittest.TestCase):
+    def test_semantic_colors_respect_terminal_no_color_and_sanitize_external_text(self):
+        for stream, term, disabled, colored in [(Terminal(), 'xterm', False, True), (Terminal(), 'xterm', True, False),
+                                                (Terminal(), 'dumb', False, False), (io.StringIO(), 'xterm', False, False)]:
+            with self.subTest(term=term, disabled=disabled, colored=colored), mock.patch.dict(os.environ, {'TERM': term}):
+                os.environ.pop('NO_COLOR', None)
+                if disabled:
+                    os.environ['NO_COLOR'] = '1'
+                progress = presentation.Progress('preview', stream=stream)
+                progress.line('Command\x1b[31m', style='heading')
+                text = stream.getvalue()
+                self.assertIn('Command?[31m', text)
+                self.assertEqual('\x1b[1;36m' in text, colored)
+                self.assertNotIn('\x1b[31m', text)
+
+    def test_keyboard_menu_summary_spacing_back_and_cleanup(self):
+        from harness_cli import terminal_menu
+        class MenuTerminal(Terminal):
+            def fileno(self):
+                return 0
+        for keys, expected in [(['down', '\r'], 1), (['left'], -1), (['b'], -1)]:
+            output, inputs = MenuTerminal(), iter(keys)
+            with mock.patch.object(sys, 'stdin', MenuTerminal()), mock.patch.dict(os.environ, {'TERM': 'xterm', 'NO_COLOR': '1'}), \
+                    mock.patch.object(terminal_menu, 'keyboard', return_value=contextlib.nullcontext(lambda: next(inputs))), \
+                    mock.patch.object(terminal_menu.shutil, 'get_terminal_size', return_value=os.terminal_size((60, 24))):
+                progress = presentation.Progress('settings', stream=output)
+                result = terminal_menu.choose(progress, 'Reasoning', ['Keep current', 'High'], back=True, summary=['Model: catalog-model'])
+                self.assertEqual(result, expected)
+                self.assertIn('Model: catalog-model\n\r\x1b[2K\n', output.getvalue())
+                self.assertNotIn('\x1b[1;36m', output.getvalue())
+                self.assertTrue(output.getvalue().endswith('A\r'))
+                self.assertFalse(progress.paused)
+        self.assertEqual(terminal_menu.fit_row('한글A', 4), '한글')
+        self.assertEqual(terminal_menu.fit_row('title\n\x1b[31m', 9), 'title ?[3')
+
     def test_compact_progress_does_not_repeat_commands_or_wrap_narrow_terminals(self):
         for stream in (io.StringIO(), Terminal()):
             with mock.patch.dict(os.environ, {'TERM': 'xterm', 'COLUMNS': '40'}):
