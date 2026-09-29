@@ -77,6 +77,18 @@ def credential_fill_command():
 
 
 class DistributionTests(unittest.TestCase):
+    def test_init_preferences_dependency_is_required_only_after_its_introduction(self):
+        for version in ('0.25.2-beta', '0.26.0-beta'):
+            fixture = source(self.base / version, version)
+            snapshot = {path.relative_to(fixture).as_posix(): path.read_bytes() for path in fixture.rglob('*') if path.is_file()}
+            dist._source_info(snapshot)
+            snapshot.pop('harness_cli/project_preferences.py', None)
+            if version == '0.26.0-beta':
+                with self.assertRaises(dist.DistributionError):
+                    dist._source_info(snapshot)
+            else:
+                dist._source_info(snapshot)
+
     def test_current_helper_is_required_without_rejecting_previous_release(self):
         for version in ('0.22.0-beta', '0.22.1-beta'):
             fixture = source(self.base / version, version)

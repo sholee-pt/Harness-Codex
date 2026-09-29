@@ -4,6 +4,17 @@ Maintenance is opt-in. Ordinary conversations do not run a separate evaluation
 model, rescan the project or regenerate the harness. Scope growth is a review
 signal, not a rule to create agents. Source-code defects stay project-code work.
 
+After configuring or recognizing an existing harness, interactive `init` explains
+and offers maintenance (`off`, `suggest`, `auto`) and adaptive Auto evidence
+(`off`, `on`). Enter keeps each current choice; a new project starts with both
+off. Esc cancels these preference choices without applying either. The generated
+harness remains in place. Explicit `--maintenance` / `--adaptive` flags skip their
+respective menu. JSON, redirected output, dry-run and install-only never prompt;
+`config` and `reset` preserve these choices unless explicit flags are supplied.
+Inspect or change them later with the commands below and `harness-codex routing
+--adaptive status|on|off`. Adaptive Auto is a separate option; it neither selects
+Auto in `/model` nor automatically judges task quality.
+
 ```sh
 harness-codex init --goal-file PROJECT.md --maintenance suggest
 harness-codex maintenance --mode auto
@@ -48,8 +59,12 @@ permission changes, instruction-pointer changes and deletion use explicit `confi
 Automatic changes are limited to two existing managed skills and 8 KiB of changed
 content. Ownership, reference integrity and journaled recovery stay enabled.
 
-Scheduling limits are explicit and independently adjustable; `fixed` restores a
-one-hour interval within those limits. These settings never expand edit scope:
+`--schedule` is an advanced control for the review interval, not a background job
+or a model-evaluation switch. Most users can omit it: new policies use `adaptive`,
+and repeated init preserves any existing setting. `adaptive` adjusts the interval
+from concerns and review outcomes; `fixed` uses one hour within the configured
+limits. Neither runs a review without eligible concerns. The init menus do not
+change this policy. These settings never expand edit scope:
 
 ```sh
 harness-codex maintenance --schedule adaptive --max-reviews-per-day 2 \
@@ -95,7 +110,7 @@ See the [generator maintenance protocol](../.agents/skills/harness/references/ma
 
 ## Change outcomes and recovery
 
-Each automatic correction records an opaque change ID, before/after manifest revisions, reason/evidence references and the prior/new hashes of affected skills. The bounded user-local history stores no skill text, model IDs, paths or transcripts. Local state schemas 1 and 2 are read as schema 3 in memory; a status read does not rewrite them and existing off/suggest/auto choices remain unchanged. Init/config display the maintenance mode and the separate opt-in evaluation state.
+Each automatic correction records an opaque change ID, before/after manifest revisions, reason/evidence references and the prior/new hashes of affected skills. The bounded user-local history stores no skill text, model IDs, paths or transcripts. Local state schemas 1 and 2 are read as schema 3 in memory; a status read does not rewrite them and existing off/suggest/auto choices remain unchanged. Init/config display maintenance and adaptive Auto preferences; controlled task-effect comparison remains a separate opt-in procedure.
 
 Applied changes start as `observing`: instructions updated, effect not established. The next hooked request carries a one-time revision notice and change ID. Record an outcome only when it is explicitly related to that correction, with the revision actually used by the task. Known model, effort, task category and runtime identity are hashed into a context group; unknown context remains descriptive and cannot trigger a comparison. Multiple records of one work item count once. Two independent, externally reported adverse outcomes in one known context group pause further automatic changes (`review-required`); they do not prove causality or stop ordinary work. Positive reports never automatically become a measured quality/cost benefit.
 

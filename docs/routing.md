@@ -56,6 +56,14 @@ Adaptive evidence is separately opt-in per selected Harness workspace; existing
 opt-outs and manual model choices are preserved. It makes no extra model call and
 does not run paid comparison trials. Enable it before starting/resuming Codex:
 
+Interactive `init` offers this preference with a short explanation after setup.
+Enter preserves the current choice (off for a new project). For an explicit
+choice, use `init --adaptive on` or `config --adaptive on`; the standalone
+`routing --adaptive on|off` command changes it without regenerating the harness.
+This option does not select `/model Auto`, replace ordinary routing when off,
+or change manual model choices. Quality feedback is still required before
+observations can support performance advice.
+
 ```sh
 harness-codex routing --adaptive on
 harness-codex routing --adaptive status

@@ -57,7 +57,9 @@ def register_project_commands(subparsers) -> None:
             parser.add_argument('--retrieval', choices=('auto', 'off'), default='auto' if command == 'init' else None,
                                 help='Prepare Graft and Jev shadow advice on init (Jev needs TYPESAFE_API_KEY for queries), or disable retrieval. Config/reset preserve choices unless specified.')
             parser.add_argument('--maintenance', choices=('off', 'suggest', 'auto'),
-                                help='Opt into bounded maintenance after configuration; auto may update existing skills only.')
+                                help='Project maintenance after configuration; interactive init asks when omitted. Auto may update existing skills only.')
+            parser.add_argument('--adaptive', choices=('on', 'off'),
+                                help='Use recorded outcomes for Auto advice; interactive init asks when omitted. Does not select Auto or grade quality automatically.')
             parser.add_argument('--interactive', action='store_true', help='Use the native Codex conversation screen instead of progress output.')
             parser.add_argument('--details', action='store_true', help='Show the model summary and native session ID after configuration.')
             parser.add_argument('--timeout', type=float, default=1800, help='Configuration time limit in seconds (default: 1800).')
@@ -571,11 +573,8 @@ def _finish_configuration(source_root: Path, root: Path, command: list[str], goa
     if outcome and outcome.created_session:
         from .native_session import archive_configuration
         archive_configuration(command, root, outcome.session_id)
-    if getattr(args, 'maintenance', None) is not None:
-        from .maintenance import enable
-        enable(source_root, root, args.maintenance)
-    from .maintenance import report_policy
-    report_policy(source_root, root)
+    from .project_preferences import configure
+    configure(args, source_root, root)
     _configure_retrieval(args, source_root, root)
     _configure_integration(args, source_root)
     print('Next: codex (from this project).')
@@ -626,16 +625,11 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                 else:
                     print("Review harness-codex status/doctor before use. For a supported upgrade or stale evidence, supply --goal/--goal-file to init for a reviewed update.")
                 if args._existing_init_noop:
-                    from .maintenance import report_policy
+                    from .project_preferences import configure
+                    configure(args, source_root, root)
                     if existing_status['state'] in {'configured', 'stale-evidence'}:
                         _configure_retrieval(args, source_root, root)
                     _configure_integration(args, source_root)
-                    if getattr(args, 'maintenance', None) is not None:
-                        from .maintenance import enable
-                        enable(source_root, root, args.maintenance)
-                        report_policy(source_root, root)
-                        return 0
-                    report_policy(source_root, root)
                     print("The generated harness was retained and Codex was not launched. Supply --goal/--goal-file to init for an explicit reviewed update.")
                     return 1 if existing_status["state"] == "invalid" else 0
             elif os.path.lexists(root / ".agents/skills/harness"):

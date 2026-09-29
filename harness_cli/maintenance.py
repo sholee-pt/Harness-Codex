@@ -19,7 +19,7 @@ def register(commands):
     parser = commands.add_parser('maintenance', help='Configure bounded project maintenance or inspect its status.')
     parser.add_argument('--project', type=Path, default=Path.cwd())
     parser.add_argument('--mode', choices=('off', 'suggest', 'auto'))
-    parser.add_argument('--schedule', choices=('adaptive', 'fixed'))
+    parser.add_argument('--schedule', choices=('adaptive', 'fixed'), help='Advanced review interval policy; new policies default to adaptive. Omit to preserve the current setting.')
     parser.add_argument('--max-reviews-per-day', type=int)
     parser.add_argument('--min-interval-seconds', type=int)
     parser.add_argument('--max-interval-seconds', type=int)
@@ -269,12 +269,3 @@ def run(args, source_root):
         for change in result.get('changes', []):
             print(f"  {change['id']}: {change['status']} | observations: {change['observations']} | effect: not established")
     return 0
-
-
-def report_policy(source_root, root):
-    try:
-        result = helper(source_root, root, ['status'])
-        print('Maintenance: ' + result['mode'] + '. Existing preferences preserved; use harness-codex maintenance --mode suggest|auto to opt in.')
-        print('Task-effect comparison: opt-in. Adaptive Auto evidence: use harness-codex routing --adaptive status.')
-    except (ValueError, OSError, subprocess.SubprocessError):
-        print('Maintenance status unavailable; run harness-codex maintenance. No preference was changed.')

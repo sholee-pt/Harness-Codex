@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.26.0‑beta`](#harness-for-codex-v0260-beta) | Schema 3 | Schema 7 | Schema 2 | Choose maintenance and adaptive Auto preferences during init |
 | [`v0.25.2‑beta`](#harness-for-codex-v0252-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve per-request execution context in adaptive routing evidence |
 | [`v0.25.1‑beta`](#harness-for-codex-v0251-beta) | Schema 3 | Schema 7 | Schema 2 | Exclude mixed or stale Auto observations and preserve native execution provenance |
 | [`v0.25.0‑beta`](#harness-for-codex-v0250-beta) | Schema 3 | Schema 7 | Schema 2 | Adaptive maintenance cadence and opt-in observed Auto advice without additional model calls |
@@ -76,6 +77,13 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.26.0-beta
+
+- Offer explained maintenance and observed-outcome Auto preferences during interactive init, preserving current choices and collecting both selections before writing either.
+- Support explicit `init/config/reset --adaptive on|off` alongside `--maintenance`; JSON, redirected input/output and previews never show these menus. Basic Auto and manual model selection remain separate.
+- Show commands for changing and inspecting preferences, and retain them in the single managed project guide. Keep maintenance scheduling as an advanced option without resetting existing policy.
+- Require the new preference helper in current tool packages while retaining previous-version installation compatibility.
 
 ## Harness for Codex v0.25.2-beta
 

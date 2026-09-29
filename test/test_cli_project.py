@@ -112,6 +112,19 @@ class ProjectCliTests(unittest.TestCase):
         harness_apply.apply_application(harness_apply.build_application(self.root, minimal_plan(self.root)))
         project._sync_guide(REPO_ROOT, self.root)
 
+    def test_preferences_follow_successful_init_and_existing_harness_but_not_preview(self):
+        with mock.patch('harness_cli.project_preferences.configure') as preferences:
+            self.assertEqual(self.run_cli('init', '--dry-run')[0], 0)
+            self.assertEqual(self.run_cli('init', '--install-only')[0], 0)
+            self.assertEqual(self.run_cli('config')[0], 1)  # No generated manifest yet.
+            preferences.assert_not_called()
+            os.environ['FAKE_CODEX_MODE'] = 'generate'
+            self.assertEqual(self.run_cli('init')[0], 0)
+            self.assertEqual(preferences.call_count, 1)
+            self.assertEqual(self.run_cli('init')[0], 0)
+            self.assertEqual(preferences.call_count, 2)
+            self.assertIn('harness-codex routing --adaptive', (self.root / '.harness/GUIDE.md').read_text())
+
     def test_dry_run_does_not_need_codex_or_terminal_and_does_not_write(self):
         (self.root / "user.txt").write_text("keep", encoding="utf-8")
         before = snapshot(self.root)

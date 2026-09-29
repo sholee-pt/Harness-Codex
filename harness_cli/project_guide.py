@@ -38,6 +38,9 @@ def sync(root, *, version, revision, stale=False):
             '- Editing files does not authorize commit or push. Honor only explicit authorization within its scope.\n\n'
             '## Maintenance\n\n'
             '- Use `harness-codex config` to review project responsibilities and update the existing harness.\n'
+            '- Change maintenance with `harness-codex maintenance --mode suggest` (off/suggest/auto). Auto permits bounded existing-skill corrections and requires trusted native hooks; reviews use conversation tokens.\n'
+            '- Change observed-outcome advice with `harness-codex routing --adaptive on` (on/off). It makes no extra model call, requires recorded quality feedback and only advises Auto selections; manual models are preserved.\n'
+            '- Inspect current settings with `harness-codex maintenance` and `harness-codex routing --adaptive status`. These commands do not launch a review. Normal use does not require changing the maintenance schedule.\n'
             '- Ask Codex to re-read current project instructions when an existing conversation needs a configuration refresh; no automatic user turn is added.\n'
             '- Use `harness-codex doctor --json` for full static diagnostics. Static validity does not prove live agent loading or task quality.\n'
             '- Maintain this guide at `.harness/GUIDE.md` only. Do not create dated/versioned copies. The CLI refreshes it after init/config; native conversations do not rewrite it.\n').encode('utf-8')
