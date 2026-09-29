@@ -139,6 +139,15 @@ See the [generator maintenance protocol](../.agents/skills/harness/references/ma
 
 ## Change outcomes and recovery
 
+Maintenance status lists opaque activity markers when a session or child agent blocks a review. A crash can leave a marker behind if the native stop event never arrives. After checking that the selected native session **and all its child agents have stopped**, run:
+
+```sh
+harness-codex maintenance --project PATH
+harness-codex maintenance --project PATH recover-session --session-ref REF
+```
+
+Confirm with Enter/`y`/`yes`, or cancel with `n`/`no`. This releases only that activity marker and its review lease; concerns, change history, other sessions and project files are retained. Use `--yes` only after making the same check in automation. Elapsed time alone never releases native writers. A pending file transaction or interrupted change still requires its separate recovery procedure.
+
 Each automatic correction records an opaque change ID, before/after manifest revisions, reason/evidence references and the prior/new hashes of affected skills. The bounded user-local history stores no skill text, model IDs, paths or transcripts. Local state schemas 1 and 2 are read as schema 3 in memory; a status read does not rewrite them and existing off/suggest/auto choices remain unchanged. Init/config display maintenance and adaptive Auto preferences; controlled task-effect comparison remains a separate opt-in procedure.
 
 Applied changes start as `observing`: instructions updated, effect not established. The next hooked request carries a one-time revision notice and change ID. Record an outcome only when it is explicitly related to that correction, with the revision actually used by the task. Known model, effort, task category and runtime identity are hashed into a context group; unknown context remains descriptive and cannot trigger a comparison. Multiple records of one work item count once. Two independent, externally reported adverse outcomes in one known context group pause further automatic changes (`review-required`); they do not prove causality or stop ordinary work. Positive reports never automatically become a measured quality/cost benefit.

@@ -129,11 +129,17 @@ if [[ "$activate" != skip && "$modify_path" == true && -t 1 && -r /dev/tty && -w
   open_shell=false
   if [[ "$activate" == shell ]]; then open_shell=true
   else
-    printf '\nOpen a new Bash with ~/.bashrc loaded now? [Enter/yes opens, no skips]\nThis is a child shell; exit returns to your original shell. ' > /dev/tty
-    answer=''
-    if IFS= read -r answer < /dev/tty; then
-      case "$answer" in ''|yes|y|Y) open_shell=true ;; esac
-    fi
+    printf '\nThis is a child shell; exit returns to your original shell.\n' > /dev/tty
+    while true; do
+      printf 'Open a new Bash with ~/.bashrc loaded now? [Y/n]: ' > /dev/tty
+      IFS= read -r answer < /dev/tty || break
+      answer=$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      case "$answer" in
+        ''|yes|y) open_shell=true; break ;;
+        no|n) break ;;
+        *) printf 'Press Enter or type y/yes to approve; type n/no to decline.\n' > /dev/tty ;;
+      esac
+    done
   fi
   if [[ "$open_shell" == true ]]; then
     printf 'Opening Bash with ~/.bashrc applied. Try: harness-codex --version\n'

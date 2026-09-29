@@ -177,8 +177,19 @@ def sync_directory(path: Path) -> bool:
     return True
 
 
+def io_path(path: Path) -> Path:
+    """Use the extended Windows path only at filesystem I/O boundaries."""
+    if os.name == "nt":
+        absolute = str(path.absolute())
+        if not absolute.startswith("\\\\?\\"):
+            path = Path("\\\\?\\UNC\\" + absolute[2:] if absolute.startswith("\\\\") else "\\\\?\\" + absolute)
+    return path
+
+
 def atomic_write_bytes(path: Path, data: bytes, *, mode: int | None = None) -> None:
     """Replace a file atomically after writing it in the same directory."""
+    parent = path.parent
+    path = io_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_name: str | None = None
     try:
@@ -197,7 +208,7 @@ def atomic_write_bytes(path: Path, data: bytes, *, mode: int | None = None) -> N
             temporary_name = temporary.name
         os.replace(temporary_name, path)
         temporary_name = None
-        sync_directory(path.parent)
+        sync_directory(parent)
     finally:
         if temporary_name is not None:
             Path(temporary_name).unlink(missing_ok=True)
@@ -224,7 +235,7 @@ def resolve_inside(root: Path, relative: str, *, must_exist: bool = False) -> Pa
     for part in candidate_rel.parts:
         candidate = candidate / part
         try:
-            metadata = candidate.lstat()
+            metadata = io_path(candidate).lstat()
         except FileNotFoundError:
             continue
         if stat.S_ISLNK(metadata.st_mode) or (
@@ -235,7 +246,7 @@ def resolve_inside(root: Path, relative: str, *, must_exist: bool = False) -> Pa
     candidate = candidate.resolve()
     if candidate == resolved_root or resolved_root not in candidate.parents:
         raise StateError(f"managed path escapes workspace root: {relative}")
-    if must_exist and not candidate.is_file():
+    if must_exist and not io_path(candidate).is_file():
         raise StateError(f"managed file is missing: {relative}")
     return candidate
 

@@ -41,6 +41,12 @@ review duration. Changing scheduling limits does not authorize broader edits.
 Unknown native-session token usage stays unknown; this interface cannot enforce a
 hard model-token budget. Stop early rather than expanding a maintenance review.
 
+Status may show activity markers left by interrupted sessions. Never infer that
+writers stopped from elapsed time or a failed connection. Use `recover-session`
+only after explicit confirmation that the selected session and all its children
+have stopped; never pass `--yes` merely to unblock your own review. Recovery keeps
+other sessions, concerns and change history, and does not repair file transactions.
+
 Read the current project-harness and the specific evidence needed for the concern.
 Choose: keep unchanged, improve existing routing guidance, improve an existing skill,
 or propose a separate configuration review. New roles are considered only when

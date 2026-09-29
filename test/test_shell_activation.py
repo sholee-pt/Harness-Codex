@@ -24,6 +24,7 @@ class ShellActivationTests(unittest.TestCase):
         self.stack.enter_context(mock.patch.object(shell, 'os', SimpleNamespace(name='posix')))
         self.stack.enter_context(mock.patch.object(shell.Path, 'home', return_value=self.home))
         terminal = SimpleNamespace(isatty=lambda: True)
+        self.stack.enter_context(mock.patch.object(sys.stdin, 'isatty', return_value=True))
         self.stack.enter_context(mock.patch.object(shell, 'sys', SimpleNamespace(stdin=terminal, stdout=terminal, stderr=io.StringIO())))
         self.stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
         self.stack.enter_context(mock.patch.object(shell.shutil, 'which', return_value='/bin/bash'))

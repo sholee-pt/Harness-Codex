@@ -43,7 +43,7 @@ class UninstallTests(unittest.TestCase):
     def test_dry_run_cancel_eof_and_nonterminal_never_modify_installation(self):
         before = files(self.base)
         self.assertEqual(self.invoke(tty=False, dry_run=True)[0], 0)
-        for answer in ('', 'no', 'y', 'YES', 'yes '):
+        for answer in ('n', 'no', ' NO '):
             self.assertIn('cancelled', self.invoke(answer)[1])
         with self.assertRaisesRegex(ValueError, 'interactive terminal'):
             self.invoke(tty=False)
@@ -232,9 +232,9 @@ class UninstallTests(unittest.TestCase):
         adapted = ('import runpy,sys; sys.stdin.isatty=lambda:True; sys.stdout.isatty=lambda:True; '
                    'sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name="__main__")')
         confirmed = subprocess.run([sys.executable, '-B', '-c', adapted, str(data / 'launcher.py'), 'uninstall'],
-                                   input='yes\n', capture_output=True, text=True, timeout=60)
+                                   input='\n', capture_output=True, text=True, timeout=60)
         self.assertEqual(confirmed.returncode, 0, confirmed.stdout + confirmed.stderr)
-        self.assertIn('Type yes', confirmed.stdout)
+        self.assertIn('[Y/n]', confirmed.stdout)
         self.assertIn('Uninstalled harness-codex', confirmed.stdout)
         self.assertNotIn('could not be cleaned', confirmed.stdout)
         self.assertFalse(data.exists())

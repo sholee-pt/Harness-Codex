@@ -78,7 +78,7 @@ def choose(progress, title, labels, *, back=False, summary=(), initial=0):
     initial = initial if 0 <= initial < len(labels) else 0
     stream = progress.stream
     try:
-        interactive = sys.stdin.isatty() and stream.isatty() and os.environ.get('TERM') != 'dumb'
+        interactive = sys.stdin.isatty() and stream.isatty() and os.environ.get('TERM') != 'dumb' and shutil.get_terminal_size((80, 24)).lines >= 4
         if interactive:
             sys.stdin.fileno()
             stream.fileno()
@@ -97,7 +97,7 @@ def choose(progress, title, labels, *, back=False, summary=(), initial=0):
             if back and answer.casefold() == 'b':
                 return -1
             if not answer:
-                return initial
+                return -1 if initial == back_index else initial
             if answer.isascii() and answer.isdecimal() and len(answer) < 5 and int(answer) < len(labels):
                 return -1 if int(answer) == back_index else int(answer)
             progress.line(f'Enter a number from 0 to {len(labels) - 1}.')
@@ -109,18 +109,30 @@ def choose(progress, title, labels, *, back=False, summary=(), initial=0):
     try:
         with keyboard() as read:
             while True:
+                size = shutil.get_terminal_size((80, 24))
+                height = max(1, size.lines - 1)
                 if drawn:
-                    stream.write(f'\x1b[{drawn}A')
-                width = max(1, shutil.get_terminal_size((80, 24)).columns - 1)
-                start = max(0, min(index - 4, len(labels) - 8))
-                rows = ['', *summary, '', title, '', 'Up/Down: select   Enter: accept   Esc: cancel' + ('   b/Left: back' if back else ''), '']
+                    stream.write(f'\x1b[{min(drawn, height)}A')
+                    for _ in range(min(drawn, height)):
+                        stream.write('\r\x1b[2K\n')
+                    stream.write(f'\x1b[{min(drawn, height)}A')
+                width = max(1, size.columns - 1)
+                help_text = 'Up/Down: select   Enter: accept   Esc: cancel' + ('   b/Left: back' if back else '')
+                if height >= len(summary) + 15:
+                    rows = ['', *summary, '', title, '', help_text, '']
+                else:
+                    available_summary = max(0, height - 4)
+                    rows = [*list(summary)[-available_summary:], title] if available_summary else [title] if height >= 3 else []
+                    if height >= 3:
+                        rows.append(help_text)
+                count = min(8, max(1, height - len(rows)))
+                start = max(0, min(index - count // 2, len(labels) - count))
                 rows = [fit_row(row, width) for row in rows]
                 if color:
-                    rows[len(summary) + 2] = '\x1b[1;36m' + rows[len(summary) + 2] + '\x1b[0m'
-                for choice in range(start, min(len(labels), start + 8)):
+                    rows = ['\x1b[1;36m' + row + '\x1b[0m' if row == fit_row(title, width) else row for row in rows]
+                for choice in range(start, min(len(labels), start + count)):
                     text = fit_row(('> ' if choice == index else '  ') + labels[choice], width)
                     rows.append(('\x1b[1;36m' + text + '\x1b[0m') if color and choice == index else text)
-                rows.append('')
                 for row in rows:
                     stream.write('\r\x1b[2K' + row + '\n')
                 stream.flush()
@@ -134,6 +146,7 @@ def choose(progress, title, labels, *, back=False, summary=(), initial=0):
     finally:
         with progress.lock:
             if drawn:
+                drawn = min(drawn, max(1, shutil.get_terminal_size((80, 24)).lines - 1))
                 stream.write(f'\x1b[{drawn}A')
                 for _ in range(drawn):
                     stream.write('\r\x1b[2K\n')

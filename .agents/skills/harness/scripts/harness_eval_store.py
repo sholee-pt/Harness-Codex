@@ -120,17 +120,40 @@ class EvaluationStore:
         self.ids = ids or types.RandomUuidProvider()
         self.lock_timeout = lock_timeout
 
+    def checked(self, path: Path) -> Path:
+        try:
+            return harness_state.resolve_inside(self.root, path.relative_to(self.root).as_posix())
+        except (ValueError, harness_state.StateError) as exc:
+            raise StoreError(f"unsafe evaluation state path: {exc}") from exc
+
+    def tree(self, directory: Path) -> list[Path]:
+        """Preflight the entire selected collection before any destructive work."""
+        directory = self.checked(directory)
+        if not directory.exists():
+            return []
+        result, pending = [], [directory]
+        while pending:
+            for item in pending.pop().iterdir():
+                item = self.checked(item)
+                result.append(item)
+                if item.is_dir():
+                    pending.append(item)
+        return sorted(result)
+
+    def records(self, directory: Path) -> list[Path]:
+        return [path for path in self.tree(directory) if path.suffix == ".json" and path.is_file()]
+
     @property
     def registry_path(self) -> Path:
-        return self.root / "registry" / "repositories.json"
+        return self.checked(self.root / "registry" / "repositories.json")
 
     @property
     def registry_lock_path(self) -> Path:
-        return self.root / "registry" / "repositories.lock"
+        return self.checked(self.root / "registry" / "repositories.lock")
 
     @property
     def secret_path(self) -> Path:
-        return self.root / "secret.key"
+        return self.checked(self.root / "secret.key")
 
     def _initialize_root(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -140,11 +163,11 @@ class EvaluationStore:
         # Establish the shared parent before any UUID path is resolved. On
         # Windows a concurrently-created parent can change realpath's missing
         # path error from 3 to 2 and leave only one result with a \\?\ prefix.
-        (self.root / "repositories").mkdir(parents=True, exist_ok=True)
+        self.checked(self.root / "repositories").mkdir(parents=True, exist_ok=True)
 
     def _load_or_create_secret(self) -> bytes:
         self._initialize_root()
-        lock_path = self.root / "secret.lock"
+        lock_path = self.checked(self.root / "secret.lock")
         with FileLock(lock_path, timeout=self.lock_timeout):
             if self.secret_path.exists():
                 return self._read_secret_after_creation()
@@ -241,7 +264,7 @@ class EvaluationStore:
 
     def _ensure_repository_dirs(self, repository_id: str) -> Path:
         root = self.repository_root(repository_id)
-        for relative in (
+        directories = [self.checked(root / relative) for relative in (
             "runs/pending",
             "runs/completed",
             "annotations",
@@ -250,13 +273,14 @@ class EvaluationStore:
             "proposals",
             "quarantine",
             "locks",
-        ):
-            (root / relative).mkdir(parents=True, exist_ok=True)
+        )]
+        for directory in directories:
+            directory.mkdir(parents=True, exist_ok=True)
         return root
 
     def repository_lock(self, repository_id: str) -> FileLock:
         root = self._ensure_repository_dirs(repository_id)
-        return FileLock(root / "locks" / "repository.lock", timeout=self.lock_timeout)
+        return FileLock(self.checked(root / "locks" / "repository.lock"), timeout=self.lock_timeout)
 
     def _run_paths(self, repository_id: str, run_id: str) -> tuple[Path, Path]:
         self._validate_repository_id(repository_id)
@@ -267,7 +291,7 @@ class EvaluationStore:
         if canonical_run_id != run_id.lower():
             raise StoreError("run id must use canonical UUID form")
         root = self._ensure_repository_dirs(repository_id) / "runs"
-        return root / "pending" / f"{run_id}.json", root / "completed" / f"{run_id}.json"
+        return self.checked(root / "pending" / f"{run_id}.json"), self.checked(root / "completed" / f"{run_id}.json")
 
     def create_pending(self, record: dict[str, Any]) -> None:
         sealed = types.seal_record(record)
@@ -322,7 +346,7 @@ class EvaluationStore:
         return record
 
     def find_run(self, run_id: str) -> tuple[str, dict[str, Any]]:
-        repositories_root = self.root / "repositories"
+        repositories_root = self.checked(self.root / "repositories")
         if not repositories_root.is_dir():
             raise StoreError(f"run does not exist: {run_id}")
         matches: list[tuple[str, Path]] = []
@@ -330,7 +354,7 @@ class EvaluationStore:
             if not repository.is_dir() or not REPOSITORY_ID_RE.fullmatch(repository.name):
                 continue
             for state in ("completed", "pending"):
-                candidate = repository / "runs" / state / f"{run_id}.json"
+                candidate = self.checked(repository / "runs" / state / f"{run_id}.json")
                 if candidate.is_file():
                     matches.append((repository.name, candidate))
         if len(matches) != 1:
@@ -345,7 +369,7 @@ class EvaluationStore:
             raise StoreError("annotation repository id does not match the storage scope")
         self.read_run(repository_id, sealed["runId"], allow_pending=False)
         directory = self._ensure_repository_dirs(repository_id) / "annotations" / sealed["runId"]
-        path = directory / f"{sealed['annotationId']}.json"
+        path = self.checked(directory / f"{sealed['annotationId']}.json")
         with self.repository_lock(repository_id):
             if path.exists():
                 raise StoreError("annotation id already exists")
@@ -366,10 +390,11 @@ class EvaluationStore:
         return path
 
     def _read_json_records(self, directory: Path, validator, *, skip_invalid: bool = False) -> list[dict[str, Any]]:
+        directory = self.checked(directory)
         if not directory.is_dir():
             return []
         records: list[dict[str, Any]] = []
-        for path in sorted(directory.rglob("*.json")):
+        for path in self.records(directory):
             try:
                 value = json.loads(path.read_text(encoding="utf-8"))
                 validator(value)
@@ -387,7 +412,7 @@ class EvaluationStore:
             raise StoreError("observation repository id does not match the storage scope")
         self.read_run(repository_id, sealed["runId"], allow_pending=False)
         directory = self._ensure_repository_dirs(repository_id) / "observations"
-        path = directory / f"{sealed['observationId']}.json"
+        path = self.checked(directory / f"{sealed['observationId']}.json")
         with self.repository_lock(repository_id):
             if path.exists():
                 raise StoreError("observation id already exists")
@@ -422,12 +447,14 @@ class EvaluationStore:
                 raise ValueError
         except (ValueError, AttributeError) as exc:
             raise StoreError("observation id must be a canonical UUID") from exc
-        repositories_root = self.root / "repositories"
+        repositories_root = self.checked(self.root / "repositories")
         matches: list[tuple[str, Path]] = []
         if repositories_root.is_dir():
             for repository in repositories_root.iterdir():
-                candidate = repository / "observations" / f"{observation_id}.json"
-                if candidate.is_file() and REPOSITORY_ID_RE.fullmatch(repository.name):
+                if not REPOSITORY_ID_RE.fullmatch(repository.name):
+                    continue
+                candidate = self.checked(repository / "observations" / f"{observation_id}.json")
+                if candidate.is_file():
                     matches.append((repository.name, candidate))
         if len(matches) != 1:
             raise StoreError(f"observation id resolved to {len(matches)} records: {observation_id}")
@@ -463,7 +490,7 @@ class EvaluationStore:
             raise StoreError("auxiliary filename id does not match the record id")
         if repository_id != sealed["repositoryId"]:
             raise StoreError("auxiliary repository id does not match the storage scope")
-        path = self._ensure_repository_dirs(repository_id) / kind / f"{record_id}.json"
+        path = self.checked(self._ensure_repository_dirs(repository_id) / kind / f"{record_id}.json")
         with self.repository_lock(repository_id):
             if path.exists():
                 raise StoreError(f"{kind[:-1]} id already exists")
@@ -479,7 +506,7 @@ class EvaluationStore:
         return path
 
     def list_runs(self, repository_id: str | None = None) -> list[dict[str, Any]]:
-        repositories_root = self.root / "repositories"
+        repositories_root = self.checked(self.root / "repositories")
         if not repositories_root.is_dir():
             return []
         roots = [self.repository_root(repository_id)] if repository_id else [
@@ -488,10 +515,10 @@ class EvaluationStore:
         result: list[dict[str, Any]] = []
         for root in roots:
             for state in ("pending", "completed"):
-                directory = root / "runs" / state
+                directory = self.checked(root / "runs" / state)
                 if not directory.is_dir():
                     continue
-                for path in sorted(directory.glob("*.json")):
+                for path in self.records(directory):
                     try:
                         record = json.loads(path.read_text(encoding="utf-8"))
                         types.validate_run_record(record)
@@ -510,6 +537,37 @@ class EvaluationStore:
                         result.append({"repositoryId": root.name, "path": path.name, "recordState": "corrupt"})
         return sorted(result, key=lambda item: (item.get("startedAt", ""), item.get("runId", item.get("path", ""))))
 
+    def _validate_stored_record(self, repository_id, path, value):
+        root = self.repository_root(repository_id)
+        relative = path.relative_to(root)
+        record_kind = relative.parts[0] if relative.parts else ""
+        if record_kind == "runs":
+            types.validate_run_record(value)
+            expected_path = f"runs/{value['recordState']}/{value['runId']}.json"
+            stored_repository = value["repository"]["repositoryId"]
+        elif record_kind == "annotations":
+            types.validate_annotation(value)
+            expected_path = f"annotations/{value['runId']}/{value['annotationId']}.json"
+            stored_repository = value.get("repositoryId", repository_id)
+        elif record_kind == "observations":
+            types.validate_observation_record(value)
+            expected_path = f"observations/{value['observationId']}.json"
+            stored_repository = value["repositoryId"]
+        elif record_kind == "comparisons":
+            types.validate_comparison_record(value)
+            expected_path = f"comparisons/{value['comparisonId']}.json"
+            stored_repository = value["repositoryId"]
+        elif record_kind == "proposals":
+            types.validate_proposal_record(value)
+            expected_path = f"proposals/{value['proposalId']}.json"
+            stored_repository = value["repositoryId"]
+        else:
+            raise types.EvaluationError("unknown evaluation record type")
+        if relative.as_posix() != expected_path:
+            raise types.EvaluationError("record filename or directory does not match its identity")
+        if stored_repository != repository_id:
+            raise types.EvaluationError("record repository id does not match the storage scope")
+
     def export_repository(self, repository_id: str) -> dict[str, Any]:
         root = self._ensure_repository_dirs(repository_id)
         included: list[dict[str, Any]] = []
@@ -518,12 +576,12 @@ class EvaluationStore:
             snapshot = sorted(
                 path
                 for directory in ("runs/completed", "annotations", "observations", "comparisons", "proposals")
-                for path in (root / directory).rglob("*.json")
+                for path in self.records(root / directory)
             )
             for path in snapshot:
                 try:
                     value = json.loads(path.read_text(encoding="utf-8"))
-                    types.verify_integrity(value)
+                    self._validate_stored_record(repository_id, path, value)
                 except (OSError, UnicodeError, json.JSONDecodeError, types.EvaluationError):
                     excluded += 1
                     continue
@@ -558,18 +616,18 @@ class EvaluationStore:
         removed = 0
         preserved = 0
         with self.repository_lock(repository_id):
-            pending = list((root / "runs" / "pending").glob("*.json"))
+            pending = self.records(root / "runs/pending")
             preserved = len(pending)
-            for relative in ("runs/completed", "annotations", "observations", "comparisons", "proposals", "quarantine"):
-                directory = root / relative
-                if not directory.exists():
-                    continue
-                for path in sorted(directory.rglob("*.json"), reverse=True):
+            snapshot = [path for relative in ("runs/completed", "annotations", "observations", "comparisons", "proposals", "quarantine")
+                        for path in self.tree(root / relative)]
+            for path in reversed(snapshot):
+                path = self.checked(path)
+                if path.is_file() and path.suffix == ".json":
                     path.unlink()
                     removed += 1
-                for directory_path in sorted((item for item in directory.rglob("*") if item.is_dir()), reverse=True):
+                elif path.is_dir():
                     try:
-                        directory_path.rmdir()
+                        path.rmdir()
                     except OSError:
                         pass
         # Keep opaque identities stable: a writer may already have registered
@@ -589,39 +647,12 @@ class EvaluationStore:
             candidates = sorted(
                 path
                 for relative in ("runs/pending", "runs/completed", "annotations", "observations", "comparisons", "proposals")
-                for path in (root / relative).rglob("*.json")
+                for path in self.records(root / relative)
             )
             for path in candidates:
                 try:
                     value = json.loads(path.read_text(encoding="utf-8"))
-                    relative = path.relative_to(root)
-                    record_kind = relative.parts[0] if relative.parts else ""
-                    if record_kind == "runs":
-                        types.validate_run_record(value)
-                        expected_path = f"runs/{value['recordState']}/{value['runId']}.json"
-                        stored_repository = value["repository"]["repositoryId"]
-                    elif record_kind == "annotations":
-                        types.validate_annotation(value)
-                        expected_path = f"annotations/{value['runId']}/{value['annotationId']}.json"
-                        stored_repository = value.get("repositoryId", repository_id)
-                    elif record_kind == "observations":
-                        types.validate_observation_record(value)
-                        expected_path = f"observations/{value['observationId']}.json"
-                        stored_repository = value["repositoryId"]
-                    elif record_kind == "comparisons":
-                        types.validate_comparison_record(value)
-                        expected_path = f"comparisons/{value['comparisonId']}.json"
-                        stored_repository = value["repositoryId"]
-                    elif record_kind == "proposals":
-                        types.validate_proposal_record(value)
-                        expected_path = f"proposals/{value['proposalId']}.json"
-                        stored_repository = value["repositoryId"]
-                    else:
-                        raise types.EvaluationError("unknown evaluation record type")
-                    if relative.as_posix() != expected_path:
-                        raise types.EvaluationError("record filename or directory does not match its identity")
-                    if stored_repository != repository_id:
-                        raise types.EvaluationError("record repository id does not match the storage scope")
+                    self._validate_stored_record(repository_id, path, value)
                 except (OSError, UnicodeError, json.JSONDecodeError, types.EvaluationError) as exc:
                     try:
                         digest = harness_state.digest_bytes(path.read_bytes()) if path.is_file() else "missing"
@@ -629,7 +660,7 @@ class EvaluationStore:
                         digest = "unreadable"
                     invalid.append({"path": str(path.relative_to(root)).replace("\\", "/"), "digest": digest, "error": type(exc).__name__})
                     if quarantine and digest not in {"missing", "unreadable"} and path.is_file():
-                        target = root / "quarantine" / f"{path.stem}-{digest[:12]}.json"
+                        target = self.checked(root / "quarantine" / f"{path.stem}-{digest[:12]}.json")
                         target.parent.mkdir(parents=True, exist_ok=True)
                         os.replace(path, target)
                         moved += 1
@@ -650,7 +681,7 @@ class EvaluationStore:
                         "error": conflict["code"],
                     })
             annotation_root = root / "annotations"
-            annotation_runs = [item for item in annotation_root.iterdir() if item.is_dir()] if annotation_root.is_dir() else []
+            annotation_runs = [item for item in self.tree(annotation_root) if item.is_dir() and item.parent == annotation_root]
             for run_directory in annotation_runs:
                 state = evaluation_view.annotation_state(
                     self._read_json_records(run_directory, types.validate_annotation, skip_invalid=True),
@@ -669,5 +700,5 @@ class EvaluationStore:
                     "discoveredAt": types.timestamp_text(self.clock.now_utc()),
                     "items": invalid,
                 }
-                _atomic_json(root / "quarantine" / "index.json", index)
+                _atomic_json(self.checked(root / "quarantine" / "index.json"), index)
         return {"repositoryId": repository_id, "invalid": invalid, "quarantined": moved}

@@ -39,7 +39,10 @@ def register(commands):
     resolve.add_argument('--decision', choices=('keep', 'rollback'), required=True)
     resolve.add_argument('--plan', type=Path)
     clear = actions.add_parser('clear', help='Disable maintenance and reset this project\'s local observations; project files are retained.')
-    clear.add_argument('--yes', action='store_true', required=True)
+    clear.add_argument('--yes', action='store_true')
+    recover = actions.add_parser('recover-session', help='Release a stale activity marker after confirming the native session and its children stopped.')
+    recover.add_argument('--session-ref', required=True, help='Opaque ref from maintenance status.')
+    recover.add_argument('--yes', action='store_true')
     signal = actions.add_parser('signal', help='Record a specifically identified recurring concern without launching a review.')
     signal.add_argument('--reason', choices=('scope-changed', 'workflow-gap', 'routing-mismatch', 'verification-gap', 'user-request'), required=True)
     signal.add_argument('--evidence', required=True)
@@ -257,8 +260,18 @@ def run(args, source_root):
         if args.mode is not None or args.install_hooks or policy:
             raise ValueError('Choose a maintenance action or settings change, not both')
         arguments = [args.maintenance_action]
-        if args.maintenance_action == 'clear':
+        if args.maintenance_action in {'clear', 'recover-session'}:
+            question = ('Disable maintenance and clear local observations for this project?' if args.maintenance_action == 'clear' else
+                        'Have this session and all its child agents stopped? Release its activity marker?')
+            if not args.yes:
+                if args.json or not sys.stdin.isatty() or not sys.stdout.isatty():
+                    raise ValueError('Use --yes after reviewing the selected maintenance action')
+                if not ui.confirm(question):
+                    print('Maintenance action cancelled. Nothing was changed.')
+                    return 0
             arguments += ['--yes']
+            if args.maintenance_action == 'recover-session':
+                arguments += ['--session-ref', args.session_ref]
         elif args.maintenance_action == 'signal':
             arguments += ['--reason', args.reason, '--evidence', args.evidence, '--observation', args.observation]
         elif args.maintenance_action == 'finish':
@@ -303,6 +316,10 @@ def run(args, source_root):
         print(f'Maintenance: {result["mode"]}; eligible concerns: {result["pending"]}; reviews: {result["metrics"]["reviews"]}.')
         print('Automatic changes: existing skills only. Quality benefit is unmeasured; token counts are not a billing total.')
         print('Automatic changes paused: ' + ('yes' if result.get('automaticChangesPaused') else 'no'))
+        for session in result.get('blockingSessions', []):
+            print(f"  Active session marker: {session['ref']} | active: {session['active']} | children: {session['children']}")
+        if result.get('blockingSessions'):
+            print('If a marked session and all its children have stopped, use maintenance --project PATH recover-session --session-ref REF.')
         if result.get('scheduling'):
             timing = result['scheduling']
             print(f"Schedule: {timing['schedule']}; current interval: {timing['intervalSeconds']}s; application window: {timing['applicationSeconds']}s.")

@@ -296,12 +296,12 @@ class ConfigurationProgressTests(unittest.TestCase):
         self.assertEqual(turn['effort'], 'low')
         self.assertEqual(turn['sandboxPolicy'], {'type': 'readOnly', 'networkAccess': False})
 
-    def test_full_access_requires_exact_confirmation_and_is_never_default(self):
-        for answer in ('', 'y', 'yes'):
+    def test_full_access_requires_selected_permission_and_separate_confirmation(self):
+        for answer in ('', 'y', 'yes', 'n', 'no'):
             with self.subTest(answer=answer):
                 self.assertEqual(self.invoke(settings='manual', answers=['', '', '3', answer, '']), 0)
                 turn = [r['params'] for r in self.records() if r['method'] == 'turn/start'][-1]
-                if answer == 'yes':
+                if answer in {'', 'y', 'yes'}:
                     self.assertEqual(turn['sandboxPolicy'], {'type': 'dangerFullAccess'})
                     self.assertEqual(turn['approvalPolicy'], 'never')
                 else:

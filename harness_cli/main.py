@@ -102,7 +102,7 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     install.add_argument("--existing", choices=("ask", "reuse", "reset"), default="ask",
                          help="When installation traces exist, choose whether to reuse or reset Harness tool settings.")
     install.add_argument("--owned-runtime", type=Path, help=argparse.SUPPRESS)
-    uninstall = commands.add_parser("uninstall", help="Remove the CLI and its owned runtime after typing yes; keep project harnesses and reused environments.")
+    uninstall = commands.add_parser("uninstall", help="Remove the CLI and its owned runtime after confirmation [Y/n]; keep project harnesses and reused environments.")
     uninstall.add_argument("--data-dir", type=Path, default=default_data_root())
     uninstall.add_argument("--dry-run", action="store_true", help="Preview tool removal without confirmation or writes.")
     update = commands.add_parser("update", help="Check or install an upstream tool release without changing project files.")
@@ -273,10 +273,11 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
             if not pinned:
                 action = ((lambda data_root, **kw: release_updates.check(data_root, timeout=kw['timeout'])) if args.check else
                           (lambda data_root, **kw: release_updates.update(data_root, timeout=kw['timeout'])))
-            with ui.Progress('Checking for Harness updates' if args.check else 'Updating Harness'):
+            with ui.Progress('Checking for Harness updates' if args.check else 'Checking and updating Harness') as progress:
                 result = action(args.data_dir, branch=args.branch, repository=args.repository, timeout=args.timeout)
-            ui.report(result, title='Tool update')
-            if not args.check:
+                progress.outcome = 'updated' if result.get('updated') else result.get('status', 'checked')
+            ui.update_report(result)
+            if not args.check and result.get('updated'):
                 from .codex_integration import read as integration_read, install as integration_install
                 if integration_read(args.data_dir) is not None:
                     active = distribution.installed_status(args.data_dir)

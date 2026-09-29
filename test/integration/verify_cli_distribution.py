@@ -58,7 +58,7 @@ def terminal_uninstall(executable: Path, answer: str, env: dict) -> str:
                 if not part:
                     break
                 transcript += part
-                if b'Type yes to uninstall' in transcript and not sent:
+                if b'Uninstall these Harness components? [Y/n]' in transcript and not sent:
                     os.write(master, (answer + '\n').encode())
                     sent = True
             if child.poll() is not None:
@@ -180,9 +180,9 @@ def verify(artifact: Path) -> dict:
         project_before = snapshot(project)
         run([executable, 'uninstall', '--dry-run'], env=env)
         reject([executable, 'uninstall'], 'interactive terminal', input='yes\n', env=env)
-        assert 'cancelled' in terminal_uninstall(executable, 'no', env)
+        assert 'cancelled' in terminal_uninstall(executable, 'n', env)
         assert snapshot(data) == tool_before
-        assert 'Uninstalled harness-codex' in terminal_uninstall(executable, 'yes', env)
+        assert 'Uninstalled harness-codex' in terminal_uninstall(executable, '', env)
         assert not data.exists() and not executable.exists()
         assert snapshot(project) == project_before
         assert '# >>> harness-codex PATH >>>' not in (home / '.bashrc').read_text()

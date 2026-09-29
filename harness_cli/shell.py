@@ -26,11 +26,12 @@ def offer_activation(*, mode='ask', cwd=None):
         return
     if mode == 'ask':
         try:
-            answer = input('Open a new Bash with ~/.bashrc loaded? [Enter/yes opens, no skips]\nThis is a child shell; exit returns to your original shell: ')
+            from .presentation import confirm
+            print('This is a child shell; exit returns to your original shell.')
+            if not confirm('Open a new Bash with ~/.bashrc loaded?'):
+                return
         except (EOFError, KeyboardInterrupt):
             print()
-            return
-        if answer.strip().casefold() not in {'', 'y', 'yes'}:
             return
     print('Opening Bash with ~/.bashrc applied. Run codex from this project.', flush=True)
     try:

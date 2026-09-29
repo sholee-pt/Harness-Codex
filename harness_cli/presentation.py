@@ -12,6 +12,43 @@ import time
 JSON_MODE = ContextVar('harness_json_output', default=False)
 
 
+def confirm(message, *, progress=None) -> bool:
+    """Explicit Enter/y/yes accepts; closed or redirected input never does."""
+    progress = progress or Progress('', stream=sys.stdout)
+    while True:
+        try:
+            answer = progress.ask(message + ' [Y/n]: ').strip().casefold()
+        except EOFError:
+            return False
+        if answer in {'', 'y', 'yes'}:
+            return True
+        if answer in {'n', 'no'}:
+            return False
+        progress.line('Press Enter or type y/yes to approve; type n/no to decline.', style='warning')
+
+
+def update_report(value: dict) -> None:
+    if JSON_MODE.get():
+        report(value, title='Tool update')
+        return
+    display = Progress('', stream=sys.stdout)
+    updated = value.get('updated') is True
+    available = value.get('updateAvailable') is True
+    refused = value.get('status') == 'downgrade-refused'
+    title = ('Harness updated' if updated else 'Older version; downgrade refused' if refused else
+             'Harness update available' if available else 'Harness is already up to date')
+    display.line('\n' + title, style='warning' if refused else 'success' if updated or not available else 'heading')
+    display.line('  Current version: ' + clean(value.get('installation', {}).get('version', value.get('currentVersion', 'unknown'))), style='value')
+    display.line('  Latest version:  ' + clean(value.get('availableVersion', 'unknown')), style='value')
+    if updated:
+        display.line('  Previous version: ' + clean(value.get('currentVersion', 'unknown')), style='muted')
+    elif available:
+        display.line('  Run harness-codex update to install it.')
+    else:
+        display.line('  No files were changed.', style='muted')
+    display.line('')
+
+
 def clean(value) -> str:
     # Never let model/tool output inject terminal control sequences.
     return ''.join(c if c in '\n\t' or ord(c) >= 32 and not 127 <= ord(c) < 160 else '?' for c in str(value))
@@ -157,4 +194,4 @@ class Progress:
         with self.lock:
             state = 'stopped' if kind else self.outcome
             self.line(f'  {self.label}: {state} ({int(time.monotonic() - self.started)}s)',
-                      style='error' if kind else 'success' if state == 'finished' else 'warning')
+                      style='error' if kind else 'success' if state in {'finished', 'updated', 'up-to-date'} else 'warning')

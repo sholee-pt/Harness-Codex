@@ -272,57 +272,61 @@ def remove(plan: dict) -> dict:
 
 
 def run(data_root: Path, *, dry_run=False) -> int:
+    from . import presentation as ui
+    display = ui.Progress('', stream=sys.stdout)
     if not dist._storage_path(data_root).exists():
-        print(f'No managed Harness installation at {data_root}. Nothing was removed.')
+        display.line('\nHarness is not installed at ' + str(data_root) + '. Nothing was removed.\n', style='muted')
         return 0
     plan = prepare(data_root)
-    print(f"Uninstall {plan['command']} {plan['version']}")
-    print(f"Tool storage: {plan['root']}")
-    print('Commands: ' + ', '.join(str(path) for path in sorted(plan['external'])))
-    print(f"PATH registration: {plan['path']['state']}" +
-          (f" ({plan['path']['reason']})" if 'reason' in plan['path'] else ''))
-    print('Project harnesses, reused Conda environments and other commands will be kept.')
-    print('The saved TypeSafe key will also be removed if its ownership and permissions are valid; shell environment values are unchanged.')
-    for warning in plan['hooks'].get('warnings', []):
-        print(warning)
+    display.line(f"\nUninstall {plan['command']} {plan['version']}", style='heading')
+    display.line('\nWill remove', style='heading')
+    display.line(f"  Tool storage: {plan['root']}")
+    for path in sorted(plan['external']):
+        display.line('  Command: ' + str(path))
+    display.line('  Owned hook registrations and the saved TypeSafe key, when ownership is valid.')
     if plan['runtime']:
-        print('Installer-owned runtime: ' + plan['runtime']['root'])
-        print('Unchanged runtime files will also be removed. Added/modified files are preserved.')
-    else:
-        print('No runtime ownership receipt: existing/legacy Conda files are preserved.')
+        display.line('  Unchanged installer-owned runtime files: ' + plan['runtime']['root'])
+    display.line('\nWill keep', style='heading')
+    display.line('  Project harnesses, reused Conda environments and other commands.')
+    display.line('  User-added/modified runtime files and shell environment values.')
+    display.line('\nPATH: ' + ('remove the owned registration' if plan['path']['state'] == 'would-remove' else 'preserve existing settings'), style='muted')
+    if 'reason' in plan['path']:
+        display.line('  ' + plan['path']['reason'], style='muted')
+    for warning in plan['hooks'].get('warnings', []):
+        display.line('  ' + warning, style='warning')
+    display.line('')
     if dry_run:
         print('Dry run. No files or PATH entries were changed.')
         return 0
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         raise ValueError('Uninstall requires an interactive terminal. Use --dry-run to preview without deleting anything.')
-    try:
-        answer = input('Type yes to uninstall, or press Enter to cancel: ')
-    except EOFError:
-        answer = ''
-    if answer != 'yes':
-        print('Uninstall cancelled. Nothing was removed.')
+    if not ui.confirm('Uninstall these Harness components?', progress=display):
+        display.line('\nUninstall cancelled. Nothing was removed.\n', style='muted')
         return 0
     cleanup_source = None
     if plan['runtime'] and os.name == 'nt':
         cleanup_source = Path(__file__).with_name('runtime_cleanup.ps1').read_bytes()
     from .jev_auth import forget
-    result = remove(plan)
-    try:
-        forget()
-    except (OSError, ValueError):
-        print('The TypeSafe credential could not be safely removed; preserved. Use jev logout before uninstalling to inspect this separately.')
-    if plan['runtime']:
-        from . import footprint
-        if os.name == 'nt':
-            location = footprint.defer_windows_cleanup(plan['runtime'], cleanup_source)
-            print('Runtime cleanup will finish after this process exits. Pending cleanup: ' + location)
-        else:
-            remaining = footprint.cleanup(plan['runtime'])
-            if remaining:
-                print('Added, modified or busy runtime files were preserved: ' + ', '.join(remaining))
-    print(f"Uninstalled {plan['command']}. Open a new terminal to refresh command lookup and PATH.")
+    with ui.Progress('Removing owned Harness files and settings', stream=sys.stdout, compact=True) as progress:
+        result = remove(plan)
+        try:
+            forget()
+        except (OSError, ValueError):
+            progress.line('The TypeSafe credential could not be safely removed; preserved. Use jev logout before uninstalling to inspect this separately.', style='warning')
+        if plan['runtime']:
+            from . import footprint
+            progress.phase('Cleaning the installer-owned runtime')
+            if os.name == 'nt':
+                location = footprint.defer_windows_cleanup(plan['runtime'], cleanup_source)
+                progress.line('Runtime cleanup will finish after this process exits. Pending cleanup: ' + location, style='muted')
+            else:
+                remaining = footprint.cleanup(plan['runtime'])
+                if remaining:
+                    progress.line('Added, modified or busy runtime files were preserved: ' + ', '.join(remaining), style='warning')
+    display.line(f"\nUninstalled {plan['command']}.", style='success')
+    display.line('Open a new terminal to refresh command lookup and PATH.\n', style='muted')
     if result['batchCleanup']:
-        print('Windows batch cleanup is pending until its launcher returns: ' + ', '.join(result['batchCleanup']))
+        display.line('Windows batch cleanup is pending until its launcher returns: ' + ', '.join(result['batchCleanup']), style='muted')
     if result['cleanupRemaining']:
-        print('Some staged files could not be cleaned up; preserved at: ' + ', '.join(result['cleanupRemaining']))
+        display.line('Some staged files could not be cleaned up; preserved at: ' + ', '.join(result['cleanupRemaining']), style='warning')
     return 0

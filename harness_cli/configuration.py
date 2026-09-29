@@ -156,6 +156,18 @@ class Server:
         if 'id' in item:
             self.answer(item['id'], item['method'], params)
             return None
+        method = item['method']
+        if method in {'item/started', 'item/completed'}:
+            value = params.get('item')
+            if not isinstance(value, dict):
+                raise ValueError('Codex sent an invalid item event.')
+            key = (params.get('threadId', self.thread_id), value.get('id'))
+            if method == 'item/started' and value.get('id') and value.get('type') in {'fileChange', 'commandExecution'}:
+                if len(self.items) >= 128 and key not in self.items:
+                    raise ValueError('Too many pending Codex items; stop and inspect the native session.')
+                self.items[key] = value
+            elif method == 'item/completed':
+                self.items.pop(key, None)
         if self.thread_id and params.get('threadId', self.thread_id) != self.thread_id:
             return None
         method = item['method']
@@ -169,10 +181,6 @@ class Server:
         elif method in {'item/started', 'item/completed'}:
             value = params.get('item', {})
             item_id = value.get('id')
-            if method == 'item/started' and item_id:
-                if len(self.items) >= 128:
-                    raise ValueError('Too many pending Codex items; stop and inspect the native session.')
-                self.items[item_id] = value
             kind = value.get('type')
             if kind == 'commandExecution' and method == 'item/started':
                 command = str(value.get('command', ''))
@@ -199,8 +207,6 @@ class Server:
                 diagnostic = execution_diagnostic(output)
                 if diagnostic:
                     self.progress.line(diagnostic)
-            if method == 'item/completed':
-                self.items.pop(item_id, None)
         elif method == 'error':
             detail = params.get('error', {}).get('message', params.get('message', 'Codex reported an error'))
             self.progress.line(f'Codex: {clean(detail)}')
@@ -227,6 +233,8 @@ class Server:
             file_change = method == 'item/fileChange/requestApproval'
             title = 'File change approval' if file_change else 'Network approval' if params.get('networkApprovalContext') else 'Command approval'
             self.progress.line('\n' + title, style='heading')
+            if params.get('threadId') and params['threadId'] != self.thread_id:
+                self.progress.line('  Child/other thread: ' + clean(params['threadId']), style='muted')
             if params.get('cwd'):
                 self.progress.line('  Directory: ' + clean(params['cwd']), style='muted')
             if params.get('environmentId') and params['environmentId'] != 'local':
@@ -245,7 +253,7 @@ class Server:
                 self.send({'id': request_id, 'result': {'decision': 'decline'}})
                 raise ValueError('No command or network preview was received. Approval declined; use --interactive.')
             if file_change:
-                changes = self.items.get(params.get('itemId'), {}).get('changes')
+                changes = self.items.get((params.get('threadId', self.thread_id), params.get('itemId')), {}).get('changes')
                 if not changes:
                     self.send({'id': request_id, 'result': {'decision': 'decline'}})
                     raise ValueError('No file-change preview was received. Approval declined; use --interactive for native review.')
@@ -263,12 +271,8 @@ class Server:
                 self.send({'id': request_id, 'result': {'decision': 'cancel'}})
                 raise ValueError('Codex requested an approval scope requiring native review. Use --interactive.')
             self.progress.line('\nEnter: approve this request only   n: decline\n', style='muted')
-            while True:
-                answer = self.progress.ask('Approve? [Y/n]: ').strip().casefold()
-                if answer in {'', 'y', 'yes', 'n', 'no'}:
-                    break
-                self.progress.line('Press Enter or type y to approve; type n to decline.', style='warning')
-            decision = 'decline' if answer in {'n', 'no'} else 'accept'
+            from .presentation import confirm
+            decision = 'accept' if confirm('Approve?', progress=self.progress) else 'decline'
             self.send({'id': request_id, 'result': {'decision': decision}})
             self.progress.line('Approved for this request; waiting for the Codex execution result.\n'
                                if decision == 'accept' else 'Request declined.\n', style='success' if decision == 'accept' else 'warning')

@@ -122,7 +122,7 @@ def _find_harness_root(cwd: Path) -> Path | None:
 
 
 def _events_root(store: harness_eval_store.EvaluationStore, repository_id: str) -> Path:
-    return store.repository_root(repository_id) / "operations" / "events"
+    return store.checked(store.repository_root(repository_id) / "operations" / "events")
 
 
 def _write_exclusive(path: Path, value: dict[str, Any]) -> None:
@@ -327,7 +327,7 @@ def _read_events(
         return [], []
     events: list[dict[str, Any]] = []
     errors: list[str] = []
-    for path in sorted(root.glob("*.json")):
+    for path in store.records(root):
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
             validate_event(value)
@@ -372,7 +372,7 @@ def _store_event(
                 raise OperationsError("hook replay contradicts an existing work-item event")
         if len(events) >= MAX_EVENTS_PER_REPOSITORY:
             raise OperationsError("operations event limit reached; audit and purge local state")
-        path = _events_root(store, repository_id) / f"{event['eventId']}.json"
+        path = store.checked(_events_root(store, repository_id) / f"{event['eventId']}.json")
         _write_exclusive(path, event)
     return event, True
 
@@ -555,7 +555,7 @@ def annotate(
         if len(events) >= MAX_EVENTS_PER_REPOSITORY:
             raise OperationsError("operations event limit reached; audit and purge local state")
         _write_exclusive(
-            _events_root(store, repository_id) / f"{event['eventId']}.json", event
+            store.checked(_events_root(store, repository_id) / f"{event['eventId']}.json"), event
         )
     result = {
         "valid": True,
@@ -904,7 +904,7 @@ def command_purge(args: argparse.Namespace) -> int:
     removed = 0
     with store.repository_lock(repository_id):
         if events_root.is_dir():
-            for path in events_root.glob("*.json"):
+            for path in store.records(events_root):
                 path.unlink()
                 removed += 1
             try:

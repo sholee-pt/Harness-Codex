@@ -199,12 +199,32 @@ class Maintenance:
         state = self._read(self._location())
         expired = state['lease'] is not None and self.clock() > state['lease']['deadline']
         return {'mode': state['mode'], 'pending': len(self._eligible(state)),
+                'blockingSessions': [{'ref': key, 'active': item['active'], 'children': len(item['children'])}
+                                     for key, item in state['sessions'].items() if item['active'] or item['children']],
                 'reviewInProgress': state['lease'] is not None and not expired, 'reviewExpired': expired, 'metrics': state['metrics'],
                 'automaticScope': 'existing-skill-content-only', 'qualityBenefit': 'not-established',
                 'tokenBudgetEnforcement': 'not-available-in-native-interactive-session',
                 'reviewTimeLimitSeconds': state['policy']['reviewSeconds'], 'reviewsPerDay': state['policy']['reviewsPerDay'],
                 'policy': state['policy'], 'scheduling': cadence.schedule(state, self.clock(), [state['candidates'][key] for key in self._eligible(state)]),
                 **history.summary(state['changes'])}
+
+    def recover_session(self, session_ref):
+        if not isinstance(session_ref, str) or not re.fullmatch(r'[0-9a-f]{64}', session_ref):
+            raise ValueError('Use an opaque session ref from maintenance status')
+        with self.transaction() as state:
+            # A caller must confirm that the session and its children stopped.
+            # Elapsed time alone never establishes that native writers exited.
+            removed = state['sessions'].pop(session_ref, None)
+            recovered = removed is not None
+            if state['lease'] is not None and state['lease']['session'] == session_ref:
+                lease = state['lease']
+                duration = max(0, min(self.clock(), lease['deadline']) - lease['started'])
+                state['metrics']['reviewSeconds'] += duration
+                state['metrics']['unmeasuredReviews'] += 1
+                cadence.record(state, self.clock(), duration, None, 'deferred')
+                state['lease'] = None
+                recovered = True
+        return {'status': 'session-recovered' if recovered else 'session-absent'}
 
     def observe(self, change, observation, outcome, source, revision, *, model=None, effort=None, category=None, runtime=None):
         if not isinstance(observation, str) or not observation or len(observation) > 256:
@@ -567,6 +587,9 @@ def main():
     commands.add_parser('status')
     clear = commands.add_parser('clear')
     clear.add_argument('--yes', action='store_true', required=True)
+    recover = commands.add_parser('recover-session')
+    recover.add_argument('--session-ref', required=True)
+    recover.add_argument('--yes', action='store_true', required=True)
     settings = commands.add_parser('configure')
     settings.add_argument('--mode', choices=MODES)
     settings.add_argument('--policy-json', help='Bounded local scheduling overrides; never expands automatic edit scope')
@@ -601,6 +624,8 @@ def main():
             result = manager.status()
         elif args.command == 'clear':
             result = manager.clear()
+        elif args.command == 'recover-session':
+            result = manager.recover_session(args.session_ref)
         elif args.command == 'configure':
             result = manager.configure(args.mode, json.loads(args.policy_json) if args.policy_json else None)
         elif args.command == 'signal':

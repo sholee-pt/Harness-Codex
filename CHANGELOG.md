@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.29.0‑beta`](#harness-for-codex-v0290-beta) | Schema 3 | Schema 7 | Schema 2 | Consistent confirmations, truthful update output and scoped maintenance recovery; evaluation storage and transaction fixes. |
 | [`v0.28.0‑beta`](#harness-for-codex-v0280-beta) | Schema 3 | Schema 7 | Schema 2 | Improve approval prompts and reversible configuration menus |
 | [`v0.27.4‑beta`](#harness-for-codex-v0274-beta) | Schema 3 | Schema 7 | Schema 2 | Fix configuration approval whitespace and expose native rejection results |
 | [`v0.27.3‑beta`](#harness-for-codex-v0273-beta) | Schema 3 | Schema 7 | Schema 2 | Remove duplicated Linux installer progress lines |
@@ -83,6 +84,15 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.29.0-beta
+
+- Standardized interactive yes/no prompts: Enter/y/yes confirms and n/no declines, including uninstall, saved-key logout, shell activation and explicitly selected full access. Closed or redirected input never approves; previews and explicit automation flags retain their contracts.
+- Separated update-available, already-current, updated and failure messages. Unchanged updates skip redundant Codex integration refresh. Uninstall groups removal/preservation details and displays progress; keyboard menus fit the available terminal height.
+- Protected evaluation/operations descendants against links before reading, exporting, quarantining or purging records. Export now checks the complete record schema, storage identity and repository scope instead of only its hash.
+- Added maintenance activity-marker diagnostics and confirmed recovery for a stopped session without clearing other sessions, concerns or change history. No timeout alone releases active writers.
+- Scoped file-approval previews by native thread and item, preserving child previews without treating child completion as parent completion. Kept native permission enforcement unchanged.
+- Fixed Windows transaction staging, reads and cleanup for expanded paths; retained existing journal contracts and recovery behavior. This change does not publish a Windows release.
 
 ## Harness for Codex v0.28.0-beta
 

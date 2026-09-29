@@ -39,7 +39,7 @@ For Windows source development, run from an existing checkout:
 ## Source installation
 
 ```bash
-git clone --branch v0.28.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
+git clone --branch v0.29.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
 bash Harness-Codex/installer/install.sh
 source ~/.bashrc
 ```
@@ -61,6 +61,10 @@ Windows registers user PATH and refreshes the current PowerShell PATH. Other ope
 The installer displays an animated indicator and live elapsed seconds on an interactive terminal, with a detailed log location. It pauses animation while asking for a reinstall choice. Noninteractive/redirected output contains ordinary stage lines; Linux skips child-shell activation when there is no controlling terminal or `--no-modify-path` is selected. Failed downloads, environment setup or installation retain a diagnostic log. Colors are presentation only; redirected output remains readable. An incomplete pre-existing environment is preserved for review instead of being overwritten.
 
 ## Ownership and uninstall
+
+Interactive yes/no confirmations use `[Y/n]`: Enter, `y` and `yes` approve; `n` and `no` decline, ignoring capitalization and surrounding spaces. Unknown answers are asked again. Closed input or a noninteractive stream never counts as Enter. This also applies to uninstall, saved-key logout and shell activation. Numbered menus, API-key entry and reuse/reset choices retain their own input rules; existing `--yes` flags remain explicit automation options. `--dry-run` never deletes files.
+
+`update` shows current/latest versions and distinguishes an available update, a completed update and an already-current installation. An unchanged installation does not refresh its Codex integration or print update-completion advice. A failed check exits with an error and does not claim that the installation is current.
 
 The CLI removes only verified files from its own installation. New dedicated runtime files have immutable SHA-256 ownership receipts. Added or changed runtime files are retained and reported; reused and legacy Conda installations have no inferred ownership and remain installed. Temporary failure logs and other historical untracked files are not deleted by matching their names.
 

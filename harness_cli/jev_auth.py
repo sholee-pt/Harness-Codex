@@ -184,7 +184,8 @@ def run(args, model):
         if not args.yes:
             if args.json or not sys.stdin.isatty() or not sys.stdout.isatty():
                 raise ValueError('Use jev logout --yes to remove the saved TypeSafe credential')
-            if input('Type yes to remove the saved TypeSafe key for all projects: ') != 'yes':
+            from .presentation import confirm
+            if not confirm('Remove the saved TypeSafe key for all projects?'):
                 print('Jev logout cancelled.')
                 return 0
         removed = forget()

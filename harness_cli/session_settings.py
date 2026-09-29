@@ -156,8 +156,8 @@ def select(server, current, root, deadline):
                 continue
             permission = selection
             if permission == 3:
-                answer = progress.ask('Allow unrestricted Codex access for this conversation? Type yes; Enter keeps current: ').strip()
-                if answer != 'yes':
+                from .presentation import confirm
+                if not confirm('Allow unrestricted Codex access for this conversation?', progress=progress):
                     permission = 0
             step = 3
         summary.append('Permissions: ' + permission_labels[permission])

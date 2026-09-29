@@ -69,7 +69,7 @@ Automatic selects the catalog's recommended model and its advertised supported d
 
 Manual lists visible models and supported reasoning levels from the installed Codex catalog. A removed saved model requires a current choice; a removed effort or changed model offers its supported default effort. Choices apply only to this native conversation; global settings remain unchanged. Changing a model after generating a harness does not require regenerating the harness. Supported tools, reasoning choices and output quality may differ by model.
 
-Permissions default to the native policy. Manual choices can request read-only work, workspace/temp writes, or full access. Restricted presets request user review for extra access. Full access requires a separate literal `yes`. Native managed policies still apply. Rejection never triggers a broader retry or silent reviewer change. Keep native settings for custom profiles and hook trust during conversations; full init separately prepares only owned maintenance hooks as described in [maintenance setup](maintenance.md).
+Permissions default to the native policy. Manual choices can request read-only work, workspace/temp writes, or full access. Restricted presets request user review for extra access. Selecting full access requires a separate `[Y/n]` confirmation: Enter, `y` or `yes` approves; `n` or `no` declines. Native managed policies still apply. Rejection never triggers a broader retry or silent reviewer change. Keep native settings for custom profiles and hook trust during conversations; full init separately prepares only owned maintenance hooks as described in [maintenance setup](maintenance.md).
 
 ## Configuration progress and conversation history
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import uuid
@@ -35,7 +36,7 @@ class TransactionError(ValueError):
 
 
 def journal_path(root: Path) -> Path:
-    return harness_state.resolve_inside(root, JOURNAL_RELATIVE)
+    return _resolve_inside(root, JOURNAL_RELATIVE)
 
 
 def is_allowed_target(relative: str) -> bool:
@@ -71,6 +72,11 @@ def _transaction_relative(transaction_id: str) -> str:
     return f"{TRANSACTIONS_RELATIVE}/{transaction_id}"
 
 
+def _resolve_inside(root: Path, relative: str, *, must_exist=False) -> Path:
+    path = harness_state.resolve_inside(root, relative, must_exist=must_exist)
+    return harness_state.io_path(path) if os.name == "nt" and len(str(path.absolute())) >= 248 else path
+
+
 def _stage_relative(transaction_id: str, relative: str) -> str:
     return f"{_transaction_relative(transaction_id)}/staged/{relative}"
 
@@ -94,14 +100,14 @@ def _digest_path(path: Path) -> str:
 
 
 def _cleanup_transaction_directory(root: Path, transaction_id: str) -> None:
-    transactions_root = harness_state.resolve_inside(root, TRANSACTIONS_RELATIVE)
-    transaction_root = harness_state.resolve_inside(root, _transaction_relative(transaction_id))
-    if transaction_root.parent != transactions_root:
+    transactions_root = _resolve_inside(root, TRANSACTIONS_RELATIVE)
+    transaction_root = _resolve_inside(root, _transaction_relative(transaction_id))
+    if harness_state.io_path(transaction_root.parent) != harness_state.io_path(transactions_root):
         raise TransactionError("transaction directory is outside the reserved transaction root")
     if transaction_root.exists():
         if not transaction_root.is_dir():
             raise TransactionError("transaction workspace is not a directory")
-        shutil.rmtree(transaction_root)
+        shutil.rmtree(harness_state.io_path(transaction_root))
         harness_state.sync_directory(transactions_root)
     if transactions_root.is_dir():
         try:
@@ -206,7 +212,7 @@ def validate_journal(root: Path, journal: object) -> dict:
             raise TransactionError(f"duplicate transaction target: {relative}")
         seen.add(relative)
         operation_paths.append(relative)
-        harness_state.resolve_inside(root, relative)
+        _resolve_inside(root, relative)
         if action not in {"create", "update"}:
             raise TransactionError(f"invalid transaction action for {relative}: {action!r}")
         had_original = operation.get("hadOriginal")
@@ -216,14 +222,14 @@ def validate_journal(root: Path, journal: object) -> dict:
         expected_stage = _stage_relative(transaction_id, relative)
         if operation.get("stage") != expected_stage:
             raise TransactionError(f"invalid staged path for {relative}")
-        harness_state.resolve_inside(root, expected_stage)
+        _resolve_inside(root, expected_stage)
         if had_original:
             _validate_hash(operation.get("originalSha256"), f"{relative} originalSha256")
             _validate_mode(operation.get("originalMode"), f"{relative} originalMode")
             expected_backup = _backup_relative(transaction_id, relative)
             if operation.get("backup") != expected_backup:
                 raise TransactionError(f"invalid backup path for {relative}")
-            harness_state.resolve_inside(root, expected_backup)
+            _resolve_inside(root, expected_backup)
         elif (
             operation.get("originalSha256") is not None
             or operation.get("originalMode") is not None
@@ -297,7 +303,7 @@ def _validate_preconditions(
     for relative, action in actions.items():
         if action not in VALID_ACTIONS:
             raise TransactionError(f"invalid application action for {relative!r}: {action!r}")
-        path = harness_state.resolve_inside(root, relative)
+        path = _resolve_inside(root, relative)
         if action == "create":
             if path.exists():
                 raise TransactionError(f"create target appeared before apply: {relative}")
@@ -339,7 +345,7 @@ def prepare_transaction(
     for relative in outputs:
         if not isinstance(relative, str) or not is_allowed_target(relative):
             raise TransactionError(f"transaction target is not allowed: {relative!r}")
-        harness_state.resolve_inside(root, relative)
+        _resolve_inside(root, relative)
     if not all(isinstance(entry, dict) for entry in managed_preconditions):
         raise TransactionError("managed preconditions must be objects")
     for relative, desired_mode in desired_modes.items():
@@ -367,7 +373,7 @@ def prepare_transaction(
             active_paths, key=lambda value: (value == ".harness/manifest.json", value)
         ):
             action = actions[relative]
-            target = harness_state.resolve_inside(root, relative)
+            target = _resolve_inside(root, relative)
             desired = outputs[relative].encode("utf-8")
             stage_relative = _stage_relative(transaction_id, relative)
             operation = {
@@ -402,10 +408,10 @@ def prepare_transaction(
 
         _write_journal(root, journal)
         for operation, desired, original in prepared_data:
-            stage = harness_state.resolve_inside(root, operation["stage"])
+            stage = _resolve_inside(root, operation["stage"])
             harness_state.atomic_write_bytes(stage, desired)
             if original is not None:
-                backup = harness_state.resolve_inside(root, operation["backup"])
+                backup = _resolve_inside(root, operation["backup"])
                 harness_state.atomic_write_bytes(backup, original)
         journal["state"] = "prepared"
         _write_journal(root, journal)
@@ -417,14 +423,14 @@ def prepare_transaction(
 
 
 def _validated_operation_data(root: Path, operation: dict) -> tuple[Path, bytes, bytes | None]:
-    target = harness_state.resolve_inside(root, operation["path"])
-    stage = harness_state.resolve_inside(root, operation["stage"], must_exist=True)
+    target = _resolve_inside(root, operation["path"])
+    stage = _resolve_inside(root, operation["stage"], must_exist=True)
     desired = stage.read_bytes()
     if harness_state.digest_bytes(desired) != operation["desiredSha256"]:
         raise TransactionError(f"staged content is corrupt: {operation['path']}")
     original: bytes | None = None
     if operation["hadOriginal"]:
-        backup = harness_state.resolve_inside(root, operation["backup"], must_exist=True)
+        backup = _resolve_inside(root, operation["backup"], must_exist=True)
         original = backup.read_bytes()
         if harness_state.digest_bytes(original) != operation["originalSha256"]:
             raise TransactionError(f"backup content is corrupt: {operation['path']}")
@@ -479,7 +485,7 @@ def recover_transaction(root: Path, *, expected_id: str | None = None) -> dict:
     restored = 0
     removed = 0
     for operation, target, _desired, original, current_hash, current_mode in reversed(prepared):
-        target = harness_state.resolve_inside(root, operation["path"])
+        target = _resolve_inside(root, operation["path"])
         observed_hash = _digest_path(target) if target.is_file() else None
         observed_mode = harness_state.current_mode(target) if target.is_file() else None
         if (target.exists() and not target.is_file()) or observed_hash != current_hash or observed_mode != current_mode:
