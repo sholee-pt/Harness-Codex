@@ -334,7 +334,7 @@ class ConfigurationProgressTests(unittest.TestCase):
         parser = argparse.ArgumentParser()
         project.register_project_commands(parser.add_subparsers(dest='command'))
         with mock.patch.object(project, '_codex_command', return_value=self.command), \
-                mock.patch.object(sys, 'stdin', Terminal()), contextlib.redirect_stdout(self.output), \
+                mock.patch.object(sys, 'stdin', Terminal('\n\n')), contextlib.redirect_stdout(self.output), \
                 contextlib.redirect_stderr(self.error):
             args = parser.parse_args(['init', '--no-codex-integration', '--project', str(self.root), '--settings', 'native'])
             with mock.patch.dict(os.environ, {'TEST_SERVER_MODE': 'generate'}):
