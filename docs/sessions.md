@@ -86,6 +86,8 @@ A fresh setup conversation is archived only after a completed model outcome and 
 
 The default configuration deadline is 1,800 seconds. Ctrl+C, connection failure and timeout close the child connection and preserve project files for inspection. Continue incomplete setup with `config --resume SESSION_ID`. Harness keeps no transport transcript or project session registry.
 
+Command/file approval accepts `yes` with surrounding whitespace ignored; Enter or another answer declines. The progress display confirms the response sent to Codex. This is one-request approval, not a saved command rule or proof of successful execution. Native `failed`/`declined` outcomes are shown separately, even without an exit code, with at most the final 2,000 characters of command output. A model's final explanation is not an approval receipt. Use `config --resume SESSION_ID --interactive --settings native` to inspect the retained conversation and use native approval controls. Host sandbox restrictions still require separate diagnosis; Harness never automatically grants broader access.
+
 ## Project brief and guide
 
 `--goal-file` accepts a regular UTF-8 Markdown file, with optional BOM. The old 64 KiB cap is removed. Validation streams the file; the model receives its path and instructions to inspect relevant sections in bounded chunks. Large files are not copied wholesale into the initial prompt. Native access rules still apply to files outside the project. Inline `--goal` and native argument transport retain their finite limits; use a file for a large brief.

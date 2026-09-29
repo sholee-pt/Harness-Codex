@@ -185,9 +185,18 @@ class Server:
                 self.progress.phase('Updating project harness files')
             elif kind == 'agentMessage' and method == 'item/completed':
                 self.last_message = clean(value.get('text', ''))
-            if kind == 'commandExecution' and method == 'item/completed' and value.get('exitCode'):
+            if kind in {'commandExecution', 'fileChange'} and method == 'item/completed' and (
+                    value.get('status') in {'failed', 'declined'} or value.get('exitCode')):
+                label = 'command' if kind == 'commandExecution' else 'file change'
+                status = value.get('status') or 'failed'
+                self.progress.line(f'Codex {label} result: {clean(status)} (item {clean(item_id)}).')
+                output = clean(value.get('aggregatedOutput') or '').strip()
+                if output:
+                    self.progress.line(output[-2000:])
+                    if len(output) > 2000:
+                        self.progress.line('Only the last 2000 characters are shown; inspect this session in native Codex for full output.')
                 from .native_session import execution_diagnostic
-                diagnostic = execution_diagnostic(value.get('aggregatedOutput', ''))
+                diagnostic = execution_diagnostic(output)
                 if diagnostic:
                     self.progress.line(diagnostic)
             if method == 'item/completed':
@@ -231,8 +240,11 @@ class Server:
             if not can_accept:
                 self.send({'id': request_id, 'result': {'decision': 'cancel'}})
                 raise ValueError('Codex requested an approval scope requiring native review. Use --interactive.')
-            answer = self.progress.ask('Approve this request? Type yes; Enter declines: ')
-            self.send({'id': request_id, 'result': {'decision': 'accept' if answer == 'yes' else 'decline'}})
+            answer = self.progress.ask('Approve this request? Type yes; Enter declines: ').strip()
+            decision = 'accept' if answer == 'yes' else 'decline'
+            self.send({'id': request_id, 'result': {'decision': decision}})
+            self.progress.line('Approval response sent: accept (this request only; execution is not yet confirmed).'
+                               if decision == 'accept' else 'Approval response sent: decline.')
         elif method == 'item/tool/requestUserInput':
             answers = {}
             questions = params.get('questions')

@@ -78,10 +78,10 @@ for line in sys.stdin:
             continue
         if mode == "foreign":
             send({"method": "turn/completed", "params": {"threadId": "other-thread", "turn": {"id": "other", "status": "failed", "error": {"message": "foreign failure"}}}})
-        if mode in {"approve", "missing-command"}:
+        if mode in {"approve", "approval-declined", "approval-failed", "missing-command"}:
             request = {"threadId": "native-thread", "turnId": "turn-1", "itemId": "command"}
-            if mode == "approve":
-                request.update({"command": "cat README.md", "cwd": str(pathlib.Path.cwd()), "availableDecisions": ["accept", "decline"]})
+            if mode != "missing-command":
+                request.update({"command": "cat README.md", "cwd": str(pathlib.Path.cwd()), "availableDecisions": ["accept", {"acceptWithExecpolicyAmendment": {"execpolicy_amendment": ["cat", "README.md"]}}, "cancel"]})
             send({"id": "approval", "method": "item/commandExecution/requestApproval", "params": request})
         elif mode in {"file", "missing-file"}:
             if mode == "file":
@@ -96,6 +96,10 @@ for line in sys.stdin:
         else:
             complete()
     elif method is None:
+        if mode in {"approval-declined", "approval-failed"}:
+            send({"method": "serverRequest/resolved", "params": {"threadId": "native-thread", "requestId": "approval"}})
+            output = "rejected by configuration" if mode == "approval-declined" else "bwrap: Operation not permitted"
+            send({"method": "item/completed", "params": {"threadId": "native-thread", "item": {"id": "command", "type": "commandExecution", "status": "declined" if mode == "approval-declined" else "failed", "exitCode": None, "aggregatedOutput": output}}})
         complete()
 '''
 class Terminal(io.StringIO):
@@ -160,12 +164,27 @@ class ConfigurationProgressTests(unittest.TestCase):
         self.assertNotIn('foreign failure', self.error.getvalue())
 
     def test_command_approval_requires_explicit_yes_and_displays_action(self):
-        for answer, decision in [('yes', 'accept'), ('', 'decline'), ('y', 'decline')]:
+        for answer, decision in [('yes', 'accept'), (' yes \t', 'accept'), ('', 'decline'), ('y', 'decline')]:
             with self.subTest(answer=answer):
                 self.assertEqual(self.invoke('approve', [answer]), 0)
                 self.assertEqual(self.records()[-1]['params']['decision'], decision)
+                self.assertIn(f'Approval response sent: {decision}', self.error.getvalue())
         self.assertIn('cat README.md', self.error.getvalue())
         self.assertIn(str(self.root), self.error.getvalue())
+
+    def test_accepted_requests_report_native_rejection_or_sandbox_failure_without_broader_retry(self):
+        for mode, status, detail in [('approval-declined', 'declined', 'rejected by configuration'),
+                                     ('approval-failed', 'failed', 'host/container')]:
+            with self.subTest(mode=mode):
+                self.log.unlink(missing_ok=True)
+                self.assertEqual(self.invoke(mode, ['yes']), 0)
+                records = self.records()
+                self.assertEqual([r['params'] for r in records if r['method'] == 'answer'], [{'decision': 'accept'}])
+                self.assertEqual(sum(r['method'] == 'turn/start' for r in records), 1)
+                self.assertIn('execution is not yet confirmed', self.error.getvalue())
+                self.assertIn(f'Codex command result: {status}', self.error.getvalue())
+                self.assertIn(detail, self.error.getvalue())
+                self.assertEqual(list(self.root.iterdir()), [])
 
     def test_file_approval_displays_complete_diff(self):
         self.assertEqual(self.invoke('file', ['yes']), 0)

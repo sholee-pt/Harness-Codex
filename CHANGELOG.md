@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.27.4‑beta`](#harness-for-codex-v0274-beta) | Schema 3 | Schema 7 | Schema 2 | Fix configuration approval whitespace and expose native rejection results |
 | [`v0.27.3‑beta`](#harness-for-codex-v0273-beta) | Schema 3 | Schema 7 | Schema 2 | Remove duplicated Linux installer progress lines |
 | [`v0.27.2‑beta`](#harness-for-codex-v0272-beta) | Schema 3 | Schema 7 | Schema 2 | Resolve Conda interpreter aliases when identifying owned maintenance hooks |
 | [`v0.27.1‑beta`](#harness-for-codex-v0271-beta) | Schema 3 | Schema 7 | Schema 2 | Restore hook state on failed uninstall and clean owned native trust |
@@ -81,6 +82,12 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.27.4-beta
+
+- Accept surrounding whitespace in an explicit configuration approval instead of silently declining `yes `.
+- Confirm the one-request approval response separately from native execution. Surface failed/declined command and file-change outcomes even when no exit code is available, with bounded command diagnostics.
+- Preserve native permission policies and one-time approval scope; do not retry with broader access or infer successful execution from a sent acceptance.
 
 ## Harness for Codex v0.27.3-beta
 
