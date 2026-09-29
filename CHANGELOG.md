@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.27.1‑beta`](#harness-for-codex-v0271-beta) | Schema 3 | Schema 7 | Schema 2 | Restore hook state on failed uninstall and clean owned native trust |
 | [`v0.27.0‑beta`](#harness-for-codex-v0270-beta) | Schema 3 | Schema 7 | Schema 2 | Prepare owned hook trust during init without enabling project features |
 | [`v0.26.0‑beta`](#harness-for-codex-v0260-beta) | Schema 3 | Schema 7 | Schema 2 | Choose maintenance and adaptive Auto preferences during init |
 | [`v0.25.2‑beta`](#harness-for-codex-v0252-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve per-request execution context in adaptive routing evidence |
@@ -78,6 +79,12 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.27.1-beta
+
+- Restore owned maintenance hook definitions, ownership records and native trust settings when tool uninstall fails before committing its PATH change. Preserve concurrent user edits and retain recovery copies when rollback cannot complete safely.
+- Record the before/after native trust fragments created by automatic init and remove or restore only unchanged owned entries on uninstall. Preserve unrelated configuration, edited entries and legacy trust without recorded ownership.
+- Extend focused failure-injection coverage and the official Codex metadata integration check to verify native trust cleanup without starting a conversation or making a model call.
 
 ## Harness for Codex v0.27.0-beta
 

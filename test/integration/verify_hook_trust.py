@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / '.agents/skills/harness/scripts'))
 sys.path.insert(0, str(ROOT / 'test'))
-from harness_cli import hook_trust, maintenance, presentation
+from harness_cli import distribution, hook_trust, maintenance, presentation
 from harness_maintenance import Maintenance
 from harness_routing_evidence import RoutingEvidence
 from test_harness_tools import harness_apply, minimal_plan
@@ -38,6 +38,9 @@ def verify(binary):
         environment = {key: value for key, value in os.environ.items() if not key.startswith(('CODEX_', 'OPENAI_', 'HARNESS_'))
                        and not any(word in key for word in ('TOKEN', 'SECRET', 'API_KEY'))}
         environment.update(CODEX_HOME=str(home), HARNESS_STATE_HOME=str(state))
+        data = base / 'tool'
+        distribution.install_tool(ROOT, data, base / 'bin', sys.executable)
+        environment['HARNESS_TOOL_HOME'] = str(data)
         with mock.patch.dict(os.environ, environment, clear=True), contextlib.redirect_stdout(io.StringIO()):
             first = hook_trust.prepare(ROOT, root, binary=str(binary))
             if first['status'] != 'trusted':
@@ -74,10 +77,18 @@ def verify(binary):
             with mock.patch.dict(os.environ, {'CODEX_HOME': str(fresh)}):
                 empty = hook_trust.prepare(ROOT, root, binary=str(binary))
                 assert empty['status'] == 'trusted', empty
+            cleanup = maintenance.remove_hooks(data, dry_run=False)
+            assert cleanup['handlers'] == len(maintenance.EVENTS) and not cleanup['warnings'], cleanup
+            remaining = tomllib.loads(config.read_text(encoding='utf-8'))
+            assert remaining['hooks']['state'] == {'unrelated-state': {'enabled': False, 'trusted_hash': 'prior-unrelated-hash'}}, remaining
+            assert remaining['approval_policy'] == 'on-request' and remaining['sandbox_mode'] == 'read-only'
+            assert json.loads(path.read_text())['hooks']['Stop'] == [{'hooks': [unrelated]}]
+            assert not (home / 'harness-maintenance-hooks.json').exists()
         return {'passed': True, 'codexVersion': version, 'ownedHandlers': first['count'],
                 'unrelatedHookUntrusted': True, 'repeatWrites': 0, 'offModesPreserved': True,
                 'nativePermissionsPreserved': True, 'unrelatedTrustPreserved': True,
-                'freshHomeTrusted': True, 'liveInference': 'not-run'}
+                'freshHomeTrusted': True, 'ownedTrustRemoved': True, 'unrelatedConfigurationPreservedOnRemoval': True,
+                'liveInference': 'not-run'}
 
 
 if __name__ == '__main__':

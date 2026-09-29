@@ -55,7 +55,7 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(self.manager.begin()['status'], 'claimed')
 
     def test_hook_install_and_remove_preserve_concurrent_user_edits(self):
-        from harness_cli import distribution, maintenance as cli_maintenance
+        from harness_cli import distribution, hook_state, maintenance as cli_maintenance
         home = self.base / 'codex home'
         home.mkdir()
         path = home / 'hooks.json'
@@ -77,9 +77,16 @@ class MaintenanceTests(unittest.TestCase):
         receipt_before = receipt.read_bytes()
         value = json.loads(path.read_text()); value['custom'] = 'before-removal'
         path.write_text(json.dumps(value))
-        with mock.patch.object(distribution, '_write_json', side_effect=concurrent_write), \
+        replace = hook_state.replace_file
+        def concurrent_remove(target, before, after):
+            if target == path:
+                current = json.loads(path.read_text())
+                current['custom'] = 'concurrent-user-value'
+                path.write_text(json.dumps(current))
+            return replace(target, before, after)
+        with mock.patch.object(hook_state, 'replace_file', side_effect=concurrent_remove), \
                 mock.patch.object(distribution, 'installed_status', return_value={'python': sys.executable}):
-            with self.assertRaisesRegex(distribution.DistributionError, 'concurrent edits preserved'):
+            with self.assertRaisesRegex(ValueError, 'user edits preserved'):
                 cli_maintenance.remove_hooks(self.base, codex_home=home, dry_run=False)
         self.assertEqual(receipt.read_bytes(), receipt_before)
         self.assertEqual(json.loads(path.read_text())['custom'], 'concurrent-user-value')

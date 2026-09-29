@@ -123,6 +123,15 @@ clear --yes` resets this selected project's observations and disables maintenanc
 it does not touch project files, other projects or native Codex history. Use it to
 recover from stale session observations after an interrupted native process.
 
+Automatic trust records the native configuration fragments it changes. Uninstall
+removes unchanged additions or restores their recorded prior values, preserving
+unrelated settings and subsequent user edits. Trust granted before this ownership
+record existed, including v0.27.0-beta approvals, is preserved rather than adopted;
+the uninstall preview reports that limitation. An interrupted, unconfirmed trust
+write also requires manual review. A pre-commit uninstall failure restores hook
+definitions, ownership and trust together with tool files. If concurrent edits
+prevent rollback, those edits stay intact and the error identifies recovery copies.
+
 Status reports unknown quality honestly. If maintenance conflicts, times out or
 finds no justified change, keep the harness and continue project work. Recovery
 of an interrupted file transaction uses the existing `doctor`/recovery protocol.

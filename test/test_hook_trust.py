@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import tomllib
 import unittest
 from unittest import mock
 
@@ -75,6 +76,11 @@ class HookTrustTests(unittest.TestCase):
                 if hook['key'] in edit['value']:
                     self.assertEqual(edit['value'][hook['key']], {'trusted_hash': hook['currentHash'], 'enabled': True})
                     hook.update(trustStatus='trusted', enabled=True)
+            states = tomllib.loads(self.config.read_text()).get('hooks', {}).get('state', {})
+            states.update(edit['value'])
+            self.config.write_text('approval_policy = "on-request"\n' + ''.join(
+                '\n[hooks.state.' + json.dumps(key) + ']\ntrusted_hash = ' + json.dumps(value['trusted_hash'])
+                + '\nenabled = ' + str(value['enabled']).lower() + '\n' for key, value in states.items()), encoding='utf-8')
             return {'status': 'ok'}
         self.fail('Unexpected RPC: ' + method)
 
@@ -82,16 +88,18 @@ class HookTrustTests(unittest.TestCase):
         return hook_trust.trust(['native-codex'], self.root, self.path, self.command, presentation.Progress('test', stream=io.StringIO()))
 
     def test_only_owned_hashes_are_trusted_and_repeated_setup_has_no_write(self):
-        before = self.path.read_bytes(), self.config.read_bytes()
+        before = self.path.read_bytes()
         self.hooks[0]['enabled'] = False
         self.assertEqual(self.trust(), {'status': 'trusted', 'count': 7, 'changed': True})
         self.assertEqual(len(self.edits[0][0]['value']), 7)
         self.assertNotIn('foreign', self.edits[0][0]['value'])
         self.assertEqual(self.hooks[-1]['trustStatus'], 'untrusted')
         self.assertFalse(self.hooks[-1]['enabled'])
+        config = self.config.read_bytes(), (self.home / 'harness-maintenance-hooks.json').read_bytes()
         self.assertFalse(self.trust()['changed'])
         self.assertEqual(len(self.edits), 1)
-        self.assertEqual(before, (self.path.read_bytes(), self.config.read_bytes()))
+        self.assertEqual(before, self.path.read_bytes())
+        self.assertEqual(config, (self.config.read_bytes(), (self.home / 'harness-maintenance-hooks.json').read_bytes()))
         self.assertTrue(self.closed)
         self.assertFalse(any(name.startswith(('thread/', 'turn/')) for name in self.calls))
 

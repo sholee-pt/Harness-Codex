@@ -100,10 +100,8 @@ def install_hooks(source_root, *, codex_home=None, tool_home=None):
         raise ValueError('Existing hooks are malformed; no settings were overwritten')
     previous = None
     if original_receipt is not None:
-        saved = json.loads(original_receipt)
-        if (not isinstance(saved, dict) or set(saved) != {'owner', 'command'}
-                or saved['owner'] != 'harness-maintenance-v1' or not isinstance(saved['command'], str)):
-            raise ValueError('Maintenance hook ownership receipt is invalid')
+        from .hook_state import receipt as read_receipt
+        saved = read_receipt(original_receipt)
         previous = saved['command']
     before = json.dumps(value, sort_keys=True)
     hooks = value.setdefault('hooks', {})
@@ -123,7 +121,10 @@ def install_hooks(source_root, *, codex_home=None, tool_home=None):
     # Reuse the same bounded atomic writer as distribution receipts.
     from .distribution import _write_json
     home.mkdir(parents=True, exist_ok=True)
+    trust = saved.get('trust') if original_receipt is not None else None
     saved = {'owner': 'harness-maintenance-v1', 'command': command}
+    if trust is not None:
+        saved['trust'] = trust
     receipt_changed = original_receipt is None or json.loads(original_receipt) != saved
     changes = ([(path, value, original)] if changed else []) + ([(receipt, saved, original_receipt)] if receipt_changed else [])
     try:
@@ -163,23 +164,21 @@ def enable(source_root, root, mode, *, quiet=False):
     return report
 
 
-def remove_hooks(data_root, *, codex_home=None, dry_run=True):
-    """Remove only this installation's exact registered handler, preserving others."""
+def removal_plan(data_root, *, codex_home=None, installed=None):
+    """Snapshot only owned hook changes for the tool uninstall transaction."""
     home = checked_path(codex_home or Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))))
     receipt = checked_path(home / 'harness-maintenance-hooks.json')
     path = checked_path(home / 'hooks.json')
     if not receipt.is_file():
         return {'state': 'absent'}
-    from .distribution import _write_json, installed_status
+    from .distribution import installed_status
+    from .hook_state import encoded, receipt as read_receipt, restore_trust
     original_receipt = _hook_snapshot(receipt)
     if original_receipt is None:
         return {'state': 'absent'}
     original = _hook_snapshot(path)
-    saved = json.loads(original_receipt)
-    if (not isinstance(saved, dict) or set(saved) != {'owner', 'command'}
-            or saved['owner'] != 'harness-maintenance-v1' or not isinstance(saved['command'], str)):
-        raise ValueError('Maintenance hook ownership receipt is invalid; preserve it')
-    state = installed_status(data_root)
+    saved = read_receipt(original_receipt)
+    state = installed if installed is not None else installed_status(data_root)
     arguments = [state['python'], '-B', str(checked_path(Path(data_root) / 'launcher.py')), '--no-update-check', 'maintenance', '--hook']
     expected = subprocess.list2cmdline(arguments) if os.name == 'nt' else shlex.join(arguments)
     if saved['command'] != expected:
@@ -200,17 +199,36 @@ def remove_hooks(data_root, *, codex_home=None, dry_run=True):
             removed += len(before) - len(group['hooks'])
             if before and not group['hooks']:
                 groups.remove(group)
-    if not dry_run:
-        if _hook_snapshot(receipt) != original_receipt:
-            raise ValueError('Hook ownership changed during removal; concurrent edits preserved')
-        if removed:
-            _write_json(path, value, expected=original)
-        elif _hook_snapshot(path) != original:
-            raise ValueError('Hook settings changed during removal; concurrent edits preserved')
-        if _hook_snapshot(receipt) != original_receipt:
-            raise ValueError('Hook ownership changed during removal; concurrent edits preserved')
-        receipt.unlink()
-    return {'state': 'remove', 'handlers': removed}
+    changes = [(path, original, encoded(value) if removed else original)]
+    warnings = []
+    if saved.get('trust'):
+        config = checked_path(home / 'config.toml')
+        before = _hook_snapshot(config)
+        after, warnings = restore_trust(before, saved['trust'])
+        changes.append((config, before, after))
+    else:
+        warnings.append('No recorded automatic trust changes; existing native trust settings are preserved.')
+    changes.append((receipt, original_receipt, None))
+    return {'state': 'remove', 'handlers': removed, 'changes': changes, 'warnings': warnings}
+
+
+def remove_hooks(data_root, *, codex_home=None, dry_run=True):
+    """Standalone hook removal uses the same reversible edits as tool uninstall."""
+    plan = removal_plan(data_root, codex_home=codex_home)
+    if not dry_run and plan['state'] == 'remove':
+        from .hook_state import apply_changes, rollback_changes
+        written = []
+        try:
+            apply_changes(plan['changes'], written)
+        except BaseException:
+            import tempfile
+            backup = Path(tempfile.mkdtemp(prefix='harness-hook-recovery-'))
+            failures = rollback_changes(written, backup)
+            if failures:
+                raise ValueError('Hook rollback needs manual recovery: ' + ', '.join(failures))
+            backup.rmdir()
+            raise
+    return {key: value for key, value in plan.items() if key != 'changes'}
 
 
 def run(args, source_root):

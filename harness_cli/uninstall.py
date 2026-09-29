@@ -155,9 +155,11 @@ def prepare(data_root: Path, *, locked=False) -> dict:
     if integration:
         integration_change = integration_path.plan(previous=integration['directory'],
             remove_tool=binary if path_change['state'] == 'would-remove' else None)
+    from .maintenance import removal_plan
+    hooks = removal_plan(root, installed=state)
     return {'root': root, 'binary': binary, 'version': state['version'], 'command': state.get('command', 'harness'),
             'files': fingerprints, 'directories': directories, 'external': external, 'path': path_change,
-            'integrationPath': integration_change, 'runtime': runtime}
+            'integrationPath': integration_change, 'runtime': runtime, 'hooks': hooks}
 
 
 def _purge_files(files: dict[Path, tuple], directories: set[Path]) -> list[str]:
@@ -183,12 +185,15 @@ def remove(plan: dict) -> dict:
     moved = []
     backup = None
     batch_cleanup = {}
+    hook_changes = []
     batch_parent = _windows_batch_parent()
     with dist._lock(root):
         if prepare(root, locked=True) != plan:
             raise ValueError('Installation or PATH changed after the preview; run uninstall again')
         backup = Path(tempfile.mkdtemp(prefix='.harness-uninstall-', dir=root.parent))
         try:
+            from .hook_state import apply_changes, rollback_changes
+            apply_changes(plan['hooks'].get('changes', []), hook_changes)
             for path in sorted(root.iterdir()):
                 if path.name == '.install.lock':
                     continue
@@ -247,6 +252,7 @@ def remove(plan: dict) -> dict:
                     os.replace(dist._storage_path(target), dist._storage_path(original))
                 except (OSError, ValueError):
                     failures.append(str(target))
+            failures.extend(rollback_changes(hook_changes, backup))
             try:
                 backup.rmdir()
             except OSError:
@@ -270,8 +276,6 @@ def run(data_root: Path, *, dry_run=False) -> int:
         print(f'No managed Harness installation at {data_root}. Nothing was removed.')
         return 0
     plan = prepare(data_root)
-    from .maintenance import remove_hooks
-    maintenance_hooks = remove_hooks(data_root)
     print(f"Uninstall {plan['command']} {plan['version']}")
     print(f"Tool storage: {plan['root']}")
     print('Commands: ' + ', '.join(str(path) for path in sorted(plan['external'])))
@@ -279,6 +283,8 @@ def run(data_root: Path, *, dry_run=False) -> int:
           (f" ({plan['path']['reason']})" if 'reason' in plan['path'] else ''))
     print('Project harnesses, reused Conda environments and other commands will be kept.')
     print('The saved TypeSafe key will also be removed if its ownership and permissions are valid; shell environment values are unchanged.')
+    for warning in plan['hooks'].get('warnings', []):
+        print(warning)
     if plan['runtime']:
         print('Installer-owned runtime: ' + plan['runtime']['root'])
         print('Unchanged runtime files will also be removed. Added/modified files are preserved.')
@@ -296,8 +302,6 @@ def run(data_root: Path, *, dry_run=False) -> int:
     if answer != 'yes':
         print('Uninstall cancelled. Nothing was removed.')
         return 0
-    if maintenance_hooks['state'] == 'remove':
-        remove_hooks(data_root, dry_run=False)
     cleanup_source = None
     if plan['runtime'] and os.name == 'nt':
         cleanup_source = Path(__file__).with_name('runtime_cleanup.ps1').read_bytes()

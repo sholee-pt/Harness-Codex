@@ -23,9 +23,9 @@ def token(value, limit=4096):
 def owned_definitions(path, expected_command):
     receipt = checked_path(path.parent / 'harness-maintenance-hooks.json')
     original, ownership = maintenance._hook_snapshot(path), maintenance._hook_snapshot(receipt)
-    saved = json.loads(ownership or b'{}')
-    if (not isinstance(saved, dict) or set(saved) != {'owner', 'command'}
-            or saved['owner'] != 'harness-maintenance-v1' or saved['command'] != expected_command):
+    from .hook_state import receipt as read_receipt
+    saved = read_receipt(ownership or b'{}')
+    if saved['command'] != expected_command:
         raise ValueError('Maintenance hook ownership is unavailable')
     command = saved['command']
     value = json.loads(original or b'{}')
@@ -139,8 +139,24 @@ def trust(command, root, path, expected_command, progress):
         if any(maintenance._hook_snapshot(target) != content for target, content in snapshots.items()):
             raise ValueError('Hook definitions changed during setup; retry init or use /hooks')
         if edits:
-            report = call('config/batchWrite', {'edits': [{'keyPath': 'hooks.state', 'value': edits, 'mergeStrategy': 'upsert'}],
-                          'filePath': str(config_path), 'expectedVersion': version, 'reloadUserConfig': True})
+            from .hook_state import begin_trust, encoded, finish_trust, receipt, replace_file
+            ownership = checked_path(path.parent / 'harness-maintenance-hooks.json')
+            before = maintenance._hook_snapshot(config_path)
+            original_receipt = snapshots[ownership]
+            pending = begin_trust(receipt(original_receipt), before, edits)
+            intent = encoded(pending)
+            replace_file(ownership, original_receipt, intent)
+            snapshots[ownership] = intent
+            try:
+                report = call('config/batchWrite', {'edits': [{'keyPath': 'hooks.state', 'value': edits, 'mergeStrategy': 'upsert'}],
+                              'filePath': str(config_path), 'expectedVersion': version, 'reloadUserConfig': True})
+                committed = encoded(finish_trust(pending, maintenance._hook_snapshot(config_path), edits))
+                replace_file(ownership, intent, committed)
+                snapshots[ownership] = committed
+            except BaseException:
+                if maintenance._hook_snapshot(config_path) == before:
+                    replace_file(ownership, intent, original_receipt)
+                raise
             if not isinstance(report, dict) or report.get('status') != 'ok':
                 raise ValueError('Native hook trust was not confirmed; inspect /hooks')
         verified = selected_hooks(call('hooks/list', {'cwds': [str(root)]}), root, path, expected)

@@ -18,7 +18,7 @@ class UninstallTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.base = Path(temporary.name)
-        self.enterContext(mock.patch.dict(os.environ, {'HARNESS_CREDENTIAL_HOME': str(self.base / 'credentials')}))
+        self.enterContext(mock.patch.dict(os.environ, {'HARNESS_CREDENTIAL_HOME': str(self.base / 'credentials'), 'CODEX_HOME': str(self.base / 'codex')}))
         self.source = source(self.base / 'source', '9.8')
         self.data, self.bin = self.base / 'data', self.base / 'bin'
         self.state = dist.install_tool(self.source, self.data, self.bin, sys.executable)
@@ -89,6 +89,78 @@ class UninstallTests(unittest.TestCase):
             forget.assert_not_called()
             self.invoke()
             forget.assert_called_once()
+
+    def hooks(self):
+        from harness_cli import hook_state, maintenance
+        maintenance.install_hooks(self.source, tool_home=self.data)
+        home = self.base / 'codex'
+        receipt = home / 'harness-maintenance-hooks.json'
+        before = b'model = "preserve-user-choice"\n'
+        after = before + b'\n[hooks.state.owned]\ntrusted_hash = "current"\nenabled = true\n'
+        pending = hook_state.begin_trust(hook_state.receipt(receipt.read_bytes()), before,
+                                        {'owned': {'trusted_hash': 'current', 'enabled': True}})
+        receipt.write_bytes(hook_state.encoded(hook_state.finish_trust(pending, after, ['owned'])))
+        (home / 'config.toml').write_bytes(after)
+        return home
+
+    def test_path_failure_restores_hooks_receipt_and_tool_together(self):
+        home = self.hooks()
+        before = {path: path.read_bytes() for path in home.iterdir()}
+        from harness_cli.hook_state import file_metadata
+        metadata = {path: file_metadata(path) for path in home.iterdir()}
+        self.path_action.side_effect = lambda path, dry_run=True, **kwargs: ({'state': 'would-remove', 'writes': 1}
+            if dry_run else (_ for _ in ()).throw(OSError('profile write failed')))
+        with self.assertRaisesRegex(OSError, 'profile write failed'):
+            self.invoke()
+        self.assertEqual({path: path.read_bytes() for path in home.iterdir()}, before)
+        self.assertEqual({path: file_metadata(path) for path in home.iterdir()}, metadata)
+        self.assertEqual(dist.installed_status(self.data)['version'], '9.8')
+
+    def test_receipt_deletion_failure_restores_already_removed_hooks(self):
+        from harness_cli import hook_state
+        home = self.hooks()
+        before = {path: path.read_bytes() for path in home.iterdir()}
+        replace = hook_state.replace_file
+        def fail_receipt(path, original, desired):
+            if path.name == 'harness-maintenance-hooks.json' and desired is None:
+                raise OSError('receipt is busy')
+            return replace(path, original, desired)
+        with mock.patch.object(hook_state, 'replace_file', side_effect=fail_receipt), self.assertRaisesRegex(OSError, 'receipt is busy'):
+            self.invoke()
+        self.assertEqual({path: path.read_bytes() for path in home.iterdir()}, before)
+        self.assertEqual(dist.installed_status(self.data)['version'], '9.8')
+
+    def test_hook_edit_after_confirmation_is_preserved_before_removal(self):
+        home = self.hooks()
+        path = home / 'hooks.json'
+        edited = path.read_bytes() + b'\n'
+        def confirm(_):
+            path.write_bytes(edited)
+            return 'yes'
+        with redirect_stdout(io.StringIO()), mock.patch.object(sys.stdin, 'isatty', return_value=True), \
+                mock.patch.object(sys.stdout, 'isatty', return_value=True), mock.patch('builtins.input', side_effect=confirm):
+            with self.assertRaisesRegex(ValueError, 'changed after the preview'):
+                uninstall.run(self.data)
+        self.assertEqual(path.read_bytes(), edited)
+        self.assertEqual(dist.installed_status(self.data)['version'], '9.8')
+
+    def test_concurrent_hook_edit_during_rollback_keeps_recovery_copy(self):
+        home = self.hooks()
+        path = home / 'hooks.json'
+        original = path.read_text()
+        def fail_path(pathname, dry_run=True, **kwargs):
+            if dry_run:
+                return {'state': 'would-remove', 'writes': 1}
+            path.write_text('user edited hooks')
+            raise OSError('profile write failed')
+        self.path_action.side_effect = fail_path
+        with self.assertRaisesRegex(ValueError, 'manual recovery'):
+            self.invoke()
+        self.assertEqual(path.read_text(), 'user edited hooks')
+        recovery, = self.base.glob('.harness-uninstall-*/hook-recovery-*.json')
+        import json
+        self.assertEqual(json.loads(recovery.read_text())['before'], original)
+        self.assertEqual(dist.installed_status(self.data)['version'], '9.8')
 
     def test_installed_cli_runs_confirmation_and_self_removal_in_a_fresh_process(self):
         # Real installed source and launcher; only terminal detection is adapted
