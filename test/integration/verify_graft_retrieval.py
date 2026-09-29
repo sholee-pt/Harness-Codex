@@ -63,10 +63,11 @@ def verify(package=None):
         before = {p.relative_to(project): (p.read_bytes(), p.stat().st_mtime_ns) for p in project.rglob('*') if p.is_file()}
         guard = ROOT / 'test/integration/graft_deny_network.mjs'
         env = {**os.environ, 'HARNESS_GRAFT_HOME': str(base / 'storage'), 'HARNESS_CREDENTIAL_HOME': str(base / 'credentials'), 'DO_NOT_TRACK': '1', 'TYPESAFE_API_KEY': ''}
+        env.update(CODEX_HOME=str(base / 'codex'), HARNESS_STATE_HOME=str(base / 'state'))
         env.pop('NODE_OPTIONS', None)
         def init():
             completed = subprocess.run([sys.executable, '-B', str(ROOT / 'harness.py'), '--no-update-check', 'init',
-                                        '--project', str(project), '--no-codex-integration'], env=env,
+                                        '--project', str(project), '--no-codex-integration', '--hook-trust', 'manual'], env=env,
                                        capture_output=True, text=True, encoding='utf-8', timeout=900)
             if completed.returncode:
                 raise AssertionError(completed.stdout + completed.stderr)
