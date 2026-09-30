@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 from .paths import checked_path as _path
+from .paths import user_home
 
 START = '# >>> harness-codex PATH >>>'
 END = '# <<< harness-codex PATH <<<'
@@ -49,7 +50,7 @@ def _block(directory: str) -> bytes:
 
 
 def register_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False) -> dict:
-    home = _path(home or Path.home())
+    home = user_home(home)
     directory = str(_path(bin_dir))
     if any(ord(c) < 32 or ord(c) == 127 for c in directory) or ':' in directory:
         raise ValueError('Bash PATH directory contains unsupported characters')
@@ -106,7 +107,7 @@ def _replace_profile(profile: Path, before: bytes, after: bytes) -> None:
 
 def reset_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False) -> dict:
     """Normalize only complete, exact Harness blocks; preserve all other bytes."""
-    home = _path(home or Path.home())
+    home = user_home(home)
     directory = str(_path(bin_dir))
     if any(ord(c) < 32 or ord(c) == 127 for c in directory) or ':' in directory:
         raise ValueError('Bash PATH directory contains unsupported characters')
@@ -129,7 +130,7 @@ def reset_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False
 def unregister_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False, expected=None) -> dict:
     """Remove only the exact generated block; literal/user-edited exports are preserved."""
     import hashlib
-    profile = _path((home or Path.home()) / '.bashrc')
+    profile = _path(user_home(home) / '.bashrc')
     if profile.exists() and (not profile.is_file() or profile.stat().st_size > 1024 * 1024):
         raise ValueError('Bash startup file must be a regular file no larger than 1 MiB')
     before = profile.read_bytes() if profile.exists() else b''

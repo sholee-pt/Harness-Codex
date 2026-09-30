@@ -7,6 +7,7 @@ import sys
 import stat
 
 from . import distribution as dist
+from .paths import user_home
 
 
 def _pause_installer(paused: bool) -> None:
@@ -36,7 +37,7 @@ def choose(data_root: Path, bin_dir: Path, selection: str) -> tuple[str, dict | 
     traces = existing is not None or any(os.path.lexists(binary / name) for name in ('harness-codex', 'harness-codex.cmd'))
     if os.name != 'nt':
         from .shell import START
-        profile = dist._storage_path(Path.home() / '.bashrc')
+        profile = dist._storage_path(user_home() / '.bashrc')
         if profile.is_file() and profile.stat().st_size <= 1024 * 1024:
             traces = traces or START.encode() in profile.read_bytes()
     else:

@@ -26,6 +26,12 @@ def verify(dist):
         base = Path(directory)
         home, binary = base / 'home', base / 'transport'
         home.mkdir(); binary.mkdir()
+        # Shared Linux servers may expose account homes and XDG storage by aliases.
+        alias = base / 'home-alias'
+        alias.symlink_to(home, target_is_directory=True)
+        shared = base / 'shared-data'
+        shared.mkdir()
+        (home / 'share').symlink_to(shared, target_is_directory=True)
         assets = {p.name: str(p) for p in dist.iterdir() if p.is_file()}
         real_curl = shutil.which('curl')
         wrapper = binary / 'curl'
@@ -53,8 +59,8 @@ else:
                     continue
                 if utility.is_file() and os.access(utility, os.X_OK):
                     target.symlink_to(utility)
-        env = {'HOME': str(home), 'USER': os.environ.get('USER', 'runner'),
-               'PATH': str(binary), 'XDG_DATA_HOME': str(home / 'share'),
+        env = {'HOME': str(alias), 'USER': os.environ.get('USER', 'runner'),
+               'PATH': str(binary), 'XDG_DATA_HOME': str(alias / 'share'),
                'TMPDIR': str(base), 'TEST_ASSETS': json.dumps(assets), 'TEST_REAL_CURL': real_curl,
                'TEST_DOWNLOAD_LOG': str(base / 'downloads.log'), 'PYTHONDONTWRITEBYTECODE': '1'}
         # Do not inherit Conda, project, credential or shell-hook variables.
@@ -115,6 +121,7 @@ else:
                 'preexistingCondaOnPath': False,
                 'freshCondaEnvironmentCreated': True, 'freshBashFoundCommand': True,
                 'coldShellGeneratorHelper': True,
+                'linkedHomeAndXdgStorage': True,
                 'repeatBytesAndMtimesPreserved': True, 'initRepairedMissingProfileEntry': True,
                 'ownedRuntimeRemoved': True, 'projectKeptAfterUninstall': True,
                 'nativeCodexInvoked': False}

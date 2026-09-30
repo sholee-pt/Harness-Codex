@@ -100,6 +100,36 @@ BASH = (shutil.which("bash") if os.name != "nt" else
 
 @unittest.skipUnless(BASH and os.name == 'posix', "Source shell installer targets Linux; native Windows installer is tested separately")
 class SourceInstallerTests(unittest.TestCase):
+    def test_external_parent_alias_resolves_but_managed_roots_are_not_followed(self):
+        for redirected in ('parent', 'root', 'runtime'):
+            with self.subTest(redirected=redirected), tempfile.TemporaryDirectory() as directory:
+                base = Path(directory).resolve()
+                home = base / 'physical'
+                home.mkdir()
+                alias = base / 'home'
+                alias.symlink_to(home, target_is_directory=True)
+                target = base / 'user-files'
+                target.mkdir()
+                (target / 'keep').write_text('user')
+                if redirected != 'parent':
+                    (home / ('tool' if redirected == 'root' else 'tool-runtime')).symlink_to(target, target_is_directory=True)
+                marker = base / 'conda-called'
+                fake = base / 'conda'
+                fake.write_text('#!/bin/sh\nprintf called > "$TEST_MARKER"\nexit 23\n')
+                fake.chmod(0o755)
+                env = {**os.environ, 'HOME': str(alias), 'CONDA_EXE': str(fake), 'TMPDIR': str(base), 'TEST_MARKER': str(marker)}
+                for name in ('BASH_ENV', 'ENV'):
+                    env.pop(name, None)
+                result = subprocess.run([BASH, str(ROOT / 'installer/install.sh'), '--data-dir', str(alias / 'tool')],
+                                        env=env, capture_output=True, text=True, timeout=20)
+                self.assertEqual(result.returncode, 23 if redirected == 'parent' else 1, result.stdout + result.stderr)
+                self.assertEqual(marker.exists(), redirected == 'parent')
+                self.assertEqual((target / 'keep').read_text(), 'user')
+                self.assertEqual(len(list(target.iterdir())), 1)
+                if redirected == 'parent':
+                    self.assertEqual((home / 'tool-runtime/.harness-runtime-owner').read_text(),
+                                     'harness-codex runtime v1\n' + str(home / 'tool') + '\n')
+
     def test_stage_output_keeps_conda_noise_and_receipts_in_log_and_preserves_failures(self):
         for failure, existing in (("", False), ("", True), ("env", False), ("create", False), ("run", True)):
             with self.subTest(failure=failure, existing=existing), tempfile.TemporaryDirectory() as directory:

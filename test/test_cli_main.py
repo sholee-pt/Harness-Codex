@@ -123,7 +123,7 @@ class CliRoutingTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()), mock.patch.object(cli, "_environment"), mock.patch.object(distribution, "check_update", return_value={"status": "up-to-date"}) as check, mock.patch.object(distribution, "update_tool") as update:
             status = cli.main(["update", "--check", "--data-dir", "a tool path", "--branch", "codex/v9.2", "--timeout", "7"], source_root=REPO)
             self.assertEqual(status, 0)
-            check.assert_called_once_with(Path("a tool path"), branch="codex/v9.2", repository=None, timeout=7.0)
+            check.assert_called_once_with(Path("a tool path").resolve(), branch="codex/v9.2", repository=None, timeout=7.0)
             update.assert_not_called()
 
     def test_project_exit_status_is_preserved(self):

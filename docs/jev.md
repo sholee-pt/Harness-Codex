@@ -35,9 +35,19 @@ and disabled/unavailable Graft never initialize Jev.
 
 ## Login and saved credentials
 
+Pressing Enter requests a new browser tab through the environment's browser
+connection. This includes an inherited `BROWSER` opener (used by VS Code Remote)
+or a forwarded graphical display. It is not tied to VS Code, Chrome or a terminal
+brand. In plain SSH sessions from PuTTY, MobaXterm or PowerShell without such a
+connection, open the displayed `https://console.typesafe.ai/keys` address on your
+own computer and paste the key into the hidden terminal prompt. A failed or
+timed-out opener also shows this fallback; a sent request does not prove a tab
+appeared. No login callback server is started, so port forwarding is not required
+for this key-paste flow. Existing keys are reused without opening a browser.
+
 On Linux, init prints the official [key page](https://console.typesafe.ai/keys).
-Press Enter to try opening it, `p` to paste directly, or `s` to skip. On SSH,
-open the printed link on your own computer. Sign in and issue a key on TypeSafe,
+Press Enter to try opening it, `p` to paste directly, or `s` to skip.
+Sign in and issue a key on TypeSafe,
 then paste it into the hidden terminal prompt. An empty key skips setup; a
 terminal that cannot hide input is refused. JSON/unattended runs never prompt
 or open a browser. This is API-key setup, not OAuth or automatic key issuance.

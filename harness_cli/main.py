@@ -217,6 +217,13 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
         return 0
     try:
         _environment()
+        if args.command in {'install', 'update', 'uninstall'}:
+            from .paths import storage_location
+            args.data_dir = storage_location(args.data_dir)
+            if args.command == 'install':
+                args.bin_dir = storage_location(args.bin_dir)
+                if args.owned_runtime:
+                    args.owned_runtime = storage_location(args.owned_runtime)
         if args.command == "uninstall":
             from .uninstall import run
             return run(args.data_dir, dry_run=args.dry_run)

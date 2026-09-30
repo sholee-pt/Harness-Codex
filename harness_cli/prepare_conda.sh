@@ -9,13 +9,12 @@ done
 [[ "$data_pending" == false && -n "$data_directory" ]] || { printf 'Missing --data-dir value\n' >&2; exit 1; }
 data_directory=$(realpath -ms -- "$data_directory")
 [[ "$data_directory" != *$'\n'* && "$data_directory" != *$'\r'* ]] || exit 1
-probe=$data_directory
-while [[ "$probe" != / ]]; do
-  [[ ! -L "$probe" ]] || { printf 'Installation path contains a symlink; preserved: %s\n' "$probe" >&2; exit 1; }
-  parent=$(dirname -- "$probe")
-  [[ "$parent" != "$probe" && "$parent" != . ]] || break
-  probe=$parent
-done
+# Home/shared-storage aliases are external locations, not managed files.
+# Resolve their parent once; never follow a redirected installation root.
+data_parent=$(realpath -m -- "$(dirname -- "$data_directory")")
+data_directory=$data_parent/$(basename -- "$data_directory")
+[[ "$data_directory" != *$'\n'* && "$data_directory" != *$'\r'* ]] || exit 1
+[[ ! -L "$data_directory" ]] || { printf 'Installation root is a symlink; preserved: %s\n' "$data_directory" >&2; exit 1; }
 runtime_root=$data_directory-runtime
 owned_runtime=()
 environment_selector=(-n harness)

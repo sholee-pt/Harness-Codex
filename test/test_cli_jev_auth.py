@@ -113,17 +113,51 @@ class JevAuthTests(unittest.TestCase):
             prompt.assert_not_called()
 
     def test_ssh_prints_link_without_launching_server_browser(self):
-        with mock.patch.dict(os.environ, {'SSH_CONNECTION': 'fixture'}), mock.patch.object(auth.subprocess, 'run') as browser:
+        with mock.patch.dict(os.environ, {'SSH_CONNECTION': 'fixture', 'BROWSER': '', 'DISPLAY': '', 'WAYLAND_DISPLAY': ''}), mock.patch.object(auth.subprocess, 'run') as browser:
             result, _ = self.login(answer='')
         self.assertEqual(result['state'], 'saved')
         browser.assert_not_called()
 
     def test_browser_timeout_still_allows_key_entry(self):
-        with mock.patch.dict(os.environ, {'SSH_CONNECTION': '', 'SSH_TTY': ''}):
+        with mock.patch.dict(os.environ, {'SSH_CONNECTION': '', 'SSH_TTY': '', 'SSH_CLIENT': ''}):
             with mock.patch.object(auth.subprocess, 'run', side_effect=subprocess.TimeoutExpired('browser', 3)) as browser:
                 result, _ = self.login(answer='')
         self.assertEqual(result['state'], 'saved')
         self.assertEqual(browser.call_args.kwargs['timeout'], 3)
+
+    def test_remote_browser_connections_and_failed_launches_report_truthfully(self):
+        for connection in ('BROWSER', 'DISPLAY', 'WAYLAND_DISPLAY'):
+            for code in (0, 1):
+                with self.subTest(connection=connection, code=code):
+                    environment = {'SSH_CONNECTION': 'fixture', 'BROWSER': '', 'DISPLAY': '', 'WAYLAND_DISPLAY': '', connection: 'fixture'}
+                    with mock.patch.dict(os.environ, environment), contextlib.redirect_stdout(io.StringIO()) as out:
+                        with mock.patch.object(auth.subprocess, 'run', return_value=mock.Mock(returncode=code)) as browser:
+                            self.assertEqual(auth.open_key_page(), code == 0)
+                    self.assertEqual(browser.call_args.kwargs['timeout'], 3)
+                    self.assertIn(auth.KEY_URL, out.getvalue())
+                    self.assertEqual('Browser request sent' in out.getvalue(), code == 0)
+
+    def test_plain_ssh_client_has_explicit_fallback_and_can_still_save_key(self):
+        environment = {'SSH_CONNECTION': '', 'SSH_TTY': '', 'SSH_CLIENT': 'fixture', 'BROWSER': '', 'DISPLAY': '', 'WAYLAND_DISPLAY': ''}
+        with mock.patch.dict(os.environ, environment), mock.patch.object(auth.subprocess, 'run') as browser:
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertFalse(auth.open_key_page())
+            self.assertIn('no browser connection', out.getvalue())
+            self.assertIn(auth.KEY_URL, out.getvalue())
+            self.assertEqual(self.login(answer='')[0]['state'], 'saved')
+        browser.assert_not_called()
+
+    def test_browser_child_propagates_launch_failure_and_requests_new_tab(self):
+        import runpy
+        for opened in (True, False):
+            with self.subTest(opened=opened), mock.patch.object(auth.sys, 'argv', ['jev_auth', '--open']):
+                with mock.patch.object(auth.webbrowser, 'open', return_value=opened) as browser:
+                    with self.assertRaises(SystemExit) as result:
+                        with warnings.catch_warnings():
+                            warnings.filterwarnings('ignore', message=".*harness_cli.jev_auth.*found in sys.modules", category=RuntimeWarning)
+                            runpy.run_module('harness_cli.jev_auth', run_name='__main__')
+                self.assertEqual(result.exception.code, 0 if opened else 1)
+                browser.assert_called_once_with(auth.KEY_URL, new=2)
 
     def test_insecure_getpass_fallback_is_rejected(self):
         def insecure(*args):
@@ -189,6 +223,26 @@ class JevAuthTests(unittest.TestCase):
                     with contextlib.redirect_stdout(io.StringIO()):
                         project._configure_retrieval(args, REPO, self.base)
                 self.assertEqual(login.call_count, expected)
+
+    @unittest.skipUnless(os.name == 'posix', 'Real owner/mode enforcement requires Linux')
+    def test_linked_storage_parent_and_remote_browser_bridge(self):
+        alias = self.base / 'linked-home'
+        alias.symlink_to(self.base, target_is_directory=True)
+        opener = self.base / 'browser-bridge'
+        marker = self.base / 'opened-url'
+        opener.write_text('#!/bin/sh\nprintf "%s" "$1" > "$TEST_BROWSER_MARKER"\n')
+        opener.chmod(0o755)
+        environment = {'HARNESS_CREDENTIAL_HOME': str(alias / 'credentials'), 'SSH_CONNECTION': 'fixture',
+                       'BROWSER': str(opener), 'DISPLAY': '', 'WAYLAND_DISPLAY': '', 'TEST_BROWSER_MARKER': str(marker)}
+        with mock.patch.dict(os.environ, environment), contextlib.redirect_stdout(io.StringIO()):
+            self.assertTrue(auth.open_key_page())
+            self.assertEqual(marker.read_text(), auth.KEY_URL)
+            auth.save(SECRET)
+            self.assertEqual(auth.resolve(), SECRET)
+            self.assertTrue(auth.forget())
+            self.root.symlink_to(self.base, target_is_directory=True)
+            with self.assertRaises(ValueError):
+                auth.home()
 
     @unittest.skipUnless(os.name == 'posix', 'Real owner/mode enforcement requires Linux')
     def test_linux_permissions_links_and_hardlinks_are_enforced(self):

@@ -16,6 +16,7 @@ import sys
 import tempfile
 
 from . import distribution as dist
+from .paths import user_home
 from .shell import _replace_profile
 
 MARKER = '.harness-runtime-owner'
@@ -112,7 +113,7 @@ def record(root: Path, data_root: Path, *, attach: bool = True) -> dict:
                     raise ValueError('Runtime receipt exceeds the supported file count')
         value = {'schema': 1, 'root': str(root), 'dataRoot': str(data_root),
                  'files': files, 'directories': directories,
-                 'condaRegistration': str(Path.home() / '.conda/environments.txt'),
+                 'condaRegistration': str(user_home() / '.conda/environments.txt'),
                  'registry': _windows_registration(root)}
         payload = json.dumps(value, sort_keys=True).encode('utf-8')
         if len(payload) > dist.MAX_FILE_BYTES:

@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import shlex
 
-from .paths import checked_path
+from .paths import checked_path, user_home
 
 START = '# >>> harness-codex native integration >>>'
 END = '# <<< harness-codex native integration <<<'
@@ -52,7 +52,7 @@ def plan(directory=None, *, previous=None, remove_tool=None, home=None, registry
             raise ValueError('User PATH exceeds its supported length')
         return {'kind': 'windows', 'before': before, 'after': after,
                 'changed': (before or ('', kind)) != after}
-    profile = checked_path((home or Path.home()) / '.bashrc')
+    profile = checked_path(user_home(home) / '.bashrc')
     if profile.exists() and (not profile.is_file() or profile.stat().st_size > 1024 * 1024):
         raise ValueError('Bash startup file must be a bounded regular file')
     before = profile.read_bytes() if profile.exists() else b''

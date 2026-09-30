@@ -11,7 +11,7 @@ import tempfile
 import uuid
 from types import SimpleNamespace
 
-from .paths import checked_path
+from .paths import checked_path, storage_location
 from .locking import FileLock
 
 PACKAGE_VERSION = '0.18.0'
@@ -116,7 +116,7 @@ def _check_skill(skill, settings):
 
 
 def home():
-    return checked_path(os.environ.get('HARNESS_GRAFT_HOME', str(Path.home() / '.local/share/harness-codex-retrieval')))
+    return storage_location(os.environ.get('HARNESS_GRAFT_HOME', str(Path.home() / '.local/share/harness-codex-retrieval')))
 
 
 def storage(root):

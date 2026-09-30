@@ -13,7 +13,7 @@ import warnings
 import webbrowser
 
 from .distribution import _lock
-from .paths import checked_path
+from .paths import checked_path, storage_location
 
 OWNER = 'harness-typesafe-credential-v1'
 KEY_URL = 'https://console.typesafe.ai/keys'
@@ -28,7 +28,7 @@ def home():
     path = Path(os.environ.get('HARNESS_CREDENTIAL_HOME', str(Path.home() / '.local/share/harness-codex-credentials'))).expanduser()
     if not path.is_absolute():
         raise ValueError('HARNESS_CREDENTIAL_HOME must be an absolute user-owned path')
-    return checked_path(path)
+    return storage_location(path)
 
 
 def _key(value):
@@ -129,6 +129,28 @@ def validate(key, model):
     return 'unverified'
 
 
+def open_key_page():
+    remote = any(os.environ.get(name) for name in ('SSH_CONNECTION', 'SSH_TTY', 'SSH_CLIENT'))
+    bridge = any(os.environ.get(name) for name in ('BROWSER', 'DISPLAY', 'WAYLAND_DISPLAY'))
+    if remote and not bridge:
+        print('This SSH terminal has no browser connection. Open the address below on your computer:')
+    else:
+        # Honor the terminal's browser bridge (including VS Code Remote and X11).
+        # A launcher must not hold init open on a headless host.
+        try:
+            result = subprocess.run([sys.executable, '-B', '-m', 'harness_cli.jev_auth', '--open'],
+                cwd=Path(__file__).resolve().parents[1], capture_output=True, timeout=3)
+            if result.returncode == 0:
+                print('Browser request sent. If no tab appears, open the address below:')
+                print(KEY_URL)
+                return True
+        except (OSError, subprocess.SubprocessError):
+            pass
+        print('Could not confirm a browser launch. Open the address below on your computer:')
+    print(KEY_URL)
+    return False
+
+
 def login(model, *, interactive=True, replace=False):
     if os.environ.get('TYPESAFE_API_KEY', '').strip():
         if not resolve():
@@ -143,19 +165,14 @@ def login(model, *, interactive=True, replace=False):
         if not _supported():
             return {'state': 'unavailable', 'guidance': 'Persistent Jev login currently supports Linux; use TYPESAFE_API_KEY.'}
         print('Jev uses a separate TypeSafe account: ' + KEY_URL)
-        print('Sign in and create an API key. On SSH, open this link on your own computer.')
+        print('Sign in and create an API key. Remote terminals use their browser connection when available.')
         print('One small authentication request may incur provider usage; no project data is sent.')
         print('The key is saved locally with owner-only permissions, without encryption or shell exports.')
         choice = input('Press Enter to open the page, p to paste directly, or s to skip: ').strip().lower()
         if choice not in {'', 'p'}:
             return {'state': 'skipped', 'guidance': 'Credential unchanged; ordinary code search remains available.'}
-        if not choice and not os.environ.get('SSH_CONNECTION') and not os.environ.get('SSH_TTY'):
-            # A browser launcher must not hold init open on a headless host.
-            try:
-                subprocess.run([sys.executable, '-B', '-m', 'harness_cli.jev_auth', '--open'],
-                    cwd=Path(__file__).resolve().parents[1], capture_output=True, timeout=3)
-            except (OSError, subprocess.SubprocessError):
-                pass
+        if not choice:
+            open_key_page()
         with warnings.catch_warnings():
             warnings.simplefilter('error', getpass.GetPassWarning)
             key = getpass.getpass('Paste API key (hidden), or press Enter to skip: ')
@@ -200,4 +217,4 @@ def run(args, model):
 
 
 if __name__ == '__main__' and sys.argv[1:] == ['--open']:
-    webbrowser.open(KEY_URL)
+    raise SystemExit(0 if webbrowser.open(KEY_URL, new=2) else 1)

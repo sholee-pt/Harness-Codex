@@ -39,7 +39,7 @@ For Windows source development, run from an existing checkout:
 ## Source installation
 
 ```bash
-git clone --branch v0.29.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
+git clone --branch v0.29.1-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
 bash Harness-Codex/installer/install.sh
 source ~/.bashrc
 ```
@@ -47,6 +47,13 @@ source ~/.bashrc
 On Windows, the source installer can be exercised from PowerShell for development: `& ./Harness-Codex/installer/install.ps1` under your normal script execution policy. This does not establish a verified Windows native release. The source scripts install an existing checkout; `install_harness_codex.sh` and `.ps1` first download a release and then invoke the corresponding source installer. Installation does not alter project Git state.
 
 ## PATH and logs
+
+Linux account homes and installation parent directories may be symbolic links
+to shared storage. The installer resolves those external aliases and records
+the physical location for reuse and removal. The managed installation root,
+runtime root, launcher files, `.bashrc` and credential files must not be links;
+their ownership checks still apply. A rejected link is preserved. Use the path
+in the error to distinguish a shared-storage alias from a redirected managed file.
 
 The source installer resolves the selected Conda environment and executes its
 absolute Python path. It checks the actual Python prefix against the selected

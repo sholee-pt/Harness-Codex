@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.29.1‑beta`](#harness-for-codex-v0291-beta) | Schema 3 | Schema 7 | Schema 2 | Fix linked Linux installation parents and remote Jev browser setup. |
 | [`v0.29.0‑beta`](#harness-for-codex-v0290-beta) | Schema 3 | Schema 7 | Schema 2 | Consistent confirmations, truthful update output and scoped maintenance recovery; evaluation storage and transaction fixes. |
 | [`v0.28.0‑beta`](#harness-for-codex-v0280-beta) | Schema 3 | Schema 7 | Schema 2 | Improve approval prompts and reversible configuration menus |
 | [`v0.27.4‑beta`](#harness-for-codex-v0274-beta) | Schema 3 | Schema 7 | Schema 2 | Fix configuration approval whitespace and expose native rejection results |
@@ -84,6 +85,12 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.29.1-beta
+
+- Accept POSIX home/shared-storage aliases at external installation boundaries while retaining strict checks on managed roots, launchers, profiles and credentials. Keep physical paths consistent through reinstall and uninstall.
+- Honor available remote browser connections for Jev key setup, including inherited BROWSER and forwarded graphical displays. Plain SSH without a browser connection displays a direct URL; failed or timed-out launches no longer fail silently.
+- Add linked-home installation/reuse/removal and browser-connection regression coverage; compare upgrades only against v0.29.0-beta.
 
 ## Harness for Codex v0.29.0-beta
 

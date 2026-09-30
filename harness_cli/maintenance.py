@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 from .environment import helper_environment
-from .paths import checked_path
+from .paths import checked_path, storage_location
 from . import presentation as ui
 
 EVENTS = ('SessionStart', 'UserPromptSubmit', 'Stop', 'Interrupt', 'SessionEnd', 'SubagentStart', 'SubagentStop')
@@ -104,7 +104,7 @@ def _legacy_posix_hook(command, arguments):
 
 
 def install_hooks(source_root, *, codex_home=None, tool_home=None):
-    home = checked_path(codex_home or Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))))
+    home = storage_location(codex_home or Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))))
     path = checked_path(home / 'hooks.json')
     receipt = checked_path(home / 'harness-maintenance-hooks.json')
     command = hook_command(source_root, tool_home)
@@ -181,7 +181,7 @@ def enable(source_root, root, mode, *, quiet=False):
 
 def removal_plan(data_root, *, codex_home=None, installed=None):
     """Snapshot only owned hook changes for the tool uninstall transaction."""
-    home = checked_path(codex_home or Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))))
+    home = storage_location(codex_home or Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))))
     receipt = checked_path(home / 'harness-maintenance-hooks.json')
     path = checked_path(home / 'hooks.json')
     if not receipt.is_file():

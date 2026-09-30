@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from harness_cli import distribution as dist, footprint, main, setup, shell
+from harness_cli import distribution as dist, footprint, main, setup, shell, paths
 from test_cli_distribution import files, source
 
 
@@ -23,6 +23,50 @@ class ReinstallTests(unittest.TestCase):
         self.data, self.binary = self.base / 'tool', self.base / 'bin'
         self.source = source(self.base / 'source', '9.10')
         dist.install_tool(self.source, self.data, self.binary, python_executable=sys.executable, branch='codex/v9.10', auto_update='off')
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX external storage aliases')
+    def test_alias_home_install_reuse_and_managed_link_rejection(self):
+        alias = self.base / 'home-alias'
+        alias.symlink_to(self.base, target_is_directory=True)
+        profile = self.base / '.bashrc'
+        profile.write_text('# user content\n')
+        before = files(self.data)
+        with mock.patch.object(main, '_environment'), mock.patch.object(Path, 'home', return_value=alias):
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = main.main(['install', '--data-dir', str(alias / 'tool'), '--bin-dir', str(alias / 'bin'),
+                                    '--existing', 'reuse'], source_root=self.source)
+            self.assertEqual(result, 0)
+            self.assertEqual(files(self.data), before)
+            self.assertEqual(shell.register_path(self.binary)['writes'], 0)
+            self.assertEqual(shell.unregister_path(self.binary)['writes'], 1)
+        self.assertEqual(profile.read_text(), '# user content\n')
+        self.assertEqual(paths.storage_location(alias / 'new/tool'), self.base / 'new/tool')
+        target = self.base / 'user-owned'
+        target.mkdir()
+        link = self.base / 'redirected'
+        link.symlink_to(target, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            paths.storage_location(alias / 'redirected')
+        (self.data / 'redirected').symlink_to(target, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            paths.checked_path(self.data / 'redirected/file')
+        self.assertEqual(list(target.iterdir()), [])
+
+    def test_location_resolution_leaves_managed_leaf_for_strict_check(self):
+        value = self.base / 'outer/tool'
+        physical = self.base / 'physical'
+        with mock.patch.object(paths, 'os', mock.Mock(wraps=os, name='posix')) as platform:
+            platform.name = 'posix'
+            with mock.patch.object(Path, 'resolve', return_value=physical) as resolve:
+                with mock.patch.object(paths, 'checked_path', return_value=physical / 'tool') as check:
+                    self.assertEqual(paths.storage_location(value), physical / 'tool')
+                resolve.assert_called_once_with()
+                check.assert_called_once_with(physical / 'tool')
+            with mock.patch.object(Path, 'resolve', side_effect=RuntimeError('Symlink loop')):
+                with self.assertRaisesRegex(ValueError, 'installation parent'):
+                    paths.storage_location(value)
+                with self.assertRaisesRegex(ValueError, 'account home'):
+                    paths.user_home(self.base)
 
     def test_reuse_keeps_preferences_reset_clears_only_tool_check_cache(self):
         dist.mark_check(self.data)
