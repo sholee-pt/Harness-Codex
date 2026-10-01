@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.31.0‑beta`](#harness-for-codex-v0310-beta) | Schema 3 | Schema 7 | Schema 2 | Add qualified in-conversation management, a boxed dashboard, queued project switching and confirmed empty-directory cleanup. |
 | [`v0.30.2‑beta`](#harness-for-codex-v0302-beta) | Schema 3 | Schema 7 | Schema 2 | Bind owned Linux installation paths across mount changes and verify hook execution before trust. |
 | [`v0.30.1‑beta`](#harness-for-codex-v0301-beta) | Schema 3 | Schema 7 | Schema 2 | Refresh host diagnostics when init reuses an existing project harness. |
 | [`v0.30.0‑beta`](#harness-for-codex-v0300-beta) | Schema 3 | Schema 7 | Schema 2 | Add portable root resolution, bounded host sandbox diagnostics, missing-root init and explicit external retrieval. |
@@ -91,6 +92,15 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.31.0-beta
+
+- Add `/harness/` management inputs through the existing official-Codex adapter, without rebuilding Codex. Qualified commands are separate from the built-in slash completion menu.
+- Display the version and author in a shared status box with project, maintenance, adaptive routing, Jev, Graft and hook information; local queries make no model request.
+- Add preference selection, configuration in the current model/permission context, and explicit maintenance review. Keep terminal management commands available.
+- Queue project resume/new selection and Harness updates after normal native exit. Preserve original histories and avoid copying transcripts or source-project permission overrides.
+- Bind removal confirmation to the previewed file state and offer separate, non-recursive cleanup of empty component parents. Protect user files and global Codex directories.
+- Extend the official Linux UI release gate to cover status, native choices and absence of model requests for local controls. Preserve v0.30.2-beta as the comparison branch.
 
 ## Harness for Codex v0.30.2-beta
 

@@ -76,6 +76,8 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     parser.add_argument("--no-update-check", action="store_true", help="Skip automatic upstream checks for this invocation.")
     commands = parser.add_subparsers(dest="command", title="commands", metavar="COMMAND")
     register_project_commands(commands)
+    from .management import register as register_management
+    register_management(commands)
     from .maintenance import register
     register(commands)
     from .routing import register as register_routing
@@ -219,6 +221,9 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
         return 0
     try:
         _environment()
+        if args.command in {'settings', 'switch', '_complete-init', '_complete-config'}:
+            from .management import run
+            return run(args, source_root)
         if args.command in {'install', 'update', 'uninstall'}:
             from .paths import storage_location
             args.data_dir = storage_location(args.data_dir)

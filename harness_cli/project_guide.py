@@ -38,6 +38,7 @@ def sync(root, *, version, revision, stale=False):
             '- Preserve native Codex model and permission settings. Changing the conversation model does not require regenerating this harness.\n'
             '- Editing files does not authorize commit or push. Honor only explicit authorization within its scope.\n\n'
             '## Maintenance\n\n'
+            '- In an adapter-enabled Codex launch, `/harness/status` shows local status and `/harness/settings` changes preferences. These qualified inputs are not native slash-menu entries. Terminal commands remain available.\n'
             '- Use `harness-codex config` to review project responsibilities and update the existing harness.\n'
             '- Change maintenance with `harness-codex maintenance --mode suggest` (off/suggest/auto). Auto permits bounded existing-skill corrections and requires trusted native hooks; reviews use conversation tokens.\n'
             '- Full `harness-codex init` prepares trust for Harness maintenance hooks without enabling project features. Off retains trust for later use. Follow manual guidance only if setup reports it; `init --hook-trust manual` leaves trust unchanged.\n'

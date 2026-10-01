@@ -338,6 +338,8 @@ def working_directory(args):
 
 
 class Relay:
+    management_controls = True
+
     def __init__(self, binary, env, *, args=(), policy=None):
         self.binary, self.env, self.args = str(binary), env, server_arguments(args)
         self.cwd = working_directory(args)
@@ -347,6 +349,7 @@ class Relay:
         self.connected = False
         self.connection_lock = asyncio.Lock()
         self.error = None
+        self.after_exit = None
 
     def client(self, port, args=()):
         command = [self.binary, '--remote', f'ws://127.0.0.1:{port}', '--remote-auth-token-env', self.auth_env, *args]
@@ -429,6 +432,11 @@ class Relay:
             while self.policy.notices:
                 await websocket.send(json.dumps(self.policy.notices.pop(0)))
 
+        from .management_relay import Controls
+        async def send(message):
+            await websocket.send(json.dumps(message))
+        controls = Controls(self, send, call)
+
         async def incoming():
             async for raw in websocket:
                 message = json.loads(raw)
@@ -437,6 +445,9 @@ class Relay:
                     if len(pending) >= 1024 or message['id'] in pending or str(message['id']).startswith(prefix):
                         raise ValueError('Unsupported outstanding Codex requests')
                 try:
+                    if await controls.intercept(message):
+                        continue
+                    params = message.get('params') or {}
                     if method == 'model/list':
                         await asyncio.wait_for(refresh(), 20)
                         data = self.policy.raw_catalog
@@ -479,6 +490,7 @@ class Relay:
                     continue
                 # Server requests also have IDs; they are never client responses.
                 method, params = pending.pop(message.get('id'), (None, {})) if 'method' not in message else (None, {})
+                await controls.observe(message)
                 await websocket.send(json.dumps(self.policy.response(message, method, params)))
                 await notices()
 
@@ -490,6 +502,7 @@ class Relay:
         except Exception:
             self.error = 'Codex protocol connection ended unexpectedly. Resume in native mode; no automatic replay was attempted.'
         finally:
+            await controls.close()
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -511,18 +524,36 @@ class Relay:
 
 async def run(binary, args, env, policy):
     serve = dependency()
-    relay = Relay(binary, env, args=args, policy=policy)
-    async with serve(relay.connect, '127.0.0.1', 0, max_size=MAX_MESSAGE, max_queue=16, compression=None) as server:
-        port = server.sockets[0].getsockname()[1]
-        command, client_env = relay.client(port, args)
-        process = await asyncio.create_subprocess_exec(*command, env=client_env)
-        try:
-            code = await process.wait()
-        finally:
-            if process.returncode is None:
-                process.terminate()
-                await process.wait()
-    if relay.error:
-        print(relay.error, file=sys.stderr)
-        return code or 1
-    return code
+    while True:
+        relay = Relay(binary, env, args=args, policy=policy)
+        async with serve(relay.connect, '127.0.0.1', 0, max_size=MAX_MESSAGE, max_queue=16, compression=None) as server:
+            port = server.sockets[0].getsockname()[1]
+            command, client_env = relay.client(port, args)
+            process = await asyncio.create_subprocess_exec(*command, env=client_env)
+            try:
+                code = await process.wait()
+            finally:
+                if process.returncode is None:
+                    process.terminate()
+                    await process.wait()
+        if relay.error:
+            print(relay.error, file=sys.stderr)
+            return code or 1
+        selected = relay.after_exit
+        if code or not selected:
+            return code
+        if selected['action'] == 'update':
+            command = [sys.executable, '-B', str(Path(__file__).resolve().parents[1] / 'harness.py'), '--no-update-check', 'update']
+            process = await asyncio.create_subprocess_exec(*command, env=env)
+            return await process.wait()
+        from .paths import project_root
+        root = project_root(selected['root'])
+        from .workspace_context import PATH as context_path, prepare
+        if (root / context_path).is_file():
+            prepare(root, [str(binary)])
+        # A new native launch reads the target instructions and permission policy.
+        # Never carry the source conversation's flags, input or sandbox overrides.
+        args = ['-c', 'check_for_update_on_startup=false', '--cd', str(root)] + (['resume'] if selected['resume'] else [])
+        if policy.observer is not None:
+            policy.observer.cwd = root
+        policy.refresh_needed = True

@@ -8,6 +8,7 @@ import shutil
 import sys
 import threading
 import time
+import unicodedata
 
 JSON_MODE = ContextVar('harness_json_output', default=False)
 
@@ -52,6 +53,40 @@ def update_report(value: dict) -> None:
 def clean(value) -> str:
     # Never let model/tool output inject terminal control sequences.
     return ''.join(c if c in '\n\t' or ord(c) >= 32 and not 127 <= ord(c) < 160 else '?' for c in str(value))
+
+
+def box(rows, *, title, subtitle='', stream=None):
+    stream = stream or sys.stdout
+    width = min(96, max(1, shutil.get_terminal_size((80, 24)).columns - 1))
+    if width < 8:
+        for row in [title, subtitle, *rows]:
+            print(clean(row), file=stream)
+        return
+    inner = width - 4
+    def size(char):
+        return 0 if unicodedata.combining(char) else 2 if unicodedata.east_asian_width(char) in {'W', 'F'} else 1
+    def wrapped(value):
+        line, used = '', 0
+        for char in clean(value).replace('\t', '    ').replace('\r', '').replace('\n', ' '):
+            count = size(char)
+            if used + count > inner:
+                yield line, used
+                line, used = '', 0
+            line += char
+            used += count
+        yield line, used
+    encoding = getattr(stream, 'encoding', None) or 'utf-8'
+    try:
+        '╭─╮│╰╯'.encode(encoding)
+        top, bottom, edge, bar = ('╭', '╮'), ('╰', '╯'), '│', '─'
+    except (UnicodeError, LookupError):
+        top = bottom = ('+', '+')
+        edge, bar = '|', '-'
+    print(top[0] + bar * (width - 2) + top[1], file=stream)
+    for row in [title, subtitle, '', *rows]:
+        for text, used in wrapped(row):
+            print(edge + ' ' + text + ' ' * (inner - used) + ' ' + edge, file=stream)
+    print(bottom[0] + bar * (width - 2) + bottom[1], file=stream, flush=True)
 
 
 def report(value: dict, *, title='Harness', error=False) -> None:

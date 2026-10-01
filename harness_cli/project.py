@@ -92,6 +92,8 @@ def register_project_commands(subparsers) -> None:
             parser.add_argument("--yes", action="store_true", help="Apply the displayed ownership-checked operation.")
             parser.add_argument("--dry-run", action="store_true", help="Preview only, even when --yes is supplied.")
         if command == "remove":
+            parser.add_argument('--expected-plan', help=argparse.SUPPRESS)
+            parser.add_argument('--cleanup-empty-dirs', action='store_true', help='After owned file removal, remove only empty component directories; never global Codex settings. Otherwise ask in a terminal.')
             parser.add_argument("--include-generator", action="store_true", help="Also remove unchanged files owned by the generator installer.")
             parser.add_argument("--recover", action="store_true", help="Preview or recover an interrupted CLI removal instead of starting a new removal.")
 
@@ -607,7 +609,10 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
             report['codexIntegration'] = integration_status(default_data_root())
             if hasattr(args, "_launcher_environment_status"):
                 report["cliLauncher"] = args._launcher_environment_status
-            ui.report(report, title='Project harness')
+            from . import dashboard
+            from .main import version
+            report['features'] = dashboard.collect(source_root, root)
+            dashboard.display(report, root, version(source_root))
             return 1 if report["state"] in {"invalid", "unowned-artifacts", "removal-pending", "transaction-pending",
                                             "orphaned-removal-workspace", "orphaned-transaction-workspace"} else 0
         if args.command == "doctor":
@@ -688,9 +693,15 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                     report = lifecycle.recover_removal(root, source_root=source_root, dry_run=dry_run)
                 else:
                     report = lifecycle.remove_project(root, source_root=source_root,
-                                                      include_generator=args.include_generator, dry_run=dry_run)
+                                                      include_generator=args.include_generator, dry_run=dry_run, expected_plan=getattr(args, 'expected_plan', None))
+                from .project_cleanup import after_removal
+                cleanup = after_removal(root, report, requested=getattr(args, 'cleanup_empty_dirs', False), json_mode=ui.JSON_MODE.get())
+                if cleanup is not None:
+                    report['directoryCleanup'] = cleanup
                 ui.report(report, title='Project removal')
-                if dry_run:
+                if cleanup is not None and not ui.JSON_MODE.get():
+                    print('Empty directory cleanup: ' + str(len(cleanup['removed'])) + ' removed; ' + str(len(cleanup['retained'])) + ' retained.')
+                if dry_run and not ui.JSON_MODE.get():
                     print("Preview only. Add --yes without --dry-run to apply this operation.")
                 return 1 if report.get("recoveryRequired") else 0
             # Validate every deterministic prerequisite before resetting owned artifacts.

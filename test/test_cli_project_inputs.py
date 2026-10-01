@@ -195,7 +195,7 @@ class ProjectInputTests(unittest.TestCase):
         for flags in ((), ("--yes", "--dry-run")):
             code, out, err = self.run_cli("remove", *flags, tty=False)
             self.assertEqual(code, 0, err)
-            self.assertIn("Preview only", out)
+            self.assertTrue(json.loads(out)['dryRun'])
             self.assertEqual(fixtures.snapshot(self.root), before)
         code, out, err = self.run_cli("remove", "--yes", tty=False)
         self.assertEqual(code, 0, err)

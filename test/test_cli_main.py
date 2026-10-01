@@ -36,6 +36,10 @@ class CliRoutingTests(unittest.TestCase):
                         arguments += ['status', '--store', 'unused-store', '--run', 'fixture']
                     elif command == 'helper':
                         arguments += ['inventory', 'unused-project']
+                    elif command == 'switch':
+                        arguments += ['--project', 'unused-project']
+                    elif command in {'_complete-init', '_complete-config'}:
+                        arguments += ['--project', 'unused-project', '--codex-binary', 'codex']
                     self.assertEqual(parser.parse_args(arguments).runtime, "codex")
 
     def test_claude_agent_and_alias_are_rejected_before_environment_network_or_writes(self):
@@ -46,6 +50,10 @@ class CliRoutingTests(unittest.TestCase):
                         arguments += ['status', '--store', 'unused-store', '--run', 'fixture']
                     elif command == 'helper':
                         arguments += ['inventory', 'unused-project']
+                    elif command == 'switch':
+                        arguments += ['--project', 'unused-project']
+                    elif command in {'_complete-init', '_complete-config'}:
+                        arguments += ['--project', 'unused-project', '--codex-binary', 'codex']
                     with self.subTest(arguments=arguments), redirect_stderr(io.StringIO()) as output:
                         with mock.patch.object(cli, "_environment") as environment, mock.patch.object(cli, "_automatic_update") as automatic, mock.patch.object(cli, "run_project_command") as project, mock.patch.object(distribution, "install_tool") as install, mock.patch.object(distribution, "update_tool") as update, mock.patch.object(cli, "preflight_project_command") as preflight:
                             self.assertEqual(cli.main(arguments, source_root=REPO), 2)

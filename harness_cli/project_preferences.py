@@ -8,7 +8,7 @@ from . import hook_trust, maintenance, presentation as ui, routing
 from .terminal_menu import choose
 
 
-def configure(args, source_root, root):
+def configure(args, source_root, root, *, emit=True):
     if getattr(args, 'dry_run', False) or getattr(args, 'install_only', False):
         return
     mode, adaptive = getattr(args, 'maintenance', None), getattr(args, 'adaptive', None)
@@ -66,6 +66,8 @@ def configure(args, source_root, root):
                                    mode=getattr(args, 'hook_trust', 'auto'))
     commands = ['harness-codex maintenance --mode suggest', 'harness-codex routing --adaptive on',
                 'harness-codex maintenance', 'harness-codex routing --adaptive status']
+    if not emit:
+        return
     if getattr(args, 'json', False) or ui.JSON_MODE.get():
         ui.report({'state': 'configured', 'maintenance': current['mode'], 'adaptiveRouting': observed['enabled'],
                    'hookTrust': trust or {'status': 'unchanged'},

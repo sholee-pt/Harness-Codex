@@ -395,6 +395,17 @@ def drive(binary, env, project, output, port, relay, provider):
         thread_id = relay.thread_ids[0]
         findings['mainThreadId'] = thread_id
         terminal.snapshot('01-startup')
+        if getattr(relay, 'management_controls', False):
+            before = len(provider.records)
+            terminal.command('/harness/status')
+            terminal.wait(lambda text: 'by sholee-pt' in text and 'Project harness:' in text, 60)
+            terminal.snapshot('01-harness-status')
+            terminal.command('/harness/settings')
+            terminal.wait(lambda text: 'Project preferences' in text and 'Back' in text, 30)
+            terminal.select('Back')
+            terminal.wait(lambda text: 'No settings changed.' in text, 30)
+            terminal.snapshot('01-harness-settings')
+            findings['managementControls'] = {'statusBox': True, 'nativeChoice': True, 'noInference': len(provider.records) == before}
         terminal.command('/model')
         terminal.wait(lambda text: 'select model' in text.lower())
         menu = terminal.snapshot('02-model-menu')

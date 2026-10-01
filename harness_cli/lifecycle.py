@@ -401,6 +401,7 @@ def _plan(root: Path, include_generator: bool, helpers) -> tuple[dict, list, lis
               "actions": [{"path": item["path"], "action": "remove-managed-block" if item["after"] is not None else "remove-file"}
                           for item in operations], "writes": 0, "gitMetadataTouched": False,
               "emptyProjectDirectoriesRetained": True, "retainedGeneratorFiles": retained_generator_files}
+    report['planDigest'] = hashlib.sha256(json.dumps(operations, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     if retained_generator_files:
         report["warning"] = "Unlisted generator files are preserved. Move them out of the reserved generator directory before reinstalling."
     return report, operations, replacements
@@ -419,12 +420,14 @@ def _serialized(function):
 
 
 @_serialized
-def remove_project(root: Path, *, source_root: Path, include_generator: bool = False, dry_run: bool = True) -> dict:
+def remove_project(root: Path, *, source_root: Path, include_generator: bool = False, dry_run: bool = True, expected_plan: str | None = None) -> dict:
     """Preview by default; callers require explicit --yes before dry_run=False."""
     helpers = _helpers(source_root)
     installer, _, state, _, _ = helpers
     root = _root(root, installer)
     report, operations, replacements = _plan(root, include_generator, helpers)
+    if expected_plan is not None and report['planDigest'] != expected_plan:
+        raise LifecycleError('Removal files changed after the preview; review a fresh removal plan before confirming.')
     report["dryRun"] = dry_run
     if dry_run or not operations:
         return report
