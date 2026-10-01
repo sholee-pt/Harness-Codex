@@ -51,11 +51,14 @@ def choose(data_root: Path, bin_dir: Path, selection: str) -> tuple[str, dict | 
                '  reuse  Keep its update preferences and verified installation.\n'
                '  reset  Reset Harness update preferences, check cache and managed PATH registration.\n'
                '         Project harnesses and unrelated shell settings are preserved.\n'
-               'Choose reuse/reset, or press Enter to cancel: ')
+               'Choose reuse/reset [reuse]; Ctrl+C cancels: ')
     try:
         _pause_installer(True)
         if sys.stdin.isatty() and sys.stdout.isatty():
-            answer = input(message)
+            while True:
+                answer = input(message).strip().casefold() or 'reuse'
+                if answer in {'reuse', 'reset'}:
+                    break
         else:
             # A curl | sh bootstrap reads its program from a pipe. Ask through
             # the controlling terminal; never interpret piped script bytes as approval.
@@ -63,15 +66,19 @@ def choose(data_root: Path, bin_dir: Path, selection: str) -> tuple[str, dict | 
                  open('CONOUT$' if os.name == 'nt' else '/dev/tty', 'w') as writer:
                 if not reader.isatty() or not writer.isatty():
                     raise OSError('No controlling terminal')
-                writer.write(message)
-                writer.flush()
-                answer = reader.readline().rstrip('\r\n')
+                while True:
+                    writer.write(message)
+                    writer.flush()
+                    answer = reader.readline()
+                    if not answer:
+                        raise EOFError('Terminal input closed')
+                    answer = answer.strip().casefold() or 'reuse'
+                    if answer in {'reuse', 'reset'}:
+                        break
     except (OSError, EOFError) as exc:
         raise ValueError('Existing installation needs a choice. Run in a terminal, or specify --existing reuse/reset.') from exc
     finally:
         _pause_installer(False)
-    if answer not in {'reuse', 'reset'}:
-        raise ValueError('Installation cancelled. Existing tool settings were preserved.')
     return answer, existing
 
 

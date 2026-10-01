@@ -375,6 +375,7 @@ class Relay:
             self.error = 'The Codex backend could not start. Check the installed executable or use native mode.'
             await websocket.close(code=1011, reason='Codex backend unavailable')
         finally:
+            self.policy.pending_modes.clear()
             self.connected = False
             self.connection_lock.release()
 

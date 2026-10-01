@@ -11,6 +11,22 @@ import unicodedata
 from .presentation import clean
 
 
+def escape_key(fd):
+    if not select.select([fd], [], [], .08)[0]:
+        return '\x1b'
+    sequence = os.read(fd, 1).decode('ascii', errors='replace')
+    if sequence not in ('[', 'O'):
+        return ''
+    for _ in range(31):
+        if not select.select([fd], [], [], .08)[0]:
+            return ''
+        char = os.read(fd, 1).decode('ascii', errors='replace')
+        sequence += char
+        if '@' <= char <= '~':
+            break
+    return {'[A': 'up', '[B': 'down', '[D': 'left', 'OA': 'up', 'OB': 'down', 'OD': 'left'}.get(sequence, '')
+
+
 @contextmanager
 def keyboard():
     if not sys.stdin.isatty():
@@ -35,12 +51,7 @@ def keyboard():
                 if not char:
                     raise KeyboardInterrupt('Terminal input closed')
                 if char == '\x1b':
-                    sequence = ''
-                    for _ in range(2):
-                        if not select.select([fd], [], [], .08)[0]:
-                            break
-                        sequence += os.read(fd, 1).decode('ascii', errors='replace')
-                    return {'[A': 'up', '[B': 'down', '[D': 'left'}.get(sequence, '\x1b')
+                    return escape_key(fd)
                 return char
             yield read
         finally:
@@ -48,7 +59,7 @@ def keyboard():
 
 
 def next_selection(index, key, count):
-    if key in ('\x03', '\x04', '\x1b'):
+    if key == '\x03':
         raise KeyboardInterrupt
     if key in ('up', 'k'):
         return (index - 1) % count, False
@@ -117,7 +128,7 @@ def choose(progress, title, labels, *, back=False, summary=(), initial=0):
                         stream.write('\r\x1b[2K\n')
                     stream.write(f'\x1b[{min(drawn, height)}A')
                 width = max(1, size.columns - 1)
-                help_text = 'Up/Down: select   Enter: accept   Esc: cancel' + ('   b/Left: back' if back else '')
+                help_text = 'Up/Down: select   Enter: accept   Ctrl+C: cancel' + ('   Left: back' if back else '')
                 if height >= len(summary) + 15:
                     rows = ['', *summary, '', title, '', help_text, '']
                 else:

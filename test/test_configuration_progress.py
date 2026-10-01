@@ -488,8 +488,8 @@ class ConfigurationProgressTests(unittest.TestCase):
                     if not chunk:
                         break
                     data += chunk
-                    if not sent and b'Esc: cancel' in data:
-                        os.write(master, b'\x1b[A\x1b[B\x1b[B\r')
+                    if not sent and b'Ctrl+C: cancel' in data:
+                        os.write(master, b'\x1b[C\x1b[1~\x1b[3~\x1b[A\x1b[B\x1b[B\r')
                         sent = True
                 if process.poll() is not None and b'SELECTED:' in data:
                     break
@@ -503,6 +503,31 @@ class ConfigurationProgressTests(unittest.TestCase):
             os.close(master)
 
 class PresentationTests(unittest.TestCase):
+    def test_only_ctrl_c_cancels_and_only_enter_accepts(self):
+        from harness_cli import terminal_menu
+        for key in ('\x1b', '\x04', 'right', 'left', '', ' ', 'y'):
+            with self.subTest(key=repr(key)):
+                self.assertEqual(terminal_menu.next_selection(1, key, 3), (1, False))
+        for key in ('\r', '\n'):
+            self.assertEqual(terminal_menu.next_selection(1, key, 3), (1, True))
+        with self.assertRaises(KeyboardInterrupt):
+            terminal_menu.next_selection(1, '\x03', 3)
+
+    def test_escape_sequences_do_not_cancel_or_leave_special_key_tails(self):
+        from collections import deque
+        from harness_cli import terminal_menu
+        for sequence, expected in [(b'', '\x1b'), (b'[A', 'up'), (b'OB', 'down'), (b'[D', 'left'),
+                                   (b'[C', ''), (b'[1~', ''), (b'[3~', ''), (b'[1;5C', ''), (b'[', '')]:
+            pending = deque(bytes([value]) for value in sequence)
+            with self.subTest(sequence=sequence), \
+                    mock.patch.object(terminal_menu.select, 'select', side_effect=lambda *args: ([0] if pending else [], [], [])), \
+                    mock.patch.object(terminal_menu.os, 'read', side_effect=lambda *args: pending.popleft()):
+                key = terminal_menu.escape_key(0)
+            self.assertEqual(key, expected)
+            self.assertFalse(pending)
+            if not expected:
+                self.assertEqual(terminal_menu.next_selection(1, key, 3), (1, False))
+
     def test_semantic_colors_respect_terminal_no_color_and_sanitize_external_text(self):
         for stream, term, disabled, colored in [(Terminal(), 'xterm', False, True), (Terminal(), 'xterm', True, False),
                                                 (Terminal(), 'dumb', False, False), (io.StringIO(), 'xterm', False, False)]:
@@ -522,7 +547,7 @@ class PresentationTests(unittest.TestCase):
         class MenuTerminal(Terminal):
             def fileno(self):
                 return 0
-        for keys, expected in [(['down', '\r'], 1), (['left'], -1), (['b'], -1)]:
+        for keys, expected in [(['\x1b', 'right', '\x04', 'down', '\r'], 1), (['left'], -1), (['b'], -1)]:
             output, inputs = MenuTerminal(), iter(keys)
             with mock.patch.object(sys, 'stdin', MenuTerminal()), mock.patch.dict(os.environ, {'TERM': 'xterm', 'NO_COLOR': '1'}), \
                     mock.patch.object(terminal_menu, 'keyboard', return_value=contextlib.nullcontext(lambda: next(inputs))), \
@@ -534,6 +559,10 @@ class PresentationTests(unittest.TestCase):
                 self.assertNotIn('\x1b[1;36m', output.getvalue())
                 self.assertTrue(output.getvalue().endswith('A\r'))
                 self.assertFalse(progress.paused)
+        output, inputs = MenuTerminal(), iter(['left', '\x1b', 'right', 'down', '\r'])
+        with mock.patch.object(sys, 'stdin', MenuTerminal()), mock.patch.dict(os.environ, {'TERM': 'xterm'}), \
+                mock.patch.object(terminal_menu, 'keyboard', return_value=contextlib.nullcontext(lambda: next(inputs))):
+            self.assertEqual(terminal_menu.choose(presentation.Progress('settings', stream=output), 'First step', ['Auto', 'Manual']), 1)
         self.assertEqual(terminal_menu.fit_row('한글A', 4), '한글')
         self.assertEqual(terminal_menu.fit_row('title\n\x1b[31m', 9), 'title ?[3')
 

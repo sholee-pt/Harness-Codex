@@ -7,7 +7,7 @@ signal, not a rule to create agents. Source-code defects stay project-code work.
 After configuring or recognizing an existing harness, interactive `init` explains
 and offers maintenance (`off`, `suggest`, `auto`) and adaptive Auto evidence
 (`off`, `on`). Enter keeps each current choice; a new project starts with both
-off. Esc cancels these preference choices without applying either. The generated
+off. Left returns from adaptive Auto to maintenance without applying either choice; Enter accepts the highlighted choice. Esc and Right do nothing. Ctrl+C cancels these preference choices without applying either. The generated
 harness remains in place. Explicit `--maintenance` / `--adaptive` flags skip their
 respective menu. JSON, redirected output, dry-run and install-only never prompt;
 `config` and `reset` preserve these choices unless explicit flags are supplied.

@@ -88,8 +88,13 @@ class ReinstallTests(unittest.TestCase):
             for answer in ('reuse', 'reset'):
                 with mock.patch('builtins.input', return_value=answer):
                     self.assertEqual(setup.choose(self.data, self.binary, 'ask')[0], answer)
-            with mock.patch('builtins.input', return_value=''):
-                with self.assertRaisesRegex(ValueError, 'cancelled'):
+            with mock.patch('builtins.input', side_effect=['\x1b', '\x1b[C', 'invalid', '']):
+                self.assertEqual(setup.choose(self.data, self.binary, 'ask')[0], 'reuse')
+            with mock.patch('builtins.input', side_effect=KeyboardInterrupt):
+                with self.assertRaises(KeyboardInterrupt):
+                    setup.choose(self.data, self.binary, 'ask')
+            with mock.patch('builtins.input', side_effect=EOFError):
+                with self.assertRaisesRegex(ValueError, '--existing'):
                     setup.choose(self.data, self.binary, 'ask')
         self.assertEqual(files(self.data), before)
 

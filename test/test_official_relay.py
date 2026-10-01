@@ -366,8 +366,11 @@ class RelayProcessTests(unittest.IsolatedAsyncioTestCase):
         async def session(socket):
             calls.append(socket)
             if len(calls) == 1:
+                adapter.policy.pending_modes['thread'] = False
                 closing.set()
                 await release.wait()
+            else:
+                self.assertEqual(adapter.policy.pending_modes, {})
         headers = {'Authorization': 'Bearer ' + adapter.token}
         first, second = [SimpleNamespace(request=SimpleNamespace(path='/', headers=headers), close=mock.AsyncMock()) for _ in range(2)]
         with mock.patch.object(adapter, 'session', side_effect=session):

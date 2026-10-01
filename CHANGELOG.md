@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.29.3‑beta`](#harness-for-codex-v0293-beta) | Schema 3 | Schema 7 | Schema 2 | Prevent accidental menu cancellation, support preference backtracking and clear unacknowledged relay selections. |
 | [`v0.29.2‑beta`](#harness-for-codex-v0292-beta) | Schema 3 | Schema 7 | Schema 2 | Fix project aliases, shared state/lock identity and authenticated Codex picker reconnections. |
 | [`v0.29.1‑beta`](#harness-for-codex-v0291-beta) | Schema 3 | Schema 7 | Schema 2 | Fix linked Linux installation parents and remote Jev browser setup. |
 | [`v0.29.0‑beta`](#harness-for-codex-v0290-beta) | Schema 3 | Schema 7 | Schema 2 | Consistent confirmations, truthful update output and scoped maintenance recovery; evaluation storage and transaction fixes. |
@@ -86,6 +87,13 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.29.3-beta
+
+- Cancel Harness selection menus only with Ctrl+C. Ignore Esc, Right and unrelated terminal sequences; advance only with Enter and return with Left where a previous step exists. Stop safely on closed input.
+- Let init return from adaptive Auto to maintenance, retaining the highlighted choice and applying neither preference until both choices are complete. Invalid reinstall input retries; Enter retains the existing installation.
+- Discard unacknowledged Auto display selections when a relay connection ends, preserving confirmed thread preferences across authenticated reconnects.
+- Separate published-release installation URLs from the current development source and clarify uninstall confirmation. Compare upgrades only against v0.29.2-beta.
 
 ## Harness for Codex v0.29.2-beta
 

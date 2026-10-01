@@ -24,4 +24,4 @@ Official Codex is downloaded independently during integration setup and confirme
 
 Linux publication requires installation, upgrade and official TUI/production-adapter checks. These establish tested behavior with synthetic model responses, not paid account compatibility, model quality or token savings. The installer verifies the archive automatically. For manually downloaded assets, use `sha256sum --check SHA256SUMS` in the download directory. Interactive `codex` launches offer updates for published Codex and Harness releases before opening a conversation; downloads require your selection.
 
-Use `harness-codex uninstall` to review tool removal and confirm with `yes`. Project harnesses and native conversation history are preserved.
+Use `harness-codex uninstall` to review tool removal and confirm with Enter, `y` or `yes`; decline with `n` or `no`. Project harnesses and native conversation history are preserved.

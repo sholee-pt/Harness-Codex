@@ -56,7 +56,7 @@ and `--reload-harness` flags do not configure native work sessions; use `/model`
 
 ## Session settings
 
-`init` and `config` first offer Automatic, Manual or Keep native settings. Use Up/Down and Enter on an interactive terminal; redirected or limited terminals use numbered choices. Manual selection displays the chosen model and reasoning above the next step, then reviews all settings before starting. Use `b`, Left or the Back option to return to the preceding step; numbered menus also accept `b`. Back navigation preserves choices until changed and never starts a conversation. `NO_COLOR` disables color. Esc/Ctrl+C cancels before starting a configuration conversation.
+`init` and `config` first offer Automatic, Manual or Keep native settings. Use Up/Down and Enter on an interactive terminal; redirected or limited terminals use numbered choices. Manual selection displays the chosen model and reasoning above the next step, then reviews all settings before starting. Use Left or the Back option to return to the preceding step; numbered menus also accept `b`. Back navigation preserves choices until changed and never starts a conversation. Only Enter accepts a highlighted choice. Esc and Right do nothing; Left at the first step stays there. Ctrl+C cancels. `NO_COLOR` disables color. Closed terminal input stops safely without accepting a choice.
 
 ```bash
 harness-codex init --settings auto --goal-file PROJECT.md

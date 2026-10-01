@@ -97,6 +97,22 @@ class ProjectPreferencesTests(unittest.TestCase):
         self.assertFalse(self.routing.status()['enabled'])
         self.trust.assert_not_called()
 
+    def test_back_navigation_keeps_selection_and_can_restore_original_without_writes(self):
+        before = self.snapshot()
+        calls = []
+        selections = iter([2, -1, 0, 0])
+        def choose(*args, **kwargs):
+            calls.append(kwargs)
+            self.assertEqual(self.snapshot(), before)
+            return next(selections)
+        self.run_choices(choose)
+        self.assertEqual([call.get('initial') for call in calls], [0, 0, 2, 0])
+        self.assertTrue(calls[1]['back'])
+        self.assertEqual(calls[1]['summary'], ['Maintenance: auto'])
+        self.assertEqual(calls[3]['summary'], ['Maintenance: off'])
+        self.assertEqual(self.snapshot(), before)
+        self.enable.assert_not_called()
+
     def test_init_prepares_trust_even_when_both_modes_are_off_and_manual_is_explicit(self):
         output, _ = self.run_choices([0, 0])
         self.trust.assert_called_once_with(ROOT, self.root, binary='codex', mode='auto')
