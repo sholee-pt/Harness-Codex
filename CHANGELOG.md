@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.30.1‑beta`](#harness-for-codex-v0301-beta) | Schema 3 | Schema 7 | Schema 2 | Refresh host diagnostics when init reuses an existing project harness. |
 | [`v0.30.0‑beta`](#harness-for-codex-v0300-beta) | Schema 3 | Schema 7 | Schema 2 | Add portable root resolution, bounded host sandbox diagnostics, missing-root init and explicit external retrieval. |
 | [`v0.29.4‑beta`](#harness-for-codex-v0294-beta) | Schema 3 | Schema 7 | Schema 2 | Correct release-build regression expectations for supported external directory aliases. |
 | [`v0.29.3‑beta`](#harness-for-codex-v0293-beta) | Schema 3 | Schema 7 | Schema 2 | Prevent accidental menu cancellation, support preference backtracking and clear unacknowledged relay selections. |
@@ -89,6 +90,11 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.30.1-beta
+
+- Refresh bounded host context when init reuses an existing configured harness, without regenerating project artifacts or opening a configuration conversation.
+- Keep an unavailable Codex command as an unknown sandbox observation instead of attempting an unrelated executable; preserve repeated-init idempotency.
 
 ## Harness for Codex v0.30.0-beta
 

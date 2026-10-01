@@ -105,14 +105,18 @@ class ProjectInputTests(unittest.TestCase):
         update.assert_not_called()
         self.assertEqual(list(self.root.iterdir()), [])
 
-    def test_existing_init_reports_and_exits_without_codex_or_writes(self):
+    def test_existing_init_refreshes_host_context_without_regenerating(self):
         self.generate()
         before = fixtures.snapshot(self.root)
         code, out, err = self.run_cli("init", tty=False)
         self.assertEqual(code, 0, err)
         self.assertIn("already exists", out)
         self.assertIn("The generated harness was retained", out)
-        self.assertEqual(fixtures.snapshot(self.root), before)
+        after = fixtures.snapshot(self.root)
+        self.assertTrue(all(after[name] == value for name, value in before.items()))
+        self.assertEqual(set(after) - set(before), {'.harness/context.json', '.harness/context.lock'})
+        self.assertEqual(self.run_cli('init', tty=False)[0], 0)
+        self.assertEqual(fixtures.snapshot(self.root), after)
         self.codex.assert_not_called()
 
     def test_explicit_goal_revisits_existing_harness(self):

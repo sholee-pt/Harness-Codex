@@ -312,7 +312,8 @@ class ProjectGraftTests(unittest.TestCase):
 
     def test_successful_and_existing_init_prepare_retrieval_without_regeneration(self):
         os.environ['FAKE_CODEX_MODE'] = 'generate'
-        with mock.patch.object(graft, 'automatic', return_value={'state': 'enabled'}) as activate:
+        # The fake configuration command and PATH probe represent the same fixture runtime.
+        with mock.patch.object(graft, 'automatic', return_value={'state': 'enabled'}) as activate, mock.patch('harness_cli.workspace_context._fingerprint', return_value='fixture'):
             code, out, err = self.run_cli('init', '--retrieval', 'auto')
             self.assertEqual(code, 0, err)
             activate.assert_called_once_with(self.root, REPO, disabled=False)

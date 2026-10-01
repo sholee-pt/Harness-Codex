@@ -67,6 +67,9 @@ class WorkspaceContextTests(unittest.TestCase):
             self.assertEqual(context.probe(['codex'], self.root), 'unavailable')
             run.side_effect = [(1, 'Unsupported subcommand')]
             self.assertEqual(context.probe(['codex'], self.root), 'unknown')
+            run.reset_mock()
+            self.assertEqual(context.probe([], self.root), 'unknown')
+            run.assert_not_called()
 
     def test_unowned_context_is_not_replaced(self):
         path = self.root / context.PATH

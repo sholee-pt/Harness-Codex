@@ -137,6 +137,8 @@ def _run(command, root):
 def probe(command, root):
     if platform.system() != 'Linux':
         return 'not-applicable'
+    if not command:
+        return 'unknown'
     try:
         status, help_text = _run([*command, 'sandbox', 'linux', '--help'], root)
         if status != 0 or 'COMMAND' not in help_text:

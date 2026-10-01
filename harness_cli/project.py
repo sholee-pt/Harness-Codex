@@ -635,9 +635,12 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
                     from .project_preferences import configure
                     configure(args, source_root, root)
                     if existing_status['state'] in {'configured', 'stale-evidence'}:
+                        from .workspace_context import prepare
+                        executable = shutil.which(os.path.expanduser(args.codex_binary))
+                        prepare(root, [executable] if executable else [])
                         _configure_retrieval(args, source_root, root)
                     _configure_integration(args, source_root)
-                    print("The generated harness was retained and Codex was not launched. Supply --goal/--goal-file to init for an explicit reviewed update.")
+                    print("The generated harness was retained; no configuration conversation was launched. Supply --goal/--goal-file to init for an explicit reviewed update.")
                     return 1 if existing_status["state"] == "invalid" else 0
             elif os.path.lexists(root / ".agents/skills/harness"):
                 print("The generator is already present; a generated project harness has not yet been confirmed.")
