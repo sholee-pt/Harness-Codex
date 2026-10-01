@@ -19,6 +19,7 @@ Build the smallest useful Codex-native harness for the current local workspace. 
 - Keep generation within the selected folder: do not inspect or change GitHub, Git remotes, credentials, branches, commits, pushes, pull requests, or deployment settings.
 - Do not write Git metadata, including `info/exclude` or the index. Git tracking does not establish Harness ownership. Generated files may appear in Git status; existing user and legacy ignore settings remain unchanged.
 - Write generated machine-facing instructions in English.
+- Keep project-internal references relative to the selected root. For shared mounts, host changes, sandbox failures or explicitly selected external retrieval sources, read [workspace-portability.md](references/workspace-portability.md). Never persist this session's absolute interpreter or mount prefix as a project invariant.
 - Run bundled Python helpers with `harness-codex helper SCRIPT_NAME` (without `.py`); it uses the installed interpreter without activating an environment or changing the project shell. If the command is absent from PATH, use the verified absolute command prefix provided by configuration. For a standalone skill installation, use its explicitly verified Python 3.11+ interpreter and local script path; never guess a Conda environment by name.
 
 ## Phase 0 — Audit

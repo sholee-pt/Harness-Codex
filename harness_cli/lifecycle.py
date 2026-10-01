@@ -106,6 +106,8 @@ def _allowed(operation: dict, installer, transaction) -> bool:
         return path == ".harness/manifest.json"
     if kind == 'guide':
         return path == '.harness/GUIDE.md'
+    if kind == 'workspace-context':
+        return path == '.harness/context.json'
     if kind == "managed-block":
         return path in {"AGENTS.md", "AGENTS.override.md"}
     if kind == "generator-receipt":
@@ -382,6 +384,13 @@ def _plan(root: Path, include_generator: bool, helpers) -> tuple[dict, list, lis
         guide_owned = False
     if guide_owned:
         add('.harness/GUIDE.md', 'guide')
+    from .workspace_context import owned as owns_context
+    try:
+        context_owned = owns_context(root)
+    except (OSError, ValueError):
+        context_owned = False
+    if context_owned:
+        add('.harness/context.json', 'workspace-context')
     if manifest is not None:
         add(".harness/manifest.json", "manifest")
         if snapshots[-1] != manifest_snapshot:

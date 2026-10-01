@@ -51,6 +51,23 @@ def project_root(value, *, error_type=ValueError) -> Path:
     return root
 
 
+def project_target(value, *, error_type=ValueError) -> Path:
+    """Resolve an init target, allowing absent directories but not dangling aliases."""
+    path = Path(os.path.abspath(os.path.expanduser(os.fspath(value))))
+    if any(part.rstrip(' .').casefold() == '.git' for part in path.parts):
+        raise error_type('Project must not be inside Git metadata')
+    for ancestor in (path, *path.parents):
+        if os.path.lexists(ancestor) and not ancestor.is_dir():
+            raise error_type(f'Project path contains a file or unresolved alias: {ancestor}')
+    try:
+        root = path.resolve()
+    except (OSError, RuntimeError) as exc:
+        raise error_type(f'Cannot resolve project path: {path}') from exc
+    if any(part.rstrip(' .').casefold() == '.git' for part in root.parts):
+        raise error_type('Project must not resolve inside Git metadata')
+    return checked_path(root, error_type=error_type)
+
+
 def user_home(value=None) -> Path:
     """The account home is an external location; managed children stay checked."""
     path = Path(value) if value is not None else Path.home()

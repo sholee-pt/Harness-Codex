@@ -157,7 +157,8 @@ def preflight_project_command(args, *, source_root: Path) -> None:
         args._project_preflight_complete = True
         return
     installer = load_installer(source_root)
-    root = _project_path(args.project, installer)
+    from .paths import project_target
+    root = project_target(args.project, error_type=ProjectError) if args.command == 'init' else _project_path(args.project, installer)
     if args.command not in {"remove", "status", "doctor"}:
         _assert_no_transaction(root, installer)
     if args.command == "remove" and args.recover and args.include_generator:
@@ -401,7 +402,7 @@ def project_status(source_root: Path, root: Path, installer) -> dict:
     return result
 
 
-def _configuration_prompt(goal: str | None) -> str:
+def _configuration_prompt(goal: str | None, *, context: str | None = None) -> str:
     prompt = (
         "$harness Configure or update the project harness inside this selected workspace. "
         "Read the installed generator skill and follow its evidence-based analysis, proposal, dry-run, "
@@ -419,6 +420,8 @@ def _configuration_prompt(goal: str | None) -> str:
         "For older generator references, replace conda run -n harness python <skill-root>/scripts/SCRIPT_NAME.py "
         "with that helper command."
     )
+    if context:
+        prompt += '\n\n' + context
     prompt += "\nVerified helper command prefix (JSON argv; quote for the active shell): " + json.dumps(
         [sys.executable, '-B', str(Path(__file__).resolve().parents[1] / 'harness.py'), '--no-update-check', 'helper'])
     if goal:
@@ -521,11 +524,15 @@ def _sync_guide(source_root, root, *, stale=False):
 
 
 def _finish_configuration(source_root: Path, root: Path, command: list[str], goal: str | None, *, args=None) -> int:
+    from .workspace_context import prepare
+    context = prepare(root, command)
+    prompt = _configuration_prompt(goal, context=context)
+    _validate_prompt_transport(root, prompt, command, native_argv=getattr(args, 'interactive', True))
     outcome = None
     if args is not None and not args.interactive:
         from .configuration import run
         print('[1/3] Project generator ready.', flush=True)
-        outcome = run(command, root, _configuration_prompt(goal), timeout=args.timeout,
+        outcome = run(command, root, prompt, timeout=args.timeout,
                       resume_id=getattr(args, 'resume', None), settings=args.settings)
         status = outcome.code
         if outcome.needs_input:
@@ -534,7 +541,7 @@ def _finish_configuration(source_root: Path, root: Path, command: list[str], goa
             outcome.show_resume()
             return status
     else:
-        status = _launch(command, root, _configuration_prompt(goal), settings=getattr(args, 'settings', 'native'))
+        status = _launch(command, root, prompt, settings=getattr(args, 'settings', 'native'))
     if status:
         print(f"Configuration {'interrupted' if status == 130 else 'stopped'}; completion has not been confirmed. Run harness-codex status --project PATH.",
               file=sys.stderr)
@@ -590,7 +597,8 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
         if args.command in {'new', 'resume', 'start'}:
             return _compat_conversation(args)
         installer = load_installer(source_root)
-        root = _project_path(args.project, installer)
+        from .paths import project_target
+        root = project_target(args.project, error_type=ProjectError) if args.command == 'init' else _project_path(args.project, installer)
         source = source_root / ".agents/skills/harness"
         if args.command == "status":
             report = project_status(source_root, root, installer)
@@ -636,7 +644,18 @@ def run_project_command(args: argparse.Namespace, *, source_root: Path) -> int:
             command = None if args.dry_run or args.install_only else _interactive_codex(args.codex_binary)
             if command is not None:
                 _validate_prompt_transport(root, _configuration_prompt(args._goal_text), command, native_argv=args.interactive)
-            report = installer.install(root, source=source, dry_run=args.dry_run)
+            create_root = not root.exists()
+            if create_root and not args.dry_run:
+                # The installer validates source/ownership before creating parents.
+                if project_target(args.project, error_type=ProjectError) != root:
+                    raise ProjectError('Project location changed during preflight; repeat init.')
+            report = installer.install(root, source=source, dry_run=args.dry_run, create_root=create_root)
+            if create_root and not args.dry_run:
+                if _project_path(args.project, installer) != root:
+                    raise ProjectError('Project location changed during creation; repeat init.')
+                print('Created project directory: ' + str(root))
+            if create_root:
+                report['projectDirectory'] = 'would-create' if args.dry_run else 'created'
             if args.dry_run or args.install_only or args.interactive or ui.JSON_MODE.get():
                 ui.report(report, title='Generator installation')
             if args.dry_run:

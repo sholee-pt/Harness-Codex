@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 from types import SimpleNamespace
 
@@ -38,7 +39,7 @@ def register(commands):
     parser = commands.add_parser('graft', help='Enable or use optional local structural code retrieval.')
     actions = parser.add_subparsers(dest='graft_action')
     parser.set_defaults(graft_action='status', project=Path.cwd())
-    for name in ('enable', 'status', 'query', 'rebuild', 'disable'):
+    for name in ('enable', 'status', 'query', 'rebuild', 'disable', 'add', 'remove'):
         command = actions.add_parser(name)
         command.add_argument('--project', type=Path, default=Path.cwd())
         command.add_argument('--json', action='store_true', default=False)
@@ -47,10 +48,16 @@ def register(commands):
         if name == 'enable':
             command.add_argument('--package', type=Path, help='Use this installed package; otherwise prepare an isolated Linux runtime automatically.')
             command.add_argument('--node', default='node')
+            command.add_argument('--adopt-skill', action='store_true', help='Adopt only a byte-identical legacy retrieval skill after changing hosts.')
         if name == 'query':
             command.add_argument('question')
             command.add_argument('--limit', type=int, default=6)
             command.add_argument('--max-chars', type=int, default=12000)
+        if name == 'add':
+            command.add_argument('source', type=Path, help='Explicit external code file/directory; no project ancestors.')
+            command.add_argument('--name', required=True, help='Stable source label: lowercase letters, digits and hyphens.')
+        if name == 'remove':
+            command.add_argument('name', help='External source label shown by graft status.')
 
 
 def _save(path, value):
@@ -91,6 +98,8 @@ def _load(path):
             or not all(isinstance(value.get(name), str) and (value[name] or not value['enabled']) for name in ('package', 'node'))
             or any(name in value and type(value[name]) is not bool for name in ('disabledByUser', 'skillOwned'))):
         raise ValueError('Retrieval settings are invalid or unowned; files were preserved.')
+    from .graft_sources import valid_sources
+    valid_sources(value.get('externalSources', {}))
     return value
 
 
@@ -115,6 +124,14 @@ def _check_skill(skill, settings):
         raise ValueError('Existing retrieval skill is user-owned or modified; it was preserved.')
 
 
+def _record_skill(root):
+    from .workspace_context import record_retrieval
+    try:
+        record_retrieval(root, hashlib.sha256(SKILL.encode()).hexdigest())
+    except (OSError, ValueError):
+        pass  # Optional relocation metadata must not invalidate a completed setup.
+
+
 def home():
     return storage_location(os.environ.get('HARNESS_GRAFT_HOME', str(Path.home() / '.local/share/harness-codex-retrieval')))
 
@@ -135,6 +152,7 @@ def automatic(root, source_root, *, disabled=False):
             return {'state': 'disabled', 'guidance': 'Explicit Graft opt-out preserved.'}
         skill = checked_path(root / SKILL_PATH)
         if settings['enabled'] and settings.get('skillOwned', True) and skill.is_file() and skill.read_bytes() == SKILL.encode():
+            _record_skill(root)
             return {'state': 'enabled', 'guidance': 'Existing setup reused; retrieval refreshes only when queried.'}
     args = SimpleNamespace(project=root, graft_action='disable' if disabled else 'enable',
                            package=Path(settings['package']) if settings and settings['package'] else None,
@@ -191,6 +209,30 @@ def execute(args, source_root):
         result = {'enabled': bool(settings and settings['enabled']), 'provider': 'graft',
                   'indexed': (cache / 'harness-ready.json').is_file(), 'mode': 'local-structural',
                   'skillInstalled': bool(settings and settings.get('skillOwned', True) and skill.is_file() and skill.read_bytes() == SKILL.encode())}
+        result['externalSources'] = (settings or {}).get('externalSources', {})
+    elif action in {'add', 'remove'}:
+        from .graft_sources import select, collect, valid_sources
+        with _settings_lock(folder):
+            settings = _settings_or_new(state_path)
+            if not settings['enabled']:
+                raise ValueError('Enable project retrieval before registering external sources.')
+            sources = dict(settings.get('externalSources', {}))
+            if action == 'add':
+                selected = select(root, args.source)
+                if args.name in sources and sources[args.name] != str(selected):
+                    raise ValueError('This source label is already bound; remove it before selecting a different source.')
+                sources[args.name] = str(selected)
+                valid_sources(sources)
+                collect(root, sources)
+            else:
+                if args.name not in sources:
+                    raise ValueError('Unknown external source label.')
+                sources.pop(args.name)
+            settings['externalSources'] = sources
+            settings['revision'] = uuid.uuid4().hex
+            _save(state_path, settings)
+        result = {'state': 'registered' if action == 'add' else 'removed', 'externalSources': sources,
+                  'guidance': 'Only registered sources are queried. External snapshots refresh on the next query; originals are never modified.'}
     elif action == 'disable':
         with _settings_lock(folder):
             settings = _settings_or_new(state_path)
@@ -212,6 +254,10 @@ def execute(args, source_root):
         if action == 'enable':
             with _settings_lock(folder):
                 previous = _settings_or_new(state_path)
+                from .workspace_context import retrieval_owned
+                if (skill.is_file() and skill.read_bytes() == SKILL.encode()
+                        and (getattr(args, 'adopt_skill', False) or retrieval_owned(root, previous['skillHash']))):
+                    previous['skillOwned'] = True
                 _check_skill(skill, previous)
                 # Reserve a retryable first setup before slow external work. A
                 # newer opt-out changes this receipt and cannot be overwritten.
@@ -224,6 +270,8 @@ def execute(args, source_root):
                 raise ValueError('Node.js 20 or newer is required only for optional Graft retrieval.')
             settings = {'owner': OWNER, 'enabled': True, 'package': str(args.package.expanduser().resolve()),
                         'node': node, 'skillHash': hashlib.sha256(SKILL.encode()).hexdigest(), 'disabledByUser': False, 'skillOwned': True}
+            if 'externalSources' in previous:
+                settings['externalSources'] = previous['externalSources']
             if 'revision' in previous:
                 settings['revision'] = previous['revision']
         elif not settings or not settings['enabled']:
@@ -232,9 +280,13 @@ def execute(args, source_root):
             raise ValueError('Retrieval question must contain 1-8000 characters without NUL.')
         from . import jev
         advice = action == 'query' and jev.enabled(root)
+        started = time.monotonic()
+        limit = getattr(args, 'limit', 6)
+        if action == 'query' and settings.get('externalSources'):
+            limit = (limit + 1) // 2
         result = _invoke(source_root, root, cache, settings, action,
                          timeout=args.timeout, question=getattr(args, 'question', ''),
-                         limit=getattr(args, 'limit', 6), max_chars=getattr(args, 'max_chars', 12000), advice=advice)
+                         limit=limit, max_chars=getattr(args, 'max_chars', 12000), advice=advice)
         candidates = result.pop('candidates', None)
         if advice:
             observation = jev.advise(root, args.question, candidates)
@@ -272,6 +324,23 @@ def execute(args, source_root):
                             pass
                     raise
                 result.update(state='enabled', enabled=True)
+            _record_skill(root)
+        if action == 'query' and settings.get('externalSources') and (args.limit > 1 or not result.get('hits')):
+            from .graft_sources import query
+            # The same project settings lock serializes registration and snapshot refresh.
+            # External snippets never enter Jev's separately enabled network advice.
+            try:
+                with _settings_lock(folder):
+                    if _load(state_path) != settings:
+                        raise ValueError('Retrieval preferences changed during the query; repeat if needed.')
+                    remaining = args.timeout - (time.monotonic() - started)
+                    if remaining <= 0:
+                        raise TimeoutError('Primary retrieval exhausted the query deadline.')
+                    result = query(args, source_root, root, folder, settings, result, timeout=remaining)
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                result['externalWarning'] = str(exc)
+                notice = '\n[External retrieval unavailable; use ordinary reads of the selected source.]'
+                result['text'] = result['text'][:max(0, args.max_chars - len(notice))] + notice
     return result
 
 

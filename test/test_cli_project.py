@@ -545,13 +545,6 @@ class ProjectCliTests(unittest.TestCase):
         self.assertIn("Git metadata", err)
         self.assertEqual(list(self.root.iterdir()), [])
 
-    def test_missing_project_is_not_implicitly_created(self):
-        self.root = self.root / "missing"
-        code, out, err = self.run_cli("init", "--install-only")
-        self.assertEqual(code, 1)
-        self.assertIn("existing directory", err)
-        self.assertFalse(self.root.exists())
-
     def test_interrupt_signal_and_spawn_failure_have_explicit_outcomes(self):
         with contextlib.redirect_stdout(io.StringIO()):
             with mock.patch.object(project.subprocess, "run", side_effect=KeyboardInterrupt):

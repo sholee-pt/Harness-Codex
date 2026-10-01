@@ -21,6 +21,7 @@ import harness_agent_contract
 import harness_frontmatter
 import harness_state
 import harness_git_policy
+import harness_portability
 import harness_topology
 
 
@@ -198,6 +199,7 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
             if harness_teamplay.PROVISIONAL_GUIDANCE not in harness_change_discipline.normalize_line_endings(artifact["content"]):
                 artifact["content"] += "\n\n" + harness_teamplay.PROVISIONAL_GUIDANCE + "\n"
             artifact["content"] = harness_git_policy.append_guidance(artifact["content"])
+            artifact["content"] = harness_portability.append_guidance(artifact["content"])
         elif path in agent_paths:
             try:
                 original_instructions = tomllib.loads(content).get("developer_instructions")
@@ -227,6 +229,7 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
                 instructions, harness_teamplay.AGENT_BLOCK, path
             )
             instructions = harness_git_policy.append_guidance(instructions)
+            instructions = harness_portability.append_guidance(instructions, agent=True)
             try:
                 if instructions != original_instructions:
                     artifact["content"] = harness_agent_contract.replace_instructions(content, instructions)

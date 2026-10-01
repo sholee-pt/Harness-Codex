@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.30.0‑beta`](#harness-for-codex-v0300-beta) | Schema 3 | Schema 7 | Schema 2 | Add portable root resolution, bounded host sandbox diagnostics, missing-root init and explicit external retrieval. |
 | [`v0.29.4‑beta`](#harness-for-codex-v0294-beta) | Schema 3 | Schema 7 | Schema 2 | Correct release-build regression expectations for supported external directory aliases. |
 | [`v0.29.3‑beta`](#harness-for-codex-v0293-beta) | Schema 3 | Schema 7 | Schema 2 | Prevent accidental menu cancellation, support preference backtracking and clear unacknowledged relay selections. |
 | [`v0.29.2‑beta`](#harness-for-codex-v0292-beta) | Schema 3 | Schema 7 | Schema 2 | Fix project aliases, shared state/lock identity and authenticated Codex picker reconnections. |
@@ -88,6 +89,14 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.30.0-beta
+
+- Create absent project directories during normal init after input/runtime preflight; keep previews and other project commands non-creating.
+- Record bounded project-root history and host-specific sandbox observations separately from the manifest. Resolve recorded old root prefixes explicitly; generate relative project-path guidance without rewriting user code or Codex history.
+- Probe Linux sandbox capability using the installed Codex and a harmless bounded command. Cache by host and runtime identity, refresh after changes/expiry, and preserve effective permission policy.
+- Attach explicitly selected external code to a project-specific Graft side index, reuse unchanged snapshots, preserve the primary index and return original source pointers. Keep external snippets out of Jev network advice.
+- Add relocation, host isolation, absent-root, external-source rollback/bounds and real-package retrieval integration coverage; compare upgrades only with v0.29.4-beta.
 
 ## Harness for Codex v0.29.4-beta
 

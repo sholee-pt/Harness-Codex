@@ -24,6 +24,52 @@ root instruction file (`AGENTS.override.md` before `AGENTS.md`). They do not
 create an override to bypass existing guidance. Existing explicit-skill projects
 remain readable and migrate to a managed pointer on reviewed `config`.
 
+Normal `init --project PATH` creates a missing directory and its parents after
+input and Codex preflight. `init --install-only` also allows an empty new project.
+`init --dry-run` previews creation without writing anything. `config`, `status`
+and `doctor` require an existing directory. Files, unresolved links and Git
+metadata paths are refused; an existing selected directory alias is resolved.
+Creating an empty folder does not supply a project goal: configuration may still
+ask what work is intended. A later configuration failure preserves the created
+folder and completed setup files for retry.
+
+## Shared mounts and server changes
+
+Generated procedures use project-relative references. `.harness/context.json`
+records up to 16 observed root paths and host-specific sandbox checks separately
+from the manifest. Configuration records it; the registered `codex` entry point
+refreshes existing context on interactive launch, including from a subdirectory.
+Raw official Codex outside the registered entry point does not run this check.
+No extra model call or bootstrap user turn is added.
+
+```bash
+harness-codex context --project /new/mount/project
+harness-codex context --project /new/mount/project --resolve /old/mount/project/src/model.py
+# For legacy projects whose old prefix was never recorded:
+harness-codex context --project /new/mount/project --remember-root /old/mount/project
+# After host/sandbox repair:
+harness-codex context --project /new/mount/project --refresh
+# Keep native resume's working directory on the new mount too:
+codex --cd /new/mount/project resume SESSION_ID
+```
+
+Resolution maps only a recorded project prefix to an existing in-project path.
+It does not rewrite code, user configuration, goal documents, stored absolute
+paths in old skills or native conversation history. Run reviewed `config` to
+adopt relative-path guidance in old generated instructions; normal work should
+verify the current file before using a historical path. Graft/Jev settings and
+external source bindings remain local selections; run init/select sources on
+the new host as needed rather than executing another host's saved binary path.
+
+The Linux check runs a harmless command through the current Codex sandbox, with
+two steps bounded to five seconds each. Missing PATH `bwrap` alone is inconclusive
+because Codex may use a bundled helper. Results are cached for up to 24 hours and
+refreshed when host/runtime/kernel-control observations change. A failure is
+host-specific advice to avoid identical failing retries, never an automatic
+permission bypass. Unknown, expired or other-host results are not success.
+The diagnostic does not establish that every command or permission profile works.
+Use the native approval path where allowed, or repair the host, then refresh.
+
 After successful native integration, interactive Linux `init/config/reset` offers
 Enter or yes to open Bash with `~/.bashrc` loaded in the selected project. This is a
 child shell; `exit` returns to the original shell. A child process cannot source a

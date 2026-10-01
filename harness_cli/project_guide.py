@@ -32,6 +32,7 @@ def sync(root, *, version, revision, stale=False):
             f'- Source evidence: {"review current source" if stale else "matches recorded references"}\n\n'
             '## Project work\n\n'
             '- Run `codex` in this project; use `codex resume` or `codex resume --last` for existing conversations. Native root instructions activate `.agents/skills/project-harness/SKILL.md`.\n'
+            '- After changing servers or mount paths, inspect `harness-codex context --project .`; use current project-relative paths. `context --refresh` repeats the bounded host sandbox check after repair; it never changes permissions. External Graft sources are selected separately on each host with `graft add PATH --name LABEL`.\n'
             '- Reuse the current agents and skills. Do not regenerate them merely to resume a conversation.\n'
             '- Verify current source before relying on recorded evidence; deleted or changed references require review, not invented replacements.\n'
             '- Preserve native Codex model and permission settings. Changing the conversation model does not require regenerating this harness.\n'

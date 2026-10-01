@@ -304,9 +304,9 @@ def replace_folder(destination: Path, old: dict[str, Entry], new: dict[str, Entr
     return warnings
 
 
-def install(root: Path, *, dry_run: bool = False, source: Path | None = None) -> dict:
-    from harness_cli.paths import external_location, project_root
-    root = project_root(root, error_type=InstallError)
+def install(root: Path, *, dry_run: bool = False, source: Path | None = None, create_root: bool = False) -> dict:
+    from harness_cli.paths import external_location, project_root, project_target
+    root = project_target(root, error_type=InstallError) if dry_run or create_root else project_root(root, error_type=InstallError)
     try:
         source = external_location(source) if source is not None else None
     except ValueError as exc:

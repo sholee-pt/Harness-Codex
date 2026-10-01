@@ -90,6 +90,8 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     register_skills(commands)
     from .helper import register as register_helper
     register_helper(commands)
+    from .workspace_context import register as register_context
+    register_context(commands)
     for name in ("init", "new", "resume", "start", "configure"):
         commands.choices[name].add_argument("--no-update-check", action="store_true", default=argparse.SUPPRESS)
     install = commands.add_parser("install", help="Install this tool into user-local managed storage.")
@@ -291,6 +293,9 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
                     ui.report(integration_install(args.data_dir, Path(active['release_root'])), title='Native Codex integration')
                 print("Tool update complete. Use harness-codex config --project PATH to refresh the owned generator and review the existing project harness.")
             return 0
+        if args.command == 'context':
+            from .workspace_context import run
+            return run(args, source_root)
         if args.command == 'maintenance':
             from .maintenance import run
             return run(args, source_root)

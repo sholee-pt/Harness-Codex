@@ -83,6 +83,42 @@ Measure actual task correctness, elapsed time, billed tokens and rework on paire
 tasks, including initial indexing and maintenance cost, before claiming benefit.
 Windows native Graft validation is not part of this Linux release.
 
+## Explicit external code
+
+Keep the main graph scoped to the project. Attach only needed external code with a named binding:
+
+```bash
+harness-codex graft add /shared/library/model.py --name model-library --project /work/project
+harness-codex graft add /shared/library/src --name shared-src --project /work/project
+harness-codex graft query "where is prediction implemented" --project /work/project
+harness-codex graft status --project /work/project
+harness-codex graft remove model-library --project /work/project
+```
+
+An external binding is a local read selection, not permission to modify that code.
+Only source-code extensions are included: at most 16 bindings, 200 files, 1 MiB per
+file and 16 MiB in total. Select a narrower directory when a limit is reached.
+Project ancestors, hidden metadata/environment directories and nested links are
+excluded or refused. An explicitly selected directory alias is resolved first.
+No automatic home/ancestor scan or external discovery takes place.
+
+Queries retain the primary project graph and use a separate, project-specific
+structural index for selected external files. Unchanged snapshots are reused;
+changed files refresh on demand. Results identify original source locations.
+This does not infer dependency edges between the two graphs. Missing external
+sources leave the primary results usable and report an external retrieval warning.
+External results never enter Jev network advice. Removing a binding immediately
+excludes it from queries; disposable snapshots may remain in user-local cache.
+Opt-ins, executable provenance and external bindings are local selections, so
+reselect them after moving to another server or changing the project mount path.
+
+New configuration records ownership of the unchanged static retrieval skill in
+the portable context receipt. Init on a new host can reuse that file while
+preparing a locally selected runtime; it does not import the old host's executable
+path, credentials or external bindings. For a legacy skill without that receipt,
+`harness-codex graft enable --adopt-skill --project PATH` explicitly adopts only
+the byte-identical bundled skill. Modified/user-authored skills remain preserved.
+
 For broader adoption, compare selective retrieval on cross-file edits, interface
 discovery and change-impact questions first. Upstream also provides callers,
 file API and repository-map tools; this adapter currently exposes bounded query

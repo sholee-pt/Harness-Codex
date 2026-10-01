@@ -108,6 +108,19 @@ def verify(package=None):
         changed = call('query', 'multiply')
         assert changed['refreshed'] and changed['hits'] > 0, changed
         assert 'multiply' in changed['text']
+        external = base / 'external-math.py'
+        external.write_text('def external_predict(value):\n    return value * 37\n', encoding='utf-8')
+        external_before = (external.read_bytes(), external.stat().st_mtime_ns)
+        call('add', str(external), '--name', 'selected-library')
+        attached = call('query', 'external_predict')
+        assert attached.get('externalHits', 0) > 0 and attached['externalRefreshed'], attached
+        assert str(external) in attached['text'] and not attached['refreshed'], attached
+        repeat_external = call('query', 'external_predict')
+        assert not repeat_external['externalRefreshed'], repeat_external
+        assert (external.read_bytes(), external.stat().st_mtime_ns) == external_before
+        call('remove', 'selected-library')
+        detached = call('query', 'external_predict')
+        assert 'externalHits' not in detached and str(external) not in detached['text'], detached
         with mock.patch.dict(os.environ, env):
             sys.path.insert(0, str(ROOT))
             from harness_cli import graft
@@ -130,6 +143,7 @@ def verify(package=None):
         assert all((project / name).read_bytes() == data and (project / name).stat().st_mtime_ns == timestamp
                    for name, (data, timestamp) in before.items() if name != Path('math.py'))
         return {'realPackage': '0.18.0', 'unchangedQueryRebuilt': False, 'changedQueryRefreshed': True,
+                'externalSourceAttachedAndDetached': True, 'externalQueryReused': True,
                 'automaticInit': package is None, 'automaticJevInit': package is None,
                 'explicitDisablePreserved': True, 'userFilesPreserved': True, 'modelCalls': 0, 'jev': advice}
 

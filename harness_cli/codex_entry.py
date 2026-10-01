@@ -140,6 +140,14 @@ def main(args):
         os.execve(state['python'], [state['python'], '-B', str(root / 'launcher.py'), '_codex', *args], env)
     binary = official_codex.binary(root)
     env = codex_environment()
+    if interactive(args):
+        from .auto_relay import working_directory
+        from .workspace_context import PATH as context_path, prepare
+        location = Path(working_directory(args)).resolve()
+        for project in (location, *location.parents):
+            if (project / context_path).is_file():
+                prepare(project, [str(binary)])
+                break
     if not interactive(args) or os.environ.get('HARNESS_CODEX_NATIVE') == '1':
         os.execve(str(binary), [str(binary), *args], env)
     if profile_requested(args):
