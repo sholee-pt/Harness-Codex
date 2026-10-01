@@ -46,6 +46,10 @@ writers stopped from elapsed time or a failed connection. Use `recover-session`
 only after explicit confirmation that the selected session and all its children
 have stopped; never pass `--yes` merely to unblock your own review. Recovery keeps
 other sessions, concerns and change history, and does not repair file transactions.
+Tracking-capacity overflow keeps automatic changes paused because some writers
+could not be recorded. Use `recover-session --session-ref all` only after the user
+explicitly confirms every native session and child for this project has stopped.
+This resets tracking, retains concerns and observations, and does not change mode.
 
 Read the current project-harness and the specific evidence needed for the concern.
 Choose: keep unchanged, improve existing routing guidance, improve an existing skill,

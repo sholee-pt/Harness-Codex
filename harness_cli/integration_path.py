@@ -13,16 +13,17 @@ START = '# >>> harness-codex native integration >>>'
 END = '# <<< harness-codex native integration <<<'
 
 
-def block(directory):
+def block(directory, home=None):
     directory = str(checked_path(directory))
     if ':' in directory or any(ord(c) < 32 or ord(c) == 127 for c in directory):
         raise ValueError('Unsupported native Codex PATH directory')
-    quoted = shlex.quote(directory)
+    from .installation_paths import home_expression
+    quoted = home_expression(directory, home) if home is not None else shlex.quote(directory)
     return (f'{START}\ncase ":${{PATH:-}}:" in\n'
             f'  *:{quoted}:*) ;;\n  *) export PATH={quoted}"${{PATH:+:$PATH}}" ;;\nesac\n{END}\n').encode()
 
 
-def plan(directory=None, *, previous=None, remove_tool=None, home=None, registry=None):
+def plan(directory=None, *, previous=None, remove_tool=None, home=None, registry=None, previous_alias=None, tool_alias=None):
     """Capture one compare-and-swap PATH edit; user content stays outside ownership."""
     if os.name == 'nt' or registry is not None:
         from . import windows_path as windows
@@ -52,27 +53,31 @@ def plan(directory=None, *, previous=None, remove_tool=None, home=None, registry
             raise ValueError('User PATH exceeds its supported length')
         return {'kind': 'windows', 'before': before, 'after': after,
                 'changed': (before or ('', kind)) != after}
-    profile = checked_path(user_home(home) / '.bashrc')
+    home = user_home(home)
+    profile = checked_path(home / '.bashrc')
     if profile.exists() and (not profile.is_file() or profile.stat().st_size > 1024 * 1024):
         raise ValueError('Bash startup file must be a bounded regular file')
     before = profile.read_bytes() if profile.exists() else b''
     before.decode('utf-8')
     after = before
     if directory and previous and str(directory) == str(previous) and not remove_tool:
-        owned = block(directory)
+        owned = block(directory, home)
         if after.count(START.encode()) == after.count(END.encode()) == 1 and owned in after:
             return {'kind': 'bash', 'profile': str(profile), 'before': before, 'after': before, 'changed': False}
-    if previous and block(previous) in after:
-        after = after.replace(block(previous), b'', 1)
+    for candidate in (previous, previous_alias):
+        if candidate:
+            for owned in (block(candidate), block(candidate, home)):
+                if owned in after:
+                    after = after.replace(owned, b'', 1)
     if START.encode() in after or END.encode() in after:
         raise ValueError('Modified or unowned native Codex PATH block preserved; review .bashrc')
     if remove_tool:
         from .shell import _block
-        tool_block = _block(str(checked_path(remove_tool)))
-        if after.count(tool_block) == 1:
-            after = after.replace(tool_block, b'', 1)
+        for tool_block in (_block(str(checked_path(remove_tool))), _block(str(checked_path(remove_tool)), home), _block(str(tool_alias or remove_tool))):
+            if after.count(tool_block) == 1:
+                after = after.replace(tool_block, b'', 1)
     if directory:
-        after += (b'\n' if after and not after.endswith(b'\n') else b'') + block(directory)
+        after += (b'\n' if after and not after.endswith(b'\n') else b'') + block(directory, home)
     return {'kind': 'bash', 'profile': str(profile), 'before': before, 'after': after, 'changed': before != after}
 
 

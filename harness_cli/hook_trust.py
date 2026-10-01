@@ -172,14 +172,20 @@ def trust(command, root, path, expected_command, progress):
 
 def prepare(source_root, root, *, binary='codex', mode='auto'):
     try:
+        import os
+        if os.environ.get('HARNESS_TOOL_HOME'):
+            from .installation_paths import repair_entrypoints
+            repair_entrypoints(os.environ['HARNESS_TOOL_HOME'])
         expected = maintenance.hook_command(source_root)
         installed = maintenance.install_hooks(source_root)
         if mode == 'manual':
             return {'status': 'manual-review-required', 'guidance': 'Use /hooks to review and trust the Harness handler.'}
         from .project import _codex_command
         with ui.Progress('Preparing Harness hook trust', compact=True) as progress:
+            maintenance.probe_hook(expected, project_root(root))
             result = trust(_codex_command(binary), project_root(root), checked_path(installed['path']), expected, progress)
+            result['executionCheck'] = 'passed'
         return result
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return {'status': 'manual-review-required', 'warning': ui.clean(exc),
-                'guidance': 'Automatic hook trust is unavailable. Use /hooks to review the Harness handler; project preferences were not changed by trust setup.'}
+                'guidance': 'Automatic hook trust is unavailable. Fix the reported execution or configuration issue before using /hooks; project preferences were not changed by trust setup.'}

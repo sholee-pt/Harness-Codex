@@ -33,6 +33,9 @@ def _pause_installer(paused: bool) -> None:
 
 def choose(data_root: Path, bin_dir: Path, selection: str) -> tuple[str, dict | None]:
     root, binary = dist._storage_path(data_root), dist._storage_path(bin_dir)
+    if os.path.lexists(root / '.entrypoint-migration.json'):
+        from .installation_paths import repair_entrypoints
+        repair_entrypoints(root)
     existing = dist.installed_status(root) if root.exists() and any(root.iterdir()) else None
     traces = existing is not None or any(os.path.lexists(binary / name) for name in ('harness-codex', 'harness-codex.cmd'))
     if os.name != 'nt':
@@ -92,11 +95,11 @@ def reset_check_cache(root: Path) -> None:
             cache.unlink()
 
 
-def path_registration(bin_dir: Path, *, reset=False, dry_run=False) -> dict:
+def path_registration(bin_dir: Path, *, reset=False, dry_run=False, previous=None) -> dict:
     if os.name == 'nt':
         from .windows_path import register_path, unregister_path
         if reset:
             unregister_path(bin_dir, dry_run=dry_run)
         return register_path(bin_dir, dry_run=dry_run)
     from .shell import register_path, reset_path
-    return reset_path(bin_dir, dry_run=dry_run) if reset else register_path(bin_dir, dry_run=dry_run)
+    return reset_path(bin_dir, dry_run=dry_run, previous=previous) if reset else register_path(bin_dir, dry_run=dry_run, previous=previous)

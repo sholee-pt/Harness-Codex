@@ -30,7 +30,10 @@ eligible batch. `auto` authorizes bounded existing-skill corrections after revie
 Both install a user-level native hook without replacing unrelated hooks. Full
 `init` registers these hooks even with maintenance and adaptive routing off, and
 uses Codex's native metadata and configuration APIs to trust only their exact
-definitions. It verifies all seven owned handlers; it never bypasses hook trust,
+definitions. Before trusting them, it executes the actual handler with a no-write
+probe and a three-second deadline. This checks the installed interpreter, launcher
+and helper without a model call, project mutation or observation record. It then
+verifies all seven owned handlers; it never bypasses hook trust,
 approves unrelated handlers, enables a disabled native hooks feature, or overrides
 managed policy. This setup makes no inference call and starts no conversation.
 
@@ -46,7 +49,9 @@ not activated by trusting maintenance hooks.
 unchanged. Dry-run, install-only and cancelled preference choices do not prepare
 trust. `config` and `reset` do not automatically grant trust. On unsupported
 capabilities, modified hook definitions or administrator restrictions, init keeps
-the project usable and reports manual review required. Inspect `/hooks` in that
+the project usable and reports manual review required. Resolve a failed execution
+probe before granting trust; trust alone cannot repair a missing executable.
+See [mount-change recovery](installation.md#path-and-logs). Inspect `/hooks` in that
 case; use administrator-approved settings when policy blocks user hooks. A later
 change to the command or definition can require renewed trust; rerun `init` or
 review it in `/hooks`. If hooks are not enabled and trusted, automatic notices and concurrency
@@ -54,6 +59,15 @@ observation are unavailable. The trusted SessionStart hook supplies concise sign
 instructions once per session/policy; UserPromptSubmit supplies them if startup was
 missed. A mode change or compaction refreshes the guidance. Ordinary later turns
 receive no repeated policy text and do not trigger a review without eligible signals.
+
+If the session or child tracking limit is reached, automatic changes stay paused
+even after recorded sessions finish: an unrecorded writer may still be running.
+After explicitly confirming that **all** native sessions and children for this
+project have stopped, run `harness-codex maintenance recover-session --session-ref all`.
+Its confirmation resets tracking and defers an outstanding review; project files,
+concerns, observations and preferences are retained. Ordinary Stop/Interrupt events
+for unknown sessions do not consume tracking slots. Maintenance state migrates
+from schema 3 to 4 on the next write; status inspection remains read-only.
 
 The handler uses the native [Codex hooks contract](https://developers.openai.com/codex/hooks/).
 It checks the installed tool's integrity and bounded local state, not every project
@@ -148,7 +162,7 @@ harness-codex maintenance --project PATH recover-session --session-ref REF
 
 Confirm with Enter/`y`/`yes`, or cancel with `n`/`no`. This releases only that activity marker and its review lease; concerns, change history, other sessions and project files are retained. Use `--yes` only after making the same check in automation. Elapsed time alone never releases native writers. A pending file transaction or interrupted change still requires its separate recovery procedure.
 
-Each automatic correction records an opaque change ID, before/after manifest revisions, reason/evidence references and the prior/new hashes of affected skills. The bounded user-local history stores no skill text, model IDs, paths or transcripts. Local state schemas 1 and 2 are read as schema 3 in memory; a status read does not rewrite them and existing off/suggest/auto choices remain unchanged. Init/config display maintenance and adaptive Auto preferences; controlled task-effect comparison remains a separate opt-in procedure.
+Each automatic correction records an opaque change ID, before/after manifest revisions, reason/evidence references and the prior/new hashes of affected skills. The bounded user-local history stores no skill text, model IDs, paths or transcripts. Local state schemas 1, 2 and 3 are read as schema 4 in memory; a status read does not rewrite them and existing off/suggest/auto choices remain unchanged. Init/config display maintenance and adaptive Auto preferences; controlled task-effect comparison remains a separate opt-in procedure.
 
 Applied changes start as `observing`: instructions updated, effect not established. The next hooked request carries a one-time revision notice and change ID. Record an outcome only when it is explicitly related to that correction, with the revision actually used by the task. Known model, effort, task category and runtime identity are hashed into a context group; unknown context remains descriptive and cannot trigger a comparison. Multiple records of one work item count once. Two independent, externally reported adverse outcomes in one known context group pause further automatic changes (`review-required`); they do not prove causality or stop ordinary work. Positive reports never automatically become a measured quality/cost benefit.
 

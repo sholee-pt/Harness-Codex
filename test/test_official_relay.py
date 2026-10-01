@@ -340,7 +340,7 @@ class IntegrationMigrationTests(unittest.TestCase):
             src = source(root / 'source', '0.23.0-beta', commit=None)
             state = dist.install_tool(src, data, root / 'bin', sys.executable)
             with mock.patch.object(integration_path, 'os', SimpleNamespace(name='posix')), \
-                 mock.patch.object(integration_path, 'block', side_effect=lambda path: (integration_path.START + '\n# ' + str(path) + '\n' + integration_path.END + '\n').encode()), \
+                 mock.patch.object(integration_path, 'block', side_effect=lambda path, home=None: (integration_path.START + '\n# ' + str(path) + '\n' + integration_path.END + '\n').encode()), \
                  mock.patch.object(relay, 'dependency'), mock.patch.object(official, 'read', return_value={'version': '1.2.3'}), \
                  mock.patch.object(official, 'binary', return_value=root / 'official-codex'):
                 with mock.patch.object(integration_path, 'apply', side_effect=ValueError('concurrent')):

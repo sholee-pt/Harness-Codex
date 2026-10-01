@@ -309,6 +309,11 @@ class ProjectJevTests(unittest.TestCase):
 
     def test_fresh_and_existing_init_enable_once_without_api_or_regeneration(self):
         os.environ['FAKE_CODEX_MODE'] = 'generate'
+        # The fake configuration command and global which('/node') are distinct
+        # executables. Keep host identity stable in this Jev idempotence fixture.
+        fingerprint = mock.patch('harness_cli.workspace_context._fingerprint', return_value='stable-fixture-runtime')
+        fingerprint.start()
+        self.addCleanup(fingerprint.stop)
         with mock.patch.object(graft_setup, 'prepare', return_value=(Path('/node'), self.base / 'package')):
             with mock.patch.object(graft.shutil, 'which', return_value='/node'), mock.patch.object(graft, '_invoke', return_value={}) as build:
                 with mock.patch.object(jev, '_request', side_effect=AssertionError('Init cannot call Jev')):

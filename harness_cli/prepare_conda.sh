@@ -24,7 +24,12 @@ if [[ ! -f "$data_directory/active.json" || -f "$data_directory/runtime.json" ||
   if [[ -e "$runtime_root" || -L "$runtime_root" ]]; then
     [[ ! -L "$runtime_root" && -f "$runtime_root/.harness-runtime-owner" ]] || { printf 'Unowned runtime directory preserved: %s\n' "$runtime_root" >&2; exit 1; }
     expected=$(printf 'harness-codex runtime v1\n%s\n' "$data_directory")
-    [[ $(cat -- "$runtime_root/.harness-runtime-owner") == "$expected" ]] || { printf 'Runtime belongs to another installation\n' >&2; exit 1; }
+    if [[ $(cat -- "$runtime_root/.harness-runtime-owner") != "$expected" ]]; then
+      # A shared home can have a different mount prefix on another server.
+      # Validate recorded ownership through current source; never rewrite Conda.
+      [[ -f "$data_directory/active.json" && -f "$data_directory/runtime.json" && -f "$runtime_root/envs/harness/conda-meta/history" ]] || { printf 'Runtime belongs to another installation\n' >&2; exit 1; }
+      timeout 10 "$runtime_root/envs/harness/bin/python" -B -c 'import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); from harness_cli import distribution, footprint; footprint.inspect(distribution._read_json(Path(sys.argv[2]) / "runtime.json"), Path(sys.argv[2]))' "$source_dir" "$data_directory" >> "$install_log" 2>&1 || { printf 'Moved runtime could not be verified; preserve it and review the installation log.\n' >&2; exit 1; }
+    fi
   else
     runtime_parent=$(dirname -- "$runtime_root")
     if [[ ! -d "$runtime_parent" ]]; then mkdir -p -- "$runtime_parent"; fi
@@ -34,6 +39,8 @@ if [[ ! -f "$data_directory/active.json" || -f "$data_directory/runtime.json" ||
   environment_selector=(--prefix "$runtime_root/envs/harness")
   owned_runtime=(--owned-runtime "$runtime_root")
 fi
+direct_runtime=false
+if [[ ${#owned_runtime[@]} -gt 0 && -f "$runtime_root/envs/harness/conda-meta/history" && -x "$runtime_root/envs/harness/bin/python" ]]; then direct_runtime=true; fi
 conda_command=${CONDA_EXE:-}
 if [[ -z "$conda_command" && -x "$runtime_root/conda/bin/conda" ]]; then conda_command=$runtime_root/conda/bin/conda; fi
 if [[ -z "$conda_command" ]]; then conda_command=$(command -v conda || true); fi
@@ -43,7 +50,7 @@ if [[ -z "$conda_command" ]]; then
     if [[ -x "$candidate" ]]; then conda_command=$candidate; break; fi
   done
 fi
-if [[ -z "$conda_command" ]]; then
+if [[ -z "$conda_command" && "$direct_runtime" == false ]]; then
   [[ $(uname -s) == Linux ]] || { printf '%s\n' 'Automatic Conda setup supports Linux only; set CONDA_EXE to an existing installation.' >&2; exit 1; }
   case $(uname -m) in
     x86_64) arch=x86_64; digest=14db468222ad564658656f769506056209b6dc375f5e7dfd31eb5ebbf08fa529 ;;
@@ -67,8 +74,10 @@ if [[ -z "$conda_command" ]]; then
 fi
 finish_step
 start_step '[2/3] Preparing the isolated Harness environment'
-environments=$("$conda_command" env list --json 2>> "$install_log")
-printf '%s\n' "$environments" >> "$install_log"
+if [[ "$direct_runtime" == false ]]; then
+  environments=$("$conda_command" env list --json 2>> "$install_log")
+  printf '%s\n' "$environments" >> "$install_log"
+fi
 if [[ ${#owned_runtime[@]} -gt 0 && ! -f "$runtime_root/envs/harness/conda-meta/history" ]]; then
   [[ ! -e "$runtime_root/envs/harness" ]] || { printf 'Incomplete runtime environment preserved; inspect it before reinstalling.\n' >&2; exit 1; }
   "$conda_command" create "${environment_selector[@]}" --override-channels --channel conda-forge python=3.11 git --yes >> "$install_log" 2>&1
@@ -89,8 +98,13 @@ selected_python="$selected_prefix/bin/python"
 resolved_python=$(realpath -e -- "$selected_python")
 [[ "$resolved_python" == "$selected_prefix/"* ]] || { printf 'Selected Python resolves outside its environment; installation stopped.\n' >&2; exit 1; }
 environment_selector=(--prefix "$selected_prefix")
+installer_runner=("$conda_command" run --no-capture-output "${environment_selector[@]}")
+if [[ "$direct_runtime" == true ]]; then
+  installer_runner=()
+  timeout 10 "$selected_python" -B -c 'import json, ssl, sqlite3, sys; from pathlib import Path; assert Path(sys.prefix).resolve() == Path(sys.argv[1]).resolve(), "Moved interpreter prefix mismatch"' "$selected_prefix" >> "$install_log" 2>&1 || { printf 'The existing interpreter cannot run at this mount. Its files were preserved.\n' >&2; exit 1; }
+fi
 printf 'Expected interpreter: %s\nExpected prefix: %s\n' "$selected_python" "$selected_prefix" >> "$install_log"
-if ! command -v git >/dev/null 2>&1 && ! "$conda_command" run "${environment_selector[@]}" git --version >> "$install_log" 2>&1; then
+if ! command -v git >/dev/null 2>&1 && ! "$selected_prefix/bin/git" --version >> "$install_log" 2>&1; then
   printf '      Preparing Git for tool updates...\n' >> "$install_log"
   "$conda_command" install "${environment_selector[@]}" --override-channels --channel conda-forge git --yes >> "$install_log" 2>&1
 fi

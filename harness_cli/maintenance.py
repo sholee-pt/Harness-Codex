@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 from .environment import helper_environment
-from .paths import checked_path, storage_location
+from .paths import checked_path, storage_location, user_home
 from . import presentation as ui
 
 EVENTS = ('SessionStart', 'UserPromptSubmit', 'Stop', 'Interrupt', 'SessionEnd', 'SubagentStart', 'SubagentStop')
@@ -41,7 +41,7 @@ def register(commands):
     clear = actions.add_parser('clear', help='Disable maintenance and reset this project\'s local observations; project files are retained.')
     clear.add_argument('--yes', action='store_true')
     recover = actions.add_parser('recover-session', help='Release a stale activity marker after confirming the native session and its children stopped.')
-    recover.add_argument('--session-ref', required=True, help='Opaque ref from maintenance status.')
+    recover.add_argument('--session-ref', required=True, help='Opaque ref from maintenance status; all requires confirming every project session and child stopped.')
     recover.add_argument('--yes', action='store_true')
     signal = actions.add_parser('signal', help='Record a specifically identified recurring concern without launching a review.')
     signal.add_argument('--reason', choices=('scope-changed', 'workflow-gap', 'routing-mismatch', 'verification-gap', 'user-request'), required=True)
@@ -89,7 +89,56 @@ def hook_command(source_root, tool_home=None):
     entry = checked_path(Path(tool_home or os.environ['HARNESS_TOOL_HOME']) / 'launcher.py') if (tool_home or os.environ.get('HARNESS_TOOL_HOME')) else checked_path(Path(source_root) / 'harness.py')
     # Match the install receipt, which resolves Conda's bin/python symlink.
     arguments = [str(Path(sys.executable).resolve()), '-B', str(entry), '--no-update-check', 'maintenance', '--hook']
-    return subprocess.list2cmdline(arguments) if os.name == 'nt' else shlex.join(arguments)
+    return _hook_command(arguments, portable=bool(tool_home or os.environ.get('HARNESS_TOOL_HOME')))
+
+
+def _hook_command(arguments, *, portable):
+    if os.name == 'nt':
+        return subprocess.list2cmdline(arguments)
+    if not portable:
+        return shlex.join(arguments)
+    from .installation_paths import home_expression
+    home = user_home()
+    command = 'exec ' + home_expression(arguments[0], home) + ' -B ' + home_expression(arguments[2], home)
+    return shlex.join(['/bin/sh', '-c', command + ' ' + shlex.join(arguments[3:])])
+
+
+def probe_hook(command, root):
+    """Exercise the real entrypoint with a no-write payload before native trust."""
+    import signal
+    import tempfile
+    # File-backed output stays bounded in memory even if an entrypoint is broken.
+    with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+        process = subprocess.Popen(command if os.name == 'nt' else ['/bin/sh', '-c', command], cwd=root,
+                                   stdin=subprocess.PIPE, stdout=output, stderr=errors, start_new_session=os.name != 'nt')
+        try:
+            process.communicate(b'{"hook_event_name":"HarnessProbe"}', timeout=3)
+        except BaseException:
+            if os.name == 'nt':
+                try:
+                    subprocess.run([str(Path(os.environ['SystemRoot']) / 'System32/taskkill.exe'), '/PID', str(process.pid), '/T', '/F'],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3, check=False)
+                except (OSError, subprocess.SubprocessError):
+                    pass
+            else:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+            raise
+        output.seek(0)
+        data = output.read(1025)
+        if process.returncode or len(data) > 1024:
+            raise ValueError('Harness hook entrypoint failed its execution check; rerun the current installer on this server')
+        try:
+            valid = json.loads(data) == {'harnessHookProbe': 1}
+        except (ValueError, UnicodeError):
+            valid = False
+        if not valid:
+            raise ValueError('Harness hook execution check returned an unsupported response; update the managed tool before trusting hooks')
 
 
 def _legacy_posix_hook(command, arguments):
@@ -196,8 +245,16 @@ def removal_plan(data_root, *, codex_home=None, installed=None):
     state = installed if installed is not None else installed_status(data_root)
     arguments = [str(Path(state['python']).resolve()), '-B', str(checked_path(Path(data_root) / 'launcher.py')), '--no-update-check', 'maintenance', '--hook']
     expected = subprocess.list2cmdline(arguments) if os.name == 'nt' else shlex.join(arguments)
-    if saved['command'] != expected:
-        if os.name == 'nt' or not _legacy_posix_hook(saved['command'], arguments):
+    portable = _hook_command(arguments, portable=True)
+    if saved['command'] == portable:
+        expected = portable
+    elif saved['command'] != expected:
+        from .installation_paths import binding
+        legacy = list(arguments)
+        if (Path(data_root) / 'active.json').is_file():
+            bound = binding(data_root)
+            legacy[0], legacy[2] = bound.path(arguments[0], reverse=True), bound.path(arguments[2], reverse=True)
+        if os.name == 'nt' or (saved['command'] != shlex.join(legacy) and not _legacy_posix_hook(saved['command'], arguments)):
             return {'state': 'another-installation; preserved'}
         expected = saved['command']
     value = json.loads(original.decode('utf-8-sig')) if original is not None else {}
@@ -262,6 +319,7 @@ def run(args, source_root):
         arguments = [args.maintenance_action]
         if args.maintenance_action in {'clear', 'recover-session'}:
             question = ('Disable maintenance and clear local observations for this project?' if args.maintenance_action == 'clear' else
+                        'Have ALL native sessions and child agents for this project stopped? Reset their tracking only?' if args.session_ref == 'all' else
                         'Have this session and all its child agents stopped? Release its activity marker?')
             if not args.yes:
                 if args.json or not sys.stdin.isatty() or not sys.stdout.isatty():
@@ -316,6 +374,8 @@ def run(args, source_root):
         print(f'Maintenance: {result["mode"]}; eligible concerns: {result["pending"]}; reviews: {result["metrics"]["reviews"]}.')
         print('Automatic changes: existing skills only. Quality benefit is unmeasured; token counts are not a billing total.')
         print('Automatic changes paused: ' + ('yes' if result.get('automaticChangesPaused') else 'no'))
+        if result.get('trackingIncomplete'):
+            print('Session tracking reached capacity. After confirming every native session and child for this project stopped, use maintenance recover-session --session-ref all. Observations and project files are retained.')
         for session in result.get('blockingSessions', []):
             print(f"  Active session marker: {session['ref']} | active: {session['active']} | children: {session['children']}")
         if result.get('blockingSessions'):

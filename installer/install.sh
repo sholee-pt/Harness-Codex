@@ -116,7 +116,7 @@ printf '\n%sHarness for Codex installer%s\n================================\nDet
 start_step '[1/3] Checking installation tools'
 source "$source_dir/harness_cli/prepare_conda.sh"
 start_step '[3/3] Installing command and applying PATH preferences'
-HARNESS_INSTALL_EXPECTED_PREFIX="$selected_prefix" "$conda_command" run --no-capture-output "${environment_selector[@]}" "$selected_python" -B "$source_dir/harness.py" install "$@" "${owned_runtime[@]}" >> "$install_log" 2>&1
+HARNESS_INSTALL_EXPECTED_PREFIX="$selected_prefix" "${installer_runner[@]}" "$selected_python" -B "$source_dir/harness.py" install "$@" "${owned_runtime[@]}" >> "$install_log" 2>&1
 finish_step
 # Keep the CLI receipt contract intact; replay only its existing human summary.
 sed -n '/^Installed /p' "$install_log"

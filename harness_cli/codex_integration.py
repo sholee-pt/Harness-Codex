@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 import shutil
 import re
-import shlex
 import sys
 
 from . import distribution as dist, native_package, native_ui, integration_path
@@ -132,7 +131,8 @@ def install(data_root, source_root, *, archive=None, mode=None, profiles=None, h
                        'directory': str(directory), 'original': previous['original'] if previous else original_codex(root),
                        'mode': selected_mode, 'files': files}
             if previous != receipt:
-                written[receipt_path] = ((json.dumps(receipt, indent=2, sort_keys=True) + '\n').encode(), old_receipt)
+                from .installation_paths import record
+                written[receipt_path] = ((json.dumps(record(receipt_path, receipt, reverse=True), indent=2, sort_keys=True) + '\n').encode(), old_receipt)
                 dist._write_json(receipt_path, receipt)
             integration_path.apply(change, registry=registry)
         except BaseException:
@@ -205,6 +205,7 @@ def _official_install(root, state, previous, mode, profiles, home):
     from . import official_codex, auto_relay
     from .model_routing import choose
     from .routing import read_json
+    from .installation_paths import binding, record, shell_entry
     if profiles is not None:
         profiles = dist._storage_path(profiles)
         choose('Validate routing preferences.', [], profiles=read_json(profiles))
@@ -220,13 +221,13 @@ def _official_install(root, state, previous, mode, profiles, home):
         official_codex.binary(root)
     directory = root / 'codex-bin'
     settings = {'schema': 1, 'mode': mode, 'profiles': str(profiles) if profiles else None}
-    content = {'codex-bin/codex': ('#!/bin/sh\nexec ' + shlex.quote(state['python']) + ' -B '
-               + shlex.quote(str(root / 'launcher.py')) + ' _codex "$@"\n').encode(),
-               'codex-relay.json': (json.dumps(settings, indent=2, sort_keys=True) + '\n').encode()}
+    content = {'codex-bin/codex': shell_entry(root, directory, state['python'], ('_codex',)),
+               'codex-relay.json': (json.dumps(record(root / 'codex-relay.json', settings, reverse=True), indent=2, sort_keys=True) + '\n').encode()}
     with dist._lock(root):
         if read(root) != previous:
             raise ValueError('Codex integration changed concurrently; retry')
-        change = integration_path.plan(directory, previous=previous['directory'] if previous else None, home=home)
+        change = integration_path.plan(directory, previous=previous['directory'] if previous else None, home=home,
+                                       previous_alias=binding(root).path(previous['directory'], reverse=True) if previous else None)
         files = dict(previous['files']) if previous else {}
         for name in content:
             if (root / name).exists() and name not in files:
@@ -247,7 +248,7 @@ def _official_install(root, state, previous, mode, profiles, home):
                 files[name] = native_package.fingerprint(path)['sha256']
             receipt = {'schema': 2, 'owner': 'harness-codex-native', 'version': state['version'], 'directory': str(directory),
                        'original': previous['original'] if previous else original_codex(root), 'mode': mode, 'files': files}
-            data = (json.dumps(receipt, indent=2, sort_keys=True) + '\n').encode()
+            data = (json.dumps(record(root / RECEIPT, receipt, reverse=True), indent=2, sort_keys=True) + '\n').encode()
             if before[root / RECEIPT] != data:
                 dist._write_json(root / RECEIPT, receipt)
                 written[root / RECEIPT] = data

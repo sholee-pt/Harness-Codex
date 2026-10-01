@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 import time
 import uuid
@@ -44,7 +45,7 @@ def digest(value):
 
 
 def default_state():
-    return {'schema': 3, 'mode': 'off', 'candidates': {}, 'sessions': {}, 'lease': None, 'changes': [],
+    return {'schema': 4, 'mode': 'off', 'candidates': {}, 'sessions': {}, 'trackingIncomplete': False, 'lease': None, 'changes': [],
             'policy': dict(cadence.DEFAULTS), 'recentReviews': [], 'retired': {},
             'attempts': [], 'notified': None, 'appliedRevision': None,
             'metrics': {'reviews': 0, 'applied': 0, 'unchanged': 0, 'reviewSeconds': 0,
@@ -83,12 +84,16 @@ class Maintenance:
             raise ValueError('Maintenance state exceeds its size limit')
         value = json.loads(path.read_text(encoding='utf-8'))
         expected = default_state()
+        previous_fields = set(expected) - {'trackingIncomplete'}
         new_fields = {'policy', 'recentReviews', 'retired'}
-        if isinstance(value, dict) and value.get('schema') == 1 and set(value) == set(expected) - {'changes', *new_fields}:
+        if isinstance(value, dict) and value.get('schema') == 1 and set(value) == previous_fields - {'changes', *new_fields}:
             value = {**value, 'schema': 2, 'changes': []}
-        if isinstance(value, dict) and value.get('schema') == 2 and set(value) == set(expected) - new_fields:
+        if isinstance(value, dict) and value.get('schema') == 2 and set(value) == previous_fields - new_fields:
             value = {**value, 'schema': 3, **{name: expected[name] for name in new_fields}}
-        if (not isinstance(value, dict) or set(value) != set(expected) or value['schema'] != 3
+        if isinstance(value, dict) and value.get('schema') == 3 and set(value) == previous_fields:
+            value = {**value, 'schema': 4, 'trackingIncomplete': False}
+        if (not isinstance(value, dict) or set(value) != set(expected) or value['schema'] != 4
+                or type(value['trackingIncomplete']) is not bool
                 or value['mode'] not in MODES or not isinstance(value['candidates'], dict)
                 or len(value['candidates']) > MAX_CANDIDATES or not isinstance(value['sessions'], dict)
                 or len(value['sessions']) > MAX_SESSIONS or not isinstance(value['attempts'], list)
@@ -198,6 +203,7 @@ class Maintenance:
     def status(self):
         state = self._read(self._location())
         expired = state['lease'] is not None and self.clock() > state['lease']['deadline']
+        changes = history.summary(state['changes'])
         return {'mode': state['mode'], 'pending': len(self._eligible(state)),
                 'blockingSessions': [{'ref': key, 'active': item['active'], 'children': len(item['children'])}
                                      for key, item in state['sessions'].items() if item['active'] or item['children']],
@@ -206,17 +212,22 @@ class Maintenance:
                 'tokenBudgetEnforcement': 'not-available-in-native-interactive-session',
                 'reviewTimeLimitSeconds': state['policy']['reviewSeconds'], 'reviewsPerDay': state['policy']['reviewsPerDay'],
                 'policy': state['policy'], 'scheduling': cadence.schedule(state, self.clock(), [state['candidates'][key] for key in self._eligible(state)]),
-                **history.summary(state['changes'])}
+                **changes, 'trackingIncomplete': state['trackingIncomplete'],
+                'automaticChangesPaused': state['trackingIncomplete'] or changes['automaticChangesPaused']}
 
     def recover_session(self, session_ref):
-        if not isinstance(session_ref, str) or not re.fullmatch(r'[0-9a-f]{64}', session_ref):
+        if not isinstance(session_ref, str) or (session_ref != 'all' and not re.fullmatch(r'[0-9a-f]{64}', session_ref)):
             raise ValueError('Use an opaque session ref from maintenance status')
         with self.transaction() as state:
             # A caller must confirm that the session and its children stopped.
             # Elapsed time alone never establishes that native writers exited.
-            removed = state['sessions'].pop(session_ref, None)
-            recovered = removed is not None
-            if state['lease'] is not None and state['lease']['session'] == session_ref:
+            if session_ref == 'all':
+                recovered = bool(state['sessions']) or state['trackingIncomplete']
+                state['sessions'].clear()
+                state['trackingIncomplete'] = False
+            else:
+                recovered = state['sessions'].pop(session_ref, None) is not None
+            if state['lease'] is not None and (session_ref == 'all' or state['lease']['session'] == session_ref):
                 lease = state['lease']
                 duration = max(0, min(self.clock(), lease['deadline']) - lease['started'])
                 state['metrics']['reviewSeconds'] += duration
@@ -336,7 +347,7 @@ class Maintenance:
             return {'recorded': True, 'candidate': key, 'eligible': key in self._eligible(state)}
 
     def _busy(self, state, session):
-        return any(item['children'] or (key != session and item['active']) for key, item in state['sessions'].items())
+        return state['trackingIncomplete'] or any(item['children'] or (key != session and item['active']) for key, item in state['sessions'].items())
 
     def _expire(self, state):
         lease = state['lease']
@@ -485,7 +496,10 @@ class Maintenance:
                 state['sessions'].pop(session_id, None)
                 return ''
             if session_id not in state['sessions']:
+                if kind in {'Stop', 'Interrupt', 'SubagentStop'}:
+                    return ''
                 if len(state['sessions']) >= MAX_SESSIONS:
+                    state['trackingIncomplete'] = True
                     return 'Harness maintenance paused: session limit reached. Existing harness remains active.'
                 state['sessions'][session_id] = {'active': False, 'children': [], 'seenRevision': None}
             session = state['sessions'][session_id]
@@ -493,7 +507,8 @@ class Maintenance:
                 child = self.store.fingerprint(str(event.get('agent_id', 'unknown')).encode())
                 if kind == 'SubagentStart' and child not in session['children']:
                     if len(session['children']) >= 64:
-                        raise ValueError('Maintenance child-agent limit reached')
+                        state['trackingIncomplete'] = True
+                        return 'Harness maintenance paused: child-agent limit reached. Existing harness remains active.'
                     session['children'].append(child)
                 elif kind == 'SubagentStop' and child in session['children']:
                     session['children'].remove(child)
@@ -588,7 +603,7 @@ def main():
     clear = commands.add_parser('clear')
     clear.add_argument('--yes', action='store_true', required=True)
     recover = commands.add_parser('recover-session')
-    recover.add_argument('--session-ref', required=True)
+    recover.add_argument('--session-ref', required=True, help='A recorded session ref, or all only after confirming every project session and child stopped.')
     recover.add_argument('--yes', action='store_true', required=True)
     settings = commands.add_parser('configure')
     settings.add_argument('--mode', choices=MODES)
@@ -612,12 +627,20 @@ def main():
             if len(data) > 1024 * 1024:
                 raise ValueError('Oversized hook input')
             event = json.loads(data)
+            if not isinstance(event, dict):
+                raise ValueError('Hook input must be an object')
+            if event == {'hook_event_name': 'HarnessProbe'}:
+                print(json.dumps({'harnessHookProbe': 1}))
+                return 0
             root = find_root(event.get('cwd', ''))
             if root is None:
                 return 0
             context = Maintenance(root).hook(event)
             if context:
-                print(json.dumps({'hookSpecificOutput': {'hookEventName': event['hook_event_name'], 'additionalContext': context}}))
+                if event['hook_event_name'] in {'SessionStart', 'UserPromptSubmit'}:
+                    print(json.dumps({'hookSpecificOutput': {'hookEventName': event['hook_event_name'], 'additionalContext': context}}))
+                else:
+                    print(json.dumps({'systemMessage': context}))
             return 0
         manager = Maintenance(args.root)
         if args.command == 'status':
@@ -640,7 +663,12 @@ def main():
         return 0
     except Exception as exc:
         if args.command == 'hook':
-            print(json.dumps({'systemMessage': 'Harness maintenance unavailable; existing project configuration preserved.'}))
+            # Never echo event text, filesystem paths or stored user data.
+            category = ('state-or-input' if isinstance(exc, (ValueError, TypeError, KeyError)) else
+                        'timeout' if isinstance(exc, (TimeoutError, subprocess.TimeoutExpired)) else
+                        'filesystem' if isinstance(exc, OSError) else 'internal')
+            print(json.dumps({'systemMessage': 'Harness maintenance unavailable (' + category + '). Existing project configuration preserved. '
+                              'Run harness-codex maintenance --project CURRENT_PATH for details; a moved session may need its current working directory corrected.'}))
             return 0
         print('harness maintenance: ' + str(exc), file=sys.stderr)
         return 1

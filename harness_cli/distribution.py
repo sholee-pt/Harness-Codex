@@ -44,6 +44,7 @@ REQUIRED = frozenset({"harness.py", "install.py", "harness_cli/__init__.py", "ha
 # Keep the original common set valid for complete v9.2 and v9.3 distributions.
 # Later releases inherit each dependency from its numeric introduction version.
 VERSION_REQUIRED = (
+    (version_key("0.30.2-beta"), frozenset({"harness_cli/installation_paths.py"})),
     (version_key("0.27.1-beta"), frozenset({"harness_cli/hook_state.py"})),
     (version_key("0.27.0-beta"), frozenset({"harness_cli/hook_trust.py"})),
     (version_key("0.26.0-beta"), frozenset({"harness_cli/project_preferences.py"})),
@@ -151,7 +152,11 @@ def _read_json(path: Path) -> dict:
         raise DistributionError("managed metadata is missing or invalid") from exc
     if not isinstance(result, dict):
         raise DistributionError("managed metadata must be an object")
-    return result
+    from .installation_paths import record
+    try:
+        return record(path, result)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise DistributionError('Invalid installation location metadata: ' + str(exc)) from exc
 
 
 _NO_EXPECTATION = object()
@@ -159,6 +164,8 @@ _NO_EXPECTATION = object()
 
 def _write_json(path: Path, value: dict, *, expected=_NO_EXPECTATION) -> None:
     _path(path)
+    from .installation_paths import record
+    value = record(path, value, reverse=True)
     fd, temporary = tempfile.mkstemp(prefix=".write-", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
@@ -389,6 +396,9 @@ def _launchers(data_root: Path, bin_dir: Path, python: str, command: str = "harn
         if any(c in python + str(data_root) for c in '%!\r\n"'):
             raise DistributionError("Windows launcher paths contain unsupported shell characters")
         result[bin_dir / (command + ".cmd")] = (f'@echo off\r\n"{python}" -B "{data_root / "launcher.py"}" %*\r\n').encode()
+    else:
+        from .installation_paths import shell_entry
+        result[bin_dir / command] = shell_entry(data_root, bin_dir, python)
     return result
 
 
@@ -465,6 +475,8 @@ def _installation_status(data_root, *, launcher_hashes_override=None) -> dict:
 
 def installed_status(data_root) -> dict:
     """Verify the source, receipts and current launcher hashes without writes."""
+    if os.path.lexists(Path(data_root) / '.entrypoint-migration.json'):
+        raise DistributionError('Entrypoint repair is pending; rerun install or update --repair-launcher')
     return _installation_status(data_root)
 
 
@@ -821,6 +833,8 @@ def _install_tool(source_root, data_root, bin_dir, python_executable=sys.executa
                     path.chmod(0o755 if path.name == command else 0o644)
             active = {"schema": 1, "version": version, "commit": commit, "python": python, "binDir": str(bin_dir), "repository": repository, "branch": branch, "auto_update": auto_update,
                       "launchers": existing["launchers"] if existing else {str(path): hashlib.sha256(data).hexdigest() for path, data in launchers.items()}}
+            from .installation_paths import Binding
+            active['pathOrigin'] = Binding(data_root, existing or active).origin
             if command != "harness":
                 active["command"] = command
             return _activate(snapshot, data_root, active)
@@ -1048,19 +1062,30 @@ def install_tool(source_root, data_root, bin_dir, python_executable=sys.executab
     # Recovery happens outside the general update lock. A crash in launcher
     # migration must not leave that lock obstructing its explicit recovery path.
     data_root = _storage_path(data_root)
+    from .installation_paths import repair_entrypoints
+    if os.path.lexists(data_root / '.entrypoint-migration.json'):
+        repair_entrypoints(data_root)
     if os.path.lexists(data_root / ".launcher-migration.json"):
         repair_launcher(data_root)
     result = _install_tool(source_root, data_root, bin_dir, python_executable, branch, repository, auto_update)
-    return repair_launcher(data_root)["installation"]
+    repair_launcher(data_root)
+    repair_entrypoints(data_root)
+    return installed_status(data_root)
 
 
 def update_tool(data_root, *, branch=None, repository=None, timeout=120, git_executable="git", expected_major=None) -> dict:
     data_root = _storage_path(data_root)
+    from .installation_paths import repair_entrypoints
+    if os.path.lexists(data_root / '.entrypoint-migration.json'):
+        repair_entrypoints(data_root)
     if os.path.lexists(data_root / ".launcher-migration.json"):
         repair_launcher(data_root)
     result = _update_tool(data_root, branch=branch, repository=repository, timeout=timeout,
                           git_executable=git_executable, expected_major=expected_major)
     result["installation"] = repair_launcher(data_root)["installation"]
+    if result.get('updated'):
+        repair_entrypoints(data_root)
+        result['installation'] = installed_status(data_root)
     return result
 
 

@@ -39,13 +39,33 @@ def marker(data_root: Path) -> bytes:
 
 
 def validate_root(root: Path, data_root: Path) -> Path:
+    from .installation_paths import binding
+    if (Path(data_root) / 'active.json').is_file():
+        root = binding(data_root).path(str(root))
     root, data_root = dist._storage_path(root).resolve(), dist._storage_path(data_root).resolve()
     if root == data_root or root in data_root.parents or data_root in root.parents:
         raise ValueError('Runtime and CLI storage must be separate directories')
     contents = dist._storage_path(root / MARKER).read_text(encoding='utf-8').splitlines()
-    if len(contents) != 2 or contents[0] != 'harness-codex runtime v1' or dist._storage_path(contents[1]).resolve() != data_root:
+    if len(contents) != 2 or contents[0] != 'harness-codex runtime v1':
+        raise ValueError('Runtime ownership marker does not match this tool installation')
+    bound = _runtime_binding(root, data_root)
+    if dist._storage_path(bound.path(contents[1])).resolve() != data_root:
         raise ValueError('Runtime ownership marker does not match this tool installation')
     return root
+
+
+def _runtime_binding(root, data_root):
+    from .installation_paths import Binding, binding
+    if (data_root / 'active.json').is_file():
+        return binding(data_root)
+    receipt = root / RECEIPT
+    if receipt.is_file():
+        value = dist._read_json(receipt)
+        original = value['dataRoot']
+        return Binding(data_root, {'launchers': {str(Path(original) / 'launcher.py'): ''},
+                                  'binDir': value['condaRegistration'], 'python': value['root']})
+    return Binding(data_root, {'launchers': {str(data_root / 'launcher.py'): ''},
+                              'binDir': str(root), 'python': str(root)})
 
 
 def _entry(path: Path) -> dict:
@@ -144,6 +164,9 @@ def inspect(reference: dict, data_root: Path) -> dict:
     value = json.loads(receipt.read_text(encoding='utf-8'))
     if not isinstance(value, dict):
         raise ValueError('Invalid runtime receipt')
+    bound = _runtime_binding(root, data_root)
+    for field in ('root', 'dataRoot', 'condaRegistration'):
+        value[field] = bound.path(value.get(field))
     if value.get('schema') != 1 or value.get('root') != str(root) or value.get('dataRoot') != str(data_root):
         raise ValueError('Runtime receipt does not match the selected installation')
     if not isinstance(value.get('files'), dict) or not isinstance(value.get('directories'), list):
@@ -165,7 +188,7 @@ def inspect(reference: dict, data_root: Path) -> dict:
     return {**value, 'receiptSha256': reference['receiptSha256']}
 
 
-def _unregister_conda(plan: dict) -> None:
+def _unregister_conda(plan: dict, *, previous=None) -> None:
     prefix = Path(plan['root']) / 'envs/harness'
     if prefix.exists():
         return
@@ -174,7 +197,8 @@ def _unregister_conda(plan: dict) -> None:
         return
     before = path.read_bytes()
     lines = before.splitlines(keepends=True)
-    after = b''.join(line for line in lines if Path(line.decode('utf-8').strip()).resolve() != prefix.resolve())
+    owned = {prefix.resolve(), Path(previous or prefix).resolve()}
+    after = b''.join(line for line in lines if Path(line.decode('utf-8').strip()).resolve() not in owned)
     if after != before:
         _replace_profile(path, before, after)
 
@@ -190,6 +214,7 @@ def cleanup(plan: dict) -> list[str]:
     """Unix permits unlinking the running interpreter; retain unknown/changed files."""
     plan = inspect({'schema': 1, 'root': plan['root'], 'receiptSha256': plan['receiptSha256']}, Path(plan['dataRoot']))
     root = dist._storage_path(plan['root'])
+    previous = _runtime_binding(root, Path(plan['dataRoot'])).path(str(root / 'envs/harness'), reverse=True)
     remaining = []
     for name, expected in plan['files'].items():
         if name == MARKER:
@@ -219,7 +244,7 @@ def cleanup(plan: dict) -> list[str]:
     else:
         remaining.append(str(root))
     try:
-        _unregister_conda(plan)
+        _unregister_conda(plan, previous=previous)
     except (OSError, ValueError, UnicodeError):
         remaining.append(plan['condaRegistration'])
     return remaining

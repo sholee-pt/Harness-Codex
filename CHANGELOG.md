@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.30.2‑beta`](#harness-for-codex-v0302-beta) | Schema 3 | Schema 7 | Schema 2 | Bind owned Linux installation paths across mount changes and verify hook execution before trust. |
 | [`v0.30.1‑beta`](#harness-for-codex-v0301-beta) | Schema 3 | Schema 7 | Schema 2 | Refresh host diagnostics when init reuses an existing project harness. |
 | [`v0.30.0‑beta`](#harness-for-codex-v0300-beta) | Schema 3 | Schema 7 | Schema 2 | Add portable root resolution, bounded host sandbox diagnostics, missing-root init and explicit external retrieval. |
 | [`v0.29.4‑beta`](#harness-for-codex-v0294-beta) | Schema 3 | Schema 7 | Schema 2 | Correct release-build regression expectations for supported external directory aliases. |
@@ -90,6 +91,14 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.30.2-beta
+
+- Resolve owned tool, interpreter, integration and runtime locations from the current installation layout while retaining canonical metadata and exact file hashes. Linux command wrappers and home-relative PATH/hook definitions survive shared-home mount-prefix changes.
+- Repair owned legacy command wrappers with a recoverable journal; reuse a relocated dedicated interpreter only after ownership and execution checks. Preserve incompatible runtimes, user edits and unrelated shell/hook settings.
+- Check the actual hook entrypoint before automatic native trust. Emit event-appropriate hook output, ignore untracked terminal events and report bounded failure categories without copying event content.
+- Pause automatic changes after session/child tracking overflow until every project session and child is confirmed stopped; recover tracking without clearing observations or project files.
+- Stabilize the Jev idempotence fixture's mocked host identity and add mount-relocation, interruption, ownership and hook-protocol regression coverage.
 
 ## Harness for Codex v0.30.1-beta
 

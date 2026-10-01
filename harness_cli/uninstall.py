@@ -39,12 +39,12 @@ def _fingerprint(path: Path, *, max_bytes=dist.MAX_FILE_BYTES) -> tuple:
     return digest, info.st_size, info.st_mtime_ns, stat.S_IMODE(info.st_mode)
 
 
-def _path_action(bin_dir: Path, *, dry_run=True, expected=None) -> dict:
+def _path_action(bin_dir: Path, *, dry_run=True, expected=None, previous=None) -> dict:
     if os.name == 'nt':
         from .windows_path import unregister_path
     else:
         from .shell import unregister_path
-    return unregister_path(bin_dir, dry_run=dry_run, expected=expected)
+    return unregister_path(bin_dir, dry_run=dry_run, expected=expected, **({'previous': previous} if os.name != 'nt' else {}))
 
 
 def _windows_batch_parent() -> bool:
@@ -144,22 +144,26 @@ def prepare(data_root: Path, *, locked=False) -> dict:
     if any(value[0] != verified[path] for path, value in fingerprints.items()):
         raise ValueError('Managed files changed during uninstall inspection')
     shared = any(path not in external for path in binary.iterdir())
+    from .installation_paths import binding
+    bound = binding(root)
+    binary_alias = bound.path(str(binary), reverse=True)
     if shared:
         path_change = {'state': 'preserved', 'reason': 'shared command directory'}
     else:
         try:
-            path_change = _path_action(binary)
+            path_change = _path_action(binary, previous=binary_alias)
         except (OSError, ValueError) as exc:
             path_change = {'state': 'preserved', 'reason': str(exc)}
     integration_change = None
     if integration:
         integration_change = integration_path.plan(previous=integration['directory'],
-            remove_tool=binary if path_change['state'] == 'would-remove' else None)
+            remove_tool=binary if path_change['state'] == 'would-remove' else None,
+            previous_alias=bound.path(integration['directory'], reverse=True), tool_alias=binary_alias)
     from .maintenance import removal_plan
     hooks = removal_plan(root, installed=state)
     return {'root': root, 'binary': binary, 'version': state['version'], 'command': state.get('command', 'harness'),
             'files': fingerprints, 'directories': directories, 'external': external, 'path': path_change,
-            'integrationPath': integration_change, 'runtime': runtime, 'hooks': hooks}
+            'integrationPath': integration_change, 'runtime': runtime, 'hooks': hooks, 'binaryAlias': binary_alias}
 
 
 def _purge_files(files: dict[Path, tuple], directories: set[Path]) -> list[str]:
@@ -230,7 +234,7 @@ def remove(plan: dict) -> dict:
                 if set(plan['binary'].iterdir()) != staged_commands:
                     raise ValueError('Command directory changed during uninstall; preserving PATH')
                 if plan['integrationPath'] is None:
-                    _path_action(plan['binary'], dry_run=False, expected=plan['path'])
+                    _path_action(plan['binary'], dry_run=False, expected=plan['path'], previous=plan['binaryAlias'])
             if plan['integrationPath'] is not None:
                 from .integration_path import apply
                 apply(plan['integrationPath'])

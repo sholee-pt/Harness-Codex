@@ -232,6 +232,8 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
         if args.command == "install":
             from .setup import choose, path_registration, reset_check_cache
             choice, previous = choose(args.data_dir, args.bin_dir, args.existing)
+            from .installation_paths import binding
+            previous_bin = binding(args.data_dir).path(str(args.bin_dir), reverse=True) if previous else None
             if args.owned_runtime:
                 from .footprint import validate_root
                 validate_root(args.owned_runtime, args.data_dir)
@@ -243,7 +245,7 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
                         args.branch = None
                         print('Legacy codex/ branch pin retired; updates now follow the newest compatible Harness-Codex release.')
             if not args.no_modify_path:
-                path_registration(args.bin_dir, reset=choice == 'reset', dry_run=True)
+                path_registration(args.bin_dir, reset=choice == 'reset', dry_run=True, previous=previous_bin)
             if args.owned_runtime:
                 from .footprint import record
                 # Validate and seal native runtime ownership before creating or
@@ -261,7 +263,10 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
             if choice == 'reset':
                 reset_check_cache(args.data_dir)
             if not args.no_modify_path:
-                ui.report(path_registration(args.bin_dir, reset=choice == 'reset'), title='PATH registration')
+                ui.report(path_registration(args.bin_dir, reset=choice == 'reset', previous=previous_bin), title='PATH registration')
+            from .codex_integration import read as integration_read, install as integration_install
+            if os.name == 'posix' and not args.no_modify_path and integration_read(args.data_dir) is not None:
+                ui.report(integration_install(args.data_dir, Path(result['sourceRoot'])), title='Codex integration')
             hint = "Open a new terminal." if os.name == "nt" else "Apply PATH in this Bash session: source ~/.bashrc"
             if args.no_modify_path:
                 hint = "PATH registration skipped; invoke the command by its full path."
@@ -271,7 +276,11 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
             if args.repair_launcher:
                 if args.check or args.branch is not None or args.repository is not None:
                     raise ValueError("--repair-launcher is offline and cannot be combined with --check, --branch, or --repository.")
+                from .installation_paths import repair_entrypoints
+                if (args.data_dir / '.entrypoint-migration.json').exists():
+                    repair_entrypoints(args.data_dir)
                 ui.report(distribution.repair_launcher(args.data_dir), title='Launcher repair')
+                ui.report(repair_entrypoints(args.data_dir), title='Command path repair')
                 print("Repeat project commands from the same parent terminal so they inherit its original environment.")
                 return 0
             if args.timeout <= 0 or args.timeout > 600:

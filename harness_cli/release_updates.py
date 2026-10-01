@@ -135,4 +135,7 @@ def update(data_root, *, selected=None, timeout=120):
             active = {key: item for key, item in before.items() if key not in {'dataRoot', 'sourceRoot', 'releasePath', 'release_root'}}
             active.update(version=version, commit=commit)
             installation = dist._activate(snapshot, root, active)
+    from .installation_paths import repair_entrypoints
+    repair_entrypoints(root)
+    installation = dist.installed_status(root)
     return {**selected, 'status': 'updated', 'updated': True, 'installation': installation}

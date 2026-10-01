@@ -39,7 +39,7 @@ For Windows source development, run from an existing checkout:
 ## Source installation
 
 ```bash
-git clone --branch v0.30.1-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
+git clone --branch v0.30.2-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
 bash Harness-Codex/installer/install.sh
 source ~/.bashrc
 ```
@@ -69,6 +69,41 @@ tests; Windows tool-installation restrictions and its separate release policy
 remain unchanged.
 
 ## PATH and logs
+
+On Linux, current command wrappers locate their tool installation relative to
+the command directory. Owned location fields are bound to that layout at read
+time; file hashes and immutable runtime receipts are not replaced simply because
+the mount prefix changed. PATH entries and maintenance hook commands under the
+account home use `$HOME`. This supports the same home tree mounted at different
+absolute prefixes while preserving its relative layout. Custom paths outside
+that shared layout remain external paths, and must exist on the selected host.
+
+For an older installation whose command no longer starts after changing servers,
+run the current source installer from the new server and choose `reuse`:
+
+```bash
+bash Harness-Codex/installer/install.sh --existing reuse
+source ~/.bashrc
+harness-codex init --project /current/server/path/to/project
+```
+
+The installer verifies legacy ownership before repairing command wrappers and
+integration. It can reuse the dedicated runtime without executing an obsolete
+Conda shebang, but only if that runtime's interpreter and required libraries work
+at the new prefix. It does not rewrite Conda binaries or promise compatibility
+across operating systems/architectures. A failed ownership or interpreter check
+preserves the existing runtime and reports its installation log.
+
+Full `init` replaces only receipt-owned hook commands and verifies their actual
+execution before requesting native trust. An existing project harness is retained.
+If command repair was interrupted, rerun the installer or use the current source
+CLI's `update --repair-launcher --data-dir PATH` from the dedicated Harness
+environment. An unknown lock or user modification still requires review.
+
+Codex conversation history can independently retain an obsolete working
+directory. Start Codex with `--cd /current/server/path/to/project` before resuming
+that conversation. Tool-path repair does not rewrite Codex history or switch a
+conversation to a different project's harness.
 
 Linux account homes and installation parent directories may be symbolic links
 to shared storage. The installer resolves those external aliases and records

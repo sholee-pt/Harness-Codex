@@ -43,13 +43,14 @@ def offer_activation(*, mode='ask', cwd=None):
         print('Shell activation ended. Harness remains configured; apply PATH with source ~/.bashrc.', file=sys.stderr)
 
 
-def _block(directory: str) -> bytes:
-    quoted = shlex.quote(directory)
+def _block(directory: str, home=None) -> bytes:
+    from .installation_paths import home_expression
+    quoted = home_expression(directory, home) if home is not None else shlex.quote(directory)
     return (f'{START}\ncase ":${{PATH:-}}:" in\n'
             f'  *:{quoted}:*) ;;\n  *) export PATH={quoted}"${{PATH:+:$PATH}}" ;;\nesac\n{END}\n').encode()
 
 
-def register_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False) -> dict:
+def register_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False, previous=None) -> dict:
     home = user_home(home)
     directory = str(_path(bin_dir))
     if any(ord(c) < 32 or ord(c) == 127 for c in directory) or ':' in directory:
@@ -59,9 +60,14 @@ def register_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = Fa
         raise ValueError('Bash startup file must be a regular file no larger than 1 MiB')
     before = profile.read_bytes() if profile.exists() else b''
     text = before.decode('utf-8')
-    block = _block(directory)
+    block = _block(directory, home)
     if text.count(START) == 1 and text.count(END) == 1 and block.decode() in text:
         return {'profile': str(profile), 'state': 'unchanged', 'writes': 0}
+    for legacy in {_block(directory), _block(str(previous or directory))}:
+        if text.count(START) == text.count(END) == 1 and legacy in before:
+            if not dry_run:
+                _replace_profile(profile, before, before.replace(legacy, block, 1))
+            return {'profile': str(profile), 'state': 'would-update' if dry_run else 'updated', 'writes': int(not dry_run)}
     # Recognize literal exports without executing expansions, commands or the rc.
     for line in text.splitlines():
         try:
@@ -105,7 +111,7 @@ def _replace_profile(profile: Path, before: bytes, after: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def reset_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False) -> dict:
+def reset_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False, previous=None) -> dict:
     """Normalize only complete, exact Harness blocks; preserve all other bytes."""
     home = user_home(home)
     directory = str(_path(bin_dir))
@@ -115,8 +121,10 @@ def reset_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False
     if profile.exists() and (not profile.is_file() or profile.stat().st_size > 1024 * 1024):
         raise ValueError('Bash startup file must be a regular file no larger than 1 MiB')
     before = profile.read_bytes() if profile.exists() else b''
-    block = _block(directory)
-    remainder = before.replace(block, b'')
+    block = _block(directory, home)
+    remainder = before
+    for owned in {block, _block(directory), _block(str(previous or directory))}:
+        remainder = remainder.replace(owned, b'')
     if START.encode() in remainder or END.encode() in remainder:
         raise ValueError('Edited or unrelated Harness PATH block preserved; review it before resetting')
     after = remainder + (b'\n' if remainder and not remainder.endswith(b'\n') else b'') + block
@@ -127,14 +135,15 @@ def reset_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False
             'currentShell': 'Apply PATH in this Bash session: source ~/.bashrc'}
 
 
-def unregister_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False, expected=None) -> dict:
+def unregister_path(bin_dir: Path, *, home: Path | None = None, dry_run: bool = False, expected=None, previous=None) -> dict:
     """Remove only the exact generated block; literal/user-edited exports are preserved."""
     import hashlib
     profile = _path(user_home(home) / '.bashrc')
     if profile.exists() and (not profile.is_file() or profile.stat().st_size > 1024 * 1024):
         raise ValueError('Bash startup file must be a regular file no larger than 1 MiB')
     before = profile.read_bytes() if profile.exists() else b''
-    block = _block(str(_path(bin_dir)))
+    variants = (_block(str(_path(bin_dir)), user_home(home)), _block(str(_path(bin_dir))), _block(str(previous or _path(bin_dir))))
+    block = next((item for item in variants if item in before), variants[0])
     removable = before.count(START.encode()) == before.count(END.encode()) == 1 and block in before
     result = {'profile': str(profile), 'state': 'would-remove' if removable else 'preserved',
               'fingerprint': hashlib.sha256(before).hexdigest(), 'writes': 0}

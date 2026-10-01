@@ -269,7 +269,7 @@ class AdaptiveEvidenceTests(unittest.TestCase):
         manager.configure('off')
         path = manager._location()
         value = json.loads(path.read_text())
-        for name in ('policy', 'recentReviews', 'retired'):
+        for name in ('policy', 'recentReviews', 'retired', 'trackingIncomplete'):
             value.pop(name)
         value['schema'] = 2
         path.write_text(json.dumps(value))

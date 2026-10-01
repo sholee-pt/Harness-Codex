@@ -135,6 +135,78 @@ class MaintenanceTests(unittest.TestCase):
         return self.manager.hook({'hook_event_name': kind, 'session_id': session,
                                   'prompt': 'Never store this raw prompt', **extra})
 
+    def test_unknown_terminal_events_do_not_consume_session_capacity(self):
+        self.manager.configure('suggest')
+        for index in range(maintenance.MAX_SESSIONS):
+            self.hook('SessionStart', 'known-' + str(index))
+        before = self.manager._read(self.manager._location())['sessions']
+        for kind in ('Stop', 'Interrupt', 'SubagentStop', 'SessionEnd'):
+            self.assertEqual(self.hook(kind, 'unknown-' + kind), '')
+        self.assertEqual(self.manager._read(self.manager._location())['sessions'], before)
+        self.assertIn('session limit', self.hook('UserPromptSubmit', 'another'))
+
+    def test_tracking_overflow_stays_paused_until_confirmed_global_recovery(self):
+        for overflow in ('sessions', 'children'):
+            self.manager.clear()
+            self.manager.configure('auto')
+            self.signal(observation='overflow-' + overflow)
+            if overflow == 'sessions':
+                for index in range(maintenance.MAX_SESSIONS):
+                    self.hook('SessionStart', str(index))
+                self.hook('SessionStart', 'untracked')
+                for index in range(maintenance.MAX_SESSIONS):
+                    self.hook('SessionEnd', str(index))
+            else:
+                for index in range(65):
+                    self.hook('SubagentStart', agent_id=str(index))
+                for index in range(64):
+                    self.hook('SubagentStop', agent_id=str(index))
+            self.assertTrue(self.manager.status()['trackingIncomplete'])
+            self.assertTrue(self.manager.status()['automaticChangesPaused'])
+            self.assertEqual(self.manager.begin()['status'], 'deferred')
+            before = self.snapshot()
+            self.manager.recover_session('all')
+            self.assertEqual(self.snapshot(), before)
+            self.assertFalse(self.manager.status()['trackingIncomplete'])
+            self.assertEqual(self.manager.status()['pending'], 1)
+            self.assertIn('id', self.manager.begin())
+
+    def test_previous_tracking_state_is_readable_without_rewriting_on_status(self):
+        self.manager.configure('suggest')
+        path = self.manager._location()
+        previous = json.loads(path.read_bytes())
+        previous['schema'] = 3
+        previous.pop('trackingIncomplete')
+        path.write_text(json.dumps(previous))
+        before = path.read_bytes(), path.stat().st_mtime_ns
+        self.assertFalse(self.manager.status()['trackingIncomplete'])
+        self.assertEqual((path.read_bytes(), path.stat().st_mtime_ns), before)
+        self.hook('SessionStart')
+        self.assertEqual(json.loads(path.read_bytes())['schema'], 4)
+
+    def test_hook_output_is_event_appropriate_and_diagnostics_do_not_echo_input(self):
+        import contextlib
+        import io
+        from types import SimpleNamespace
+        for kind in ('SessionStart', 'UserPromptSubmit', 'SubagentStart', 'Stop', 'SubagentStop', 'Interrupt', 'SessionEnd'):
+            event = {'hook_event_name': kind, 'cwd': str(self.root), 'session_id': 'fixture'}
+            with mock.patch.object(sys, 'argv', ['maintenance', 'hook']), \
+                    mock.patch.object(sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(json.dumps(event).encode()))), \
+                    mock.patch.object(maintenance.Maintenance, 'hook', return_value='capacity notice'), \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(maintenance.main(), 0)
+            result = json.loads(output.getvalue())
+            self.assertEqual('hookSpecificOutput' in result, kind in {'SessionStart', 'UserPromptSubmit'})
+        with mock.patch.object(sys, 'argv', ['maintenance', 'hook']), \
+                mock.patch.object(sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(b'{"secret":"private"}'))), \
+                mock.patch.object(maintenance, 'find_root', side_effect=OSError('secret private path')), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(maintenance.main(), 0)
+        message = json.loads(output.getvalue())['systemMessage']
+        self.assertIn('filesystem', message)
+        self.assertNotIn('secret', message)
+        self.assertNotIn('private', message)
+
     def lease(self):
         return self.manager._read(self.manager._location())['lease']
 
@@ -292,7 +364,7 @@ class MaintenanceTests(unittest.TestCase):
         path = self.manager._location()
         old = json.loads(path.read_text())
         old.pop('changes')
-        for name in ('policy', 'recentReviews', 'retired'):
+        for name in ('policy', 'recentReviews', 'retired', 'trackingIncomplete'):
             old.pop(name)
         old['schema'] = 1
         path.write_text(json.dumps(old))
