@@ -359,6 +359,59 @@ class IntegrationMigrationTests(unittest.TestCase):
 
 
 class RelayProcessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_authenticated_picker_reconnect_waits_for_backend_teardown(self):
+        adapter = relay.Relay('codex', {}, policy=relay.Policy(session_modes={'thread': True}))
+        closing, release = asyncio.Event(), asyncio.Event()
+        calls = []
+        async def session(socket):
+            calls.append(socket)
+            if len(calls) == 1:
+                closing.set()
+                await release.wait()
+        headers = {'Authorization': 'Bearer ' + adapter.token}
+        first, second = [SimpleNamespace(request=SimpleNamespace(path='/', headers=headers), close=mock.AsyncMock()) for _ in range(2)]
+        with mock.patch.object(adapter, 'session', side_effect=session):
+            previous = asyncio.create_task(adapter.connect(first))
+            await closing.wait()
+            following = asyncio.create_task(adapter.connect(second))
+            await asyncio.sleep(.01)
+            self.assertEqual(calls, [first])
+            release.set()
+            await asyncio.gather(previous, following)
+        self.assertEqual(calls, [first, second])
+        self.assertFalse(adapter.connected)
+        self.assertTrue(adapter.policy.enabled('thread'))
+        first.close.assert_not_called()
+        second.close.assert_not_called()
+
+    async def test_failed_backend_start_does_not_latch_connection(self):
+        adapter = relay.Relay('codex', {})
+        socket = SimpleNamespace(request=SimpleNamespace(path='/', headers={'Authorization': 'Bearer ' + adapter.token}), close=mock.AsyncMock())
+        with mock.patch.object(relay.asyncio, 'create_subprocess_exec', side_effect=OSError('missing')):
+            await adapter.connect(socket)
+        self.assertFalse(adapter.connected)
+        self.assertFalse(adapter.connection_lock.locked())
+        self.assertIn('backend could not start', adapter.error)
+        socket.close.assert_awaited_once_with(code=1011, reason='Codex backend unavailable')
+
+    async def test_real_websocket_reconnect_keeps_authentication_and_new_request_ids(self):
+        try:
+            from websockets.asyncio.client import connect
+            serve = relay.dependency()
+        except (ImportError, ValueError):
+            self.skipTest('optional WebSocket transport unavailable')
+        script = "import sys,json\nfor line in sys.stdin:\n m=json.loads(line); print(json.dumps({'id':m['id'],'result':{'method':m['method']}}),flush=True)"
+        adapter = relay.Relay(sys.executable, dict(os.environ), args=['-c', script])
+        async with serve(adapter.connect, '127.0.0.1', 0, compression=None) as server:
+            uri = 'ws://127.0.0.1:' + str(server.sockets[0].getsockname()[1])
+            for _ in range(2):
+                async with connect(uri, additional_headers={'Authorization': 'Bearer ' + adapter.token}, proxy=None) as socket:
+                    await socket.send(json.dumps({'id': 'initialize', 'method': 'initialize', 'params': {}}))
+                    message = json.loads(await asyncio.wait_for(socket.recv(), 10))
+                    self.assertEqual(message, {'id': 'initialize', 'result': {'method': 'initialize'}})
+        self.assertIsNone(adapter.error)
+        self.assertFalse(adapter.connected)
+
     async def test_authenticated_endpoint_has_no_path_secret_or_backend_environment_change(self):
         env = {'PATH': 'project-bin', 'CONDA_PREFIX': 'project-env'}
         adapter = relay.Relay('codex', env)

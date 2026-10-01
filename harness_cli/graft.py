@@ -11,7 +11,7 @@ import tempfile
 import uuid
 from types import SimpleNamespace
 
-from .paths import checked_path, storage_location
+from .paths import checked_path, storage_location, project_root
 from .locking import FileLock
 
 PACKAGE_VERSION = '0.18.0'
@@ -123,7 +123,7 @@ def storage(root):
     # Opt-in and executable provenance belong to the current user, not a cloned
     # project's editable files. Graphs remain disposable and separate from manifests.
     base = home()
-    identity = hashlib.sha256(os.path.normcase(str(root)).encode()).hexdigest()
+    identity = hashlib.sha256(os.path.normcase(str(project_root(root))).encode()).hexdigest()
     return checked_path(base / identity)
 
 
@@ -178,7 +178,7 @@ def _invoke(source_root, root, cache, settings, action, *, timeout, question='',
 
 
 def execute(args, source_root):
-    root = checked_path(args.project)
+    root = project_root(args.project)
     if not root.is_dir() or any(part.casefold() == '.git' for part in root.parts):
         raise ValueError('--project must be an existing project directory outside Git metadata.')
     folder = storage(root)

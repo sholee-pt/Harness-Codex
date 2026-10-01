@@ -58,16 +58,24 @@ def read(data_root):
 
 def original_codex(root, *, path=None):
     root = dist._storage_path(root)
-    directories = []
     for directory in (path if path is not None else os.environ.get('PATH', '')).split(os.pathsep):
         if not directory:
             continue
-        candidate = Path(directory).expanduser().absolute()
+        try:
+            candidate = Path(directory).expanduser().resolve()
+        except (OSError, RuntimeError):
+            continue
         if candidate == root or root in candidate.parents:
             continue
-        directories.append(directory)
-    found = shutil.which('codex', path=os.pathsep.join(directories))
-    return str(Path(found).absolute()) if found else None
+        found = shutil.which('codex', path=str(candidate))
+        if found:
+            try:
+                resolved = Path(found).resolve()
+            except (OSError, RuntimeError):
+                continue
+            if resolved != root and root not in resolved.parents:
+                return str(Path(found).absolute())
+    return None
 
 
 def install(data_root, source_root, *, archive=None, mode=None, profiles=None, home=None, registry=None):
@@ -158,7 +166,7 @@ def status(data_root, *, verify_package=True):
             if verify_package:
                 official_codex.binary(data_root)
             resolved = shutil.which('codex')
-            return {'state': 'configured' if resolved and Path(resolved).absolute().parent == directory else 'shell-refresh-or-path-review-required',
+            return {'state': 'configured' if resolved and Path(resolved).resolve().parent == directory else 'shell-refresh-or-path-review-required',
                     'version': dist.installed_status(data_root)['version'], 'codexVersion': official_codex.read(data_root)['version'],
                     'mode': value['mode'], 'directory': str(directory), 'resolvedCodex': resolved,
                     'runtimeDiscovery': 'not-tested', 'distribution': 'official-prebuilt'}
@@ -170,7 +178,7 @@ def status(data_root, *, verify_package=True):
         if native_package.fingerprint(script)['sha256'] != settings['scriptSha256']:
             raise ValueError('Native selector differs from the registered settings')
         resolved = shutil.which('codex')
-        active = resolved is not None and Path(resolved).absolute().parent == directory
+        active = resolved is not None and Path(resolved).resolve().parent == directory
         state = ('upgrade-required' if tool['version'] != value['version'] else
                  'configured' if active else 'shell-refresh-or-path-review-required')
         return {'state': state,

@@ -62,8 +62,8 @@ def checked(path):
 
 class Maintenance:
     def __init__(self, root, state_root=None, *, clock=time.time):
-        self.root = checked(root)
-        self.store = storage.EvaluationStore(state_root=checked(state_root or storage.default_state_root()))
+        self.root = harness_state.workspace_root(root)
+        self.store = storage.EvaluationStore(state_root=state_root)
         storage.ensure_state_outside_repositories(self.store.root, [self.root])
         self.clock = clock
 
@@ -378,7 +378,7 @@ class Maintenance:
     def _limited_application(self, plan):
         import harness_apply
         old = self.manifest()
-        application = harness_apply.build_application(self.root, harness_apply.load_plan(checked(plan)))
+        application = harness_apply.build_application(self.root, harness_apply.load_plan(harness_state.external_location(plan)))
         new = json.loads(application['manifestText'])
         for field in ('topology', 'capabilityPolicies', 'instructionFile', 'workspace'):
             if new.get(field) != old.get(field):
@@ -551,7 +551,7 @@ class Maintenance:
 
 
 def find_root(cwd):
-    root = checked(cwd)
+    root = harness_state.workspace_root(cwd)
     for candidate in (root, *root.parents):
         if (candidate / '.harness/manifest.json').is_file():
             return candidate

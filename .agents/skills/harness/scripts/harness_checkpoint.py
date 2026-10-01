@@ -15,6 +15,7 @@ import tempfile
 import time
 
 from harness_eval_lock import FileLock
+import harness_state
 
 MAX_BYTES = 128 * 1024 * 1024
 MAX_STATE_BYTES = 4 * 1024 * 1024
@@ -212,7 +213,7 @@ def run_check(command, root, timeout):
 
 
 def operate(root, store, plan, action, run, *, task=None, previous=None, keep_days=None, observed=None, timeout=60, attempt=None):
-    root, store = checked(root), checked(store)
+    root, store = harness_state.workspace_root(root), harness_state.external_location(store)
     if not root.is_dir() or store.is_relative_to(root) or root.is_relative_to(store):
         raise ValueError("Use a dedicated user-local checkpoint store outside the project")
     if type(timeout) is not int or not 1 <= timeout <= 300:
@@ -351,7 +352,7 @@ def main(argv=None):
     parser.add_argument("--timeout", type=int, default=60)
     args = parser.parse_args(argv)
     try:
-        result = operate(args.root, args.store, read_json(args.plan) if args.plan else None, args.action, args.run, task=args.task,
+        result = operate(args.root, args.store, read_json(harness_state.external_location(args.plan)) if args.plan else None, args.action, args.run, task=args.task,
             previous=args.previous, keep_days=args.keep_days, observed=args.observed, timeout=args.timeout, attempt=args.attempt)
         print(json.dumps(result, indent=2))
         return 1 if result.get("verification") == "failed" else 0

@@ -136,7 +136,8 @@ def _goal_input(args, installer) -> str | None:
             raise ProjectError("--goal must contain nonempty text without NUL characters.")
         return goal
     from .project_brief import reference
-    return reference(installer.checked_path(goal_file))
+    from .paths import external_location
+    return reference(external_location(goal_file))
 
 
 def _validate_prompt_transport(root: Path, prompt: str, command: list[str] | None = None, *, native_argv=True) -> None:
@@ -176,12 +177,8 @@ def preflight_project_command(args, *, source_root: Path) -> None:
 
 
 def _project_path(value: Path, installer) -> Path:
-    root = installer.checked_path(value)
-    if not root.is_dir():
-        raise ProjectError("--project must name an existing directory; create the folder first.")
-    if any(part.rstrip(" .").casefold() == ".git" for part in root.parts):
-        raise ProjectError("--project must not be inside Git metadata.")
-    return root
+    from .paths import project_root
+    return project_root(value, error_type=ProjectError)
 
 
 def _codex_command(binary: str) -> list[str]:

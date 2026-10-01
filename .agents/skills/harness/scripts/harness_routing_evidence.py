@@ -65,8 +65,8 @@ def quality_lower(successes, total, confidence):
 
 class RoutingEvidence:
     def __init__(self, root, state_root=None, *, clock=time.time):
-        self.root = checked(root)
-        self.store = storage.EvaluationStore(state_root=checked(state_root or storage.default_state_root()))
+        self.root = harness_state.workspace_root(root)
+        self.store = storage.EvaluationStore(state_root=state_root)
         storage.ensure_state_outside_repositories(self.store.root, [self.root])
         self.clock = clock
         self._secret = None

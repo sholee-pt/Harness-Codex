@@ -27,7 +27,7 @@ import harness_transaction  # noqa: E402
 
 class ReleaseConsistencyTests(unittest.TestCase):
     def test_release_metadata_is_consistent(self) -> None:
-        self.assertEqual(harness_metadata.HARNESS_VERSION, "0.29.1-beta")
+        self.assertEqual(harness_metadata.HARNESS_VERSION, "0.29.2-beta")
         self.assertEqual(harness_metadata.AUTHORING_CONTRACT_VERSION, 3)
         self.assertEqual(harness_metadata.ARTIFACT_CONTRACT_VERSION, 2)
         self.assertIn('9.11', harness_metadata.ARTIFACT_COMPATIBLE_GENERATOR_VERSIONS)
@@ -81,7 +81,9 @@ class ReleaseConsistencyTests(unittest.TestCase):
         self.assertIn('This branch contains Harness for Codex v' + current, agents)
         self.assertEqual(workflow.splitlines()[0], 'name: Harness for Codex')
         self.assertIn("run-name: ${{ inputs.publish && 'Linux release' || 'Checks' }} · ${{ github.base_ref || github.ref_name }}", workflow)
-        self.assertIn('- v' + current, workflow)
+        self.assertIn("github.ref == 'refs/heads/v" + current + "'", workflow)
+        self.assertNotIn('\n  push:', workflow)
+        self.assertNotIn('\n  pull_request:', workflow)
         self.assertEqual(sorted(workflow_path.parent.glob('codex-*.yml')), [workflow_path])
 
     def test_manifest_asset_uses_current_generator_and_stable_schemas(self) -> None:

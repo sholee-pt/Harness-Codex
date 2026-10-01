@@ -838,7 +838,7 @@ def command_hooks_template(args: argparse.Namespace) -> int:
     value = hook_configuration()
     payload = json.dumps(value, indent=2, ensure_ascii=False) + "\n"
     if args.output:
-        path = Path(args.output).expanduser().resolve()
+        path = harness_state.external_location(Path(args.output))
         if path.exists():
             raise OperationsError("refusing to overwrite an existing hooks file; merge manually")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -876,7 +876,7 @@ def command_annotate(args: argparse.Namespace) -> int:
         runtime=args.runtime,
         routing_cause=getattr(args, 'routing_cause', None),
         related_work_item_ref=args.related_work_item_ref,
-        state_root=Path(args.state_home).resolve() if args.state_home else None,
+        state_root=Path(args.state_home) if args.state_home else None,
     )
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
@@ -885,7 +885,7 @@ def command_annotate(args: argparse.Namespace) -> int:
 def command_audit(args: argparse.Namespace) -> int:
     result = audit(
         Path(args.root),
-        state_root=Path(args.state_home).resolve() if args.state_home else None,
+        state_root=Path(args.state_home) if args.state_home else None,
     )
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0 if result["valid"] else 1
@@ -897,7 +897,7 @@ def command_purge(args: argparse.Namespace) -> int:
     if selected_root is None:
         raise OperationsError("--root must be inside a local Harness workspace")
     store = harness_eval_store.EvaluationStore(
-        state_root=Path(args.state_home).resolve() if args.state_home else None
+        state_root=Path(args.state_home) if args.state_home else None
     )
     repository_id = store.register_workspace(selected_root)
     events_root = _events_root(store, repository_id)
@@ -980,7 +980,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         return args.handler(args)
-    except (OSError, UnicodeError, OperationsError, harness_eval_store.StoreError) as exc:
+    except (OSError, UnicodeError, OperationsError, harness_eval_store.StoreError, harness_state.StateError) as exc:
         print(json.dumps({"valid": False, "errors": [str(exc)]}, indent=2), file=sys.stderr)
         return 1
 

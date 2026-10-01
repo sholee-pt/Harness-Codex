@@ -2472,7 +2472,7 @@ def command_paired_run(args: argparse.Namespace) -> int:
         materialization_gaps: list[str] = list(harness_snapshot["isolationGaps"])
         if args.validate_materialization:
             with tempfile.TemporaryDirectory(prefix="harness-materialization-") as directory:
-                pair_root = Path(directory)
+                pair_root = Path(directory).resolve()
                 baseline_root = pair_root / "baseline"
                 treatment_root = pair_root / "treatment"
                 _verify_local_harness_snapshot(root, harness_snapshot)
@@ -2541,7 +2541,7 @@ def command_paired_run(args: argparse.Namespace) -> int:
         }
     )
     with tempfile.TemporaryDirectory(prefix="harness-paired-") as directory:
-        temporary = Path(directory)
+        temporary = Path(directory).resolve()
         for repetition_index, arm_order in enumerate(arm_orders, start=1):
             comparison_id = str(evaluation_store.ids.new_uuid())
             pair_id = str(evaluation_store.ids.new_uuid())

@@ -41,6 +41,41 @@ class StateError(ValueError):
     pass
 
 
+def workspace_root(value: Path) -> Path:
+    """Resolve an explicitly selected workspace; managed children stay no-follow."""
+    path = Path(value).expanduser()
+    if any(part.rstrip(' .').casefold() == '.git' for part in path.parts):
+        raise StateError('Project must not be inside Git metadata')
+    try:
+        root = path.resolve(strict=True)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise StateError(f'Project must name an existing directory with a resolvable path: {path}') from exc
+    if not root.is_dir():
+        raise StateError(f'Project must name an existing directory: {path}')
+    if any(part.rstrip(' .').casefold() == '.git' for part in root.parts):
+        raise StateError('Project must not resolve inside Git metadata')
+    return root
+
+
+def checked_absolute(value: Path) -> Path:
+    path = Path(os.path.abspath(Path(value).expanduser()))
+    for entry in reversed((path, *path.parents)):
+        if os.path.lexists(entry):
+            info = entry.lstat()
+            if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
+                raise StateError(f'Path must not contain a symlink or reparse point: {entry}')
+    return path
+
+
+def external_location(value: Path) -> Path:
+    """Canonicalize external parents, never hide a linked output/store/input leaf."""
+    path = Path(value).expanduser()
+    try:
+        return checked_absolute(path.parent.resolve() / path.name)
+    except (OSError, RuntimeError) as exc:
+        raise StateError(f'Cannot resolve path parent: {path.parent}') from exc
+
+
 def digest_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 

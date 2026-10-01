@@ -7,7 +7,7 @@ import time
 
 from . import maintenance, presentation as ui
 from .configuration import Server
-from .paths import checked_path
+from .paths import checked_path, external_location, project_root
 
 
 class MetadataServer(Server):
@@ -56,7 +56,7 @@ def selected_hooks(result, root, path, command):
     if not isinstance(entries, list) or len(entries) != 1 or not isinstance(entries[0], dict):
         raise ValueError('Unsupported hooks/list response')
     entry = entries[0]
-    if not isinstance(entry.get('cwd'), str) or checked_path(entry['cwd']) != root or entry.get('errors'):
+    if not isinstance(entry.get('cwd'), str) or project_root(entry['cwd']) != project_root(root) or entry.get('errors'):
         raise ValueError('Codex could not resolve the selected project hooks')
     hooks = entry.get('hooks')
     if not isinstance(hooks, list) or len(hooks) > 2048:
@@ -67,7 +67,7 @@ def selected_hooks(result, root, path, command):
             raise ValueError('Invalid native hook metadata')
         if hook.get('command') != command or hook.get('source') != 'user':
             continue
-        if not isinstance(hook.get('sourcePath'), str) or checked_path(hook['sourcePath']) != path:
+        if not isinstance(hook.get('sourcePath'), str) or external_location(hook['sourcePath']) != path:
             continue
         event_name = hook.get('eventName')
         event = next((name for name in maintenance.EVENTS if name[0].lower() + name[1:] == event_name), None)
@@ -103,7 +103,7 @@ def user_layer(result, path):
     matches = [layer for layer in layers if isinstance(layer, dict) and isinstance(layer.get('name'), dict)
                and layer['name'].get('type') == 'user' and layer['name'].get('profile') is None]
     if (len(matches) != 1 or not isinstance(matches[0]['name'].get('file'), str)
-            or checked_path(matches[0]['name']['file']) != path or matches[0].get('disabledReason')
+            or external_location(matches[0]['name']['file']) != path or matches[0].get('disabledReason')
             or not token(matches[0].get('version'))):
         raise ValueError('Native user configuration layer could not be identified')
     return matches[0]['version']
@@ -178,7 +178,7 @@ def prepare(source_root, root, *, binary='codex', mode='auto'):
             return {'status': 'manual-review-required', 'guidance': 'Use /hooks to review and trust the Harness handler.'}
         from .project import _codex_command
         with ui.Progress('Preparing Harness hook trust', compact=True) as progress:
-            result = trust(_codex_command(binary), checked_path(root), checked_path(installed['path']), expected, progress)
+            result = trust(_codex_command(binary), project_root(root), checked_path(installed['path']), expected, progress)
         return result
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return {'status': 'manual-review-required', 'warning': ui.clean(exc),

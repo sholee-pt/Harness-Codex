@@ -305,12 +305,13 @@ def replace_folder(destination: Path, old: dict[str, Entry], new: dict[str, Entr
 
 
 def install(root: Path, *, dry_run: bool = False, source: Path | None = None) -> dict:
-    root = checked_path(Path(root))
-    if any(part.rstrip(" .").casefold() == ".git" for part in root.parts):
-        raise InstallError("--root must not be inside Git metadata")
-    if not root.is_dir():
-        raise InstallError("--root must name an existing directory")
-    source = checked_path(source or Path(__file__).absolute().parents[1] / ".agents/skills/harness")
+    from harness_cli.paths import external_location, project_root
+    root = project_root(root, error_type=InstallError)
+    try:
+        source = external_location(source) if source is not None else None
+    except ValueError as exc:
+        raise InstallError(str(exc)) from exc
+    source = checked_path(source or Path(__file__).resolve().parents[1] / ".agents/skills/harness")
     source_root = directory_state(source)
     if source_root is None:
         raise InstallError("source must be an existing directory")

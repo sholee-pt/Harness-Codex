@@ -168,7 +168,7 @@ def enable(source_root, root, mode, *, quiet=False):
     if mode != 'off':
         from .project_installer import load_installer
         installer = load_installer(source_root)
-        installer.install(checked_path(root), source=Path(source_root) / '.agents/skills/harness')
+        installer.install(root, source=Path(source_root) / '.agents/skills/harness')
     report = helper(source_root, root, ['configure', '--mode', mode])
     if mode != 'off':
         hooks = install_hooks(source_root)

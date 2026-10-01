@@ -104,9 +104,10 @@ _held = threading.local()
 def project_lock(root: Path):
     # Outside the project: removing a harness must not unlink a live lock inode.
     key = hashlib.sha256(os.path.normcase(str(root.resolve())).encode()).hexdigest()
-    user = hashlib.sha256(os.path.normcase(str(Path.home())).encode()).hexdigest()[:16]
+    user = hashlib.sha256(os.path.normcase(str(Path.home().resolve())).encode()).hexdigest()[:16]
     default = Path(tempfile.gettempdir()) / ("harness-project-locks-" + user)
-    base = Path(os.environ.get("HARNESS_LOCK_HOME", str(default))).expanduser().absolute()
+    base = Path(os.environ.get("HARNESS_LOCK_HOME", str(default))).expanduser()
+    base = base.parent.resolve() / base.name
     path = base / (key + ".lock")
     held = getattr(_held, "paths", None)
     if held is None:

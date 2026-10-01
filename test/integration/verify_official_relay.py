@@ -17,6 +17,7 @@ class ObservedPolicy(auto_relay.Policy):
     def __init__(self):
         super().__init__(profiles={'fast': ['gpt-5.6-luna'], 'deep': ['gpt-6-astra']})
         self.decisions, self.events, self.errors, self.thread_ids, self.config_rewrites = [], [], [], [], []
+        self.listed_threads = set()
 
     def request(self, method, params):
         result = super().request(method, params)
@@ -29,12 +30,14 @@ class ObservedPolicy(auto_relay.Policy):
 
     def response(self, message, method, params):
         result = message.get('result') or {}
+        if method == 'thread/list':
+            self.listed_threads.update(item['id'] for item in result.get('data', []))
         if method == 'turn/start' and 'result' in message:
             for decision in reversed(self.decisions):
                 if decision['threadId'] == params.get('threadId') and 'turnId' not in decision:
                     decision['turnId'] = (result.get('turn') or {}).get('id')
                     break
-        if method in {'thread/start', 'thread/resume'} and 'result' in message:
+        if method in {'thread/start', 'thread/resume', 'thread/fork'} and 'result' in message:
             self.thread_ids.append(result['thread']['id'])
         if message.get('method'):
             event = message.get('params') or {}
@@ -44,6 +47,31 @@ class ObservedPolicy(auto_relay.Policy):
         if 'error' in message:
             self.errors.append({'method': method, 'error': message['error']})
         return super().response(message, method, params)
+
+
+class ReconnectRelay(auto_relay.Relay):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.connections = 0
+
+    async def session(self, websocket):
+        self.connections += 1
+        await super().session(websocket)
+
+
+def drive_picker(binary, env, project, output, port, relay, action, thread):
+    args = ['--no-alt-screen', '-C', str(project), action, '--all']
+    command, env = relay.client(port, args)
+    terminal = probe.Terminal(command[0], command[1:], env, output)
+    try:
+        terminal.wait(lambda text: action.capitalize() + ' a previous session' in text and thread in relay.policy.listed_threads)
+        terminal.read(.8)
+        terminal.process.send('\r')
+        terminal.wait(lambda text: bool(relay.policy.thread_ids), 45)
+        terminal.snapshot('resumed')
+        return {'connections': relay.connections, 'threadId': relay.policy.thread_ids[-1]}
+    finally:
+        terminal.close()
 
 
 async def experiment(binary, output):
@@ -74,6 +102,23 @@ async def experiment(binary, output):
             port = server.sockets[0].getsockname()[1]
             result = await asyncio.to_thread(probe.drive, binary, env, project, output, port, relay, provider)
         result.update(protocolErrors=policy.errors, adapterError=relay.error, providerErrors=provider.errors, candidateProbe='passed')
+        result['pickerReconnects'] = {}
+        for action in ('resume', 'fork') if result.get('mainThreadId') else ():
+            destination = output / action
+            destination.mkdir()
+            reconnect = ReconnectRelay(binary, env, args=['-C', str(project)], policy=ObservedPolicy())
+            before = len(provider.records)
+            async with serve(reconnect.connect, '127.0.0.1', 0, max_size=auto_relay.MAX_MESSAGE, compression=None) as server:
+                port = server.sockets[0].getsockname()[1]
+                try:
+                    selected = await asyncio.to_thread(drive_picker, binary, env, project, destination, port, reconnect, action, result['mainThreadId'])
+                except Exception as error:
+                    selected = {'threadId': None, 'error': str(error)}
+            selected.update(noInference=len(provider.records) == before, adapterError=reconnect.error)
+            selected['passed'] = bool(selected['threadId']) and selected['noInference'] and not selected['adapterError']
+            if action == 'resume':
+                selected['passed'] = selected['passed'] and selected['threadId'] == result.get('mainThreadId')
+            result['pickerReconnects'][action] = selected
         probe.save(output / 'events.json', policy.events)
         return result
     finally:
@@ -94,7 +139,8 @@ def main():
     result['identity'] = identity
     result['binaryUnmodified'] = probe.sha256(binary) == identity['binarySha256Before']
     probe.save(args.output / 'result.json', result)
-    passed = result.get('menuRoutingFooterSatisfied') and result['binaryUnmodified'] and not result.get('adapterError')
+    passed = (result.get('menuRoutingFooterSatisfied') and result['binaryUnmodified'] and not result.get('adapterError')
+        and all(result.get('pickerReconnects', {}).get(action, {}).get('passed') for action in ('resume', 'fork')))
     print(json.dumps({'passed': bool(passed), 'officialVersion': identity['version'],
                       'error': result.get('experimentError'), 'liveInference': 'not-tested'}), flush=True)
     return 0 if passed else 1

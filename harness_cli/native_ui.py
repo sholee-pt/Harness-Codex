@@ -116,7 +116,7 @@ def ensure(data_root, version, *, archive=None):
             package.verify(destination, version, platform_name)
         else:
             with Progress('Preparing the original Codex UI with Harness Auto'), tempfile.TemporaryDirectory(prefix='harness-native-ui-') as temporary:
-                temporary = Path(temporary)
+                temporary = Path(temporary).resolve()
                 if archive is None:
                     archive = fetch(version, f'harness-codex-ui-{version}-{platform_name}.tar.gz', temporary)
                 package.extract(archive, temporary / 'unpacked')

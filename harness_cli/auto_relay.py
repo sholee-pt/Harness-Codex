@@ -345,6 +345,7 @@ class Relay:
         self.token = secrets.token_urlsafe(32)
         self.auth_env = 'HARNESS_CODEX_RELAY_TOKEN_' + secrets.token_hex(8).upper()
         self.connected = False
+        self.connection_lock = asyncio.Lock()
         self.error = None
 
     def client(self, port, args=()):
@@ -356,11 +357,28 @@ class Relay:
             authorization = websocket.request.headers.get('Authorization', '')
         except ValueError:
             authorization = ''
-        if (self.connected or websocket.request.path != '/' or 'Origin' in websocket.request.headers
+        if (websocket.request.path != '/' or 'Origin' in websocket.request.headers
                 or not secrets.compare_digest(authorization.encode(), ('Bearer ' + self.token).encode())):
             await websocket.close(code=1008, reason='Local Codex client required')
             return
+        # The native resume/fork picker closes its metadata connection before
+        # opening the conversation. Serialize teardown; never replay requests.
+        try:
+            await asyncio.wait_for(self.connection_lock.acquire(), 10)
+        except asyncio.TimeoutError:
+            await websocket.close(code=1013, reason='Previous Codex connection is still active')
+            return
         self.connected = True
+        try:
+            await self.session(websocket)
+        except OSError:
+            self.error = 'The Codex backend could not start. Check the installed executable or use native mode.'
+            await websocket.close(code=1011, reason='Codex backend unavailable')
+        finally:
+            self.connected = False
+            self.connection_lock.release()
+
+    async def session(self, websocket):
         pending = {}
         internal = {}
         prefix = 'harness-catalog-' + secrets.token_hex(8) + '-'

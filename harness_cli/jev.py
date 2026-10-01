@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 from .locking import process_alive, state_lock
 from .graft import _load, _save, _settings_lock, storage
-from .paths import checked_path
+from .paths import checked_path, project_root
 from .jev_auth import resolve
 
 OWNER = 'harness-jev-v1'
@@ -139,7 +139,7 @@ def automatic(root, source_root):
 
 
 def execute(args, source_root, *, preserve_existing=False):
-    root = checked_path(args.project)
+    root = project_root(args.project)
     if not root.is_dir() or any(part.casefold() == '.git' for part in root.parts):
         raise ValueError('Choose an existing project outside Git metadata')
     path = _path(root)

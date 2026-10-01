@@ -39,12 +39,34 @@ For Windows source development, run from an existing checkout:
 ## Source installation
 
 ```bash
-git clone --branch v0.29.1-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
+git clone --branch v0.29.2-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
 bash Harness-Codex/installer/install.sh
 source ~/.bashrc
 ```
 
 On Windows, the source installer can be exercised from PowerShell for development: `& ./Harness-Codex/installer/install.ps1` under your normal script execution policy. This does not establish a verified Windows native release. The source scripts install an existing checkout; `install_harness_codex.sh` and `.ps1` first download a release and then invoke the corresponding source installer. Installation does not alter project Git state.
+
+## Path boundaries
+
+`--project` may name a directory alias, including a symbolic-link home on a shared
+Linux server. Harness resolves the selected workspace to its physical directory;
+init, config, status, maintenance and removal use that same project. Graft, Jev,
+adaptive-routing records and locks also use the physical identity. SSH, VS Code
+Remote, MobaXterm and PuTTY connections use this same filesystem rule.
+
+External parent aliases are accepted for goal files, checkpoint/evaluation storage,
+plan and receipt outputs, and build locations. The final managed store or output
+entry must not be a link. Project-managed `.agents`, `.codex`, `.harness`, generated
+instructions and transaction backups retain their no-follow ownership checks;
+an alias leading into Git metadata is rejected. Rejected links and their targets
+are preserved. If an error identifies one of these managed entries, select an
+ordinary project location or inspect that entry before retrying; do not delete
+the target merely to bypass the check.
+
+These rules do not expand a project's evidence or writer scopes into linked
+external directories. Windows directory junctions are covered by local regression
+tests; Windows tool-installation restrictions and its separate release policy
+remain unchanged.
 
 ## PATH and logs
 

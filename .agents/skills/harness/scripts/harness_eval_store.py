@@ -33,20 +33,20 @@ def default_state_root(environment: dict[str, str] | None = None) -> Path:
     env = os.environ if environment is None else environment
     explicit = env.get("HARNESS_STATE_HOME")
     if explicit:
-        return Path(explicit).expanduser().resolve()
+        return harness_state.external_location(Path(explicit))
     system = platform.system().lower()
     if system == "windows":
         base = env.get("LOCALAPPDATA")
         if not base:
             raise StoreError("LOCALAPPDATA is unavailable; set HARNESS_STATE_HOME explicitly")
-        return (Path(base) / "Harness").resolve()
+        return harness_state.external_location(Path(base) / "Harness")
     if system == "darwin":
-        return (Path.home() / "Library" / "Application Support" / "Harness").resolve()
+        return harness_state.external_location(Path.home() / "Library" / "Application Support" / "Harness")
     base = env.get("XDG_STATE_HOME")
     if base:
-        return (Path(base) / "harness").resolve()
+        return harness_state.external_location(Path(base) / "harness")
     try:
-        return (Path.home() / ".local" / "state" / "harness").resolve()
+        return harness_state.external_location(Path.home() / ".local" / "state" / "harness")
     except RuntimeError as exc:
         raise StoreError("user state directory is unavailable; set HARNESS_STATE_HOME") from exc
 
@@ -115,13 +115,17 @@ class EvaluationStore:
         ids: types.IdProvider | None = None,
         lock_timeout: float = 10.0,
     ):
-        self.root = (state_root or default_state_root()).resolve()
+        try:
+            self.root = harness_state.external_location(state_root or default_state_root())
+        except ValueError as exc:
+            raise StoreError(f"unsafe evaluation state path: {exc}") from exc
         self.clock = clock or types.SystemClock()
         self.ids = ids or types.RandomUuidProvider()
         self.lock_timeout = lock_timeout
 
     def checked(self, path: Path) -> Path:
         try:
+            harness_state.checked_absolute(self.root)
             return harness_state.resolve_inside(self.root, path.relative_to(self.root).as_posix())
         except (ValueError, harness_state.StateError) as exc:
             raise StoreError(f"unsafe evaluation state path: {exc}") from exc
@@ -156,6 +160,7 @@ class EvaluationStore:
         return self.checked(self.root / "secret.key")
 
     def _initialize_root(self) -> None:
+        self.checked(self.root / "registry")
         self.root.mkdir(parents=True, exist_ok=True)
         if os.name != "nt":
             os.chmod(self.root, 0o700)

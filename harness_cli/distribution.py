@@ -903,6 +903,7 @@ def _checkout_commit(source_root: Path, snapshot: dict[str, bytes]) -> str | Non
         if not COMMIT_RE.fullmatch(commit):
             return None
         with tempfile.TemporaryDirectory(prefix="harness-provenance-") as temporary:
+            temporary = Path(temporary).resolve()
             archive = Path(temporary) / "source.tar"
             _git(["-C", str(source_root), "archive", "--format=tar", "--output=" + str(archive), commit], timeout=10)
             extracted = Path(temporary) / "runtime"

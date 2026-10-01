@@ -63,7 +63,7 @@ class ReinstallTests(unittest.TestCase):
                 resolve.assert_called_once_with()
                 check.assert_called_once_with(physical / 'tool')
             with mock.patch.object(Path, 'resolve', side_effect=RuntimeError('Symlink loop')):
-                with self.assertRaisesRegex(ValueError, 'installation parent'):
+                with self.assertRaisesRegex(ValueError, 'path parent'):
                     paths.storage_location(value)
                 with self.assertRaisesRegex(ValueError, 'account home'):
                     paths.user_home(self.base)

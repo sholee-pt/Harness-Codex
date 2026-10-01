@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import harness_coordination
+import harness_state
 import validate_runtime_plan
 
 
@@ -312,6 +313,7 @@ def validate_relay_receipt(
 
 
 def _write_json_atomic(path: Path, value: dict[str, Any]) -> None:
+    path = harness_state.external_location(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
@@ -323,6 +325,7 @@ def _write_json_atomic(path: Path, value: dict[str, Any]) -> None:
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
+        harness_state.checked_absolute(path)
         os.replace(temporary_path, path)
     finally:
         temporary_path.unlink(missing_ok=True)
@@ -347,7 +350,7 @@ def main() -> int:
             receipt = seal_relay_receipt(receipt)
         report = validate_relay_receipt(receipt, plan=plan)
         if args.output:
-            _write_json_atomic(Path(args.output).resolve(), receipt)
+            _write_json_atomic(Path(args.output), receipt)
         print(json.dumps(receipt if args.seal else report, indent=2, ensure_ascii=False))
         return 0
     except (
@@ -355,6 +358,7 @@ def main() -> int:
         UnicodeError,
         json.JSONDecodeError,
         RelayReceiptError,
+        harness_state.StateError,
         validate_runtime_plan.RuntimePlanError,
     ) as exc:
         print(

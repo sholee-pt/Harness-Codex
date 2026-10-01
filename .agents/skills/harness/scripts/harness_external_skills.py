@@ -13,6 +13,7 @@ import sys
 import tempfile
 
 import harness_frontmatter
+import harness_state
 
 
 RECEIPT = '.harness-external.json'
@@ -39,7 +40,9 @@ def _path(path: Path) -> Path:
 
 
 def _project(path: Path) -> Path:
-    path = _path(path)
+    if any(part.rstrip(' .').casefold() in {'.git', '.hg', '.svn'} for part in path.parts):
+        raise ValueError('Project must be an existing directory outside repository metadata')
+    path = harness_state.workspace_root(path)
     if not path.is_dir() or any(part.rstrip(' .').casefold() in {'.git', '.hg', '.svn'} for part in path.parts):
         raise ValueError('Project must be an existing directory outside repository metadata')
     return path
@@ -159,7 +162,7 @@ def inventory(root: Path) -> dict:
 
 def add(root: Path, source: Path, *, upstream: str | None = None, revision: str | None = None,
         license_file: Path | None = None, dry_run: bool = False) -> dict:
-    root, source = _project(root), _path(source)
+    root, source = _project(root), _path(harness_state.external_location(source))
     if not source.is_dir():
         raise ValueError('Project and source skill directories must already exist')
     entry = metadata(source / 'SKILL.md')
@@ -181,7 +184,7 @@ def add(root: Path, source: Path, *, upstream: str | None = None, revision: str 
     if os.path.lexists(source / RECEIPT):
         raise ValueError('Import the original upstream bundle, not an already imported copy')
     files = _files(source)
-    license_path = _path(license_file) if license_file else None
+    license_path = _path(harness_state.external_location(license_file)) if license_file else None
     if license_path and (not license_path.is_file() or license_path.stat().st_size > MAX_HEADER_BYTES):
         raise ValueError('License file must be an ordinary text file of at most 128 KiB')
     license_name = 'UPSTREAM-LICENSE.txt'

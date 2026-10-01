@@ -117,7 +117,7 @@ def update(data_root, *, selected=None, timeout=120):
         raise ValueError('Selected Harness release identity changed')
     value = asset(release, f'harness-codex-{version}-linux.tar.gz', REPOSITORY)
     with tempfile.TemporaryDirectory(prefix='harness-release-') as temporary:
-        temporary = Path(temporary)
+        temporary = Path(temporary).resolve()
         archive = temporary / 'source.tar.gz'
         download(value, archive, limit=dist.MAX_TREE_BYTES, timeout=timeout)
         # Reject unsafe members within the isolated temporary extraction tree.

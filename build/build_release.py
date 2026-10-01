@@ -13,13 +13,14 @@ if __package__ in (None, ""):
 
 from build.artifacts import write_artifacts
 from build.source import checked_path, collect_source
+from harness_cli.paths import external_location, project_root
 
 
 def build(root: Path, output: Path, *, allow_dirty: bool = False, platform: str = 'linux') -> dict:
     if platform not in ('linux', 'both'):
         raise ValueError('Build platform must be linux or both')
-    root = checked_path(root)
-    output = checked_path(output)
+    root = project_root(root)
+    output = external_location(output)
     if output == root or root in output.parents or any(p.casefold() == ".git" for p in output.parts):
         raise ValueError("Build output must be outside the source tree and Git metadata")
     if output.exists() and (not output.is_dir() or any(output.iterdir())):

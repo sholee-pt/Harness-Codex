@@ -91,7 +91,7 @@ def install(root, *, selected=None):
     state = {'schema': 1, 'version': version, 'target': platform_target}
     destination = directory(root, state)
     with tempfile.TemporaryDirectory(prefix='harness-official-codex-') as temporary:
-        temporary = Path(temporary)
+        temporary = Path(temporary).resolve()
         archive = temporary / 'codex.tar.gz'
         releases.download(value, archive)
         unpacked = temporary / 'package'

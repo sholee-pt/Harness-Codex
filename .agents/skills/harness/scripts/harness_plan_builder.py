@@ -283,6 +283,7 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
 
 
 def _write_json_atomic(path: Path, value: dict[str, Any]) -> None:
+    path = harness_state.external_location(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(value, indent=2, ensure_ascii=False) + "\n"
     descriptor, temporary_name = tempfile.mkstemp(
@@ -294,6 +295,7 @@ def _write_json_atomic(path: Path, value: dict[str, Any]) -> None:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+        harness_state.checked_absolute(path)
         os.replace(temporary_path, path)
     finally:
         temporary_path.unlink(missing_ok=True)
@@ -306,10 +308,10 @@ def main() -> int:
     parser.add_argument("--output", required=True, help="Materialized Schema 3 plan")
     args = parser.parse_args()
     try:
-        source = Path(args.input).resolve()
-        output = Path(args.output).resolve()
+        source = harness_state.external_location(Path(args.input))
+        output = harness_state.external_location(Path(args.output))
         plan = json.loads(source.read_text(encoding="utf-8"))
-        materialized = materialize_plan(plan, root=Path(args.root).resolve())
+        materialized = materialize_plan(plan, root=harness_state.workspace_root(Path(args.root)))
         _write_json_atomic(output, materialized)
         print(
             json.dumps(

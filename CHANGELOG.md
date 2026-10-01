@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.29.2‑beta`](#harness-for-codex-v0292-beta) | Schema 3 | Schema 7 | Schema 2 | Fix project aliases, shared state/lock identity and authenticated Codex picker reconnections. |
 | [`v0.29.1‑beta`](#harness-for-codex-v0291-beta) | Schema 3 | Schema 7 | Schema 2 | Fix linked Linux installation parents and remote Jev browser setup. |
 | [`v0.29.0‑beta`](#harness-for-codex-v0290-beta) | Schema 3 | Schema 7 | Schema 2 | Consistent confirmations, truthful update output and scoped maintenance recovery; evaluation storage and transaction fixes. |
 | [`v0.28.0‑beta`](#harness-for-codex-v0280-beta) | Schema 3 | Schema 7 | Schema 2 | Improve approval prompts and reversible configuration menus |
@@ -85,6 +86,16 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.29.2-beta
+
+- Allow authenticated native resume/fork picker reconnections after the previous backend has stopped, without weakening token/Origin checks or replaying tasks. Release the connection slot after backend startup failures.
+- Accept explicitly selected project directory aliases in init, maintenance, routing evidence, checkpoints, external skill imports and removal, while preserving no-follow checks within managed trees.
+- Use physical project/home paths for Graft, Jev and lock identities; retain one state history across logical and physical project paths.
+- Preserve linked evaluation stores, plan/receipt output files and hook-template destinations instead of following them. Permit external parent aliases and recheck managed state roots before writes.
+- Resolve temporary download/evaluation parents and build locations consistently; retain link/traversal rejection for package members and managed payloads. Correct POSIX parent traversal through an installation alias.
+- Exclude aliased Harness executables from original Codex detection and recognize physical PATH equivalence in integration status. Include the offending path in link errors.
+- Add directory-alias lifecycle, shared-state, managed-target preservation and POSIX output-link regression coverage; compare upgrades only against v0.29.1-beta.
 
 ## Harness for Codex v0.29.1-beta
 

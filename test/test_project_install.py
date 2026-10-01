@@ -57,7 +57,7 @@ class ProjectInstallTests(unittest.TestCase):
     def test_legacy_entrypoint_from_copied_source_is_readonly_without_python_flags(self):
         release = self.base / "copied release"
         (release / "harness_cli").mkdir(parents=True)
-        for name in ("install.py", "harness_cli/__init__.py", "harness_cli/project_installer.py", "harness_cli/versions.py"):
+        for name in ("install.py", "harness_cli/__init__.py", "harness_cli/project_installer.py", "harness_cli/versions.py", "harness_cli/paths.py"):
             shutil.copyfile(REPO_ROOT / name, release / name)
         shutil.copytree(self.source, release / ".agents/skills/harness")
         environment = os.environ.copy()

@@ -61,10 +61,8 @@ def _helpers(source_root: Path):
 
 
 def _root(value: Path, installer) -> Path:
-    root = installer.checked_path(value)
-    if not root.is_dir() or any(part.rstrip(" .").casefold() == ".git" for part in root.parts):
-        raise LifecycleError("The project must be an existing directory outside Git metadata.")
-    return root
+    from .paths import project_root
+    return project_root(value, error_type=LifecycleError)
 
 
 def _file(path: Path, installer) -> FileState | None:
