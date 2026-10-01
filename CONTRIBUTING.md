@@ -75,8 +75,8 @@ Integration checks currently run explicitly in CI on Linux. Windows builds and p
 
 ```bash
 conda run -n harness python test/integration/prepare_release_baselines.py --output /tmp/harness-baselines
-conda run -n harness python test/integration/verify_cli_upgrade.py --baseline /tmp/harness-baselines/v0222 --output /tmp/cli-upgrade.json
-conda run -n harness python test/integration/verify_release_upgrade.py --baseline /tmp/harness-baselines/v0222 --output /tmp/project-upgrade.json
+conda run -n harness python test/integration/verify_cli_upgrade.py --baseline /tmp/harness-baselines/v0302 --output /tmp/cli-upgrade.json
+conda run -n harness python test/integration/verify_release_upgrade.py --baseline /tmp/harness-baselines/v0302 --output /tmp/project-upgrade.json
 ```
 
 Release comparison runs only against the immediately preceding release baseline (v0.22.2-beta). CI does not recreate the entire historical version matrix. Functional regression tests still check supported contracts and failure cases. Add an older source comparison only for a concrete compatibility defect that requires it.
