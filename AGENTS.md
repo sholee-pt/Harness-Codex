@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This branch contains Harness for Codex v0.29.3-beta, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
+- This branch contains Harness for Codex v0.29.4-beta, a project-local workspace harness generator with safe project-local generator installation, user-selected folder boundaries independent of Git layout, strict frontmatter and agent contracts, Manifest Schema 7 / Artifact Contract 2, and deterministic runtime contracts.
 - Keep generated project artifacts native to Codex: `.codex/agents/`, `.agents/skills/`, `AGENTS.md`, and `.harness/manifest.json`.
 - Do not add telemetry or marketplace dependencies. The separately authorized CLI distribution layer may check/fetch this repository and publish verified GitHub release assets; project generation never performs those operations.
 - Keep general task evaluation default-off, user-local, and isolated from generation/apply failure handling. The owner-authorized init default may enable bounded Jev shadow advice and its local counters after Graft is ready and preserves explicit opt-outs. Only explicit new-key entry permits a fixed, bounded non-project authentication probe; existing credentials never trigger an init API call. Store credentials separately from project artifacts, metrics and shell profiles.

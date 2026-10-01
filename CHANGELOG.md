@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.29.4‑beta`](#harness-for-codex-v0294-beta) | Schema 3 | Schema 7 | Schema 2 | Correct release-build regression expectations for supported external directory aliases. |
 | [`v0.29.3‑beta`](#harness-for-codex-v0293-beta) | Schema 3 | Schema 7 | Schema 2 | Prevent accidental menu cancellation, support preference backtracking and clear unacknowledged relay selections. |
 | [`v0.29.2‑beta`](#harness-for-codex-v0292-beta) | Schema 3 | Schema 7 | Schema 2 | Fix project aliases, shared state/lock identity and authenticated Codex picker reconnections. |
 | [`v0.29.1‑beta`](#harness-for-codex-v0291-beta) | Schema 3 | Schema 7 | Schema 2 | Fix linked Linux installation parents and remote Jev browser setup. |
@@ -87,6 +88,12 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.29.4-beta
+
+- Correct two stale release-build tests to require successful source-root and output-parent alias handling, while verifying committed payload identity, physical output location and preservation of existing files.
+- Exercise directory-alias build tests with Windows junctions when privileged symlink creation is unavailable; retain source-containment and managed output/payload link rejection checks.
+- Keep runtime behavior and project contracts unchanged; compare upgrades only against v0.29.3-beta.
 
 ## Harness for Codex v0.29.3-beta
 

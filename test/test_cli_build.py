@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -63,6 +64,11 @@ class ReleaseBuildTests(unittest.TestCase):
         return files
 
     def create_link(self, target, link, *, directory=False):
+        if os.name == 'nt' and directory:
+            result = subprocess.run(['cmd.exe', '/d', '/c', 'mklink', '/J', str(link), str(target)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.addCleanup(lambda: link.rmdir() if os.path.lexists(link) else None)
+            return
         try:
             link.symlink_to(target, target_is_directory=directory)
         except OSError as exc:
@@ -215,12 +221,17 @@ class ReleaseBuildTests(unittest.TestCase):
             build_release.build(self.root, output, allow_dirty=True)
         self.assertFalse(output.exists())
 
-    def test_source_root_alias_is_refused_before_writing_output(self):
+    def test_source_root_alias_preserves_committed_payload_and_output_boundary(self):
         alias = self.base / "source alias"
         self.create_link(self.root, alias, directory=True)
         with self.assertRaises(ValueError):
-            build_release.build(alias, self.output)
-        self.assertFalse(self.output.exists())
+            build_release.build(alias, alias / "nested output")
+        self.assertFalse((self.root / "nested output").exists())
+        actual = build_release.build(alias, self.output)
+        expected = build_release.build(self.root, self.base / "physical output")
+        self.assertEqual(actual["commit"], self.commit)
+        self.assertFalse(actual["developmentBuild"])
+        self.assertEqual(Path(actual["artifact"]).read_bytes(), Path(expected["artifact"]).read_bytes())
 
     def test_symlink_inside_payload_is_refused_even_for_development_build(self):
         target = self.base / "external.py"
@@ -239,14 +250,25 @@ class ReleaseBuildTests(unittest.TestCase):
             build_release.build(self.root, self.output)
         self.assertEqual(list(target.iterdir()), [])
 
-    def test_output_parent_alias_is_refused_before_creating_target(self):
+    def test_output_parent_alias_builds_at_physical_location_without_changing_other_files(self):
         target = self.base / "external parent"
         target.mkdir()
+        sentinel = target / "user.txt"
+        sentinel.write_bytes(b"unrelated user data\n")
+        before = sentinel.read_bytes(), sentinel.stat().st_mtime_ns
         alias = self.base / "output parent alias"
         self.create_link(target, alias, directory=True)
+        report = build_release.build(self.root, alias / "nested output")
+        artifact = Path(report["artifact"])
+        self.assertEqual(artifact.parent, (target / "nested output").resolve())
+        self.assertEqual(report["commit"], self.commit)
+        self.assertEqual(report["sha256"], hashlib.sha256(artifact.read_bytes()).hexdigest())
+        self.assertEqual((sentinel.read_bytes(), sentinel.stat().st_mtime_ns), before)
+        self.assertEqual(set(target.iterdir()), {sentinel, target / "nested output"})
+        contents = {path.name: (path.read_bytes(), path.stat().st_mtime_ns) for path in artifact.parent.iterdir()}
         with self.assertRaises(ValueError):
             build_release.build(self.root, alias / "nested output")
-        self.assertEqual(list(target.iterdir()), [])
+        self.assertEqual({path.name: (path.read_bytes(), path.stat().st_mtime_ns) for path in artifact.parent.iterdir()}, contents)
 
 
 if __name__ == "__main__":
