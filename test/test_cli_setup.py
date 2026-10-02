@@ -195,6 +195,42 @@ class RuntimeOwnershipTests(unittest.TestCase):
         self.assertEqual((files(self.data), (self.runtime / footprint.RECEIPT).read_bytes()), before)
         self.assertNotIn('envs/harness/user.txt', self.plan()['files'])
 
+    def test_large_runtime_receipt_preflight_reinstall_and_cleanup(self):
+        receipt = self.runtime / footprint.RECEIPT
+        # JSON whitespace exercises the actual byte limit without creating
+        # thousands of redundant package files in every regression run.
+        payload = receipt.read_bytes().ljust(4 * 1024 * 1024 + 1, b' ')
+        receipt.write_bytes(payload)
+        self.reference['receiptSha256'] = hashlib.sha256(payload).hexdigest()
+        (self.data / 'runtime.json').unlink()
+        self.data.rmdir()
+        before = receipt.read_bytes(), receipt.stat().st_mtime_ns
+        with self.assertRaisesRegex(dist.DistributionError, 'metadata is too large'):
+            dist._read_json(receipt)
+        with mock.patch.object(sys, 'prefix', str(self.prefix)):
+            self.assertEqual(footprint.record(self.runtime, self.data, attach=False), self.reference)
+            self.assertFalse(self.data.exists(), 'Preflight must not publish CLI state')
+            self.data.mkdir()
+            self.assertEqual(footprint.record(self.runtime, self.data), self.reference)
+            self.assertEqual(footprint.record(self.runtime, self.data), self.reference)
+        self.assertEqual((receipt.read_bytes(), receipt.stat().st_mtime_ns), before)
+        self.assertEqual(footprint.cleanup(self.plan()), [])
+        self.assertFalse(self.runtime.exists())
+        self.assertEqual(self.profile.read_bytes(), (str(self.other) + '\r\n').encode())
+
+    def test_oversized_runtime_receipt_is_refused_without_writes(self):
+        receipt = self.runtime / footprint.RECEIPT
+        payload = receipt.read_bytes().ljust(dist.MAX_FILE_BYTES + 1, b' ')
+        receipt.write_bytes(payload)
+        self.reference['receiptSha256'] = hashlib.sha256(payload).hexdigest()
+        before = files(self.runtime), files(self.data)
+        with mock.patch.object(sys, 'prefix', str(self.prefix)):
+            for operation in (lambda: footprint.record(self.runtime, self.data), self.plan,
+                              lambda: footprint.cleanup({**self.reference, 'dataRoot': str(self.data)})):
+                with self.subTest(operation=operation), self.assertRaisesRegex(ValueError, 'too large'):
+                    operation()
+                self.assertEqual((files(self.runtime), files(self.data)), before)
+
     @unittest.skipUnless(os.name == 'posix', 'Native Unix package filenames')
     def test_native_runtime_names_do_not_inherit_windows_archive_restrictions(self):
         runtime, data = self.base / 'native-runtime', self.base / 'native-tool'

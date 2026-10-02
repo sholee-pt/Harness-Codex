@@ -5,6 +5,7 @@ Miniforge downloads and Conda creation are real; no Codex/model call is made.
 """
 from pathlib import Path
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -31,6 +32,7 @@ def verify(dist):
         alias.symlink_to(home, target_is_directory=True)
         shared = base / 'shared-data'
         shared.mkdir()
+        runtime_receipt = shared / 'harness-codex-runtime/.harness-runtime-files.json'
         (home / 'share').symlink_to(shared, target_is_directory=True)
         assets = {p.name: str(p) for p in dist.iterdir() if p.is_file()}
         real_curl = shutil.which('curl')
@@ -71,7 +73,8 @@ else:
         def run(command, timeout=120):
             result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=timeout)
             if result.returncode:
-                raise AssertionError(result.stdout[-6000:] + result.stderr[-6000:])
+                details = {'runtimeReceiptBytes': runtime_receipt.stat().st_size if runtime_receipt.is_file() else None}
+                raise AssertionError(result.stdout[-6000:] + result.stderr[-6000:] + '\n' + json.dumps(details))
             return result.stdout
         run(['/bin/bash', '-o', 'pipefail', '-c', pipeline], timeout=1200)
         executable = home / '.local/bin/harness-codex'
@@ -85,13 +88,16 @@ else:
         assert isinstance(json.loads(run([executable, 'helper', 'inventory', project])), dict)
         # A fresh real interactive Bash reads .bashrc without manual PATH setup.
         located = run(['/bin/bash', '--noprofile', '-ic', 'command -v harness-codex']).strip()
-        assert located == str(executable), located
+        # Linked HOME/XDG directories can expose either spelling of the same file.
+        assert Path(located).samefile(executable), located
         data = home / 'share/harness-codex'
         integration = json.loads((data / 'codex-integration.json').read_text())
         assert integration['schema'] == 2
         native = run(['/bin/bash', '--noprofile', '-ic', 'command -v codex']).strip()
-        assert native == str(data / 'codex-bin/codex'), native
+        assert Path(native).samefile(data / 'codex-bin/codex'), native
         assert run([native, '--version']).strip().startswith('codex-cli ')
+        receipt_before = hashlib.sha256(runtime_receipt.read_bytes()).hexdigest(), runtime_receipt.stat().st_mtime_ns
+        receipt_bytes = runtime_receipt.stat().st_size
         before = snapshot(data), snapshot(home / '.local/bin'), (home / '.bashrc').read_bytes(), (home / '.bashrc').stat().st_mtime_ns
         # Reproduce the reported activation condition: a different Python
         # precedes an active base prefix. The installer must use its exact Python.
@@ -108,6 +114,7 @@ else:
         run(['/bin/bash', '-o', 'pipefail', '-c', pipeline + ' -s -- --existing reuse'], timeout=300)
         after = snapshot(data), snapshot(home / '.local/bin'), (home / '.bashrc').read_bytes(), (home / '.bashrc').stat().st_mtime_ns
         assert before == after, 'Repeated installation changed owned tool or Bash profile bytes/mtime'
+        assert (hashlib.sha256(runtime_receipt.read_bytes()).hexdigest(), runtime_receipt.stat().st_mtime_ns) == receipt_before, 'Repeated installation changed the runtime ownership receipt'
         runtime = home / 'share/harness-codex-runtime'
         assert (runtime / 'conda/bin/conda').is_file()
         (home / '.bashrc').unlink()
@@ -129,6 +136,7 @@ else:
                 'linkedHomeAndXdgStorage': True,
                 'repeatBytesAndMtimesPreserved': True, 'initRepairedMissingProfileEntry': True,
                 'ownedRuntimeRemoved': True, 'projectKeptAfterUninstall': True,
+                'runtimeReceiptBytes': receipt_bytes, 'runtimeReceiptPreservedOnReuse': True,
                 'codexIntegrationBeforeProjectInit': True,
                 'nativeCodexInvoked': 'version only; no model request'}
 

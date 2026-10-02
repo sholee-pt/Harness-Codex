@@ -144,12 +144,16 @@ def canonical_repository(value: str) -> str:
     return _repository(value).replace('sholee-pt/Harness.git', 'sholee-pt/Harness-Codex.git')
 
 
-def _read_json(path: Path) -> dict:
+def _read_json(path: Path, *, max_bytes: int = 4 * 1024 * 1024) -> dict:
     _path(path)
     try:
-        if path.stat().st_size > 4 * 1024 * 1024:
+        if path.stat().st_size > max_bytes:
             raise DistributionError("managed metadata is too large")
-        result = json.loads(path.read_text(encoding="utf-8"))
+        with path.open('rb') as stream:
+            payload = stream.read(max_bytes + 1)
+        if len(payload) > max_bytes:
+            raise DistributionError("managed metadata is too large")
+        result = json.loads(payload.decode('utf-8'))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise DistributionError("managed metadata is missing or invalid") from exc
     if not isinstance(result, dict):

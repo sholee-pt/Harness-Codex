@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.32.3‑beta`](#harness-for-codex-v0323-beta) | Schema 3 | Schema 7 | Schema 2 | Align runtime receipt read limits with creation and preserve bounded metadata reads. |
 | [`v0.32.2‑beta`](#harness-for-codex-v0322-beta) | Schema 3 | Schema 7 | Schema 2 | Prevent upgrade verification from writing Python caches into baseline evidence. |
 | [`v0.32.1‑beta`](#harness-for-codex-v0321-beta) | Schema 3 | Schema 7 | Schema 2 | Synchronize manifest template metadata and retain native submission errors and model refresh signals. |
 | [`v0.32.0‑beta`](#harness-for-codex-v0320-beta) | Schema 3 | Schema 7 | Schema 2 | Complete Linux installation with Codex integration and add guided project setup and management menus |
@@ -95,6 +96,12 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.32.3-beta
+
+- Fix fresh isolated installation when its runtime ownership receipt exceeds 4 MiB: use the existing 16 MiB runtime receipt limit during path binding and inspection while retaining the 4 MiB default for other metadata. Bound actual reads as well as the initial size check.
+- Cover large-receipt preflight, repeat installation, cleanup and rejection above 16 MiB. Report the real cold-install receipt size and verify its bytes and modification time remain unchanged on reuse.
+- Compare discovered executables by filesystem identity in the linked HOME/XDG installation fixture, accepting alias and resolved paths only when they name the expected file.
 
 ## Harness for Codex v0.32.2-beta
 

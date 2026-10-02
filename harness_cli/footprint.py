@@ -60,7 +60,7 @@ def _runtime_binding(root, data_root):
         return binding(data_root)
     receipt = root / RECEIPT
     if receipt.is_file():
-        value = dist._read_json(receipt)
+        value = dist._read_json(receipt, max_bytes=dist.MAX_FILE_BYTES)
         original = value['dataRoot']
         return Binding(data_root, {'launchers': {str(Path(original) / 'launcher.py'): ''},
                                   'binDir': value['condaRegistration'], 'python': value['root']})
@@ -161,7 +161,7 @@ def inspect(reference: dict, data_root: Path) -> dict:
         raise ValueError('Runtime ownership receipt changed; preserving the runtime')
     if receipt.stat().st_size > dist.MAX_FILE_BYTES:
         raise ValueError('Runtime receipt is too large')
-    value = json.loads(receipt.read_text(encoding='utf-8'))
+    value = dist._read_json(receipt, max_bytes=dist.MAX_FILE_BYTES)
     if not isinstance(value, dict):
         raise ValueError('Invalid runtime receipt')
     bound = _runtime_binding(root, data_root)
