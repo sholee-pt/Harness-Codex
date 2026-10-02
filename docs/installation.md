@@ -49,7 +49,7 @@ For Windows source development, run from an existing checkout:
 ## Source installation
 
 ```bash
-git clone --branch v0.32.1-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
+git clone --branch v0.32.2-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
 bash Harness-Codex/installer/install.sh
 source ~/.bashrc
 ```

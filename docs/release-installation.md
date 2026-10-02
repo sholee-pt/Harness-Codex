@@ -9,7 +9,7 @@ harness-codex update
 harness-codex config --project /path/to/project
 ```
 
-The installer prepares the isolated tool environment and registers PATH. Open a new shell with the installation prompt, or run `source ~/.bashrc` in the current shell. Install and sign in to Codex separately. Start project work with `codex`; use `codex resume` for an existing conversation.
+Default Linux installation prepares the isolated tool environment, official Codex integration and PATH. Open a new shell with the installation prompt, or run `source ~/.bashrc` in the current shell. Codex handles login. Start project work with `codex`; use `codex resume` for an existing conversation. Enter `/harness/` to choose project initialization or another management action.
 
 Official Codex is downloaded independently during integration setup and confirmed updates; no Codex build is required. The terminal release gate runs on Linux x86_64. Linux aarch64 package resolution is supported but not covered by that gate. Windows releases remain paused. For migration from the old patched integration, use this installer with `--existing reuse`, then run `config` once.
 

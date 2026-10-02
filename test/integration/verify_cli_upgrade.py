@@ -18,6 +18,9 @@ import tempfile
 from unittest import mock
 
 
+# The previous source is read-only evidence, including lazily imported modules.
+# Keep this true even when the caller does not supply Python's -B option.
+sys.dont_write_bytecode = True
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 from harness_cli import distribution as current
@@ -47,7 +50,7 @@ def old_project(baseline, root, runtime_path):
     import test_runtime_teamplay
     import shutil
 
-    assert harness_metadata.HARNESS_VERSION == "0.32.0-beta"
+    assert harness_metadata.HARNESS_VERSION == "0.32.1-beta"
     shutil.copytree(tests_root / "fixtures/coordinated-cross-contract", root)
     draft = test_runtime_teamplay.DeterministicPlanBuilderTests()._draft("coordinated-cross-contract-plan.json")
     plan = harness_plan_builder.materialize_plan(draft, root=root)
@@ -85,6 +88,7 @@ def old_project(baseline, root, runtime_path):
 
 
 def verify(baseline):
+    baseline_before = state(baseline)
     package_spec = importlib.util.spec_from_file_location(
         "_old_harness_cli", baseline / "harness_cli/__init__.py",
         submodule_search_locations=[str(baseline / "harness_cli")])
@@ -100,12 +104,11 @@ def verify(baseline):
     baseline_version = old._source_info(old_snapshot)[0]
     assert current._source_info(old_snapshot)[0] == baseline_version, "Complete historical module layouts must remain readable"
     candidate_version = current._source_info(new_snapshot)[0]
-    assert baseline_version == "0.32.0-beta"
-    assert candidate_version == "0.32.1-beta"
+    assert baseline_version == "0.32.1-beta"
+    assert candidate_version == "0.32.2-beta"
     optional_installers = {"install.sh", "install.ps1", "install_harness.sh", "install_harness_codex.sh", "install_harness_codex.ps1"}
     retired_installers = optional_installers & (old_snapshot.keys() - new_snapshot.keys())
     assert "install_harness.sh" not in new_snapshot
-    baseline_before = state(baseline)
     environment = os.environ.copy()
     for name in ("GITHUB_TOKEN", "GH_TOKEN", "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",
                  "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS"):
@@ -220,7 +223,10 @@ def verify(baseline):
                                   "--root", project, "--plan", runtime_path], environment=environment))
         assert runtime["valid"], runtime
         assert state(project) == project_before, "Tool update or validation changed project files/Git metadata"
-        assert state(baseline) == baseline_before, "Original baseline source was modified"
+        baseline_after = state(baseline)
+        changed = sorted(name for name in baseline_before.keys() | baseline_after.keys()
+                         if baseline_before.get(name) != baseline_after.get(name))
+        assert not changed, "Original baseline source was modified: " + ", ".join(changed[:10])
         assert any("fetch" in command and command[-1] == next_commit for command in calls)
         return {"status": "passed", "baselineVersion": baseline_version, "candidateVersion": candidate_version,
                 "baselineRuntimeTreeSha256": old._tree_hash(old._hashes(old_snapshot)),
