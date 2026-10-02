@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.32.1‑beta`](#harness-for-codex-v0321-beta) | Schema 3 | Schema 7 | Schema 2 | Synchronize manifest template metadata and retain native submission errors and model refresh signals. |
 | [`v0.32.0‑beta`](#harness-for-codex-v0320-beta) | Schema 3 | Schema 7 | Schema 2 | Complete Linux installation with Codex integration and add guided project setup and management menus |
 | [`v0.31.0‑beta`](#harness-for-codex-v0310-beta) | Schema 3 | Schema 7 | Schema 2 | Add qualified in-conversation management, a boxed dashboard, queued project switching and confirmed empty-directory cleanup. |
 | [`v0.30.2‑beta`](#harness-for-codex-v0302-beta) | Schema 3 | Schema 7 | Schema 2 | Bind owned Linux installation paths across mount changes and verify hook execution before trust. |
@@ -93,6 +94,11 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.32.1-beta
+
+- Synchronize the manifest template with the current generator release.
+- Preserve native turn errors from menu-launched configuration/review, request a catalog refresh for model availability failures, and avoid claiming an already-sent task was never submitted. Failed tasks are not replayed.
 
 ## Harness for Codex v0.32.0-beta
 

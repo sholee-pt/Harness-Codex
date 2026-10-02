@@ -359,6 +359,50 @@ class IntegrationMigrationTests(unittest.TestCase):
 
 
 class RelayProcessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_menu_submission_error_never_claims_no_task_was_sent_or_replays(self):
+        script = """import json, sys
+for line in sys.stdin:
+    message = json.loads(line)
+    method = message.get('method')
+    if method == 'turn/start':
+        print(json.dumps({'id': message['id'], 'error': {'code': -1, 'message': 'Model is no longer available'}}), flush=True)
+    else:
+        result = CATALOG if method == 'model/list' else {'thread': {'cwd': CWD}}
+        print(json.dumps({'id': message['id'], 'result': result}), flush=True)
+""".replace('CATALOG', repr(catalog())).replace('CWD', repr(os.getcwd()))
+        adapter = relay.Relay(sys.executable, dict(os.environ), args=['-c', script], policy=relay.Policy())
+        class Socket:
+            request = SimpleNamespace(path='/', headers={'Authorization': 'Bearer ' + adapter.token})
+            def __init__(self):
+                self.queue, self.messages = asyncio.Queue(), []
+                self.queue.put_nowait({'id': 1, 'method': 'turn/start', 'params': {'threadId': 't1',
+                    'input': [{'type': 'text', 'text': '/harness/'}]}})
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                value = await self.queue.get()
+                if value is None:
+                    raise StopAsyncIteration
+                return json.dumps(value)
+            async def send(self, raw):
+                message = json.loads(raw)
+                self.messages.append(message)
+                if message.get('method') == 'warning' and 'submission was not confirmed' in message['params']['message']:
+                    self.queue.put_nowait(None)
+            async def close(self, **kwargs):
+                pass
+        socket = Socket()
+        with mock.patch('harness_cli.management_relay.Controls.execute', new=mock.AsyncMock(return_value={'review': True})), \
+                mock.patch.object(adapter.policy, 'request', wraps=adapter.policy.request) as requests:
+            await asyncio.wait_for(adapter.connect(socket), 10)
+        self.assertEqual(sum(call.args[0] == 'turn/start' for call in requests.call_args_list), 1)
+        self.assertIsNone(adapter.error)
+        self.assertTrue(adapter.policy.refresh_needed)
+        warnings = [item['params']['message'] for item in socket.messages if item.get('method') == 'warning']
+        self.assertEqual(sum('submission was not confirmed' in warning for warning in warnings), 1)
+        self.assertIn('no automatic replay', '\n'.join(warnings))
+        self.assertNotIn('no task was submitted', '\n'.join(warnings))
+
     async def test_authenticated_picker_reconnect_waits_for_backend_teardown(self):
         adapter = relay.Relay('codex', {}, policy=relay.Policy(session_modes={'thread': True}))
         closing, release = asyncio.Event(), asyncio.Event()

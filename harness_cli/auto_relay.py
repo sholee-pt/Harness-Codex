@@ -395,7 +395,7 @@ class Relay:
             process.stdin.write((json.dumps(message) + '\n').encode())
             await process.stdin.drain()
 
-        async def call(method, params):
+        async def call(method, params, *, raw=False):
             nonlocal sequence
             sequence += 1
             identity = prefix + str(sequence)
@@ -404,6 +404,8 @@ class Relay:
             try:
                 await write({'id': identity, 'method': method, 'params': params})
                 response = await asyncio.wait_for(future, 15)
+                if raw:
+                    return response
                 if 'error' in response:
                     raise SelectionRequired('Codex metadata is unavailable. Use native mode or retry the metadata lookup; no task was submitted.')
                 return response.get('result') or {}
@@ -439,9 +441,11 @@ class Relay:
             if not self.policy.loaded or self.policy.refresh_needed:
                 await asyncio.wait_for(refresh(), 20)
             request = self.policy.request('turn/start', params)
-            result = await call('turn/start', request)
-            self.policy.response({'result': result}, 'turn/start', params)
+            response = await call('turn/start', request, raw=True)
+            self.policy.response(response, 'turn/start', params)
             await notices()
+            if 'error' in response:
+                raise SelectionRequired('Codex did not confirm the requested turn. Inspect the conversation before retrying.')
         controls = Controls(self, send, call, submit)
 
         async def incoming():
