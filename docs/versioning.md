@@ -41,6 +41,8 @@ supported. Use the current README installation links.
 
 From `v0.11.0-beta`, the repository is `sholee-pt/Harness-Codex`. New branches and tags use `vX.Y.Z-beta`, without `codex/` or `codex-`. This repository contains only the Codex edition; the Claude branch is removed. The latest verified branch is the default. GitHub releases are marked prerelease, so installation uses the pinned README URL rather than the stable `releases/latest` endpoint.
 
+The README's **Latest release** label identifies the newest published release; it is not a moving Git tag. Update that label and its pinned installation URL after publication, preserving prior releases under their original version tags. GitHub [does not allow prereleases to be marked Latest](https://docs.github.com/en/rest/releases/releases#update-a-release), so the README label is independent of GitHub's native Latest designation during beta development.
+
 Once the repository is made public and a stable release is explicitly published,
 stable versioning starts at `v1.0.0`. Changing GitHub visibility alone does not build
 or publish a release. Major changes include incompatible generation/ownership

@@ -30,13 +30,15 @@ Generate and maintain one shared project harness with Codex-native agents and sk
 
 ### For Linux
 
-Install a published Linux release by replacing `RELEASE_TAG` with a tag listed on the [Releases page](https://github.com/sholee-pt/Harness-Codex/releases):
+**Latest release: [v0.32.3-beta](https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.32.3-beta)**
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/RELEASE_TAG/install_harness_codex.sh | sh
+curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.32.3-beta/install_harness_codex.sh | sh
 ```
 
-The development branch can be newer than the published release. Release assets become available only after publication; an unpublished branch tag returns HTTP 404. To install the current source directly:
+Previous releases retain their version tags and installation commands on the [Releases page](https://github.com/sholee-pt/Harness-Codex/releases).
+
+To install the development source instead:
 
 ```bash
 git clone --branch v0.32.3-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git Harness-Codex
