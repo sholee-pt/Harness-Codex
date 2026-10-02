@@ -17,7 +17,12 @@ import uuid
 from . import presentation as ui
 from .paths import project_root
 
-COMMANDS = ('status', 'settings', 'init', 'config', 'maintenance', 'doctor', 'routing', 'jev', 'graft', 'switch', 'update', 'remove', 'reset', 'help')
+COMMANDS = ('status', 'settings', 'init', 'config', 'maintenance', 'doctor', 'routing', 'jev', 'graft', 'switch', 'update', 'remove', 'reset', 'tool', 'help')
+REVIEW_PROMPT = (
+    'Review this project\'s eligible Harness maintenance concerns using its installed maintenance workflow. '
+    'Read current status first. Respect existing off/suggest/auto mode, review leases, budgets, active sessions and existing-skill scope. '
+    'Do not manufacture a concern or bypass a limit. If no review is eligible, report that without regenerating the harness. '
+    'Use the current conversation permissions and record the actual outcome; do not claim measured savings without evidence.')
 
 
 def manifest_stamp(root):
@@ -45,8 +50,9 @@ def parse(params):
 
 
 class Controls:
-    def __init__(self, relay, send, call):
+    def __init__(self, relay, send, call, submit=None):
         self.relay, self.send, self.call = relay, send, call
+        self.submit = submit
         self.source = Path(__file__).resolve().parents[1]
         self.tasks, self.answers, self.busy, self.configuring = {}, {}, set(), {}
         self.prefix = 'harness-control-' + uuid.uuid4().hex + '-'
@@ -54,12 +60,15 @@ class Controls:
     async def event(self, method, **params):
         await self.send({'method': method, 'params': params})
 
-    async def root(self, params):
-        result = await self.call('thread/read', {'threadId': params['threadId'], 'includeTurns': False})
+    async def cwd(self, thread):
+        result = await self.call('thread/read', {'threadId': thread, 'includeTurns': False})
         cwd = (result.get('thread') or {}).get('cwd')
         if not isinstance(cwd, str):
             raise ValueError('Codex did not report the conversation directory; no project was selected.')
-        location = project_root(cwd)
+        return project_root(cwd)
+
+    async def root(self, params):
+        location = await self.cwd(params['threadId'])
         # Match the nearest existing project harness, including launches in children.
         for root in (location, *location.parents):
             if (root / '.harness/manifest.json').is_file():
@@ -104,7 +113,7 @@ class Controls:
             raise ValueError(text[-12000:] or 'Harness command did not complete')
         return text
 
-    async def choose(self, thread, turn, question, options):
+    async def ask(self, thread, turn, question, options=None):
         identity = self.prefix + uuid.uuid4().hex
         future = asyncio.get_running_loop().create_future()
         self.answers[identity] = future
@@ -112,14 +121,39 @@ class Controls:
             await self.send({'id': identity, 'method': 'item/tool/requestUserInput', 'params': {
                 'threadId': thread, 'turnId': turn, 'itemId': identity, 'isBlocking': True,
                 'questions': [{'id': 'choice', 'header': 'Harness', 'question': question, 'isOther': False, 'isSecret': False,
-                               'options': [{'label': label, 'description': description} for label, description in options]}]}})
+                               'options': [{'label': label, 'description': description} for label, description in options] if options is not None else None}]}})
             value = await future
             answers = (value.get('result', {}).get('answers', {}).get('choice') or {}).get('answers', [])
-            if len(answers) != 1 or answers[0] not in [label for label, _ in options]:
-                raise ValueError('No listed Harness choice was confirmed; nothing further was applied.')
+            if options is None and len(answers) == 1 and isinstance(answers[0], str):
+                # Native free-text questions serialize their note with this prefix.
+                answers = [answers[0].removeprefix('user_note: ')]
+            if (len(answers) != 1 or not isinstance(answers[0], str) or not answers[0].strip()
+                    or len(answers[0]) > 4000 or any(ord(c) < 32 and c not in '\n\t' for c in answers[0])
+                    or options is not None and answers[0] not in [label for label, _ in options]):
+                raise ValueError('No valid Harness input was confirmed; nothing further was applied.')
             return answers[0]
         finally:
             self.answers.pop(identity, None)
+
+    async def choose(self, thread, turn, question, options):
+        return await self.ask(thread, turn, question, options)
+
+    async def enter(self, thread, turn, question):
+        while True:
+            value = (await self.ask(thread, turn, question)).strip()
+            if '\n' not in value and '\r' not in value and '\t' not in value:
+                return value
+            await self.text(thread, turn, 'Use one line for this input. Choose a Markdown brief for longer project descriptions.')
+
+    async def configuration(self, params, root, command, arguments):
+        from .management_wizard import goal_arguments
+        from .project import _configuration_prompt, load_installer, _assert_no_transaction
+        goal, _ = goal_arguments(root, arguments)
+        _assert_no_transaction(root, load_installer(self.source))
+        await self.cli(root, ['init', '--install-only'], timeout=90)
+        await self.call('skills/list', {'cwds': [str(root)], 'forceReload': True})
+        self.configuring[params['threadId']] = (root, command, manifest_stamp(root))
+        return {**params, 'cwd': str(root), 'input': [{'type': 'text', 'text': _configuration_prompt(goal)}]}
 
     async def text(self, thread, turn, text):
         item = {'id': self.prefix + uuid.uuid4().hex, 'type': 'agentMessage', 'text': text, 'phase': 'final', 'memoryCitation': None}
@@ -150,52 +184,58 @@ class Controls:
             raise ValueError('Wait for the current task to finish before running Harness management.')
         command, arguments = parsed
         root = await self.root(params)
-        if command in {'init', 'config'}:
+        if command in {'init', 'config'} and arguments:
+            if arguments[0] == '--project' and len(arguments) >= 2:
+                selected = project_root(root / Path(arguments[1]).expanduser())
+                if selected != await self.cwd(params['threadId']):
+                    raise ValueError('Use the Init menu to open another project with its own conversation and permissions.')
+                root, arguments = selected, arguments[2:]
             if arguments and (arguments[0] not in {'--goal', '--goal-file'} or len(arguments) != 2):
                 raise ValueError('Use /harness/' + command + ' [--goal "DESCRIPTION" | --goal-file "PATH"].')
-            from .project import _configuration_prompt
-            from .main import build_parser
-            from .project import _goal_input, load_installer, _assert_no_transaction
-            args = build_parser(self.source).parse_args([command, '--project', str(root), *arguments])
-            if args.goal_file is not None and not args.goal_file.is_absolute():
-                args.goal_file = root / args.goal_file
-            goal = _goal_input(args, load_installer(self.source))
-            _assert_no_transaction(root, load_installer(self.source))
             if command == 'init' and (root / '.harness/manifest.json').exists():
                 command, arguments = 'status', []
             else:
-                await self.cli(root, ['init', '--install-only'], timeout=90)
-                await self.call('skills/list', {'cwds': [str(root)], 'forceReload': True})
-                message['params'] = {**params, 'cwd': str(root), 'input': [{'type': 'text', 'text': _configuration_prompt(goal)}]}
-                self.configuring[params['threadId']] = (root, command, manifest_stamp(root))
+                message['params'] = await self.configuration(params, root, command, arguments)
                 return False
         if command == 'maintenance' and arguments == ['review']:
-            message['params'] = {**params, 'input': [{'type': 'text', 'text': (
-                'Review this project\'s eligible Harness maintenance concerns using its installed maintenance workflow. '
-                'Read current status first. Respect existing off/suggest/auto mode, review leases, budgets, active sessions and existing-skill scope. '
-                'Do not manufacture a concern or bypass a limit. If no review is eligible, report that without regenerating the harness. '
-                'Use the current conversation permissions and record the actual outcome; do not claim measured savings without evidence.')}]}
+            message['params'] = {**params, 'input': [{'type': 'text', 'text': REVIEW_PROMPT}]}
             return False
         turn = str(uuid.uuid4())
-        task = asyncio.create_task(self.handle(identity, params['threadId'], turn, root, command, arguments))
+        task = asyncio.create_task(self.handle(identity, params['threadId'], turn, root, command, arguments, params))
         self.tasks[turn] = task
         task.add_done_callback(lambda done: self.tasks.pop(turn, None))
         return True
 
-    async def handle(self, identity, thread, turn, root, command, arguments):
+    async def handle(self, identity, thread, turn, root, command, arguments, params=None):
         value = {'id': turn, 'items': [], 'status': 'inProgress', 'error': None}
         await self.send({'id': identity, 'result': {'turn': value}})
         await self.event('turn/started', threadId=thread, turn=value)
         status = 'completed'
+        submission = None
         try:
             text = await self.execute(thread, turn, root, command, arguments)
+            if isinstance(text, dict) and 'configuration' in text:
+                submission = await self.configuration(params, *text['configuration'])
+                text = 'Settings confirmed. Starting project configuration with this conversation model and permissions.'
+            elif isinstance(text, dict) and 'review' in text:
+                submission = {**params, 'input': [{'type': 'text', 'text': REVIEW_PROMPT}]}
+                text = 'Starting the requested maintenance review with the current model and permissions.'
             await self.text(thread, turn, 'Harness management · local command\n\n```text\n' + text.replace('```', "'''") + '\n```')
         except asyncio.CancelledError:
             status = 'interrupted'
+            self.configuring.pop(thread, None)
         except (OSError, ValueError, TimeoutError) as exc:
             await self.text(thread, turn, 'Harness management: ' + ui.clean(exc))
         finally:
             await self.event('turn/completed', threadId=thread, turn={**value, 'status': status})
+        if submission is not None and status == 'completed':
+            try:
+                if self.submit is None:
+                    raise ValueError('Native configuration submission is unavailable; no model task was started.')
+                await self.submit(submission)
+            except (OSError, ValueError, TimeoutError) as exc:
+                self.configuring.pop(thread, None)
+                await self.event('warning', threadId=thread, message='Configuration submission was not confirmed. Check the conversation before retrying; no automatic replay. ' + ui.clean(exc))
 
     async def execute(self, thread, turn, root, command, arguments):
         if command == 'help':
@@ -203,13 +243,30 @@ class Controls:
                 raise ValueError('Use /harness/help without arguments.')
             command = await self.choose(thread, turn, 'Harness management — select an action. Queries do not call a model.',
                 [('Status', 'Project, Jev, Graft, hooks and settings'), ('Settings', 'Change maintenance and adaptive Auto'),
+                 ('Init', 'Choose a project and description to create its harness'), ('Config', 'Review and update an existing harness'),
                  ('Maintenance', 'Inspect observations without launching a review'), ('Doctor', 'Validate project files'),
+                 ('Routing', 'Inspect adaptive Auto evidence'), ('Jev', 'Advice settings and private login'), ('Graft', 'Project graph and external sources'),
+                 ('Switch', 'Choose another project conversation'), ('Remove', 'Preview owned project file removal'), ('Reset', 'Remove before creating a new design'),
+                 ('Tool', 'Updates and uninstall'),
                  ('Help', 'List all command names'), ('Back', 'Return to your conversation')])
             if command == 'Back':
                 return 'Returned to the conversation. No settings changed.'
             if command == 'Help':
                 return '\n'.join('/harness/' + name for name in COMMANDS) + '\nUse init/config --goal "DESCRIPTION" or --goal-file "PATH".\nMaintenance review uses the current model; all status commands are local.\nSettings change preferences; config reviews generated artifacts.'
             command = command.lower()
+            if command in {'jev', 'graft', 'tool'}:
+                from .management_wizard import tools
+                return await tools(self, thread, turn, root, command)
+            if command == 'maintenance':
+                choice = await self.choose(thread, turn, 'Maintenance',
+                    [('Status', 'Inspect observations without a model request'), ('Settings', 'Change review preferences'),
+                     ('Review', 'Request a model review under current policy; uses conversation tokens'), ('Back', 'Return')])
+                if choice == 'Back':
+                    return 'No maintenance changes.'
+                if choice == 'Settings':
+                    command = 'settings'
+                if choice == 'Review':
+                    return {'review': True}
         if command == 'settings' and not arguments:
             selected = await self.choose(thread, turn, 'Project preferences',
                 [('Maintenance', 'Off, suggest, or bounded automatic changes'), ('Adaptive Auto', 'Use recorded quality/cost observations'),
@@ -278,7 +335,11 @@ class Controls:
                 return 'Update queued. Finish active work, then use /quit. Harness will update outside the conversation; launch codex again afterwards.'
             return 'No update queued.'
         if command in {'init', 'config'}:
-            raise ValueError('Run /harness/' + command + ' directly to start configuration with the current model and permissions.')
+            from .management_wizard import configure
+            return await configure(self, thread, turn, root, command)
+        if command == 'tool' and not arguments:
+            from .management_wizard import tools
+            return await tools(self, thread, turn, root, command)
         if command not in {'status', 'settings', 'doctor', 'maintenance', 'routing', 'jev', 'graft'}:
             raise ValueError('Unsupported local command')
         # Do not let command options redirect work away from the active conversation.
@@ -310,13 +371,17 @@ class Controls:
                     continue
                 if location != root:
                     paths[str(location)] = location
-            if not paths:
-                return 'No other reachable recent project found on this host. Use /harness/switch "PROJECT_PATH". Missing mount paths are never guessed.'
             choice = await self.choose(thread, turn, 'Select a reachable project. Each project keeps its own conversation and instructions.',
-                [(name, 'Open this project after exiting the current screen') for name in list(paths)[:12]] + [('Back', 'Stay in this project')])
+                [('Another directory', 'Enter a project path')] + [(name, 'Open this project after exiting the current screen') for name in list(paths)[:12]] + [('Back', 'Stay in this project')])
             if choice == 'Back':
                 return 'Project unchanged.'
-            target = paths[choice]
+            if choice == 'Another directory':
+                value = await self.enter(thread, turn, 'Existing project path. Enter :back to return.')
+                if value == ':back':
+                    return 'Project unchanged.'
+                target = project_root(root / Path(value).expanduser())
+            else:
+                target = paths[choice]
         if target == root:
             return 'This project is already selected. Describe the new task normally; another agent or regeneration is not required.'
         choice = await self.choose(thread, turn, 'Open ' + ui.clean(target) + ' after this screen closes?',

@@ -6,7 +6,7 @@ if [[ ! -f "$source_dir/harness.py" ]]; then
   source_dir="$(cd -- "$source_dir/.." && pwd -P)"
 fi
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  printf '%s\n' 'Usage: bash install.sh [--bin-dir PATH] [--data-dir PATH] [--branch vX.Y.Z-beta] [--repository URL] [--auto-update compatible|check|off] [--existing ask|reuse|reset] [--no-modify-path] [--activate ask|shell|skip]' 'Reuses Conda or installs checksum-pinned Miniforge on Linux. Prepares the dedicated harness environment.' 'Installs harness-codex without sudo; registers PATH in ~/.bashrc unless --no-modify-path is supplied.'
+  printf '%s\n' 'Usage: bash install.sh [--bin-dir PATH] [--data-dir PATH] [--branch vX.Y.Z-beta] [--repository URL] [--auto-update compatible|check|off] [--existing ask|reuse|reset] [--no-modify-path] [--no-codex-integration] [--activate ask|shell|skip]' 'Reuses Conda or installs checksum-pinned Miniforge on Linux. Prepares the dedicated harness environment.' 'Installs harness-codex and official Codex integration without sudo; registers PATH in ~/.bashrc unless --no-modify-path is supplied.'
   exit 0
 fi
 activate=ask
@@ -116,10 +116,20 @@ printf '\n%sHarness for Codex installer%s\n================================\nDet
 start_step '[1/3] Checking installation tools'
 source "$source_dir/harness_cli/prepare_conda.sh"
 start_step '[3/3] Installing command and applying PATH preferences'
+# Prepare the transport before the CLI seals a newly owned runtime receipt.
+# Later dependency files must not be mistaken for unrelated user additions.
+prepare_integration=true
+for argument in "$@"; do
+  case "$argument" in --no-modify-path|--no-codex-integration) prepare_integration=false ;; esac
+done
+if [[ "$prepare_integration" == true && "$(uname -s)" == Linux ]]; then
+  "${installer_runner[@]}" "$selected_python" -B -c 'import sys; sys.path.insert(0, sys.argv[1]); from harness_cli.auto_relay import dependency; dependency(install=True)' "$source_dir" >> "$install_log" 2>&1
+fi
 HARNESS_INSTALL_EXPECTED_PREFIX="$selected_prefix" "${installer_runner[@]}" "$selected_python" -B "$source_dir/harness.py" install "$@" "${owned_runtime[@]}" >> "$install_log" 2>&1
 finish_step
 # Keep the CLI receipt contract intact; replay only its existing human summary.
 sed -n '/^Installed /p' "$install_log"
+sed -n '/^Ready: /p' "$install_log"
 printf 'Installation complete. Detailed log: %s\n' "$install_log"
 # A child installer cannot mutate its parent Bash. With explicit consent, open
 # an interactive child that actually reads the configured ~/.bashrc.

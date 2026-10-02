@@ -10,6 +10,20 @@ from . import distribution as dist
 from .paths import user_home
 
 
+def prepare_integration(args, source_root):
+    """Finish a Linux installation before advertising the Codex management entry."""
+    if args.no_modify_path or args.no_codex_integration or sys.platform != 'linux':
+        return
+    from .codex_integration import read, install
+    from .main import version
+    from . import presentation as ui
+    if dist.version_key(version(source_root)) < dist.version_key('0.32.0-beta') and read(args.data_dir) is None:
+        return
+    with ui.Progress('Preparing official Codex integration', compact=True):
+        ui.report(install(args.data_dir, source_root), title='Codex integration')
+    print('Ready: launch codex in any project and enter /harness/ to choose Init or another management action.')
+
+
 def _pause_installer(paused: bool) -> None:
     """Pause the installer's timer while its child asks on the real terminal."""
     name = os.environ.get('HARNESS_INSTALL_PAUSE_FILE')

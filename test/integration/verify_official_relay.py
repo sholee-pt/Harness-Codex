@@ -141,6 +141,7 @@ def main():
     probe.save(args.output / 'result.json', result)
     passed = (result.get('menuRoutingFooterSatisfied') and result['binaryUnmodified'] and not result.get('adapterError')
         and result.get('managementControls', {}).get('noInference') is True
+        and result.get('managementWizard', {}).get('configurationTurnCompleted') is True
         and all(result.get('pickerReconnects', {}).get(action, {}).get('passed') for action in ('resume', 'fork')))
     print(json.dumps({'passed': bool(passed), 'officialVersion': identity['version'],
                       'error': result.get('experimentError'), 'liveInference': 'not-tested'}), flush=True)

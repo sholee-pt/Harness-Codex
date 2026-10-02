@@ -151,6 +151,33 @@ class LocalControls(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(policy.observer.cwd, target)
         self.assertTrue(policy.refresh_needed)
 
+    async def test_queued_missing_project_prepares_then_launches_only_its_approved_brief(self):
+        from harness_cli import auto_relay
+        target = self.root / 'new project'
+        policy = SimpleNamespace(refresh_needed=False, observer=None)
+        launches = []
+        first = SimpleNamespace(error=None, after_exit={'action': 'configure', 'root': str(target), 'command': 'init', 'arguments': ['--goal', 'Approved goal']}, connect=None)
+        second = SimpleNamespace(error=None, after_exit=None, connect=None)
+        for relay in (first, second):
+            relay.client = lambda port, args: (['codex', *args], {})
+        server = mock.MagicMock()
+        server.sockets = [SimpleNamespace(getsockname=lambda: ('127.0.0.1', 1))]
+        context = mock.MagicMock()
+        context.__aenter__ = mock.AsyncMock(return_value=server)
+        context.__aexit__ = mock.AsyncMock(return_value=False)
+        async def spawn(*args, **kwargs):
+            launches.append(args)
+            if '--install-only' in args:
+                target.mkdir()
+            return SimpleNamespace(wait=mock.AsyncMock(return_value=0), returncode=0)
+        with mock.patch.object(auto_relay, 'dependency', return_value=lambda *a, **kw: context), mock.patch.object(auto_relay, 'Relay', side_effect=[first, second]), mock.patch('asyncio.create_subprocess_exec', side_effect=spawn):
+            self.assertEqual(await auto_relay.run('codex', ['--dangerously-bypass-approvals-and-sandbox', 'source prompt'], {}, policy), 0)
+        self.assertIn('--install-only', launches[1])
+        self.assertEqual(launches[1][-2:], ('--project', str(target)))
+        self.assertEqual(launches[2][1:6], ('-c', 'check_for_update_on_startup=false', '--cd', str(target), '--'))
+        command, arguments = management_relay.parse({'input': [{'type': 'text', 'text': launches[2][-1]}]})
+        self.assertEqual((command, arguments), ('init', ['--project', str(target), '--goal', 'Approved goal']))
+
     async def test_no_foreign_root_or_credentials_in_local_command(self):
         self.controls.cli = mock.AsyncMock()
         with self.assertRaises(ValueError):
@@ -166,6 +193,108 @@ class LocalControls(unittest.IsolatedAsyncioTestCase):
         self.assertIn('cancelled', result)
         self.assertEqual(self.controls.cli.call_count, 1)
         self.assertIn('--dry-run', self.controls.cli.call_args.args[1])
+
+    async def test_init_menu_keeps_permissions_and_submits_only_after_confirmation(self):
+        self.controls.choose = mock.AsyncMock(side_effect=['Init', 'Current project', 'Describe the project', 'Confirm'])
+        self.controls.enter = mock.AsyncMock(return_value='A small analysis project')
+        self.controls.cli = mock.AsyncMock(return_value='ready')
+        self.controls.submit = mock.AsyncMock()
+        value = self.request('/harness/')
+        value['params'].update(model='selected-model', effort='high', approvalPolicy='on-request', sandboxPolicy={'type': 'readOnly'})
+        self.assertTrue(await self.controls.intercept(value))
+        await asyncio.gather(*list(self.controls.tasks.values()))
+        request = self.controls.submit.call_args.args[0]
+        self.assertEqual(request['model'], 'selected-model')
+        self.assertEqual(request['effort'], 'high')
+        self.assertEqual(request['sandboxPolicy'], {'type': 'readOnly'})
+        self.assertEqual(request['approvalPolicy'], 'on-request')
+        self.assertIn('A small analysis project', request['input'][0]['text'])
+        self.assertEqual(self.sent[-1]['method'], 'turn/completed')
+        self.controls.cli.assert_awaited_once()
+
+    async def test_wizard_back_preserves_files_and_starts_no_model(self):
+        self.controls.choose = mock.AsyncMock(side_effect=['Current project', 'Describe the project', 'Back', 'Back', 'Back'])
+        self.controls.enter = mock.AsyncMock(return_value='Unused description')
+        self.controls.cli = mock.AsyncMock()
+        result = await self.controls.execute('thread', 'turn', self.root, 'init', [])
+        self.assertIn('without configuring', result)
+        self.controls.cli.assert_not_called()
+        self.assertEqual(list(self.root.iterdir()), [])
+
+    async def test_new_project_queues_only_after_brief_confirmation(self):
+        target = self.root / 'new project'
+        self.controls.choose = mock.AsyncMock(side_effect=['Another directory', 'Describe the project', 'Confirm'])
+        self.controls.enter = mock.AsyncMock(side_effect=[str(target), 'New project purpose'])
+        self.controls.cli = mock.AsyncMock()
+        result = await self.controls.execute('thread', 'turn', self.root, 'init', [])
+        self.assertIn('/quit', result)
+        self.assertEqual(self.relay.after_exit, {'action': 'configure', 'root': str(target), 'command': 'init', 'arguments': ['--goal', 'New project purpose']})
+        self.assertFalse(target.exists())
+        self.controls.cli.assert_not_called()
+
+    async def test_existing_project_wizard_reviews_without_reset(self):
+        (self.root / '.harness').mkdir()
+        (self.root / '.harness/manifest.json').write_text('{}')
+        self.controls.choose = mock.AsyncMock(side_effect=['Current project', 'Review and update', 'Use existing project evidence', 'Confirm'])
+        result = await self.controls.execute('thread', 'turn', self.root, 'init', [])
+        self.assertEqual(result['configuration'], (self.root, 'config', []))
+        self.assertEqual((self.root / '.harness/manifest.json').read_text(), '{}')
+
+    async def test_markdown_brief_is_relative_to_target_and_contents_not_in_command(self):
+        target = self.root / 'target'
+        target.mkdir()
+        brief = target / 'project brief.md'
+        brief.write_text('Private project description', encoding='utf-8')
+        self.controls.choose = mock.AsyncMock(side_effect=['Another directory', 'Markdown file', 'Confirm'])
+        self.controls.enter = mock.AsyncMock(side_effect=[str(target), 'project brief.md'])
+        await self.controls.execute('thread', 'turn', self.root, 'init', [])
+        self.assertEqual(self.relay.after_exit['arguments'], ['--goal-file', str(brief)])
+        self.assertNotIn('Private project description', json.dumps(self.relay.after_exit))
+
+    async def test_explicit_configuration_target_cannot_change_native_directory(self):
+        other = self.root / 'other'
+        other.mkdir()
+        self.controls.cli = mock.AsyncMock()
+        with self.assertRaisesRegex(ValueError, 'own conversation'):
+            await self.controls.intercept(self.request('/harness/init --project ' + json.dumps(str(other)) + ' --goal "test"'))
+        self.controls.cli.assert_not_called()
+
+    async def test_explicit_target_does_not_select_parent_harness(self):
+        (self.root / '.harness').mkdir()
+        (self.root / '.harness/manifest.json').write_text('{}')
+        nested = self.root / 'nested'
+        nested.mkdir()
+        self.call.return_value = {'thread': {'cwd': str(nested)}}
+        self.controls.cli = mock.AsyncMock(return_value='ready')
+        message = self.request('/harness/init --project ' + json.dumps(str(nested)) + ' --goal "nested project"')
+        self.assertFalse(await self.controls.intercept(message))
+        self.assertEqual(message['params']['cwd'], str(nested))
+        self.assertEqual(self.controls.cli.call_args.args[0], nested)
+
+    async def test_private_login_is_queued_without_chat_secret_or_cli_execution(self):
+        self.controls.choose = mock.AsyncMock(side_effect=['Jev', 'Login'])
+        self.controls.cli = mock.AsyncMock()
+        result = await self.controls.execute('thread', 'turn', self.root, 'help', [])
+        self.assertEqual(self.relay.after_exit['action'], 'jev')
+        self.assertEqual(self.relay.after_exit['operation'], 'login')
+        self.assertIn('Never paste credentials', result)
+        self.controls.cli.assert_not_called()
+
+    async def test_free_input_uses_native_text_field_and_rejects_control_characters(self):
+        task = asyncio.create_task(self.controls.enter('thread', 'turn', 'Path'))
+        await asyncio.sleep(0)
+        request = self.sent[-1]
+        self.assertIsNone(request['params']['questions'][0]['options'])
+        await self.controls.intercept({'id': request['id'], 'result': {'answers': {'choice': {'answers': ['bad\0path']}}}})
+        with self.assertRaises(ValueError):
+            await task
+
+    async def test_native_free_text_prefix_is_not_part_of_the_selected_path(self):
+        task = asyncio.create_task(self.controls.enter('thread', 'turn', 'Path'))
+        await asyncio.sleep(0)
+        request = self.sent[-1]
+        await self.controls.intercept({'id': request['id'], 'result': {'answers': {'choice': {'answers': ['user_note: /projects/project one']}}}})
+        self.assertEqual(await task, '/projects/project one')
 
 
 class ManagementFilesystemTests(unittest.TestCase):

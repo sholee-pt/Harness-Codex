@@ -87,6 +87,11 @@ else:
         located = run(['/bin/bash', '--noprofile', '-ic', 'command -v harness-codex']).strip()
         assert located == str(executable), located
         data = home / 'share/harness-codex'
+        integration = json.loads((data / 'codex-integration.json').read_text())
+        assert integration['schema'] == 2
+        native = run(['/bin/bash', '--noprofile', '-ic', 'command -v codex']).strip()
+        assert native == str(data / 'codex-bin/codex'), native
+        assert run([native, '--version']).strip().startswith('codex-cli ')
         before = snapshot(data), snapshot(home / '.local/bin'), (home / '.bashrc').read_bytes(), (home / '.bashrc').stat().st_mtime_ns
         # Reproduce the reported activation condition: a different Python
         # precedes an active base prefix. The installer must use its exact Python.
@@ -124,7 +129,8 @@ else:
                 'linkedHomeAndXdgStorage': True,
                 'repeatBytesAndMtimesPreserved': True, 'initRepairedMissingProfileEntry': True,
                 'ownedRuntimeRemoved': True, 'projectKeptAfterUninstall': True,
-                'nativeCodexInvoked': False}
+                'codexIntegrationBeforeProjectInit': True,
+                'nativeCodexInvoked': 'version only; no model request'}
 
 
 if __name__ == '__main__':

@@ -10,6 +10,15 @@ Current releases and CI target Linux. Windows installation code and the option r
 
 ## Options
 
+The default Linux install prepares the official Codex package and registers the
+Harness-aware `codex` entry point. After applying PATH, run `codex` and select Init
+from `/harness/`; no project CLI command is required first. Native account login
+and project trust still belong to Codex. Downloads or integration failures stop
+the installer before its completion message; rerun with `--existing reuse` after
+resolving them. `--no-codex-integration` keeps a tool-only install, while
+`--no-modify-path` also skips automatic integration. Existing registered entry
+points are preserved by either opt-out; they are not uninstalled.
+
 | Linux | Windows | Effect |
 | --- | --- | --- |
 | `--data-dir PATH` | `-DataDir PATH` | Managed CLI storage |
@@ -18,6 +27,7 @@ Current releases and CI target Linux. Windows installation code and the option r
 | `--existing ask\|reuse\|reset` | `-Existing ask\|reuse\|reset` | Existing-installation choice |
 | `--activate ask\|shell\|skip` | — | Ask to open a child Bash, open it explicitly, or skip activation |
 | `--no-modify-path` | `-NoModifyPath` | Skip PATH registration |
+| `--no-codex-integration` | — | Skip Linux Codex package and entry-point setup |
 | `CONDA_EXE=/path/to/conda` | `-CondaExe PATH` | Use an existing environment manager |
 | — | `-CondaHome PATH` | Select a dedicated Miniforge location |
 
@@ -39,7 +49,7 @@ For Windows source development, run from an existing checkout:
 ## Source installation
 
 ```bash
-git clone --branch v0.31.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
+git clone --branch v0.32.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
 bash Harness-Codex/installer/install.sh
 source ~/.bashrc
 ```

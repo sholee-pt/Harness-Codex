@@ -448,6 +448,29 @@ def drive(binary, env, project, output, port, relay, provider):
             for key in ('turnCompleted', 'modelReachedProvider', 'effortReachedProvider', 'footerShowsActualModel', 'footerShowsActualEffort', 'footerShowsAuto')))
         findings['fullRequestedUX'] = 'not-established' if findings['menuRoutingFooterSatisfied'] else False
         findings['resumeAndApprovals'] = 'not-tested; this first-stage probe does not establish production compatibility'
+        if getattr(relay, 'management_controls', False):
+            from harness_cli.project import _configuration_prompt
+            before = len(provider.records)
+            terminal.command('/harness/init')
+            terminal.wait(lambda text: 'Select the project' in text)
+            terminal.select('Current project')
+            terminal.wait(lambda text: 'How should the project be described?' in text)
+            terminal.select('Describe the project')
+            terminal.wait(lambda text: 'Describe the project and expected tasks' in text)
+            goal = 'A fixture project for guided setup'
+            terminal.command(goal)
+            terminal.wait(lambda text: 'Configuration uses conversation tokens' in text)
+            assert len(provider.records) == before, 'Setup choices must not call inference'
+            terminal.select('Confirm')
+            digest = input_digest(_configuration_prompt(goal))
+            def configured(text):
+                return any(d.get('threadId') == thread_id and d.get('inputSha256') == digest and any(
+                    e.get('method') == 'turn/completed' and e.get('turnId') == d.get('turnId') and e.get('status') == 'completed'
+                    for e in relay.policy.events) for d in relay.policy.decisions)
+            terminal.wait(configured, 90)
+            assert (project / '.agents/skills/harness/SKILL.md').is_file()
+            findings['managementWizard'] = {'nativeFreeText': True, 'selectionWithoutInference': True, 'configurationTurnCompleted': True}
+            terminal.snapshot('05-guided-setup')
     except Exception as exc:
         findings['experimentError'] = str(exc)
         findings['traceback'] = traceback.format_exc()

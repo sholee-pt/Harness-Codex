@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.32.0‑beta`](#harness-for-codex-v0320-beta) | Schema 3 | Schema 7 | Schema 2 | Complete Linux installation with Codex integration and add guided project setup and management menus |
 | [`v0.31.0‑beta`](#harness-for-codex-v0310-beta) | Schema 3 | Schema 7 | Schema 2 | Add qualified in-conversation management, a boxed dashboard, queued project switching and confirmed empty-directory cleanup. |
 | [`v0.30.2‑beta`](#harness-for-codex-v0302-beta) | Schema 3 | Schema 7 | Schema 2 | Bind owned Linux installation paths across mount changes and verify hook execution before trust. |
 | [`v0.30.1‑beta`](#harness-for-codex-v0301-beta) | Schema 3 | Schema 7 | Schema 2 | Refresh host diagnostics when init reuses an existing project harness. |
@@ -92,6 +93,13 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.32.0-beta
+
+- Complete default Linux installation with the official Codex integration, so `/harness/` is available before the first project init. Preserve tool-only installation with `--no-codex-integration` or `--no-modify-path`.
+- Add project-directory selection, Markdown or typed briefs, existing-harness review, final confirmation and Back steps to the native management menu. Another project opens in its own conversation after normal exit; missing directories are created only after confirmation.
+- Expose generation, configuration, project switching, removal, Jev, Graft and tool management through the menu. Private credential entry and tool uninstall run in their existing terminal flows after Codex exits; keys never enter chat.
+- Preserve native model, reasoning and permissions for configuration started from a menu, with no inference during selection or status queries. Keep terminal commands and the unmodified official Codex renderer.
 
 ## Harness for Codex v0.31.0-beta
 

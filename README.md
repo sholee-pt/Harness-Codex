@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sholee-pt/Harness-Codex/tree/v0.31.0-beta"><img src="https://img.shields.io/badge/Version-v0.31.0--beta-2563EB.svg?style=flat-square" alt="Version: v0.31.0-beta"></a>
+  <a href="https://github.com/sholee-pt/Harness-Codex/tree/v0.32.0-beta"><img src="https://img.shields.io/badge/Version-v0.32.0--beta-2563EB.svg?style=flat-square" alt="Version: v0.32.0-beta"></a>
   <a href="#agent-editions"><img src=".github/badges/agent-codex.svg" alt="Agent: Codex"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Proprietary-64748B.svg?style=flat-square" alt="License: Proprietary"></a>
 </p>
@@ -39,7 +39,7 @@ curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/RELEASE_
 The development branch can be newer than the published release. Release assets become available only after publication; an unpublished branch tag returns HTTP 404. To install the current source directly:
 
 ```bash
-git clone --branch v0.31.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git Harness-Codex
+git clone --branch v0.32.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git Harness-Codex
 bash Harness-Codex/installer/install.sh
 harness-codex --version
 ```
@@ -50,11 +50,23 @@ Supports Linux x86_64 and aarch64. Source cloning requires Git; installation req
 
 Windows release assets are not currently available. Windows support remains in the source tree, but publication is paused until its separate validation passes. Use Windows release installation only when the [release assets](https://github.com/sholee-pt/Harness-Codex/releases) include `install_harness_codex.ps1`, `harness-codex-VERSION-windows.zip` and the matching Windows native package. See [source installation options](docs/installation.md) for development use.
 
-When migrating from 0.10.0-beta, run this installer once: its updater cannot discover the new unprefixed branches. If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness-Codex/blob/v0.31.0-beta/docs/installation.md).
+When migrating from 0.10.0-beta, run this installer once: its updater cannot discover the new unprefixed branches. If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness-Codex/blob/v0.32.0-beta/docs/installation.md).
 
 ## Quick Start
 
-Install and sign in to [Codex CLI](https://developers.openai.com/codex/cli/) separately. Harness uses its native login, model, trust, sandbox and approval settings.
+Default Linux installation also prepares the official Codex command. Codex handles login and retains its native model, trust, sandbox and approval settings. After applying PATH, you can start setup entirely from its screen:
+
+```bash
+codex
+```
+
+Enter `/harness/`, select **Init**, choose a project directory and supply a description or Markdown path. Confirm the summary to configure that project. An existing harness offers review and update. For another directory, finish the current work and use `/quit`; Harness opens the target conversation and continues setup there. Use **Settings** for project preferences, **Jev** for private login, and **Tool** for updates or uninstall. Credential entry and tool removal open their terminal flows after exiting Codex. See [in-conversation management](docs/management.md).
+
+The terminal workflow remains available:
+
+The configuration picker and login prompts described below apply to terminal
+`harness-codex init`. In the Codex menu, configuration uses the current conversation
+settings; use **Settings** for maintenance/routing and **Jev → Login** for credentials.
 
 ```bash
 cd /path/to/project
@@ -173,19 +185,19 @@ After reinstalling, run `status` in a project to recognize its retained harness.
 ## Documentation
 
 - [Native Codex integration and automatic model routing](docs/routing.md)
-- [Installation, reinstall choices and troubleshooting](https://github.com/sholee-pt/Harness-Codex/blob/v0.31.0-beta/docs/installation.md)
-- [Project and conversation lifecycle](https://github.com/sholee-pt/Harness-Codex/blob/v0.31.0-beta/docs/sessions.md)
+- [Installation, reinstall choices and troubleshooting](https://github.com/sholee-pt/Harness-Codex/blob/v0.32.0-beta/docs/installation.md)
+- [Project and conversation lifecycle](https://github.com/sholee-pt/Harness-Codex/blob/v0.32.0-beta/docs/sessions.md)
 - [Bounded maintenance and local records](docs/maintenance.md)
 - [Optional task checkpoints and selective resume](.agents/skills/harness/references/task-checkpoints.md)
 - [Optional local Graft retrieval](docs/retrieval.md)
 - [Optional Jev advice, local observations and evaluation limits](docs/jev.md)
 - [Dependency and optimization review](docs/optimization-review.md)
 - [Beta versioning and migration](docs/versioning.md)
-- [Generated structure and design](https://github.com/sholee-pt/Harness-Codex/blob/v0.31.0-beta/docs/architecture.md)
-- [Quality evaluation and optional local evidence](https://github.com/sholee-pt/Harness-Codex/blob/v0.31.0-beta/docs/evaluation.md)
+- [Generated structure and design](https://github.com/sholee-pt/Harness-Codex/blob/v0.32.0-beta/docs/architecture.md)
+- [Quality evaluation and optional local evidence](https://github.com/sholee-pt/Harness-Codex/blob/v0.32.0-beta/docs/evaluation.md)
 - [Workflow efficiency, instruction inventory and selected OMX concepts](docs/workflow-efficiency.md)
 - [External specialist skills and selected upstream improvements](docs/external-skills.md)
-- [Release assets and verification](https://github.com/sholee-pt/Harness-Codex/blob/v0.31.0-beta/docs/distribution.md)
+- [Release assets and verification](https://github.com/sholee-pt/Harness-Codex/blob/v0.32.0-beta/docs/distribution.md)
 - [Changelog](CHANGELOG.md) · [GitHub Releases](https://github.com/sholee-pt/Harness-Codex/releases) · [Contributing](CONTRIBUTING.md)
 
 ## Agent editions

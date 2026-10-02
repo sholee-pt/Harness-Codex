@@ -103,6 +103,7 @@ def build_parser(source_root: Path) -> argparse.ArgumentParser:
     install.add_argument("--repository", default=distribution.DEFAULT_REPOSITORY, help="HTTPS or SSH transport for sholee-pt/Harness-Codex.")
     install.add_argument("--auto-update", choices=("compatible", "check", "off"), default="compatible")
     install.add_argument("--no-modify-path", action="store_true", help="Skip user PATH registration (Bash startup on Linux; user registry on Windows).")
+    install.add_argument('--no-codex-integration', action='store_true', help='Install only the Harness tool; skip automatic Linux Codex integration.')
     install.add_argument("--existing", choices=("ask", "reuse", "reset"), default="ask",
                          help="When installation traces exist, choose whether to reuse or reset Harness tool settings.")
     install.add_argument("--owned-runtime", type=Path, help=argparse.SUPPRESS)
@@ -269,9 +270,8 @@ def main(argv: list[str] | None = None, *, source_root: Path | None = None) -> i
                 reset_check_cache(args.data_dir)
             if not args.no_modify_path:
                 ui.report(path_registration(args.bin_dir, reset=choice == 'reset', previous=previous_bin), title='PATH registration')
-            from .codex_integration import read as integration_read, install as integration_install
-            if os.name == 'posix' and not args.no_modify_path and integration_read(args.data_dir) is not None:
-                ui.report(integration_install(args.data_dir, Path(result['sourceRoot'])), title='Codex integration')
+            from .setup import prepare_integration
+            prepare_integration(args, Path(result['sourceRoot']))
             hint = "Open a new terminal." if os.name == "nt" else "Apply PATH in this Bash session: source ~/.bashrc"
             if args.no_modify_path:
                 hint = "PATH registration skipped; invoke the command by its full path."

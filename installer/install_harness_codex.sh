@@ -12,6 +12,7 @@ usage() {
     '  --existing MODE         ask (default), reuse, or reset Harness settings' \
     '  --activate MODE         ask (default), shell, or skip opening a ready Bash' \
     '  --no-modify-path        Do not register PATH in ~/.bashrc' \
+    '  --no-codex-integration  Install only the Harness management tool' \
     '  --help                  Offline help' \
     'Linux x86_64/aarch64. Requires curl, Bash, tar and sha256sum.' \
     'Existing Conda is reused; otherwise a checksum-pinned Miniforge is installed.'
@@ -19,7 +20,7 @@ usage() {
 validate_options() {
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --no-modify-path) shift ;;
+      --no-modify-path|--no-codex-integration) shift ;;
       --bin-dir|--data-dir|--auto-update|--existing|--activate|--repository|--branch|--agent|--runtime)
         [ "$#" -ge 2 ] && [ -n "$2" ] || fail "Missing value for $1"
         key=$1; value=$2; shift 2

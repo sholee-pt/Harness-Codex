@@ -15,6 +15,27 @@ from harness_cli import distribution as dist, footprint, main, setup, shell, pat
 from test_cli_distribution import files, source
 
 
+class InstallIntegrationTests(unittest.TestCase):
+    def test_new_linux_install_prepares_codex_without_a_project(self):
+        from types import SimpleNamespace
+        from harness_cli import codex_integration
+        root = Path(__file__).resolve().parents[1]
+        args = SimpleNamespace(no_modify_path=False, no_codex_integration=False, data_dir=Path('tool'))
+        with mock.patch.object(setup.sys, 'platform', 'linux'), mock.patch.object(codex_integration, 'read', return_value=None), mock.patch.object(codex_integration, 'install', return_value={}) as install, contextlib.redirect_stdout(io.StringIO()):
+            setup.prepare_integration(args, root)
+        install.assert_called_once_with(args.data_dir, root)
+
+    def test_tool_only_and_other_platform_installs_do_not_fetch_codex(self):
+        from types import SimpleNamespace
+        from harness_cli import codex_integration
+        for platform, no_path, no_integration in [('linux', True, False), ('linux', False, True), ('win32', False, False)]:
+            with self.subTest(platform=platform, no_path=no_path, no_integration=no_integration):
+                args = SimpleNamespace(no_modify_path=no_path, no_codex_integration=no_integration, data_dir=Path('tool'))
+                with mock.patch.object(setup.sys, 'platform', platform), mock.patch.object(codex_integration, 'install') as install:
+                    setup.prepare_integration(args, Path('unused'))
+                install.assert_not_called()
+
+
 class ReinstallTests(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()

@@ -435,7 +435,14 @@ class Relay:
         from .management_relay import Controls
         async def send(message):
             await websocket.send(json.dumps(message))
-        controls = Controls(self, send, call)
+        async def submit(params):
+            if not self.policy.loaded or self.policy.refresh_needed:
+                await asyncio.wait_for(refresh(), 20)
+            request = self.policy.request('turn/start', params)
+            result = await call('turn/start', request)
+            self.policy.response({'result': result}, 'turn/start', params)
+            await notices()
+        controls = Controls(self, send, call, submit)
 
         async def incoming():
             async for raw in websocket:
@@ -542,18 +549,37 @@ async def run(binary, args, env, policy):
         selected = relay.after_exit
         if code or not selected:
             return code
-        if selected['action'] == 'update':
-            command = [sys.executable, '-B', str(Path(__file__).resolve().parents[1] / 'harness.py'), '--no-update-check', 'update']
+        if selected['action'] in {'update', 'uninstall', 'jev'}:
+            action = selected['action']
+            arguments = [action] if action != 'jev' else ['jev', selected['operation'], '--project', selected['root']]
+            command = [sys.executable, '-B', str(Path(__file__).resolve().parents[1] / 'harness.py'), '--no-update-check', *arguments]
             process = await asyncio.create_subprocess_exec(*command, env=env)
             return await process.wait()
-        from .paths import project_root
-        root = project_root(selected['root'])
+        from .paths import project_root, project_target
+        if selected['action'] == 'configure':
+            root = project_target(selected['root'])
+            if str(root) != selected['root']:
+                raise ValueError('Queued project location changed; configuration was not started.')
+            if not root.exists():
+                command = [sys.executable, '-B', str(Path(__file__).resolve().parents[1] / 'harness.py'), '--no-update-check', 'init', '--install-only', '--project', str(root)]
+                process = await asyncio.create_subprocess_exec(*command, env=env)
+                code = await process.wait()
+                if code:
+                    return code
+        else:
+            root = project_root(selected['root'])
         from .workspace_context import PATH as context_path, prepare
         if (root / context_path).is_file():
             prepare(root, [str(binary)])
         # A new native launch reads the target instructions and permission policy.
         # Never carry the source conversation's flags, input or sandbox overrides.
-        args = ['-c', 'check_for_update_on_startup=false', '--cd', str(root)] + (['resume'] if selected['resume'] else [])
+        args = ['-c', 'check_for_update_on_startup=false', '--cd', str(root)]
+        if selected['action'] == 'configure':
+            import shlex
+            arguments = selected['arguments'] or ['--goal', 'Inspect the project evidence and ask about any unclear purpose before generating a harness.']
+            args += ['--', '/harness/' + selected['command'] + ' ' + shlex.join(['--project', str(root), *arguments])]
+        elif selected['resume']:
+            args += ['resume']
         if policy.observer is not None:
             policy.observer.cwd = root
         policy.refresh_needed = True
