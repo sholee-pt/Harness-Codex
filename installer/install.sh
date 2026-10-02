@@ -53,10 +53,12 @@ if [[ "$runtime_value_pending" == true || "$runtime" != codex ]]; then
 fi
 [[ -f "$source_dir/harness.py" ]] || { printf '%s\n' 'Run install.sh from a complete Harness source archive.' >&2; exit 1; }
 install_log=$(mktemp "${TMPDIR:-/tmp}/harness-codex-install-log.XXXXXXXX")
+exec {installer_stderr_fd}>&2
 HARNESS_INSTALL_PAUSE_FILE=$(mktemp "${TMPDIR:-/tmp}/harness-codex-progress-XXXXXXXX")
 printf 'Harness installation progress\nrunning\n' > "$HARNESS_INSTALL_PAUSE_FILE"
 export HARNESS_INSTALL_PAUSE_FILE
 spinner_pid=''
+runtime_lock_owned=false
 conda_scratch=''
 step='Starting installer'
 step_started=$SECONDS
@@ -96,15 +98,25 @@ finish_step() {
   if [[ -n "$spinner_pid" ]]; then stop_spinner; printf '%s' "$step"; fi
   printf ': done (%ss)  %sOK%s\n' "$((SECONDS - step_started))" "$success" "$plain"
 }
+release_runtime_lock() {
+  if [[ ${runtime_lock_owned:-false} == true && ! -L "$runtime_lock_path" && $(stat -c '%d:%i' -- "$runtime_lock_path" 2>/dev/null) == "$runtime_lock_identity" ]]; then
+    rmdir -- "$runtime_lock_path" || printf 'Runtime setup lock was changed; preserved: %s\n' "$runtime_lock_path" >&2
+    runtime_lock_owned=false
+  fi
+}
 finish_install() {
   local result=$?
+  exec 2>&"$installer_stderr_fd"
+  exec {installer_stderr_fd}>&-
   stop_spinner
+  release_runtime_lock
   rm -f -- "$HARNESS_INSTALL_PAUSE_FILE"
   if [[ -n "$conda_scratch" ]]; then rm -rf -- "$conda_scratch"; fi
   if [[ "$result" -ne 0 ]]; then
     printf '\n%s: failed (exit %s). Last log lines:\n' "$step" "$result" >&2
     sed -n '/^harness:/p' "$install_log" >&2
-    tail -n 15 -- "$install_log" >&2
+    sed -n '/^Preserved incomplete Harness runtime:/p' "$install_log" >&2
+    tail -n 15 -- "$install_log" | sed '/^harness:/d; /^Preserved incomplete Harness runtime:/d' >&2
     printf 'Detailed log: %s\n' "$install_log" >&2
   fi
   exit "$result"
@@ -114,7 +126,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 printf '\n%sHarness for Codex installer%s\n================================\nDetailed log: %s\n' "$accent" "$plain" "$install_log"
 start_step '[1/3] Checking installation tools'
-source "$source_dir/harness_cli/prepare_conda.sh"
+source "$source_dir/harness_cli/prepare_conda.sh" 2>> "$install_log"
 start_step '[3/3] Installing command and applying PATH preferences'
 # Prepare the transport before the CLI seals a newly owned runtime receipt.
 # Later dependency files must not be mistaken for unrelated user additions.
@@ -127,7 +139,9 @@ if [[ "$prepare_integration" == true && "$(uname -s)" == Linux ]]; then
 fi
 HARNESS_INSTALL_EXPECTED_PREFIX="$selected_prefix" "${installer_runner[@]}" "$selected_python" -B "$source_dir/harness.py" install "$@" "${owned_runtime[@]}" >> "$install_log" 2>&1
 finish_step
+release_runtime_lock
 # Keep the CLI receipt contract intact; replay only its existing human summary.
+sed -n '/^Preserved incomplete Harness runtime:/p' "$install_log"
 sed -n '/^Installed /p' "$install_log"
 sed -n '/^Ready: /p' "$install_log"
 printf 'Installation complete. Detailed log: %s\n' "$install_log"

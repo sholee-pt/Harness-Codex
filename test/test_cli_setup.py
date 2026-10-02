@@ -5,6 +5,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,151 @@ from unittest import mock
 
 from harness_cli import distribution as dist, footprint, main, setup, shell, paths
 from test_cli_distribution import files, source
+
+
+class ShellRuntimeRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.bash = shutil.which('bash')
+        if os.name == 'nt':
+            candidate = Path(os.environ.get('ProgramFiles', 'C:/Program Files')) / 'Git/bin/bash.exe'
+            self.bash = str(candidate) if candidate.is_file() else None
+        if not self.bash:
+            self.skipTest('Bash is unavailable')
+        temporary = tempfile.TemporaryDirectory(prefix='harness-runtime-recovery-')
+        self.addCleanup(temporary.cleanup)
+        self.base = Path(temporary.name).resolve()
+        self.data = self.base / 'tool data'
+        self.runtime = self.base / 'tool data-runtime'
+        self.prefix = self.runtime / 'envs/harness'
+        self.prefix.mkdir(parents=True)
+        self.data.mkdir()
+        self.marker = self.runtime / '.harness-runtime-owner'
+        self.marker.write_text('harness-codex runtime v1\n' + self.posix(self.data) + '\n', encoding='utf-8', newline='\n')
+        (self.runtime / '.harness-runtime-files.json').write_text('{"oldReceipt":true}\n')
+        (self.prefix / 'user-file').write_text('preserve these bytes\n')
+        self.source = self.base / 'source'
+        (self.source / 'installer').mkdir(parents=True)
+        (self.source / 'harness_cli').mkdir()
+        root = Path(__file__).resolve().parents[1]
+        for relative in ('installer/install.sh', 'harness_cli/prepare_conda.sh'):
+            (self.source / relative).write_bytes((root / relative).read_bytes())
+        (self.source / 'harness.py').write_text('# The fixture interpreter does not run Python.\n')
+        self.binary = self.base / 'bin'
+        self.binary.mkdir()
+        self.manager = self.binary / 'conda'
+        self.script(self.manager, '''printf '%s\n' "$*" >> "$HOME/manager-calls"
+case "$1" in
+  env) printf '{"envs":[]}\n' ;;
+  create)
+    [[ ! -f "$HOME/fail-create" ]] || exit 23
+    prefix=$3
+    mkdir -p "$prefix/conda-meta" "$prefix/bin"
+    touch "$prefix/conda-meta/history"
+    printf '#!/bin/bash\nexit 0\n' > "$prefix/bin/python"
+    chmod +x "$prefix/bin/python" ;;
+  run) shift 4; "$@" ;;
+esac
+''')
+
+    @staticmethod
+    def posix(path):
+        value = Path(path).as_posix()
+        return '/' + value[0].lower() + value[2:] if os.name == 'nt' else value
+
+    @staticmethod
+    def script(path, body):
+        path.write_text('#!/bin/bash\nset -eu\n' + body, encoding='utf-8', newline='\n')
+        path.chmod(0o755)
+
+    def install(self):
+        environment = {**os.environ, 'HOME': self.posix(self.base), 'TMPDIR': self.posix(self.base),
+                       'CONDA_EXE': self.posix(self.manager), 'TERM': 'dumb'}
+        command = 'export PATH="$HOME/bin:/usr/bin:/bin:$PATH"; bash "$1" --data-dir "$2" --no-modify-path --activate skip'
+        result = subprocess.run([self.bash, '-c', command, 'fixture', self.posix(self.source / 'installer/install.sh'),
+                                 self.posix(self.data)], env=environment, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=20)
+        logs = list(self.base.glob('harness-codex-install-log.*'))
+        return result, '\n'.join(path.read_text() for path in logs)
+
+    def test_orphan_with_old_receipt_is_preserved_and_reinstall_is_idempotent(self):
+        before = files(self.runtime)
+        result, log = self.install()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr + log)
+        backups = list(self.base.glob('tool data-runtime.recovery.*'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(files(backups[0] / 'runtime'), before)
+        self.assertTrue((self.prefix / 'conda-meta/history').is_file())
+        self.assertFalse((self.runtime / '.harness-runtime-files.json').exists())
+        self.assertIn('Preserved incomplete Harness runtime:', result.stdout)
+        self.assertIn(self.posix(backups[0] / 'runtime'), log)
+        result, log = self.install()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr + log)
+        self.assertEqual(list(self.base.glob('tool data-runtime.recovery.*')), backups)
+        self.assertEqual((self.base / 'manager-calls').read_text().count('create '), 1)
+        self.assertEqual(files(backups[0] / 'runtime'), before)
+
+    def test_failed_recreation_keeps_backup_and_reports_it(self):
+        before = files(self.runtime)
+        (self.base / 'fail-create').touch()
+        result, log = self.install()
+        self.assertEqual(result.returncode, 23, result.stdout + result.stderr + log)
+        backup = next(self.base.glob('tool data-runtime.recovery.*'))
+        self.assertEqual(files(backup / 'runtime'), before)
+        self.assertIn('Preserved incomplete Harness runtime:', result.stderr)
+        self.assertNotIn('Installation complete.', result.stdout)
+        self.assertFalse((self.base / 'tool data-runtime.bootstrap-lock').exists())
+
+    def test_orphan_receipt_without_environment_is_not_reused(self):
+        (self.prefix / 'user-file').unlink()
+        self.prefix.rmdir()
+        before = files(self.runtime)
+        result, log = self.install()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr + log)
+        backup = next(self.base.glob('tool data-runtime.recovery.*'))
+        self.assertEqual(files(backup / 'runtime'), before)
+        self.assertTrue((self.prefix / 'conda-meta/history').is_file())
+        self.assertFalse((self.runtime / '.harness-runtime-files.json').exists())
+
+    def test_active_reference_or_unowned_runtime_stops_before_conda(self):
+        for state in ('active.json', 'runtime.json', '.install.lock', 'unowned'):
+            with self.subTest(state=state):
+                path = self.data / state if state != 'unowned' else self.marker
+                original = path.read_bytes() if path.exists() else None
+                path.write_text('unrecognized state')
+                before = files(self.runtime)
+                try:
+                    result, log = self.install()
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('harness:', result.stderr)
+                    self.assertIn(self.posix(self.runtime), log)
+                    self.assertEqual(files(self.runtime), before)
+                    self.assertFalse((self.base / 'manager-calls').exists())
+                    self.assertFalse(list(self.base.glob('tool data-runtime.recovery.*')))
+                finally:
+                    if original is None:
+                        path.unlink()
+                    else:
+                        path.write_bytes(original)
+
+    def test_concurrent_installer_lock_is_preserved(self):
+        lock = self.base / 'tool data-runtime.bootstrap-lock'
+        lock.mkdir()
+        result, log = self.install()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Runtime setup lock exists', log)
+        self.assertTrue(lock.is_dir())
+        self.assertFalse((self.base / 'manager-calls').exists())
+        self.assertFalse(list(self.base.glob('tool data-runtime.recovery.*')))
+
+    @unittest.skipUnless(os.name == 'posix', 'Native symbolic links')
+    def test_runtime_link_is_preserved(self):
+        outside = self.base / 'unrelated'
+        self.prefix.rename(outside)
+        self.prefix.symlink_to(outside, target_is_directory=True)
+        result, log = self.install()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Runtime path is a symlink', log)
+        self.assertEqual((outside / 'user-file').read_text(), 'preserve these bytes\n')
+        self.assertFalse((self.base / 'manager-calls').exists())
 
 
 class InstallIntegrationTests(unittest.TestCase):

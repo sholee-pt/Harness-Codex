@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.32.4‑beta`](#harness-for-codex-v0324-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve incomplete orphan runtimes before reinstalling and report bootstrap errors in the installation log. |
 | [`v0.32.3‑beta`](#harness-for-codex-v0323-beta) | Schema 3 | Schema 7 | Schema 2 | Align runtime receipt read limits with creation and preserve bounded metadata reads. |
 | [`v0.32.2‑beta`](#harness-for-codex-v0322-beta) | Schema 3 | Schema 7 | Schema 2 | Prevent upgrade verification from writing Python caches into baseline evidence. |
 | [`v0.32.1‑beta`](#harness-for-codex-v0321-beta) | Schema 3 | Schema 7 | Schema 2 | Synchronize manifest template metadata and retain native submission errors and model refresh signals. |
@@ -96,6 +97,12 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.32.4-beta
+
+- Preserve an owned incomplete runtime and its old receipt in an adjacent recovery directory when no active installation or runtime reference remains, then prepare a fresh environment. Retained files are never deleted or adopted by the new installation.
+- Serialize Linux bootstrap through receipt publication, reject redirected runtime paths, and retain recovery copies when recreation fails.
+- Record bootstrap diagnostics in the detailed log and print the preserved path after clearing progress output.
 
 ## Harness for Codex v0.32.3-beta
 

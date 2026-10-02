@@ -1,4 +1,5 @@
 # Sourced by the unpacked installer; does not activate or initialize Conda.
+runtime_error() { printf 'harness: %s\n' "$*" >> "$install_log"; exit 1; }
 data_directory=${XDG_DATA_HOME:-$HOME/.local/share}/harness-codex
 data_pending=false
 for argument in "$@"; do
@@ -17,17 +18,28 @@ data_directory=$data_parent/$(basename -- "$data_directory")
 data_directory=$(realpath -ms -- "$data_directory")
 runtime_root=$data_directory-runtime
 owned_runtime=()
+recovery=''
+# An atomic directory claim also works on shared storage without a flock helper.
+mkdir -p -- "$data_parent"
+runtime_lock_path=$runtime_root.bootstrap-lock
+mkdir -- "$runtime_lock_path" 2>/dev/null || runtime_error "Runtime setup lock exists: $runtime_lock_path. Another installer may be running; inspect it before retrying."
+runtime_lock_identity=$(stat -c '%d:%i' -- "$runtime_lock_path")
+runtime_lock_owned=true
+[[ ! -L "$data_directory" ]] || runtime_error "Installation root is a symlink; preserved: $data_directory"
 environment_selector=(-n harness)
 # A fresh tool gets an exact prefix. Never create by a name that could select
 # and remove an environment belonging to another Conda installation.
 if [[ ! -f "$data_directory/active.json" || -f "$data_directory/runtime.json" || -f "$runtime_root/.harness-runtime-owner" ]]; then
+  for managed in "$runtime_root/envs" "$runtime_root/envs/harness" "$runtime_root/envs/harness/conda-meta" "$runtime_root/envs/harness/conda-meta/history"; do
+    [[ ! -L "$managed" ]] || runtime_error "Runtime path is a symlink; preserved: $managed"
+  done
   if [[ -e "$runtime_root" || -L "$runtime_root" ]]; then
-    [[ ! -L "$runtime_root" && -f "$runtime_root/.harness-runtime-owner" ]] || { printf 'Unowned runtime directory preserved: %s\n' "$runtime_root" >&2; exit 1; }
+    [[ ! -L "$runtime_root" && -d "$runtime_root" && ! -L "$runtime_root/.harness-runtime-owner" && -f "$runtime_root/.harness-runtime-owner" ]] || runtime_error "Unowned or redirected runtime directory preserved: $runtime_root"
     expected=$(printf 'harness-codex runtime v1\n%s\n' "$data_directory")
     if [[ $(cat -- "$runtime_root/.harness-runtime-owner") != "$expected" ]]; then
       # A shared home can have a different mount prefix on another server.
       # Validate recorded ownership through current source; never rewrite Conda.
-      [[ -f "$data_directory/active.json" && -f "$data_directory/runtime.json" && -f "$runtime_root/envs/harness/conda-meta/history" ]] || { printf 'Runtime belongs to another installation\n' >&2; exit 1; }
+      [[ -f "$data_directory/active.json" && -f "$data_directory/runtime.json" && -f "$runtime_root/envs/harness/conda-meta/history" ]] || runtime_error "Runtime ownership does not match this installation; preserved: $runtime_root"
       timeout 10 "$runtime_root/envs/harness/bin/python" -B -c 'import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); from harness_cli import distribution, footprint; footprint.inspect(distribution._read_json(Path(sys.argv[2]) / "runtime.json"), Path(sys.argv[2]))' "$source_dir" "$data_directory" >> "$install_log" 2>&1 || { printf 'Moved runtime could not be verified; preserve it and review the installation log.\n' >&2; exit 1; }
     fi
   else
@@ -38,10 +50,23 @@ if [[ ! -f "$data_directory/active.json" || -f "$data_directory/runtime.json" ||
   fi
   environment_selector=(--prefix "$runtime_root/envs/harness")
   owned_runtime=(--owned-runtime "$runtime_root")
+  if [[ ! -f "$runtime_root/envs/harness/conda-meta/history" && ( -e "$runtime_root/envs/harness" || -e "$runtime_root/.harness-runtime-files.json" || -L "$runtime_root/.harness-runtime-files.json" ) ]]; then
+    # Uninstall deliberately retains unknown files. Preserve the entire orphan
+    # (including its old receipt) outside the fresh runtime before recreating it.
+    for recorded in "$data_directory/active.json" "$data_directory/runtime.json" "$data_directory/.install.lock"; do
+      [[ ! -e "$recorded" && ! -L "$recorded" ]] || runtime_error "Incomplete runtime belongs to an existing installation; preserved: $runtime_root. Missing Conda history; inspect $recorded before repairing."
+    done
+    recovery=$(mktemp -d "$runtime_root.recovery.XXXXXXXX")
+    mv -T -- "$runtime_root" "$recovery/runtime"
+    printf 'Preserved incomplete Harness runtime: %s\n' "$recovery/runtime" >> "$install_log"
+    mkdir -- "$runtime_root"
+    printf 'harness-codex runtime v1\n%s\n' "$data_directory" > "$runtime_root/.harness-runtime-owner"
+  fi
 fi
 direct_runtime=false
 if [[ ${#owned_runtime[@]} -gt 0 && -f "$runtime_root/envs/harness/conda-meta/history" && -x "$runtime_root/envs/harness/bin/python" ]]; then direct_runtime=true; fi
 conda_command=${CONDA_EXE:-}
+if [[ -n ${recovery:-} && "$conda_command" == "$runtime_root/"* ]]; then conda_command=''; fi
 if [[ -z "$conda_command" && -x "$runtime_root/conda/bin/conda" ]]; then conda_command=$runtime_root/conda/bin/conda; fi
 if [[ -z "$conda_command" ]]; then conda_command=$(command -v conda || true); fi
 if [[ -z "$conda_command" ]]; then
@@ -79,7 +104,7 @@ if [[ "$direct_runtime" == false ]]; then
   printf '%s\n' "$environments" >> "$install_log"
 fi
 if [[ ${#owned_runtime[@]} -gt 0 && ! -f "$runtime_root/envs/harness/conda-meta/history" ]]; then
-  [[ ! -e "$runtime_root/envs/harness" ]] || { printf 'Incomplete runtime environment preserved; inspect it before reinstalling.\n' >&2; exit 1; }
+  [[ ! -e "$runtime_root/envs/harness" && ! -L "$runtime_root/envs/harness" ]] || runtime_error "Incomplete runtime appeared during setup; preserved: $runtime_root/envs/harness"
   "$conda_command" create "${environment_selector[@]}" --override-channels --channel conda-forge python=3.11 git --yes >> "$install_log" 2>&1
 else
   printf '      Reusing the existing Harness environment.\n' >> "$install_log"
