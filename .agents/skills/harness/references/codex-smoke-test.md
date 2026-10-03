@@ -13,7 +13,7 @@ Use this optional check after structural validation when the generated harness m
 Preserve the Codex version, source/guidance revision, launch method and actual selected workspace with the isolated test evidence. A fresh `codex exec` session can test native loading and bounded work, but does not by itself test the interactive `harness init/start` terminal path. Keep those results separate. Use the installed native runtime and existing authorized authentication; do not replace it with a fake command and label the outcome live.
 
 1. Ask Codex to identify the active project harness without changing files.
-2. Read `activation.mode` from `validate_harness.py` or `harness_doctor.py --root REPOSITORY`. For `managed-pointer`, confirm that the active `AGENTS.md` or `AGENTS.override.md` selects `$project-harness` in a fresh task. For `explicit-skill`, invoke `$project-harness` explicitly and confirm that the workspace's generated skill is selected; no managed root pointer is required. Do not modify user-owned instructions to pass this check.
+2. Read `activation.mode` from `validate_harness.py` or `harness_doctor.py --root REPOSITORY`. `managed-pointer`이면 `activation.instructionFile`과 manifest의 `instructionFile`을 확인하고, 그 root instruction이 새 task에서 `$project-harness`를 선택하는지 검증할 것. 설정된 fallback 파일과 비어 있는 상위 후보도 실제 선택 규칙에 반영할 것. For `explicit-skill`, invoke `$project-harness` explicitly and confirm that the workspace's generated skill is selected; no managed root pointer is required. Do not modify user-owned instructions to pass this check.
 3. Confirm that every reported custom agent and project skill exists in the generated topology.
 
 ## Delegation
@@ -37,7 +37,7 @@ First exercise one small direct task with an independently checkable result. Do 
 6. Confirm that the parent or named integrator accounts for all required tasks and runs project-native final verification.
 7. If a packet is revised, validate a separate relay receipt: every review echoes its input packet hash, stale reviews are excluded from integration, and exactly the affected agents are rerun.
 
-Use read-only subagents and at most one writer unless the runtime visibly establishes separate writer worktrees and non-overlapping scopes. A declared worktree field is not sufficient.
+읽기 전용 subagent와 단일 writer를 기본으로 사용할 것. 동시 writer를 시험할 때는 실제 별도 worktree/동등한 격리 또는 명시적 shared-workspace 계약의 실행을 관측할 것. 쓰기 범위 비중첩, 변경 중인 다른 writer 범위 읽기 금지, primary의 공유 상태 소유권과 writer 종료 뒤 검증을 확인할 것. plan 선언만으로 실제 준수를 통과 처리하지 말 것.
 
 Compare before/after source and generated-file snapshots. Keep all test outputs in a selected disposable project/evidence directory, bound the number and duration of attempts, and stop on an unavailable runtime or authentication failure with the unobserved stages marked `not-tested`. A setup failure is not a successful discovery test. Do not weaken sandbox, approval or hook-trust settings to obtain a pass.
 

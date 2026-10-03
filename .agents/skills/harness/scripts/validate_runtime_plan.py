@@ -167,9 +167,13 @@ def _walk(value: Any, path: str = "plan") -> Iterable[tuple[str, Any]]:
 
 
 def _reject_runtime_specific_syntax(plan: dict[str, Any]) -> None:
-    for path, value in _walk(plan):
+    # Project subjects, paths and evidence may legitimately name runtime APIs.
+    # Only execution selector fields describe the orchestration mechanism.
+    selectors = plan.get("execution", {})
+    for key in ("class", "pattern", "adapter"):
+        value = selectors.get(key) if isinstance(selectors, dict) else None
         if isinstance(value, str) and any(token in value for token in RUNTIME_SPECIFIC_TOKENS):
-            raise RuntimePlanError(f"{path} contains runtime-specific tool syntax")
+            raise RuntimePlanError(f"plan.execution.{key} contains runtime-specific tool syntax")
     for path, value in _walk(plan):
         if not isinstance(value, dict):
             continue
@@ -412,7 +416,7 @@ class RuntimePlanValidator:
         _require_keys(
             execution,
             required=("class", "pattern", "adapter", "capabilityPolicyRef", "retention"),
-            optional=("evidenceStatus", "persistenceAllowed", "leader"),
+            optional=("evidenceStatus", "persistenceAllowed", "leader", "sharedWorkspace"),
             label="execution",
         )
         execution_class = execution.get("class")
@@ -453,6 +457,14 @@ class RuntimePlanValidator:
                 raise RuntimePlanError("provisional runtime execution must set persistenceAllowed to false")
         elif "persistenceAllowed" in execution:
             raise RuntimePlanError("persistenceAllowed is only valid for provisional runtime execution")
+        if "sharedWorkspace" in execution:
+            if execution["sharedWorkspace"] != {
+                "explicitSelection": True,
+                "writePolicy": "disjoint-scopes",
+                "sharedStateOwner": "primary",
+                "verification": "after-writers-quiescent",
+            } or type(execution["sharedWorkspace"].get("explicitSelection")) is not bool:
+                raise RuntimePlanError("sharedWorkspace requires explicit disjoint ownership and quiescent verification")
         return execution, provisional
 
     def _validate_participants(
@@ -475,7 +487,7 @@ class RuntimePlanValidator:
             _require_keys(
                 participant,
                 required=("runtimeRole", "boundaryRefs", "readScopes", "writeScopes"),
-                optional=("agent", "runtimeParticipantId", "isolation"),
+                optional=("agent", "runtimeParticipantId", "isolation", "nativeAgentRole"),
                 label=label,
             )
             identifier = _participant_id(participant, provisional=provisional, label=label)
@@ -484,6 +496,12 @@ class RuntimePlanValidator:
             persistent = persistent_agents.get(identifier)
             if participant.get("agent") is not None and persistent is None:
                 raise RuntimePlanError(f"{label}.agent references an unknown persistent agent")
+            if "nativeAgentRole" in participant:
+                if "runtimeParticipantId" not in participant:
+                    raise RuntimePlanError("nativeAgentRole is only valid for a provisional participant")
+                role = _require_text(participant["nativeAgentRole"], f"{label}.nativeAgentRole")
+                if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", role):
+                    raise RuntimePlanError("nativeAgentRole must be a bounded native role identifier")
             if participant.get("runtimeRole") not in harness_teamplay.RUNTIME_ROLES:
                 raise RuntimePlanError(f"{label}.runtimeRole is unsupported")
             boundary_refs = _require_text_list(participant.get("boundaryRefs"), f"{label}.boundaryRefs")
@@ -509,10 +527,12 @@ class RuntimePlanValidator:
                     raise RuntimePlanError(f"{label}.readScopes exceeds persistent file access")
                 if any(not _scope_is_contained(scope, permitted_writes) for scope in write_scopes):
                     raise RuntimePlanError(f"{label}.writeScopes exceeds persistent file access")
-            if participant.get("runtimeRole") == "reviewer" and write_scopes:
-                raise RuntimePlanError("reviewer runtime roles must be read-only")
-            if write_scopes and participant.get("isolation") is not None and participant["isolation"] not in {"worktree", "equivalent"}:
-                raise RuntimePlanError("runtime writer isolation must be worktree or equivalent when declared")
+            if participant.get("runtimeRole") in {"reviewer", "scout"} and write_scopes:
+                raise RuntimePlanError("reviewer and scout runtime roles must be read-only")
+            if write_scopes and participant.get("isolation") is not None and participant["isolation"] not in {"worktree", "equivalent", "shared-workspace"}:
+                raise RuntimePlanError("runtime writer isolation must be worktree, equivalent, or shared-workspace when declared")
+            if participant.get("isolation") == "shared-workspace" and "sharedWorkspace" not in self.plan["execution"]:
+                raise RuntimePlanError("shared-workspace writers require an explicit sharedWorkspace contract")
             if not write_scopes and participant.get("isolation") is not None:
                 if participant.get("isolation") not in {"read-only", "frozen-diff"}:
                     raise RuntimePlanError("read-only participants use read-only or frozen-diff isolation")
@@ -613,10 +633,18 @@ class RuntimePlanValidator:
                 if first_task["owner"] == second_task["owner"]:
                     continue
                 ordered = _has_dependency_path(tasks, first_id, second_id) or _has_dependency_path(tasks, second_id, first_id)
+                if not ordered:
+                    for writer, reader in ((first_participant, second_participant),
+                                           (second_participant, first_participant)):
+                        if writer.get("isolation") == "shared-workspace" and any(
+                            harness_topology.scopes_overlap(written, read)
+                            for written in writer["writeScopes"] for read in reader["readScopes"]
+                        ):
+                            raise RuntimePlanError("concurrent shared-workspace tasks must not read another writer's changing scope")
                 if first_participant["writeScopes"] and second_participant["writeScopes"] and not ordered:
-                    if any(participant.get("isolation") not in {"worktree", "equivalent"}
+                    if any(participant.get("isolation") not in {"worktree", "equivalent", "shared-workspace"}
                            for participant in (first_participant, second_participant)):
-                        raise RuntimePlanError("parallel runtime writers require an isolated worktree or equivalent")
+                        raise RuntimePlanError("parallel runtime writers require isolation or explicit shared-workspace ownership")
                 for first_scope in first_participant["writeScopes"]:
                     for second_scope in second_participant["writeScopes"]:
                         if not harness_topology.scopes_overlap(first_scope, second_scope):

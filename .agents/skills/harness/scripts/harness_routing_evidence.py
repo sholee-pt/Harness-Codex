@@ -33,7 +33,7 @@ def digest(value):
 
 
 def defaults():
-    return {'schema': 1, 'enabled': False, 'policy': dict(DEFAULTS), 'samples': {}}
+    return {'schema': 2, 'enabled': False, 'policy': dict(DEFAULTS), 'samples': {}, 'pending': {}}
 
 
 def validate_policy(policy):
@@ -66,7 +66,7 @@ def quality_lower(successes, total, confidence):
 class RoutingEvidence:
     def __init__(self, root, state_root=None, *, clock=time.time):
         self.root = harness_state.workspace_root(root)
-        self.store = storage.EvaluationStore(state_root=state_root)
+        self.store = storage.EvaluationStore(state_root=state_root, lock_timeout=0.2)
         storage.ensure_state_outside_repositories(self.store.root, [self.root])
         self.clock = clock
         self._secret = None
@@ -96,8 +96,11 @@ class RoutingEvidence:
         if len(content) > MAX_BYTES:
             raise ValueError('Adaptive routing evidence exceeds its limit')
         value = json.loads(content)
-        if (not isinstance(value, dict) or set(value) != set(defaults()) or value['schema'] != 1
-                or type(value['enabled']) is not bool or not isinstance(value['samples'], dict) or len(value['samples']) > MAX_SAMPLES):
+        if isinstance(value, dict) and value.get('schema') == 1 and set(value) == set(defaults()) - {'pending'}:
+            value.update(schema=2, pending={})
+        if (not isinstance(value, dict) or set(value) != set(defaults()) or value['schema'] != 2
+                or type(value['enabled']) is not bool or not isinstance(value['samples'], dict) or len(value['samples']) > MAX_SAMPLES
+                or not isinstance(value['pending'], dict) or len(value['pending']) > MAX_SAMPLES):
             raise ValueError('Invalid adaptive routing state; preserve it for inspection')
         validate_policy(value['policy'])
         for key, item in value['samples'].items():
@@ -112,6 +115,16 @@ class RoutingEvidence:
             if (item['outcome'] == 'verified' and item['source'] != 'verification'
                     or item['outcome'] == 'user-accepted' and item['source'] != 'user-reported'):
                 raise ValueError('Invalid routing outcome provenance')
+        for key, item in value['pending'].items():
+            if (not isinstance(key, str) or not re.fullmatch(r'work-item:[0-9a-f]{32}', key)
+                    or key in value['samples'] or not isinstance(item, dict)
+                    or set(item) != {'at', 'outcome', 'source', 'cause'} or not number(item['at'])
+                    or item['outcome'] not in OUTCOMES or item['source'] not in {'runtime', 'verification', 'user-reported'}
+                    or item['cause'] not in {'unknown', 'inference', 'environment'}
+                    or item['outcome'] == 'verified' and item['source'] != 'verification'
+                    or item['outcome'] == 'user-accepted' and item['source'] != 'user-reported'
+                    or item['source'] == 'runtime' and (item['outcome'] != 'unknown' or item['cause'] != 'unknown')):
+                raise ValueError('Invalid pending routing feedback')
         return value
 
     @contextmanager
@@ -149,12 +162,24 @@ class RoutingEvidence:
 
     def status(self):
         state = self.read()
-        return {'enabled': state['enabled'], 'policy': state['policy'], 'samples': len(state['samples']),
+        return {'enabled': state['enabled'], 'policy': state['policy'], 'samples': len(state['samples']), 'pendingFeedback': len(state['pending']),
                 'workItems': [{'reference': key, 'outcome': item['outcome'], 'tokens': item['tokens'], 'milliseconds': item['milliseconds']}
                               for key, item in sorted(state['samples'].items(), key=lambda pair: pair[1]['at'])[-12:]],
                 'benefit': 'not-established', 'modelCalls': 0, 'rawContentStored': False}
 
     def clear(self):
+        path = self.location()
+        if path is not None and path.exists():
+            from harness_ops import _feedback_files
+            repository_id = self.store.register_workspace(self.root)
+            with self.store.repository_lock(repository_id):
+                pending = _feedback_files(self.store, repository_id)
+                with self.transaction() as state:
+                    state.clear()
+                    state.update(defaults())
+                for item in pending:
+                    item.unlink()
+            return self.status()
         with self.transaction() as state:
             state.clear()
             state.update(defaults())
@@ -174,6 +199,7 @@ class RoutingEvidence:
             raise ValueError('Invalid routing observation identity or timing')
         if tokens is not None and (type(tokens) is not int or not 0 <= tokens <= 10**12):
             raise ValueError('Invalid routing token observation')
+        self._reconcile()
         with self.transaction() as state:
             if not state['enabled']:
                 return {'recorded': False, 'reason': 'disabled'}
@@ -188,6 +214,10 @@ class RoutingEvidence:
                 return {'recorded': False, 'reference': reference, 'reason': 'already-recorded'}
             while len(state['samples']) >= MAX_SAMPLES:
                 del state['samples'][min(state['samples'], key=lambda key: state['samples'][key]['at'])]
+            self._prune_pending(state)
+            pending = state['pending'].pop(reference, None)
+            if pending:
+                sample.update({key: pending[key] for key in ('outcome', 'source', 'cause')})
             state['samples'][reference] = sample
             return {'recorded': True, 'reference': reference}
 
@@ -197,16 +227,58 @@ class RoutingEvidence:
                 or outcome == 'verified' and source != 'verification'
                 or outcome == 'user-accepted' and source != 'user-reported'):
             raise ValueError('Routing feedback requires explicit verification or user evidence')
+        self._reconcile()
+        return self._feedback(reference, outcome, source, cause)
+
+    def withdraw(self, reference):
+        # A corrected operations annotation without external outcome evidence
+        # cannot leave its superseded verified result in routing decisions.
+        self._reconcile()
+        return self._feedback(reference, 'unknown', 'runtime', 'unknown')
+
+    def _reconcile(self):
+        if not self.read()['enabled']:
+            return False
+        from harness_ops import _feedback_files, _flush_routing_feedback
+        repository_id = self.store.register_workspace(self.root)
+        if not _feedback_files(self.store, repository_id):
+            return False
+        with self.store.repository_lock(repository_id):
+            _flush_routing_feedback(self, repository_id)
+        return True
+
+    def _prune_pending(self, state):
+        cutoff = self.clock() - state['policy']['historyDays'] * 86400
+        state['pending'] = {key: item for key, item in state['pending'].items() if cutoff <= item['at']}
+
+    def _feedback(self, reference, outcome, source, cause, *, existing_when_disabled=False):
+        if not isinstance(reference, str) or not re.fullmatch(r'work-item:[0-9a-f]{32}', reference):
+            raise ValueError('Routing feedback requires an opaque work-item reference')
         with self.transaction() as state:
-            if not state['enabled'] or reference not in state['samples']:
-                return {'recorded': False, 'reason': 'disabled-or-unobserved-work'}
-            sample = state['samples'][reference]
+            if not state['enabled'] and not (existing_when_disabled and (reference in state['samples'] or reference in state['pending'])):
+                return {'recorded': False, 'reason': 'disabled'}
+            self._prune_pending(state)
             update = {'outcome': outcome, 'source': source, 'cause': cause}
+            if reference not in state['samples']:
+                previous = state['pending'].get(reference)
+                changed = previous is None or any(previous[name] != value for name, value in update.items())
+                if changed:
+                    while reference not in state['pending'] and len(state['pending']) >= MAX_SAMPLES:
+                        del state['pending'][min(state['pending'], key=lambda key: state['pending'][key]['at'])]
+                    state['pending'][reference] = {'at': self.clock(), **update}
+                return {'recorded': changed, 'reference': reference, 'pending': True}
+            sample = state['samples'][reference]
             changed = any(sample[name] != value for name, value in update.items())
             sample.update(update)
             return {'recorded': changed, 'reference': reference}
 
     def recommend(self, context, baseline, candidates, *, active_task=False, state=None):
+        try:
+            if self._reconcile():
+                state = None
+        except (OSError, ValueError, TimeoutError):
+            # An undelivered correction must never reuse its superseded success.
+            return None
         state = self.read() if state is None else state
         if not state['enabled']:
             return None

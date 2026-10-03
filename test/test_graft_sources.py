@@ -104,7 +104,7 @@ class ExternalSourcesTests(unittest.TestCase):
 
     def test_empty_or_missing_external_source_preserves_primary_hits_text_and_jev(self):
         question = 'Where is project request validation implemented?'
-        baseline = 'Project source and context. ' * 16
+        baseline = 'Project source and context. ' * 12
         def invoke(source, root, cache, settings, action, **kw):
             if root != self.root:
                 return {'text': 'No external hits.', 'hits': 0, 'refreshed': False}
@@ -124,7 +124,7 @@ class ExternalSourcesTests(unittest.TestCase):
             missing = self.execute('query', question, '--max-chars', '512')
         for result in (original, empty, missing):
             self.assertEqual(result['hits'], 6)
-            self.assertEqual(result['text'], baseline)
+            self.assertTrue(result['text'].startswith(baseline))
             self.assertIn(result['jev']['state'], {'observed', 'cached'})
         self.assertEqual(empty['externalHits'], 0)
         self.assertIn('externalWarning', missing)
@@ -143,7 +143,11 @@ class ExternalSourcesTests(unittest.TestCase):
                 self.assertTrue(result['text'].startswith(baseline))
                 self.assertLessEqual(len(result['text']), 512)
                 self.assertEqual(result['projectHits'], 6)
-                self.assertEqual(result['externalHits'], 3)
+                if size == 100:
+                    self.assertEqual(result['externalHits'], 3)
+                else:
+                    self.assertNotIn('externalHits', result)
+                    self.assertEqual(result['externalSkipped'], 'output-budget-exhausted')
                 self.assertTrue(result['truncated'])
                 self.assertEqual(result['externalDisplayed'], size == 100)
 

@@ -8,7 +8,12 @@ for argument in "$@"; do
   elif [[ "$argument" == --data-dir=* ]]; then data_directory=${argument#*=}; fi
 done
 [[ "$data_pending" == false && -n "$data_directory" ]] || { printf 'Missing --data-dir value\n' >&2; exit 1; }
+case "$data_directory" in '~') data_directory=$HOME ;; '~/'*) data_directory=$HOME/${data_directory:2} ;; esac
 [[ "$data_directory" != *$'\n'* && "$data_directory" != *$'\r'* ]] || exit 1
+while [[ "$data_directory" != / ]]; do
+  case "$data_directory" in */.) data_directory=${data_directory%/.} ;; */) data_directory=${data_directory%/} ;; *) break ;; esac
+  [[ -n "$data_directory" ]] || data_directory=/
+done
 # Home/shared-storage aliases are external locations, not managed files.
 # Resolve their parent once; never follow a redirected installation root.
 data_parent=$(realpath -m -- "$(dirname -- "$data_directory")")

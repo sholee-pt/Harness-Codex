@@ -90,6 +90,54 @@ class PolicyTests(unittest.TestCase):
             self.assertEqual(result['input'], content)
             self.assertFalse(result['model'].startswith(relay.ALIAS))
 
+    def test_virtual_auto_without_catalog_default_uses_the_thread_selection(self):
+        policy = relay.Policy(mode='auto')
+        available = catalog()
+        for entry in available['data']:
+            entry['isDefault'] = False
+        policy.model_list(available)
+        policy.seed('t1', {'model': 'gpt-6-astra', 'reasoningEffort': 'high'})
+        cases = [('thread/settings/update', {}), ('thread/resume', {}), ('thread/fork', {}),
+                 ('turn/start', {'input': [{'type': 'image', 'url': 'fixture'}]}),
+                 ('turn/start', {'input': [{'type': 'text', 'text': 'x' * 40000}]})]
+        for method, content in cases:
+            with self.subTest(method=method, content=bool(content)):
+                params = {'threadId': 't1', 'model': relay.ALIAS, 'approvalPolicy': 'on-request', **content}
+                before = copy.deepcopy(params)
+                result = policy.request(method, params)
+                self.assertEqual(result['model'], 'gpt-6-astra')
+                self.assertEqual(result['approvalPolicy'], 'on-request')
+                self.assertEqual(params, before)
+        policy.contexts.clear()
+        with self.assertRaises(relay.SelectionRequired):
+            policy.request('turn/start', {'threadId': 't1', 'model': relay.ALIAS, 'input': []})
+
+    def test_fresh_thread_routes_its_first_request_without_a_new_task_prefix(self):
+        for select_auto in (False, True):
+            with self.subTest(select_auto=select_auto):
+                policy = relay.Policy(mode='auto', profiles={'fast': ['gpt-5.6-luna']})
+                policy.model_list(catalog())
+                policy.response({'result': {'thread': {'id': 'fresh'}, 'model': 'gpt-6-astra', 'reasoningEffort': 'high'}}, 'thread/start', {})
+                if select_auto:
+                    policy.response({'result': {}}, 'thread/settings/update', {'threadId': 'fresh', 'model': relay.ALIAS})
+                self.assertFalse(policy.contexts['fresh'].active_task)
+                result = policy.request('turn/start', {'threadId': 'fresh', 'input': [{'type': 'text', 'text': 'Fix a typo in README.'}]})
+                self.assertEqual((result['model'], result['effort']), ('gpt-5.6-luna', 'low'))
+                self.assertTrue(policy.contexts['fresh'].active_task)
+        for method in ('thread/resume', 'thread/fork'):
+            with self.subTest(method=method):
+                policy.response({'result': {'thread': {'id': 'existing'}, 'model': 'gpt-6-astra', 'reasoningEffort': 'high'}}, method, {})
+                self.assertTrue(policy.contexts['existing'].active_task)
+
+    def test_unrouted_first_turn_still_marks_the_task_as_active(self):
+        policy = relay.Policy(mode='auto')
+        policy.model_list(catalog())
+        policy.response({'result': {'thread': {'id': 'fresh'}, 'model': 'gpt-6-astra', 'reasoningEffort': 'high'}}, 'thread/start', {})
+        policy.request('turn/start', {'threadId': 'fresh', 'input': [{'type': 'image', 'url': 'fixture'}]})
+        self.assertTrue(policy.contexts['fresh'].active_task)
+        result = policy.request('turn/start', {'threadId': 'fresh', 'input': [{'type': 'text', 'text': 'Continue.'}]})
+        self.assertEqual((result['model'], result['effort']), ('gpt-6-astra', 'high'))
+
     def test_unknown_methods_and_server_approval_packets_are_preserved(self):
         params = {'cwd': '/project', 'approvalPolicy': 'never', 'unknown': {'model': 'leave this field'}}
         self.assertEqual(self.policy.request('future/method', params), params)
@@ -161,7 +209,7 @@ class PolicyTests(unittest.TestCase):
         policy = relay.Policy(mode='auto', observer=observer)
         policy.model_list(catalog())
         policy.response({'result': {'thread': {'id': 't1'}, 'model': 'gpt-5.6-sol', 'reasoningEffort': 'medium'}}, 'thread/start', {})
-        for text, active in [('Implement a function.', True), ('New task: implement a function.', False),
+        for text, active in [('Implement a function.', False), ('New task: implement a function.', False),
                              ('Continue.', True), ('다음 작업: 함수를 구현해줘.', False)]:
             with self.subTest(text=text):
                 policy.request('turn/start', {'threadId': 't1', 'input': [{'type': 'text', 'text': text}]})
@@ -460,7 +508,7 @@ for line in sys.stdin:
                 adapter = relay.Relay('codex', {})
                 process = SimpleNamespace(pid=1234, returncode=None,
                     stdout=SimpleNamespace(readline=mock.AsyncMock(return_value=b'')),
-                    wait=mock.AsyncMock(side_effect=[asyncio.TimeoutError(), 0] if escalation else [0]))
+                    wait=mock.AsyncMock(side_effect=[asyncio.TimeoutError(), 0] if escalation else [0, 0]))
                 signal_process = mock.Mock(side_effect=[None, ProcessLookupError()] if escalation else ProcessLookupError())
 
                 class Socket:
@@ -478,10 +526,8 @@ for line in sys.stdin:
                 self.assertIsNone(adapter.error)
                 self.assertFalse(adapter.connection_lock.locked())
                 socket.close.assert_awaited_once_with()
-                self.assertEqual(process.wait.await_count, 2 if escalation else 1)
-                expected = [mock.call(process.pid, relay.signal.SIGTERM)]
-                if escalation:
-                    expected.append(mock.call(process.pid, relay.signal.SIGKILL))
+                self.assertEqual(process.wait.await_count, 2)
+                expected = [mock.call(process.pid, relay.signal.SIGTERM), mock.call(process.pid, relay.signal.SIGKILL)]
                 self.assertEqual(signal_process.call_args_list, expected)
 
     async def test_real_websocket_reconnect_keeps_authentication_and_new_request_ids(self):

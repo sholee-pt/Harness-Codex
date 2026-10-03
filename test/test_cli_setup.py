@@ -70,12 +70,12 @@ esac
         path.write_text('#!/bin/bash\nset -eu\n' + body, encoding='utf-8', newline='\n')
         path.chmod(0o755)
 
-    def install(self):
+    def install(self, data_argument=None):
         environment = {**os.environ, 'HOME': self.posix(self.base), 'TMPDIR': self.posix(self.base),
                        'CONDA_EXE': self.posix(self.manager), 'TERM': 'dumb'}
         command = 'export PATH="$HOME/bin:/usr/bin:/bin:$PATH"; bash "$1" --data-dir "$2" --no-modify-path --activate skip'
         result = subprocess.run([self.bash, '-c', command, 'fixture', self.posix(self.source / 'installer/install.sh'),
-                                 self.posix(self.data)], env=environment, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=20)
+                                 data_argument or self.posix(self.data)], env=environment, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=20)
         logs = list(self.base.glob('harness-codex-install-log.*'))
         return result, '\n'.join(path.read_text() for path in logs)
 
@@ -95,6 +95,30 @@ esac
         self.assertEqual(list(self.base.glob('tool data-runtime.recovery.*')), backups)
         self.assertEqual((self.base / 'manager-calls').read_text().count('create '), 1)
         self.assertEqual(files(backups[0] / 'runtime'), before)
+
+    @unittest.skipUnless(os.name == 'posix', 'Requires POSIX parent aliases')
+    def test_parent_alias_and_trailing_dot_keep_correct_runtime_boundary(self):
+        unrelated = self.data / '-runtime'
+        unrelated.write_text('unrelated user file')
+        alias = self.base / 'parent-alias'
+        alias.symlink_to(self.base, target_is_directory=True)
+        result, log = self.install(str(alias / self.data.name) + '/.')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr + log)
+        self.assertTrue((self.prefix / 'conda-meta/history').is_file())
+        self.assertEqual(unrelated.read_text(), 'unrelated user file')
+
+    @unittest.skipUnless(os.name == 'posix', 'Requires POSIX parent aliases')
+    def test_parent_alias_dotdot_keeps_physical_selection(self):
+        logical = self.base / 'logical'
+        logical.mkdir()
+        inner = self.base / 'inner'
+        inner.mkdir()
+        alias = logical / 'alias'
+        alias.symlink_to(inner, target_is_directory=True)
+        result, log = self.install(str(alias / '..' / self.data.name))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr + log)
+        self.assertTrue((self.prefix / 'conda-meta/history').is_file())
+        self.assertFalse((logical / self.runtime.name).exists())
 
     def test_failed_recreation_keeps_backup_and_reports_it(self):
         before = files(self.runtime)

@@ -57,7 +57,7 @@ Use the templates in `assets/` as structural starting points, then tailor them t
 - `.codex/agents/<role>.toml` for justified agents
 - `.agents/skills/<skill>/SKILL.md` for justified project skills
 - `.agents/skills/project-harness/SKILL.md` for orchestration
-- a single managed pointer block in the active root `AGENTS.md` or `AGENTS.override.md`
+- root instruction 후보의 우선순위와 빈 파일 여부를 반영한 inventory의 `plannedRootInstruction`에 managed pointer block 하나를 계획할 것. `.codex/config.toml`의 `project_doc_fallback_filenames`로 선택된 파일도 지원 대상임. `instructionSelectionErrors`가 있으면 선택이 미확인인 상태이므로 파일명을 추정하지 말고 원인을 해결할 것.
 
 The apply script derives `.harness/manifest.json` from the validated plan. Reviewed configuration appends or updates only the Harness-owned root activation block, preserving all surrounding user text. Existing unowned or modified marker blocks remain conflicts. `explicit-skill` is a readable legacy activation state, not the default for new configuration.
 
@@ -87,7 +87,7 @@ The builder also adds concise workflow activation guidance. A quoted workflow na
 4. Run the same command without `--dry-run` only after the dry-run is clean.
 5. If apply reports a pending transaction, stop planning, read [transaction-recovery.md](references/transaction-recovery.md), and run `harness-codex helper harness_apply --root <workspace-root> --recover` before retrying.
 6. Run `harness-codex helper validate_harness <workspace-root>`.
-   Inspect its `activation` report: `managed-pointer` requires a fresh-task instruction check; `explicit-skill` is a readable legacy state; reviewed configuration appends an owned activation block while preserving all existing user text. When installation or activation is unclear, run the read-only `scripts/harness_doctor.py --root <workspace-root>`. Neither diagnostic proves runtime loading or launches Codex.
+   Inspect its `activation` report: `managed-pointer` requires a fresh-task instruction check; `explicit-skill` is a readable legacy state; reviewed configuration appends an owned activation block while preserving all existing user text. `activation.instructionFile`과 manifest의 `instructionFile`이 실제 선택된 root instruction을 가리키는지 확인할 것. 기본 `AGENTS` 파일명으로 추정하지 말 것. When installation or activation is unclear, run the read-only `scripts/harness_doctor.py --root <workspace-root>`. Neither diagnostic proves runtime loading or launches Codex.
 7. When a current-task runtime plan is needed, keep it in memory or an OS temporary directory and run `harness-codex helper validate_runtime_plan --root <workspace-root> --plan <runtime-plan>`. Never insert it into the manifest.
 8. After each delegated or coordinated task returns, run `harness-codex helper validate_coordination_packet --root <workspace-root> --plan <runtime-plan> --packet <coordination-packet>` before relaying or integrating its claims. Keep packets ephemeral by default. When revisions occur, also read [relay-receipt.md](references/relay-receipt.md) and validate the separate review lineage receipt.
 9. For an explicitly requested live observation, read [runtime-observation.md](references/runtime-observation.md). Use the canonical receiver handle for execution control and treat public/local profiles as optional evidence surfaces. A supported receipt may establish control-plane or cross-validated completion; its hash alone does not establish that the source observations were truthful.

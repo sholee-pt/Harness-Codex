@@ -12,6 +12,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 import harness_metadata
+import harness_state
 
 
 INVENTORY_IGNORED_DIRS = {
@@ -72,6 +73,7 @@ MANIFEST_NAMES = {
 }
 
 INSTRUCTION_NAMES = {"AGENTS.md", "AGENTS.override.md"}
+INSTRUCTION_SELECTION_MAX_BYTES = 1024 * 1024
 TEST_MARKERS = {"test", "tests", "spec", "specs", "__tests__"}
 
 CODE_EXTENSIONS = {
@@ -350,6 +352,17 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
         raise ValueError("file and directory budgets must be positive")
     root_context = require_workspace_root(root)
     root = root.resolve()
+    instruction_errors: list[str] = []
+    instruction_candidates = set(INSTRUCTION_NAMES)
+    active_instruction = planned_instruction = None
+    try:
+        instruction_candidates.update(harness_state.project_instruction_candidates(root))
+        planned_instruction = harness_state.active_instruction_relative(root, max_bytes=INSTRUCTION_SELECTION_MAX_BYTES)
+        _, present = harness_state.resolve_lexical_regular_inside(root, planned_instruction, label="project instruction")
+        active_instruction = planned_instruction if present else None
+    except (OSError, UnicodeError, harness_state.StateError) as exc:
+        instruction_errors.append(str(exc))
+        active_instruction = planned_instruction = None
     nested_paths = {item["path"] for item in root_context["nestedRepositories"]}
     repository_counts: Counter[str] = Counter()
     repository_roles: defaultdict[str, Counter[str]] = defaultdict(Counter)
@@ -359,7 +372,7 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
     boundary_roles: defaultdict[str, Counter[str]] = defaultdict(Counter)
     file_roles: Counter[str] = Counter()
     manifests: list[str] = []
-    instructions: list[str] = []
+    instructions: list[str] = [active_instruction] if active_instruction is not None else []
     tests: list[str] = []
     ci: list[str] = []
     excluded_artifact_directories: list[str] = []
@@ -440,7 +453,7 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
             file_count += 1
 
             suffix = path.suffix.lower() or "[no-extension]"
-            role = _file_role(path, parts)
+            role = "config" if current_path == root and filename in instruction_candidates else _file_role(path, parts)
             file_roles[role] += 1
             is_artifact = role == "research-artifact"
             if is_artifact:
@@ -462,7 +475,7 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
 
             if filename in MANIFEST_NAMES:
                 manifests.append(rel)
-            if filename in INSTRUCTION_NAMES:
+            if filename in INSTRUCTION_NAMES or (current_path == root and filename in instruction_candidates):
                 instructions.append(rel)
             if any(part.lower() in TEST_MARKERS for part in parts) or filename.lower().startswith("test_"):
                 tests.append(rel)
@@ -537,15 +550,10 @@ def build_inventory(root: Path, max_files: int, *, include_artifacts: bool = Fal
         "extensions": dict(sorted(extensions.items(), key=lambda item: (-item[1], item[0]))),
         "topLevel": dict(sorted(top_level_counts.items())),
         "manifests": sorted(manifests),
-        "instructions": sorted(instructions),
-        "existingActiveRootInstruction": (
-            "AGENTS.override.md"
-            if "AGENTS.override.md" in instructions
-            else "AGENTS.md" if "AGENTS.md" in instructions else None
-        ),
-        "plannedRootInstruction": (
-            "AGENTS.override.md" if "AGENTS.override.md" in instructions else "AGENTS.md"
-        ),
+        "instructions": sorted(set(instructions)),
+        "existingActiveRootInstruction": active_instruction,
+        "plannedRootInstruction": planned_instruction,
+        "instructionSelectionErrors": instruction_errors,
         "tests": sorted(tests)[:100],
         "ci": sorted(ci),
         "artifactSummary": {

@@ -102,7 +102,9 @@ Use `--recover` only when status or a failed apply reports a pending journal. Us
 
 If Windows Conda raises `UnicodeEncodeError` while forwarding a child-process error, inspect transaction status before retrying and rerun the diagnostic with `conda run --no-capture-output -n harness python ...`. This keeps the required environment while exposing the original Harness result.
 
-The current Harness for Codex uses Manifest Schema 7, Artifact Contract 2, Inventory Schema 5, and Root Context Schema 3. Authoring Contract 3, generation Plan Schema 3, Transaction Schema 2, runtime-plan Schema 1, coordination-packet Schema 1, relay-receipt Schema 1, Runtime Receipt Schema 2, and Evaluation Schema 2 remain unchanged. Operations Event Schema 1 remains separate user-local evidence. Supported historical evaluation records remain readable descriptively. Concrete attribution requires a compatible measurement contract and complete, independent, plan-verified pairs; it does not require release-number equality. New records declare `runtime.evaluationContract`; the known equivalent v0.32.3-beta and v0.32.4-beta records remain eligible without rewriting their receipts. Unknown contracts or parser semantics are excluded. Runtime/version strata remain separate, so compatibility never pools evidence across versions automatically. Paired evaluation accepts validated installations with the supported project artifact contract. Persistent topology is not changed by runtime, relay, receipt, operations, or evaluation validation.
+The current Harness for Codex uses Manifest Schema 7, Artifact Contract 2, Inventory Schema 5, and Root Context Schema 3. Authoring Contract 3, generation Plan Schema 3, Transaction Schema 2, runtime-plan Schema 1, coordination-packet Schema 1, relay-receipt Schema 1, Runtime Receipt Schema 2, and Evaluation Schema 2 remain unchanged. Operations Event Schema 1 remains separate user-local evidence. Supported historical evaluation records remain readable descriptively. Concrete attribution requires a compatible measurement contract and complete, independent, plan-verified pairs; it does not require release-number equality. New records explicitly declare `runtime.evaluationContract: schema2-parser1-attribution3`, whose reference-set comparisons ignore order and distinguish complete from partial observations. A partial subset is not evidence that an expected component was absent; a positively observed unexpected component still constitutes a deviation. Compatible partial observations can combine without claiming complete coverage. Earlier attribution2 and implicit-contract records remain readable without rewriting their receipts, but are not retroactively eligible under the new semantics. Unknown contracts or parser semantics are excluded. Runtime/version strata remain separate, so compatibility never pools evidence across versions automatically. Paired evaluation accepts validated installations with the supported project artifact contract. Persistent topology is not changed by runtime, relay, receipt, operations, or evaluation validation.
+
+An interrupted final save can leave both pending and completed receipts. When their identities agree and both are valid, reads prefer the immutable completed receipt. `repair` reports the pending residue, and `repair --quarantine` preserves it separately without modifying the completed bytes. Conflicting identities remain an explicit repair error. View, comparison and proposal commands take one locked observation snapshot per repository and index it by Run ID; the next command reads fresh state.
 
 Repeated verified correctness regressions can support a negative signal even when the primary efficiency measurement improves or ties. Their support uses the independent regression count, with the same minimum pair counts and consistency thresholds; efficiency losses and correctness regressions are not added together to manufacture stronger support. Missing verification, isolated failures and incomplete pairs do not become causal claims.
 
@@ -174,6 +176,32 @@ the subsequent task costs, including failed attempts; missing usage is not zero.
 `--output NEW_REPORT.json` optionally saves metadata only, outside the source and
 authentication directory, after a live run. Existing report files are preserved.
 No prompts, final responses, source excerpts or credentials enter that report.
+
+`experimentIdentity` binds each report to hashes of the brief, held-out task,
+verification profile, actual generator and management sources, and runner source.
+It records the Harness version without treating that label as proof of identical
+guidance. Compare these identities before combining experiments; hashes do not
+retain input text or establish that a task was independently held out.
+The runner checks its source identity at generation and task boundaries. An
+observed guidance/helper change excludes that pair and stops remaining calls
+while preserving the requested denominator; this detects changes rather than
+creating a filesystem isolation boundary around the source checkout.
+
+`--evidence-dir NEW_DIRECTORY` explicitly retains generated candidates before
+the downstream task, including incomplete drafts from failed generation. The
+default retains none. The selected directory must be new and separate from the
+source, authentication directory and metadata report; dry-run creates nothing.
+Retained files are limited to bounded generated candidate directories and the
+managed block of originally configured root instruction files, with private
+directory/file modes 0700/0600 on POSIX. An untrusted manifest cannot authorize
+copying unrelated source files. Candidates can contain project-derived private
+content; preserved user instruction bodies are not copied.
+Treat them as private, untrusted evaluation material, not validated output or
+enum-only operations evidence. Authentication homes, native transcripts and task
+outputs are not copied. Unverified process cleanup skips retention. Retention
+failures are reported separately and do not turn failed generation into success.
+Use these artifacts for a separately recorded, preferably blinded semantic
+review; this option does not perform that review or score quality automatically.
 
 These are descriptive results on user-selected projects and checks. A passing
 check, static validity or observed subagent event does not establish domain

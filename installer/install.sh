@@ -5,20 +5,40 @@ source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 if [[ ! -f "$source_dir/harness.py" ]]; then
   source_dir="$(cd -- "$source_dir/.." && pwd -P)"
 fi
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+for argument in "$@"; do
+if [[ "$argument" == "--help" || "$argument" == "-h" ]]; then
   printf '%s\n' 'Usage: bash install.sh [--bin-dir PATH] [--data-dir PATH] [--branch vX.Y.Z-beta] [--repository URL] [--auto-update compatible|check|off] [--existing ask|reuse|reset] [--no-modify-path] [--no-codex-integration] [--activate ask|shell|skip]' 'Reuses Conda or installs checksum-pinned Miniforge on Linux. Prepares the dedicated harness environment.' 'Installs harness-codex and official Codex integration without sudo; registers PATH in ~/.bashrc unless --no-modify-path is supplied.'
   exit 0
 fi
+done
 activate=ask
 arguments=()
+data_directory=${XDG_DATA_HOME:-$HOME/.local/share}/harness-codex
+bin_directory=$HOME/.local/bin
+selected_branch=''
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --activate)
-      [[ $# -ge 2 ]] || { printf 'Missing --activate value\n' >&2; exit 1; }
-      activate=$2; shift 2 ;;
-    --activate=*) activate=${1#*=}; shift ;;
-    *) arguments+=("$1"); shift ;;
+    --no-modify-path|--no-codex-integration) arguments+=("$1"); shift; continue ;;
+    --activate|--data-dir|--bin-dir|--branch|--repository|--auto-update|--existing|--agent|--runtime)
+      [[ $# -ge 2 && -n "$2" && "$2" != --* ]] || { printf 'Missing %s value\n' "$1" >&2; exit 1; }
+      key=$1; value=$2; shift 2 ;;
+    --activate=*|--data-dir=*|--bin-dir=*|--branch=*|--repository=*|--auto-update=*|--existing=*|--agent=*|--runtime=*)
+      key=${1%%=*}; value=${1#*=}; shift
+      [[ -n "$value" ]] || { printf 'Missing %s value\n' "$key" >&2; exit 1; } ;;
+    *) printf 'Unknown option: %s. Use --help.\n' "$1" >&2; exit 1 ;;
   esac
+  case "$key" in
+    --activate) activate=$value; continue ;;
+    --data-dir) data_directory=$value ;;
+    --bin-dir) bin_directory=$value ;;
+    --auto-update) case "$value" in compatible|check|off) ;; *) printf 'Invalid automatic update policy\n' >&2; exit 1 ;; esac ;;
+    --existing) case "$value" in ask|reuse|reset) ;; *) printf 'Invalid existing-installation choice\n' >&2; exit 1 ;; esac ;;
+    --branch) [[ "$value" =~ ^(codex/)?v(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*)(-beta)?)?)?$ ]] || { printf 'Invalid version branch\n' >&2; exit 1; }; selected_branch=$value ;;
+    --repository) case "${value%.git}" in
+      https://github.com/sholee-pt/Harness|https://github.com/sholee-pt/Harness-Codex|git@github.com:sholee-pt/Harness|git@github.com:sholee-pt/Harness-Codex|ssh://git@github.com/sholee-pt/Harness|ssh://git@github.com/sholee-pt/Harness-Codex) ;;
+      *) printf 'Select the Harness-Codex repository\n' >&2; exit 1 ;; esac ;;
+  esac
+  arguments+=("$key" "$value")
 done
 case "$activate" in ask|shell|skip) ;; *) printf 'Invalid --activate choice; use ask, shell or skip\n' >&2; exit 1 ;; esac
 set -- "${arguments[@]}"
@@ -52,6 +72,47 @@ if [[ "$runtime_value_pending" == true || "$runtime" != codex ]]; then
   exit 1
 fi
 [[ -f "$source_dir/harness.py" ]] || { printf '%s\n' 'Run install.sh from a complete Harness source archive.' >&2; exit 1; }
+if [[ -n "$selected_branch" ]]; then
+  metadata=$source_dir/.agents/skills/harness/scripts/harness_metadata.py
+  [[ -f "$metadata" ]] || { printf 'Source version metadata is missing\n' >&2; exit 1; }
+  source_version=$(sed -nE "s/^HARNESS_VERSION[[:space:]]*=[[:space:]]*['\"]([^'\"]+)['\"].*/\\1/p" "$metadata")
+  branch_version=${selected_branch#codex/}; branch_version=${branch_version#v}
+  [[ "$branch_version" == *.* ]] || branch_version=$branch_version.0
+  [[ "$branch_version" == *.*.* ]] || branch_version=0.$branch_version-beta
+  [[ "$source_version" == *.*.* ]] || source_version=0.$source_version-beta
+  [[ "$source_version" == "$branch_version" ]] || { printf 'Source version does not match pinned branch\n' >&2; exit 1; }
+fi
+preflight_path() {
+  local path=$1 component candidate resolved
+  local -a components
+  [[ -n "$path" && "$path" != *$'\n'* && "$path" != *$'\r'* ]] || { printf 'Invalid installation path\n' >&2; exit 1; }
+  case "$path" in '~') path=$HOME ;; '~/'*) path=$HOME/${path:2} ;; esac
+  # Remove only trailing separators/dots. Resolving '..' before parent aliases
+  # would select a different directory from the caller's physical path.
+  while [[ "$path" != / ]]; do
+    case "$path" in */.) path=${path%/.} ;; */) path=${path%/} ;; *) break ;; esac
+    [[ -n "$path" ]] || path=/
+  done
+  [[ ! -L "$path" ]] || { printf 'Installation root is a symlink; preserved: %s\n' "$path" >&2; exit 1; }
+  resolved=$(realpath -m -- "$path") || { printf 'Cannot resolve installation path\n' >&2; exit 1; }
+  for candidate in "$1" "$path" "$resolved"; do
+    IFS=/ read -r -a components <<< "$candidate"
+    for component in "${components[@]}"; do
+      component=${component%"${component##*[! .]}"}
+      [[ ${component,,} != .git ]] || { printf 'Installation paths must remain outside Git metadata\n' >&2; exit 1; }
+    done
+  done
+  candidate=$resolved
+  while [[ "$candidate" != / ]]; do
+    [[ ! -e "$candidate" || -d "$candidate" ]] || { printf 'Installation path is not a directory; preserved: %s\n' "$candidate" >&2; exit 1; }
+    candidate=$(dirname -- "$candidate")
+  done
+}
+preflight_path "$data_directory"
+case "$data_directory" in '~') data_directory=$HOME ;; '~/'*) data_directory=$HOME/${data_directory:2} ;; esac
+data_directory=$(realpath -m -- "$data_directory")
+preflight_path "$data_directory-runtime"
+preflight_path "$bin_directory"
 install_log=$(mktemp "${TMPDIR:-/tmp}/harness-codex-install-log.XXXXXXXX")
 exec {installer_stderr_fd}>&2
 HARNESS_INSTALL_PAUSE_FILE=$(mktemp "${TMPDIR:-/tmp}/harness-codex-progress-XXXXXXXX")

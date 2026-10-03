@@ -27,7 +27,7 @@ def summarize(contents, skipped=None):
                 kind = 'on-demand-skill'
                 description = harness_frontmatter.parse(content)['description']
                 body = content.split('---', 2)[2]
-            elif path.endswith('.toml'):
+            elif path.startswith('.codex/agents/') and path.endswith('.toml'):
                 kind = 'on-demand-agent'
                 body = tomllib.loads(content).get('developer_instructions', '')
                 if not isinstance(body, str):
@@ -64,10 +64,16 @@ def summarize(contents, skipped=None):
 def inspect(root: Path, manifest):
     entries = manifest.get('managedFiles', []) if isinstance(manifest, dict) else []
     names = {'AGENTS.md', 'AGENTS.override.md', '.agents/skills/harness/SKILL.md'}
+    contents, skipped, total = {}, [], 0
+    instruction = manifest.get('instructionFile') if isinstance(manifest, dict) else None
+    if instruction is not None:
+        if harness_state.is_instruction_relative(root, instruction):
+            names.add(instruction)
+        else:
+            skipped.append({'path': instruction, 'reason': 'manifest instructionFile is not a configured root instruction'})
     if isinstance(entries, list):
         names.update(item['path'] for item in entries if isinstance(item, dict) and isinstance(item.get('path'), str)
                      and (item['path'].endswith('/SKILL.md') or item['path'].endswith('.toml')))
-    contents, skipped, total = {}, [], 0
     for index, name in enumerate(sorted(names)):
         if index >= MAX_FILES:
             skipped.append({'path': name, 'reason': 'inventory-file-budget'})

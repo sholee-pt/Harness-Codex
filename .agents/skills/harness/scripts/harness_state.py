@@ -475,9 +475,20 @@ def content_for_entry(path: Path, kind: str) -> bytes:
     if kind == "file":
         return path.read_bytes()
     if kind == "managed-block":
-        block = extract_managed_block(path.read_text(encoding="utf-8"))
+        block = extract_managed_block(path.read_bytes().decode("utf-8"))
         return block.encode("utf-8")
     raise StateError(f"unsupported managed entry kind: {kind}")
+
+
+def owned_content_matches(content: bytes, kind: str, expected: str) -> bool:
+    if digest_bytes(content) == expected:
+        return True
+    if kind == "managed-block":
+        # Earlier receipts hashed TextIO's universal-newline view. New receipts
+        # retain exact bytes, while those existing ownership records stay valid.
+        normalized = content.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+        return digest_bytes(normalized.encode("utf-8")) == expected
+    return False
 
 
 def load_manifest(root: Path) -> tuple[Path, dict | None]:
@@ -526,10 +537,11 @@ def validate_runtime(manifest: dict) -> None:
         raise StateError(f"manifest runtime is {recorded!r}, expected {RUNTIME!r}")
 
 
-def active_instruction_relative(root: Path) -> str:
+def active_instruction_relative(root: Path, *, max_bytes: int | None = None) -> str:
     """Return the root instruction file Codex will prefer or safely preserve."""
     candidates = project_instruction_candidates(root)
     first_existing: str | None = None
+    remaining = max_bytes
     for relative in candidates:
         path, present = resolve_lexical_regular_inside(
             root, relative, label="project instruction"
@@ -539,7 +551,18 @@ def active_instruction_relative(root: Path) -> str:
         if first_existing is None:
             first_existing = relative
         try:
-            if path.read_text(encoding="utf-8").strip():
+            if remaining is None:
+                content = path.read_text(encoding="utf-8")
+            else:
+                if path.stat().st_size > remaining:
+                    raise StateError("project instruction selection exceeds the inventory byte budget")
+                with path.open("rb") as stream:
+                    data = stream.read(remaining + 1)
+                if len(data) > remaining:
+                    raise StateError("project instruction selection exceeds the inventory byte budget")
+                remaining -= len(data)
+                content = data.decode("utf-8")
+            if content.strip():
                 return relative
         except (OSError, UnicodeError) as exc:
             raise StateError(f"project instruction is not UTF-8: {relative}") from exc
@@ -556,7 +579,8 @@ def entry_status(root: Path, entry: dict) -> dict:
         path = resolve_inside(root, relative)
         if not path.is_file():
             return {"path": relative, "kind": kind, "state": "missing"}
-        actual = digest_bytes(content_for_entry(path, kind))
+        content = content_for_entry(path, kind)
+        actual = digest_bytes(content)
         expected_mode = entry.get("mode")
         if kind == "file" and expected_mode is not None:
             parsed_mode = parse_mode(expected_mode, f"managed mode for {relative}")
@@ -570,7 +594,7 @@ def entry_status(root: Path, entry: dict) -> dict:
                 }
     except (OSError, UnicodeError, StateError) as exc:
         return {"path": relative, "kind": kind, "state": "invalid", "detail": str(exc)}
-    state = "unchanged" if actual == expected else "modified"
+    state = "unchanged" if owned_content_matches(content, kind, expected) else "modified"
     return {"path": relative, "kind": kind, "state": state, "sha256": actual}
 
 

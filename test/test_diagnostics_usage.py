@@ -159,8 +159,7 @@ class UsageCoverageTests(unittest.TestCase):
         original = copy.deepcopy(record)
         evaluation_store = mock.Mock()
         evaluation_store.find_run.return_value = (record["repository"]["repositoryId"], record)
-        evaluation_store.observations_for_run.return_value = []
-        evaluation_store.annotations_for_run.return_value = []
+        evaluation_store.evaluation_inputs.return_value = {record["runId"]: (record, [], [])}
         args = harness_eval.build_parser().parse_args(["view", "--run", record["runId"]])
         output = io.StringIO()
         with mock.patch.object(harness_eval, "_store", return_value=evaluation_store), mock.patch("sys.stdout", output):
@@ -171,8 +170,9 @@ class UsageCoverageTests(unittest.TestCase):
         self.assertEqual(result, evaluation_view.derived_evaluation_view(record, [], []))
         self.assertEqual(original, record)
         self.assertEqual(
-            [call[0] for call in evaluation_store.mock_calls],
-            ["find_run", "observations_for_run", "annotations_for_run"],
+            evaluation_store.mock_calls,
+            [mock.call.find_run(record["runId"]),
+             mock.call.evaluation_inputs(record["repository"]["repositoryId"], [record["runId"]])],
         )
 
     def test_separate_usage_metrics_preserve_zero_and_missing_values(self) -> None:
@@ -248,11 +248,11 @@ class DirectGuidanceCompatibilityTests(unittest.TestCase):
         plan = harness_plan_builder.materialize_plan(draft)
         content = plan["artifacts"][0]["content"]
         harness_teamplay.require_exactly_once(content, harness_teamplay.PROJECT_BLOCK, "router")
-        self.assertEqual(content.count(harness_teamplay.DIRECT_EXECUTION_GUIDANCE), 1)
+        self.assertEqual(content.count(harness_teamplay.ROUTER_GUIDANCE), 1)
         # A draft based on the current template must not duplicate the advisory.
         draft["artifacts"][0]["content"] += "\n" + harness_teamplay.DIRECT_EXECUTION_GUIDANCE
         repeated = harness_plan_builder.materialize_plan(draft)
-        self.assertEqual(repeated["artifacts"][0]["content"].count(harness_teamplay.DIRECT_EXECUTION_GUIDANCE), 1)
+        self.assertEqual(repeated["artifacts"][0]["content"].count(harness_teamplay.ROUTER_GUIDANCE), 1)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             old_plan = minimal_plan(root)

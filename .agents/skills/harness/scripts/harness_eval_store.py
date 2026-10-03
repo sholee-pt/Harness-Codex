@@ -94,6 +94,11 @@ def _auxiliary_record_id(kind: str, value: dict[str, Any]) -> str:
     return value["comparisonId"] if kind == "comparisons" else value["proposalId"]
 
 
+def _same_run_identity(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    return (all(left[key] == right[key] for key in ("schemaVersion", "runId", "repository", "task"))
+            and left["timestamps"]["startedAt"] == right["timestamps"]["startedAt"])
+
+
 def _comparison_identity(value: dict[str, Any]) -> tuple[str, ...]:
     identity = (
         value["baselineRunId"],
@@ -347,7 +352,18 @@ class EvaluationStore:
             record = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise StoreError(f"run record is unreadable: {exc}") from exc
-        types.validate_run_record(record)
+        self._validate_stored_record(repository_id, path, record)
+        if path == completed and pending.is_file():
+            try:
+                predecessor = json.loads(pending.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                predecessor = None  # A concurrent completion removed its pending receipt.
+            except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                raise StoreError(f"pending run record is unreadable: {exc}") from exc
+            if predecessor is not None:
+                self._validate_stored_record(repository_id, pending, predecessor)
+                if not _same_run_identity(predecessor, record):
+                    raise StoreError("pending and completed run identities disagree; run repair")
         return record
 
     def find_run(self, run_id: str) -> tuple[str, dict[str, Any]]:
@@ -362,6 +378,7 @@ class EvaluationStore:
                 candidate = self.checked(repository / "runs" / state / f"{run_id}.json")
                 if candidate.is_file():
                     matches.append((repository.name, candidate))
+                    break
         if len(matches) != 1:
             raise StoreError(f"run id resolved to {len(matches)} records: {run_id}")
         repository_id, _ = matches[0]
@@ -446,6 +463,30 @@ class EvaluationStore:
             values = [item for item in self._read_json_records(directory, types.validate_observation_record) if item.get("runId") == run_id]
         return values
 
+    def evaluation_inputs(self, repository_id: str, run_ids: Iterable[str]) -> dict[str, Any]:
+        """Read one command's run inputs and index observations under one lock."""
+        root = self._ensure_repository_dirs(repository_id)
+        snapshot = dict.fromkeys(run_ids)
+        if not snapshot:
+            return snapshot
+        with self.repository_lock(repository_id):
+            try:
+                observations = self._read_json_records(root / "observations", types.validate_observation_record)
+            except StoreError:
+                return snapshot
+            indexed: dict[str, list[dict[str, Any]]] = {run_id: [] for run_id in snapshot}
+            for observation in observations:
+                if observation.get("runId") in indexed:
+                    indexed[observation["runId"]].append(observation)
+            for run_id in snapshot:
+                try:
+                    run = self.read_run(repository_id, run_id, allow_pending=False)
+                    annotations = self._read_json_records(root / "annotations" / run_id, types.validate_annotation)
+                    snapshot[run_id] = (run, indexed[run_id], annotations)
+                except types.EvaluationError:
+                    continue
+        return snapshot
+
     def find_observation(self, observation_id: str) -> tuple[str, dict[str, Any]]:
         try:
             if str(types.uuid.UUID(observation_id)) != observation_id.lower():
@@ -519,14 +560,16 @@ class EvaluationStore:
         ]
         result: list[dict[str, Any]] = []
         for root in roots:
-            for state in ("pending", "completed"):
+            for state in ("completed", "pending"):
                 directory = self.checked(root / "runs" / state)
                 if not directory.is_dir():
                     continue
                 for path in self.records(directory):
+                    if state == "pending" and self.checked(root / "runs/completed" / path.name).is_file():
+                        continue
                     try:
-                        record = json.loads(path.read_text(encoding="utf-8"))
-                        types.validate_run_record(record)
+                        record = self.read_run(root.name, path.stem)
+                        self._validate_stored_record(root.name, path, record)
                         result.append(
                             {
                                 "repositoryId": root.name,
@@ -647,6 +690,7 @@ class EvaluationStore:
     def repair_repository(self, repository_id: str, *, quarantine: bool = False) -> dict[str, Any]:
         root = self._ensure_repository_dirs(repository_id)
         invalid: list[dict[str, str]] = []
+        completed_pending: list[str] = []
         moved = 0
         with self.repository_lock(repository_id):
             candidates = sorted(
@@ -658,6 +702,23 @@ class EvaluationStore:
                 try:
                     value = json.loads(path.read_text(encoding="utf-8"))
                     self._validate_stored_record(repository_id, path, value)
+                    if path.parent == root / "runs/pending":
+                        completed = self.checked(root / "runs/completed" / path.name)
+                        if completed.is_file():
+                            try:
+                                successor = json.loads(completed.read_text(encoding="utf-8"))
+                                self._validate_stored_record(repository_id, completed, successor)
+                            except (OSError, UnicodeError, json.JSONDecodeError, types.EvaluationError):
+                                continue  # The invalid completed file is reported separately.
+                            if not _same_run_identity(value, successor):
+                                raise StoreError("pending and completed run identities disagree")
+                            completed_pending.append(path.relative_to(root).as_posix())
+                            if quarantine:
+                                digest = harness_state.digest_bytes(path.read_bytes())
+                                target = self.checked(root / "quarantine" / f"{path.stem}-pending-{digest[:12]}.json")
+                                target.parent.mkdir(parents=True, exist_ok=True)
+                                os.replace(path, target)
+                                moved += 1
                 except (OSError, UnicodeError, json.JSONDecodeError, types.EvaluationError) as exc:
                     try:
                         digest = harness_state.digest_bytes(path.read_bytes()) if path.is_file() else "missing"
@@ -706,4 +767,4 @@ class EvaluationStore:
                     "items": invalid,
                 }
                 _atomic_json(self.checked(root / "quarantine" / "index.json"), index)
-        return {"repositoryId": repository_id, "invalid": invalid, "quarantined": moved}
+        return {"repositoryId": repository_id, "invalid": invalid, "completedPending": completed_pending, "quarantined": moved}

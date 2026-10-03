@@ -209,7 +209,17 @@ def _candidate_values(run: dict[str, Any], observations: list[dict[str, Any]]) -
 
 
 def _material(item: dict[str, Any]) -> Any:
-    return item.get("value") if "value" in item else item.get("refs")
+    return item.get("value") if "value" in item else sorted(item["refs"]) if isinstance(item.get("refs"), list) else None
+
+
+def observations_mismatch(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    if left.get("state") != "measured" or right.get("state") != "measured":
+        return False
+    if "refs" in left and "refs" in right:
+        left_refs, right_refs = set(left["refs"]), set(right["refs"])
+        return (left.get("completeness") == "complete" and not right_refs <= left_refs
+                or right.get("completeness") == "complete" and not left_refs <= right_refs)
+    return _material(left) != _material(right)
 
 
 def derived_evaluation_view(
@@ -235,20 +245,25 @@ def derived_evaluation_view(
             continue
         rank = min(priorities.index(item["source"]) for item in admissible)
         strongest = [item for item in admissible if priorities.index(item["source"]) == rank]
-        materials = {types.canonical_text(_material(item["value"])) for item in strongest}
-        if len(materials) > 1:
+        if any(observations_mismatch(left["value"], right["value"])
+               for index, left in enumerate(strongest) for right in strongest[index + 1:]):
             conflicts.append({"code": "observed-value-mismatch", "field": field, "refs": sorted(item["ref"] for item in strongest)})
             selected[field] = None
             continue
-        selected[field] = strongest[0]["value"]
-        provenance[field] = {"source": strongest[0]["source"], "ref": strongest[0]["ref"]}
+        chosen = next((item for item in strongest if item["value"].get("completeness") == "complete"), strongest[0])
+        selected[field] = copy.deepcopy(chosen["value"])
+        if "refs" in selected[field]:
+            selected[field]["refs"] = sorted({ref for item in strongest for ref in item["value"]["refs"]})
+        provenance[field] = {"source": chosen["source"], "ref": chosen["ref"]}
+        if len(strongest) > 1:
+            provenance[field]["supportingRefs"] = sorted({item["ref"] for item in strongest})
 
     deviations: list[dict[str, Any]] = []
     expected = run["configuration"]["expectedExecution"]
     for key in ("executionClass", "route", "agents", "skills", "independentReview"):
         expected_item = expected[key]
         observed_item = selected.get(f"observedExecution.{key}")
-        if expected_item.get("state") == "measured" and isinstance(observed_item, dict) and observed_item.get("state") == "measured" and _material(expected_item) != _material(observed_item):
+        if isinstance(observed_item, dict) and observations_mismatch(expected_item, observed_item):
             deviations.append({"field": key, "code": "expected-observed-mismatch"})
     active_annotation = annotation_result["active"]
     if active_annotation is not None:

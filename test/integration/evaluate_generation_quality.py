@@ -21,6 +21,7 @@ sys.path.insert(0, str(REPO / '.agents/skills/harness/scripts'))
 import harness_eval as evaluation
 import harness_eval_capture as capture
 import harness_eval_types as types
+import harness_metadata
 import harness_state
 from validate_harness import Validator
 from harness_cli.paths import checked_path, project_root
@@ -86,6 +87,55 @@ def text_input(path):
     return value
 
 
+def experiment_identity(brief, task, profile):
+    """Bind reports to actual inputs and guidance without retaining their content."""
+    guidance = snapshot(REPO / '.agents/skills/harness', generated=True)
+    helpers = snapshot(REPO / 'harness_cli', generated=True)
+    def fingerprint(entries):
+        return types.digest_bytes(types.canonical_bytes({name: [types.digest_bytes(data) if data is not None else None, mode]
+            for name, (data, mode) in entries.items()}))
+    return {'contract': 'fresh-generation-inputs-v1', 'harnessVersion': harness_metadata.HARNESS_VERSION,
+            'briefSha256': types.digest_bytes(brief.encode('utf-8')),
+            'taskSha256': types.digest_bytes(task.encode('utf-8')),
+            'verificationSha256': types.digest_bytes(types.canonical_bytes(profile)),
+            'generatorSha256': fingerprint(guidance), 'managementSha256': fingerprint(helpers),
+            'runnerSha256': types.digest_bytes(Path(__file__).read_bytes())}
+
+
+def retain_generation(root, before, destination, *, instruction_names=()):
+    """Retain only bounded generated candidates in an explicitly selected private directory."""
+    after = snapshot(root, generated=True)
+    names = {name for name, (data, _) in after.items() if data is not None and after[name] != before.get(name)
+        and (name.startswith('.harness/') or name.startswith('.codex/agents/')
+             or (name.startswith('.agents/skills/') and not name.startswith('.agents/skills/harness/')))}
+    retained = {name: after[name][0] for name in names}
+    if '.harness/manifest.json' in after:
+        try:
+            manifest = json.loads(after['.harness/manifest.json'][0])
+            managed = manifest.get('managedFiles', []) if isinstance(manifest, dict) else []
+            for item in managed if isinstance(managed, list) else []:
+                name = item.get('path') if isinstance(item, dict) else None
+                if (isinstance(name, str) and name in instruction_names and item.get('kind') == 'managed-block'
+                        and name in after and after[name][0] is not None and after[name] != before.get(name)):
+                    try:
+                        retained[name] = harness_state.extract_managed_block(after[name][0].decode('utf-8')).encode('utf-8')
+                    except (harness_state.StateError, UnicodeError):
+                        pass
+        except (ValueError, UnicodeError):
+            pass
+    destination.mkdir(mode=0o700)
+    total = 0
+    for name in sorted(retained):
+        path = destination / name
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        data = retained[name]
+        with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as stream:
+            stream.write(data)
+        total += len(data)
+    return {'state': 'retained', 'fileCount': len(retained), 'bytes': total,
+            'content': 'Generated candidates, including failed drafts; retention does not establish validity.'}
+
+
 def isolated_home(source, destination):
     """Reuse only the explicitly selected authentication, never mutable user settings."""
     evaluation._assert_clean_codex_home(source)
@@ -105,9 +155,13 @@ def isolated_home(source, destination):
 
 
 def invoke(args, root, prompt, home):
-    codex_home = isolated_home(args.codex_home, home / 'codex')
+    codex_home = home / 'codex'
     started = time.monotonic()
+    credential_cleanup = True
+    capture_attempted = False
     try:
+        isolated_home(args.codex_home, codex_home)
+        capture_attempted = True
         summary, code, elapsed, cleanup, version = capture.run_codex_jsonl(
             repository=root, prompt=prompt, sandbox='workspace-write', timeout_seconds=args.timeout,
             codex_binary=args.codex_binary, codex_home=codex_home, user_home=home / 'user',
@@ -124,8 +178,16 @@ def invoke(args, root, prompt, home):
                 'wallTimeMs': int((time.monotonic() - started) * 1000), 'processCleanupVerified': False,
                 'reportedUsage': {}, 'observedCounts': {}, 'observedSubagentEvents': None}
     finally:
-        (codex_home / 'auth.json').unlink(missing_ok=True)
-    result['credentialCleanupVerified'] = not (codex_home / 'auth.json').exists()
+        try:
+            (codex_home / 'auth.json').unlink(missing_ok=True)
+            credential_cleanup = not (codex_home / 'auth.json').exists()
+        except OSError:
+            credential_cleanup = False
+    result['credentialCleanupVerified'] = credential_cleanup
+    result['captureAttempted'] = capture_attempted
+    if not credential_cleanup:
+        result['state'] = 'failed'
+        result['processCleanupVerified'] = False
     return result
 
 
@@ -177,6 +239,18 @@ def matches(root, expected, *, generated=False):
         return False
 
 
+def same_experiment(identity, brief, task, profile):
+    try:
+        return experiment_identity(brief, task, profile) == identity
+    except (OSError, ValueError):
+        return False
+
+
+def skipped_state(report):
+    reason = report.get('stoppedReason')
+    return 'skipped-cleanup-unverified' if reason == 'process-cleanup-unverified' else 'skipped-' + reason
+
+
 def run(args):
     started = time.monotonic()
     root = project_root(args.project)
@@ -192,11 +266,22 @@ def run(args):
         output = checked_path(args.output)
         if output.is_relative_to(root) or output.exists():
             raise ValueError('Choose a new report path outside the source project.')
+    evidence_dir = checked_path(args.evidence_dir) if args.evidence_dir is not None else None
+    if evidence_dir is not None:
+        if evidence_dir.exists() or evidence_dir.is_relative_to(root) or root.is_relative_to(evidence_dir):
+            raise ValueError('Choose a new private evidence directory separate from the source project.')
+        if args.output is not None and (checked_path(args.output).is_relative_to(evidence_dir)
+                                        or evidence_dir.is_relative_to(checked_path(args.output))):
+            raise ValueError('Keep the metadata report separate from generated artifact evidence.')
     brief, task = text_input(args.brief_file), text_input(args.task_file)
     profile = evaluation._verification_profile(checked_path(args.verification))
     if not math.isfinite(profile['timeoutSeconds']) or profile['timeoutSeconds'] > 300:
         raise ValueError('Verification must have a finite timeout of at most 300 seconds.')
     source = snapshot(root)
+    try:
+        instruction_names = harness_state.project_instruction_candidates(root)
+    except (OSError, harness_state.StateError):
+        instruction_names = list(harness_state.DEFAULT_INSTRUCTION_CANDIDATES)
     fingerprint = hashlib.sha256(types.canonical_bytes({name: [hashlib.sha256(data).hexdigest() if data is not None else None, mode]
         for name, (data, mode) in source.items()})).hexdigest()
     orders = evaluation._paired_arm_orders(args.repetitions, args.order, args.seed)
@@ -209,6 +294,9 @@ def run(args):
               'maxVerificationSeconds': 2 * args.repetitions * profile['timeoutSeconds'],
               'requestedModel': args.model or 'native default', 'requestedReasoningEffort': args.reasoning_effort,
               'seed': args.seed,
+              'experimentIdentity': experiment_identity(brief, task, profile),
+              'artifactRetention': {'enabled': evidence_dir is not None,
+                                    'maxBytes': args.repetitions * (MAX_BYTES + 16 * 1024 * 1024) if evidence_dir is not None else 0},
               'fileCount': sum(data is not None for data, _ in source.values()), 'orders': orders,
               'rawPromptsStored': False, 'semanticBenefit': 'not-measured', 'automaticImprovement': False,
               'scope': 'Static generation validity and one user-selected task/check per pair; descriptive evidence only.',
@@ -228,6 +316,10 @@ def run(args):
         raise ValueError('Dedicated Codex authentication must be separate from the source project.')
     if args.output is not None and checked_path(args.output).is_relative_to(args.codex_home):
         raise ValueError('Keep evaluation reports outside the dedicated authentication directory.')
+    if evidence_dir is not None:
+        if evidence_dir.is_relative_to(args.codex_home) or args.codex_home.is_relative_to(evidence_dir):
+            raise ValueError('Keep generated artifact evidence separate from dedicated authentication.')
+        evidence_dir.mkdir(mode=0o700, parents=True)
     report['isolationGaps'] = evaluation._known_skill_isolation_gaps(codex_home=args.codex_home,
         user_home=Path(tempfile.gettempdir()) / 'harness-generation-uncreated-home')
     if '.codex/config.toml' in source:
@@ -237,10 +329,12 @@ def run(args):
     with tempfile.TemporaryDirectory(prefix='harness-generation-quality-') as folder:
         base = Path(folder)
         for index, order in enumerate(orders, 1):
+            if not same_experiment(report['experimentIdentity'], brief, task, profile):
+                report['stoppedReason'] = 'experiment-sources-changed'
             if report.get('stoppedReason'):
                 report['pairs'].append({'index': index, 'order': order,
-                    'generation': {'state': 'skipped-cleanup-unverified', 'passed': False},
-                    'arms': {arm: {'state': 'skipped-cleanup-unverified', 'passed': False} for arm in order},
+                    'generation': {'state': skipped_state(report), 'passed': False},
+                    'arms': {arm: {'state': skipped_state(report), 'passed': False} for arm in order},
                     'isolationPreserved': False, 'endToEndHarnessPassed': False})
                 continue
             pair_root = base / str(index)
@@ -252,8 +346,8 @@ def run(args):
             generation_started = time.monotonic()
             try:
                 install(arms['harness'], source=REPO / '.agents/skills/harness')
-                report['liveCodexInvoked'] = True
                 generation = invoke(args, arms['harness'], _configuration_prompt(brief), pair_root / 'generation-home')
+                report['liveCodexInvoked'] |= generation['captureAttempted']
                 pair['generation'] = generation
                 if not generation.get('processCleanupVerified'):
                     report['stoppedReason'] = 'process-cleanup-unverified'
@@ -266,7 +360,18 @@ def run(args):
                     generation['passed'] = generation['state'] == 'completed' and generation['valid'] and generation['projectPreserved']
             except (OSError, ValueError, types.EvaluationError) as exc:
                 pair['generation'].update(state='failed', passed=False, failureKind=type(exc).__name__)
+            if not same_experiment(report['experimentIdentity'], brief, task, profile):
+                report['stoppedReason'] = 'experiment-sources-changed'
+                pair['generation']['passed'] = False
             pair['generation']['totalPhaseWallTimeMs'] = int((time.monotonic() - generation_started) * 1000)
+            if evidence_dir is not None:
+                if report.get('stoppedReason'):
+                    pair['generation']['artifactRetention'] = {'state': skipped_state(report)}
+                else:
+                    try:
+                        pair['generation']['artifactRetention'] = retain_generation(arms['harness'], source, evidence_dir / ('pair-' + str(index)), instruction_names=instruction_names)
+                    except (OSError, ValueError) as exc:
+                        pair['generation']['artifactRetention'] = {'state': 'failed', 'failureKind': type(exc).__name__}
             states = {}
             try:
                 states = {arm: snapshot(path, generated=True) for arm, path in arms.items()}
@@ -276,8 +381,11 @@ def run(args):
             if not pair['isolationPreserved']:
                 pair['generation']['passed'] = False
             for arm in order:
+                if not same_experiment(report['experimentIdentity'], brief, task, profile):
+                    report['stoppedReason'] = 'experiment-sources-changed'
+                    pair['isolationPreserved'] = False
                 if not pair['isolationPreserved']:
-                    pair['arms'][arm] = {'state': 'skipped-cleanup-unverified' if report.get('stoppedReason') else 'skipped-pair-contaminated', 'passed': False}
+                    pair['arms'][arm] = {'state': skipped_state(report) if report.get('stoppedReason') else 'skipped-pair-contaminated', 'passed': False}
                     continue
                 if arm == 'harness' and not pair['generation'].get('passed'):
                     pair['arms'][arm] = {'state': 'skipped-generation-failed', 'passed': False}
@@ -288,10 +396,12 @@ def run(args):
                     pair['isolationPreserved'] = False
                     pair['arms'][arm] = {'state': 'skipped-pair-contaminated', 'passed': False}
                     continue
-                report['liveCodexInvoked'] = True
                 outcome = invoke(args, arms[arm], task, pair_root / (arm + '-task-home'))
+                report['liveCodexInvoked'] |= outcome['captureAttempted']
                 if not outcome.get('processCleanupVerified'):
                     report['stoppedReason'] = 'process-cleanup-unverified'
+                if not same_experiment(report['experimentIdentity'], brief, task, profile):
+                    report['stoppedReason'] = 'experiment-sources-changed'
                 pair['isolationPreserved'] = not report.get('stoppedReason') and matches(arms[peer], states[peer], generated=True) and matches(root, source)
                 outcome['verification'] = (verify(arms[arm], profile) if outcome.get('processCleanupVerified') and pair['isolationPreserved'] else
                     {'result': 'not-run', 'passed': False, 'reason': 'inference-cleanup-or-isolation-unverified'})
@@ -305,20 +415,24 @@ def run(args):
                     states[arm] = snapshot(arms[arm], generated=True)
                 except (OSError, ValueError):
                     pair['isolationPreserved'] = False
+                if not same_experiment(report['experimentIdentity'], brief, task, profile):
+                    report['stoppedReason'] = 'experiment-sources-changed'
+                    pair['isolationPreserved'] = False
             if not pair['isolationPreserved']:
                 for outcome in pair['arms'].values():
                     outcome['passed'] = False
                     outcome['comparisonExcluded'] = report.get('stoppedReason', 'peer-or-source-changed')
             pair['endToEndHarnessPassed'] = bool(pair['generation'].get('passed') and pair['arms']['harness']['passed'])
         report['sourceUnchanged'] = matches(root, source)
+        report['experimentSourcesUnchanged'] = same_experiment(report['experimentIdentity'], brief, task, profile)
     report['generationPassed'] = sum(pair['generation'].get('passed', False) for pair in report['pairs'])
     report['generationFailed'] = args.repetitions - report['generationPassed']
     report['baselineVerifiedPassed'] = sum(pair['arms']['baseline']['passed'] for pair in report['pairs'])
     report['endToEndHarnessPassed'] = sum(pair['endToEndHarnessPassed'] for pair in report['pairs'])
     report['generationSuccessRate'] = report['generationPassed'] / args.repetitions
     report['endToEndHarnessSuccessRate'] = report['endToEndHarnessPassed'] / args.repetitions
-    report['codexRunAttempts'] = sum(int('reportedUsage' in pair['generation']) +
-        sum('reportedUsage' in arm for arm in pair['arms'].values()) for pair in report['pairs'])
+    report['codexRunAttempts'] = sum(int(pair['generation'].get('captureAttempted', False)) +
+        sum(arm.get('captureAttempted', False) for arm in pair['arms'].values()) for pair in report['pairs'])
     report['runnerWallTimeMs'] = int((time.monotonic() - started) * 1000)
     return report
 
@@ -341,6 +455,7 @@ def parser():
     value.add_argument('--order', choices=('counterbalanced', 'randomized'), default='counterbalanced')
     value.add_argument('--seed', type=int, default=0)
     value.add_argument('--output', type=Path, help='New metadata-only JSON report outside the source; written only with --live.')
+    value.add_argument('--evidence-dir', type=Path, help='Explicitly retain private generated artifacts, including failed candidates, in a new separate directory; --live only.')
     return value
 
 
@@ -356,7 +471,7 @@ def main():
                 os.chmod(path, 0o600)
                 stream.write(text)
         print(text, end='')
-        return 0 if not args.live or report.get('sourceUnchanged') else 1
+        return 0 if not args.live or report.get('sourceUnchanged') and report.get('experimentSourcesUnchanged') else 1
     except (OSError, ValueError, types.EvaluationError) as exc:
         print(json.dumps({'valid': False, 'error': str(exc)}), file=sys.stderr)
         return 1

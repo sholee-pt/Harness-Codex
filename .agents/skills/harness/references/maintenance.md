@@ -39,6 +39,10 @@ ref를 생략한 신호, 구형 기록, 종료 또는 compaction으로 문맥을
 harness-codex maintenance begin --evidence PROJECT.md
 ```
 
+현재 Codex 대화 안에서 수동 검토를 시작하면 `--session-ref CURRENT_HOOK_SESSION_REF`를
+함께 전달할 것. 현재 hook이 제공한 ref만 사용하며 다른 세션·자식의 활동 차단은 유지됨.
+예약이 보류되면 기존 신호의 세션 연결을 보존함.
+
 ## A review lease
 
 `suggest` emits one notice per eligible batch, without running an automatic review.
@@ -52,6 +56,10 @@ An application window defaults to at most 180 seconds and can shrink from measur
 review duration. Changing scheduling limits does not authorize broader edits.
 Unknown native-session token usage stays unknown; this interface cannot enforce a
 hard model-token budget. Stop early rather than expanding a maintenance review.
+
+같은 mode·정책 재적용은 진행 중 lease를 보존함. 실제 설정 변경으로 lease를 취소하면
+경과 시간과 미측정 token 비용을 연기 또는 만료 기록으로 정산함. 설정 변경을 비용 초기화로
+취급하지 말 것. 전체 관찰 초기화는 별도 명시적 `clear` 작업임.
 
 Status may show activity markers left by interrupted sessions. Never infer that
 writers stopped from elapsed time or a failed connection. Use `recover-session`

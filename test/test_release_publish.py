@@ -1,13 +1,17 @@
 """A release must never attach new source bytes to a different existing tag."""
 import contextlib
+import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
+import tarfile
 import unittest
 from unittest import mock
 
 from build import release_publish
+from build.artifacts import write_artifacts
 
 
 class ReleasePublishTests(unittest.TestCase):
@@ -18,8 +22,15 @@ class ReleasePublishTests(unittest.TestCase):
         self.dist = self.root / 'dist'
         self.dist.mkdir()
         self.commit, self.tag = 'b' * 40, 'v0.33.0-beta'
-        (self.dist / 'build.json').write_text(json.dumps({'version': self.tag[1:], 'commit': self.commit,
-            'developmentBuild': False, 'platforms': ['linux']}))
+        self.files = {'harness.py': b'# committed source\n', '_release.json': json.dumps({
+            'version': self.tag[1:], 'commit': self.commit, 'runtime': 'codex'}).encode()}
+        self.bootstraps = {'install_harness_codex.sh': b'VERSION=0.12.0-beta\n',
+                           'install_harness_codex.ps1': b"$version = '0.12.0-beta'\n# Harness for Codex 0.12.0-beta Windows installer.\n"}
+        write_artifacts(self.dist, self.tag[1:], self.commit, self.files, self.bootstraps)
+        patcher = mock.patch.object(release_publish, 'collect_source', return_value=(
+            self.tag[1:], self.commit, self.files.copy(), self.bootstraps))
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.notes = self.root / 'notes.md'
         self.notes.write_text('Verified release\n')
 
@@ -73,5 +84,73 @@ class ReleasePublishTests(unittest.TestCase):
     def test_mismatching_local_build_never_queries_or_writes_github(self):
         (self.dist / 'build.json').write_text('{}')
         with mock.patch.object(release_publish, 'gh') as gh, self.assertRaises(ValueError):
+            self.publish()
+        gh.assert_not_called()
+
+    def test_missing_or_unrelated_assets_never_query_github(self):
+        for name in ('SHA256SUMS', 'install_harness_codex.sh', f'harness-codex-{self.tag[1:]}-linux.tar.gz'):
+            with self.subTest(name=name):
+                path = self.dist / name
+                content = path.read_bytes()
+                path.unlink()
+                with mock.patch.object(release_publish, 'gh') as gh, self.assertRaisesRegex(ValueError, 'exactly'):
+                    self.publish()
+                gh.assert_not_called()
+                path.write_bytes(content)
+        (self.dist / 'private-note.txt').write_text('must not upload')
+        with mock.patch.object(release_publish, 'gh') as gh, self.assertRaisesRegex(ValueError, 'exactly'):
+            self.publish()
+        gh.assert_not_called()
+
+    def test_checksums_and_immutable_source_are_both_required(self):
+        bootstrap = self.dist / 'install_harness_codex.sh'
+        bootstrap.write_bytes(bootstrap.read_bytes() + b'# changed\n')
+        with mock.patch.object(release_publish, 'gh') as gh, self.assertRaisesRegex(ValueError, 'checksums'):
+            self.publish()
+        gh.assert_not_called()
+        for path in self.dist.iterdir():
+            path.unlink()
+        write_artifacts(self.dist, self.tag[1:], self.commit, {**self.files, 'unexpected.txt': b'private'}, self.bootstraps)
+        with mock.patch.object(release_publish, 'gh') as gh, self.assertRaisesRegex(ValueError, 'immutable source'):
+            self.publish()
+        gh.assert_not_called()
+
+    def test_upload_uses_private_validated_snapshot_and_cleans_it(self):
+        uploads = []
+        def github(*arguments, **kwargs):
+            if arguments[0] == 'api':
+                (self.dist / 'install_harness_codex.sh').write_text('changed after validation')
+                return json.dumps({'object': {'type': 'commit', 'sha': self.commit}})
+            paths = [value for value in arguments if isinstance(value, Path)]
+            uploads.extend(paths)
+            for path in paths:
+                self.assertTrue(path.is_file())
+                if os.name == 'posix':
+                    self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            bootstrap = next(path for path in paths if path.name == 'install_harness_codex.sh')
+            self.assertEqual(bootstrap.read_bytes(), b'VERSION=' + self.tag[1:].encode() + b'\n')
+            return ''
+        with mock.patch.object(release_publish, 'gh', side_effect=github):
+            self.publish()
+        self.assertTrue(uploads)
+        self.assertTrue(all(not path.exists() for path in uploads))
+
+    def test_self_consistent_asset_checksums_cannot_change_archive_permissions(self):
+        path = self.dist / f'harness-codex-{self.tag[1:]}-linux.tar.gz'
+        changed = io.BytesIO()
+        with tarfile.open(path, 'r:gz') as original, tarfile.open(fileobj=changed, mode='w:gz') as output:
+            for member in original:
+                data = original.extractfile(member).read()
+                member.mode = 0o777
+                output.addfile(member, io.BytesIO(data))
+        path.write_bytes(changed.getvalue())
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        report_path = self.dist / 'build.json'
+        report = json.loads(report_path.read_text())
+        report['sha256'] = digest
+        report_path.write_text(json.dumps(report))
+        (self.dist / 'SHA256SUMS').write_text(f'{digest}  {path.name}\n' +
+            report['bootstrapSha256'] + '  install_harness_codex.sh\n')
+        with mock.patch.object(release_publish, 'gh') as gh, self.assertRaisesRegex(ValueError, 'permissions'):
             self.publish()
         gh.assert_not_called()

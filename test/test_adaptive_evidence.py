@@ -1,11 +1,14 @@
 """Adaptive decisions need attributable observations, not paid exploration or prose."""
 import copy
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +16,7 @@ sys.path.insert(0, str(ROOT / '.agents/skills/harness/scripts'))
 import harness_apply
 import harness_maintenance as maintenance
 import harness_routing_evidence as evidence
+import harness_ops
 from test_harness_tools import minimal_plan
 from harness_cli import auto_relay, routing_feedback
 from test_official_relay import catalog
@@ -49,6 +53,188 @@ class AdaptiveEvidenceTests(unittest.TestCase):
         self.assertFalse(self.manager.status()['enabled'])
         self.assertFalse(self.manager.record('session', 'turn', context='a' * 64, model='future', effort='adaptive', milliseconds=10, tokens=None)['recorded'])
         self.assertFalse(self.store.exists())
+
+    def operations_annotation(self, reference, outcome='verified', source='verification'):
+        return harness_ops.annotate(root=self.root, work_item_ref=reference, relation='new-task', category='feature',
+            execution_class='direct', agent_selection='not-applicable', outcome=outcome,
+            verification='passed' if outcome == 'verified' else 'unknown', evidence_source=source, state_root=self.store)
+
+    def test_precompletion_feedback_is_merged_once_with_the_actual_runtime_observation(self):
+        self.manager.configure(True)
+        event = harness_ops.record_hook_event({'hook_event_name': 'UserPromptSubmit', 'session_id': 'session',
+            'turn_id': 'turn', 'cwd': str(self.root), 'prompt': 'private task'}, state_root=self.store)
+        # Operations and the runtime observer use separate instances/processes.
+        result = self.operations_annotation(event['workItemRef'])
+        self.assertTrue(result['routing']['pending'])
+        self.assertEqual(self.manager.status()['samples'], 0)
+        # The operations instance uses the real clock; completion follows it.
+        self.now = self.manager.read()['pending'][event['workItemRef']]['at'] + 1
+        record = self.manager.record('session', 'turn', context=self.group(), model='native', effort='medium', milliseconds=50, tokens=12)
+        self.assertEqual(record['reference'], event['workItemRef'])
+        self.assertEqual(self.manager.read()['samples'][record['reference']]['outcome'], 'verified')
+        self.assertEqual(self.manager.status()['pendingFeedback'], 0)
+        self.assertFalse(self.manager.record('session', 'turn', context=self.group(), model='native', effort='medium', milliseconds=50, tokens=12)['recorded'])
+        self.assertEqual(self.manager.status()['samples'], 1)
+
+    def test_corrected_operations_outcomes_withdraw_stale_verified_evidence_before_and_after_completion(self):
+        self.manager.configure(True)
+        event = harness_ops.record_hook_event({'hook_event_name': 'UserPromptSubmit', 'session_id': 'session',
+            'turn_id': 'turn', 'cwd': str(self.root), 'prompt': 'private task'}, state_root=self.store)
+        reference = event['workItemRef']
+        self.operations_annotation(reference)
+        self.operations_annotation(reference, 'abandoned')
+        self.now = self.manager.read()['pending'][reference]['at'] + 1
+        self.manager.record('session', 'turn', context=self.group(), model='native', effort='medium', milliseconds=50, tokens=12)
+        self.assertEqual(self.manager.read()['samples'][reference]['outcome'], 'unknown')
+        for outcome, source in (('abandoned', 'verification'), ('provisionally-accepted', 'user-reported'),
+                                ('verified', 'agent-reported'), ('verified', 'user-reported'), ('unknown', 'hook-observed')):
+            self.operations_annotation(reference)
+            self.operations_annotation(reference, outcome, source)
+            self.assertEqual(self.manager.read()['samples'][reference]['outcome'], 'unknown', (outcome, source))
+        self.assertEqual(self.manager.status()['samples'], 1)
+
+    def test_pending_feedback_is_bounded_expires_and_does_not_enable_disabled_observation(self):
+        reference = 'work-item:' + '1' * 32
+        self.assertFalse(self.manager.feedback(reference, 'verified', 'verification')['recorded'])
+        self.assertFalse(self.store.exists())
+        self.manager.configure(True)
+        for index in range(evidence.MAX_SAMPLES + 1):
+            self.manager.feedback('work-item:' + format(index, '032x'), 'verified', 'verification')
+            self.now += 1
+        self.assertEqual(self.manager.status()['pendingFeedback'], evidence.MAX_SAMPLES)
+        self.assertNotIn('work-item:' + '0' * 32, self.manager.read()['pending'])
+        self.now += 31 * 86400
+        self.manager.feedback(reference, 'verified', 'verification')
+        self.assertEqual(self.manager.status()['pendingFeedback'], 1)
+        self.manager.configure(False)
+        self.assertFalse(self.manager.withdraw(reference)['recorded'])
+        self.manager.clear()
+        self.assertEqual(self.manager.status()['pendingFeedback'], 0)
+
+    def test_schema_one_observations_survive_pending_feedback_migration(self):
+        self.manager.configure(True)
+        reference = self.populate('native', 'medium', 10, 20, count=1)[0]
+        value = self.manager.read()
+        value['schema'] = 1
+        del value['pending']
+        self.manager.location().write_text(json.dumps(value))
+        self.assertEqual(self.manager.read()['samples'][reference], value['samples'][reference])
+        self.manager.feedback('work-item:' + '2' * 32, 'verified', 'verification')
+        migrated = json.loads(self.manager.location().read_text())
+        self.assertEqual(migrated['schema'], 2)
+        self.assertEqual(migrated['samples'], value['samples'])
+
+    def test_clock_rollback_does_not_discard_verified_feedback_waiting_for_completion(self):
+        self.manager.configure(True)
+        repository = self.manager.store.register_workspace(self.root)
+        reference = self.manager.store.pseudonym(repository, 'work-item', 'session\0turn')
+        self.manager.feedback(reference, 'verified', 'verification')
+        self.now -= 10
+        self.manager.record('session', 'turn', context=self.group(), model='native', effort='medium', milliseconds=50, tokens=12)
+        self.assertEqual(self.manager.read()['samples'][reference]['outcome'], 'verified')
+
+    def test_annotation_delivery_failure_retries_in_order_without_advice_from_stale_success(self):
+        self.manager.configure(True)
+        base, candidate = ('base', 'medium'), ('candidate', 'medium')
+        self.populate(*base, 1000, 1000)
+        refs = self.populate(*candidate, 10, 10)
+        self.assertIsNotNone(self.manager.recommend(self.group(), base, [candidate]))
+        hook = {'hook_event_name': 'UserPromptSubmit', 'session_id': 'session',
+                'turn_id': 'candidate-0', 'cwd': str(self.root), 'prompt': 'private task'}
+        event = harness_ops.record_hook_event(hook, state_root=self.store)
+        self.assertEqual(event['workItemRef'], refs[0])
+        with mock.patch.object(evidence.RoutingEvidence, '_feedback', side_effect=TimeoutError('held routing lock')):
+            failed = self.operations_annotation(refs[0], 'failed')
+            corrected = self.operations_annotation(refs[0], 'abandoned')
+            self.assertFalse(failed['routing']['available'])
+            self.assertFalse(corrected['routing']['available'])
+            self.assertIsNone(self.manager.recommend(self.group(), base, [candidate]))
+        self.manager.recommend(self.group(), base, [candidate])
+        self.assertEqual(self.manager.read()['samples'][refs[0]]['outcome'], 'unknown')
+        self.assertEqual(list(self.store.rglob('routing-feedback/*.json')), [])
+        self.assertEqual(harness_ops.audit(self.root, state_root=self.store)['outcomeCounts']['abandoned'], 1)
+
+    def test_uncommitted_annotation_outbox_does_not_change_quality_evidence(self):
+        self.manager.configure(True)
+        reference = self.populate('candidate', 'medium', 10, 10, count=1)[0]
+        harness_ops.record_hook_event({'hook_event_name': 'UserPromptSubmit', 'session_id': 'session',
+            'turn_id': 'candidate-0', 'cwd': str(self.root), 'prompt': 'private task'}, state_root=self.store)
+        write = harness_ops._write_exclusive
+        def interrupted(path, value):
+            if path.parent.name == 'events':
+                raise OSError('before annotation commit')
+            return write(path, value)
+        with mock.patch.object(harness_ops, '_write_exclusive', side_effect=interrupted):
+            with self.assertRaises(OSError):
+                self.operations_annotation(reference, 'abandoned')
+        self.assertEqual(len(list(self.store.rglob('routing-feedback/*.json'))), 1)
+        self.manager.recommend(self.group(), ('base', 'medium'), [('candidate', 'medium')])
+        self.assertEqual(self.manager.read()['samples'][reference]['outcome'], 'verified')
+        self.assertEqual(list(self.store.rglob('routing-feedback/*.json')), [])
+
+    def test_failed_precompletion_delivery_recovers_and_clear_removes_outbox(self):
+        self.manager.configure(True)
+        event = harness_ops.record_hook_event({'hook_event_name': 'UserPromptSubmit', 'session_id': 'session',
+            'turn_id': 'turn', 'cwd': str(self.root), 'prompt': 'private task'}, state_root=self.store)
+        with mock.patch.object(evidence.RoutingEvidence, '_feedback', side_effect=TimeoutError('held routing lock')):
+            self.operations_annotation(event['workItemRef'])
+        self.manager.record('session', 'turn', context=self.group(), model='native', effort='medium', milliseconds=50, tokens=12)
+        self.assertEqual(self.manager.read()['samples'][event['workItemRef']]['outcome'], 'verified')
+        with mock.patch.object(evidence.RoutingEvidence, '_feedback', side_effect=TimeoutError('held routing lock')):
+            self.operations_annotation(event['workItemRef'], 'abandoned')
+        self.manager.clear()
+        self.assertEqual(list(self.store.rglob('routing-feedback/*.json')), [])
+        self.assertFalse(self.manager.status()['enabled'])
+
+    def test_disabled_routing_preserves_explicit_corrections_without_collecting_new_observations(self):
+        self.manager.configure(True)
+        reference = self.populate('candidate', 'medium', 10, 10, count=1)[0]
+        hook = {'hook_event_name': 'UserPromptSubmit', 'session_id': 'session',
+                'turn_id': 'candidate-0', 'cwd': str(self.root), 'prompt': 'private task'}
+        harness_ops.record_hook_event(hook, state_root=self.store)
+        self.manager.configure(False)
+        self.operations_annotation(reference, 'abandoned')
+        self.assertEqual(self.manager.read()['samples'][reference]['outcome'], 'unknown')
+        other = harness_ops.record_hook_event({**hook, 'turn_id': 'new-while-off'}, state_root=self.store)
+        self.operations_annotation(other['workItemRef'])
+        self.assertEqual(self.manager.status()['pendingFeedback'], 0)
+        self.assertEqual(list(self.store.rglob('routing-feedback/*.json')), [])
+        self.assertEqual(self.manager.status()['samples'], 1)
+        self.manager.configure(True)
+        self.assertEqual(self.manager.read()['samples'][reference]['outcome'], 'unknown')
+
+    def test_operations_purge_delivers_pending_correction_before_removing_its_event(self):
+        self.manager.configure(True)
+        reference = self.populate('candidate', 'medium', 10, 10, count=1)[0]
+        harness_ops.record_hook_event({'hook_event_name': 'UserPromptSubmit', 'session_id': 'session',
+            'turn_id': 'candidate-0', 'cwd': str(self.root), 'prompt': 'private task'}, state_root=self.store)
+        with mock.patch.object(evidence.RoutingEvidence, '_feedback', side_effect=TimeoutError('held routing lock')):
+            self.operations_annotation(reference, 'abandoned')
+        self.manager.configure(False)
+        with contextlib.redirect_stdout(io.StringIO()):
+            harness_ops.command_purge(SimpleNamespace(root=str(self.root), state_home=str(self.store)))
+        self.assertEqual(self.manager.read()['samples'][reference]['outcome'], 'unknown')
+        self.assertEqual(list(self.store.rglob('routing-feedback/*.json')), [])
+        self.assertFalse(self.manager.status()['enabled'])
+
+    def test_replacement_links_win_over_clock_rollback_in_audit_and_feedback_retry(self):
+        self.manager.configure(True)
+        reference = self.populate('candidate', 'medium', 10, 10, count=1)[0]
+        harness_ops.record_hook_event({'hook_event_name': 'UserPromptSubmit', 'session_id': 'session',
+            'turn_id': 'candidate-0', 'cwd': str(self.root), 'prompt': 'private task'}, state_root=self.store)
+        with mock.patch.object(evidence.RoutingEvidence, '_feedback', side_effect=TimeoutError('held routing lock')):
+            with mock.patch.object(harness_ops, '_timestamp', return_value='2026-10-03T12:00:01.000000Z'):
+                first = self.operations_annotation(reference)
+            with mock.patch.object(harness_ops, '_timestamp', return_value='2026-10-03T12:00:00.000000Z'):
+                second = self.operations_annotation(reference, 'unknown', 'agent-reported')
+        self.assertEqual(second['supersedesEventId'], first['annotationEventId'])
+        self.manager.recommend(self.group(), ('base', 'medium'), [('candidate', 'medium')])
+        self.assertEqual(self.manager.read()['samples'][reference]['outcome'], 'unknown')
+        report = harness_ops.audit(self.root, state_root=self.store)
+        self.assertTrue(report['valid'])
+        self.assertEqual(report['outcomeCounts']['unknown'], 1)
+        third = self.operations_annotation(reference, 'provisionally-accepted')
+        self.assertEqual(third['supersedesEventId'], second['annotationEventId'])
 
     def test_known_quality_and_cost_can_change_pair_but_not_unknown_or_new_strata(self):
         self.manager.configure(True)

@@ -54,7 +54,7 @@ Direct peer messaging remains unsupported until an observed future runtime capab
 
 ## Writer isolation and handoff
 
-Default to multiple read-only subagents and one writer. A writer stays inside persistent read/write boundaries, and reviewers are read-only. A single writer or writers ordered by the task graph may share the selected workspace without declaring separate isolation. Concurrent writers require observed separate worktrees or equivalent isolation and non-overlapping scopes; a declared `isolation` value is not execution proof. Concurrent overlapping writers are invalid. Ordered overlap requires a handoff covering the complete shared scope, with a frozen content hash and verification. A task chain may carry that handoff through adjacent tasks when every edge covers the complete shared scope; do not require redundant handoffs between every pair. If the frozen input changes, dependent validation is stale and must be repeated.
+Default to multiple read-only subagents and one writer. A writer stays inside persistent read/write boundaries, and reviewers are read-only. A single writer or writers ordered by the task graph may share the selected workspace without declaring separate isolation. 동시 writer는 겹치지 않는 범위와 실제 별도 worktree/동등한 격리 또는 runtime-plan의 명시적 shared-workspace 계약을 갖출 것. `isolation` 선언은 실행 증명이 아님. Concurrent overlapping writers are invalid. Ordered overlap requires a handoff covering the complete shared scope, with a frozen content hash and verification. A task chain may carry that handoff through adjacent tasks when every edge covers the complete shared scope; do not require redundant handoffs between every pair. If the frozen input changes, dependent validation is stale and must be repeated.
 
 ## Failure and retention
 

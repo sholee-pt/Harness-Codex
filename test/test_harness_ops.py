@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import contextlib
+import io
 import sys
 import tempfile
 import time
 import unittest
+from types import SimpleNamespace
+from unittest import mock
 from pathlib import Path
 
 
@@ -173,6 +177,99 @@ class OperationsEvidenceTests(unittest.TestCase):
                     self._hook(root, "UserPromptSubmit", prompt="different"),
                     state_root=state,
                 )
+
+    def test_indexed_hooks_do_not_read_prior_history_and_replay_checks_its_record(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root, state = self._workspace(parent), parent / "state"
+            for index in range(12):
+                harness_ops.record_hook_event(self._hook(root, "UserPromptSubmit", turn=str(index)), state_root=state)
+            with mock.patch.object(harness_ops, '_read_events', side_effect=AssertionError('cumulative history scan')), \
+                    mock.patch.object(harness_ops, '_read_event', wraps=harness_ops._read_event) as read:
+                result = harness_ops.record_hook_event(self._hook(root, "UserPromptSubmit", turn="new"), state_root=state)
+                self.assertTrue(result['created'])
+                self.assertEqual(read.call_count, 0)
+                result = harness_ops.record_hook_event(self._hook(root, "UserPromptSubmit", turn="new"), state_root=state)
+                self.assertFalse(result['created'])
+                self.assertEqual(read.call_count, 1)
+            self.assertEqual(harness_ops.audit(root, state_root=state)['workItemCount'], 13)
+
+    def test_interrupted_index_write_rebuilds_without_duplicate_or_last_active_change(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root, state = self._workspace(parent), parent / "state"
+            first = harness_ops.record_hook_event(self._hook(root, "UserPromptSubmit"), state_root=state)
+            with mock.patch.object(harness_ops, '_write_index', side_effect=OSError('interrupted index write')):
+                with self.assertRaises(OSError):
+                    harness_ops.record_hook_event(self._hook(root, "UserPromptSubmit", turn="next"), state_root=state)
+            second = harness_ops.record_hook_event(self._hook(root, "UserPromptSubmit", turn="next"), state_root=state)
+            self.assertFalse(second['created'])
+            harness_ops.record_hook_event(self._hook(root, "UserPromptSubmit"), state_root=state)
+            result = harness_ops.annotate(root=root, work_item_ref=None, relation='correction', category='feature',
+                execution_class='direct', agent_selection='not-applicable', outcome='unknown', verification='unknown',
+                evidence_source='agent-reported', state_root=state)
+            self.assertEqual(result['workItemRef'], second['workItemRef'])
+            report = harness_ops.audit(root, state_root=state)
+            self.assertEqual(report['workItemCount'], 2)
+            self.assertEqual(next(item for item in report['workItems'] if item['workItemRef'] == first['workItemRef'])['correctionCount'], 1)
+
+    def test_index_corruption_or_removal_rebuilds_and_replayed_record_tampering_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root, state = self._workspace(parent), parent / "state"
+            hook = self._hook(root, "UserPromptSubmit")
+            harness_ops.record_hook_event(hook, state_root=state)
+            index_path = next(state.rglob('operations/index.json'))
+            index = json.loads(index_path.read_text())
+            index['count'], index['replay'], index['lifecycle'] = 0, {}, {}
+            index_path.write_text(json.dumps(index))
+            self.assertFalse(harness_ops.record_hook_event(hook, state_root=state)['created'])
+            index_path.unlink()
+            self.assertFalse(harness_ops.record_hook_event(hook, state_root=state)['created'])
+            event_path = next(state.rglob('operations/events/*.json'))
+            event = json.loads(event_path.read_text())
+            event['payload']['promptFingerprint'] = '0' * 64
+            event_path.write_text(json.dumps(event))
+            with self.assertRaises(harness_ops.OperationsError):
+                harness_ops.record_hook_event(hook, state_root=state)
+            self.assertFalse(harness_ops.audit(root, state_root=state)['valid'])
+
+    def test_purge_removes_index_and_releases_capacity_without_retaining_raw_values(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root, state = self._workspace(parent), parent / "state"
+            with mock.patch.object(harness_ops, 'MAX_EVENTS_PER_REPOSITORY', 2):
+                for turn in ('first', 'second'):
+                    harness_ops.record_hook_event(self._hook(root, "UserPromptSubmit", turn=turn), state_root=state)
+                self.assertFalse(harness_ops.record_hook_event(self._hook(root, "UserPromptSubmit", turn='first'), state_root=state)['created'])
+                with self.assertRaisesRegex(harness_ops.OperationsError, 'event limit'):
+                    harness_ops.record_hook_event(self._hook(root, "UserPromptSubmit", turn='third'), state_root=state)
+                index_path = next(state.rglob('operations/index.json'))
+                content = index_path.read_text()
+                for raw in ('private prompt', 'private-session', 'first', 'second', str(root)):
+                    self.assertNotIn(raw, content)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    harness_ops.command_purge(SimpleNamespace(root=str(root), state_home=str(state)))
+                self.assertFalse(index_path.exists())
+                self.assertTrue(harness_ops.record_hook_event(self._hook(root, "UserPromptSubmit", turn='third'), state_root=state)['created'])
+
+    def test_branched_annotation_history_is_reported_and_cannot_be_extended(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root, state = self._workspace(parent), parent / "state"
+            recorded = harness_ops.record_hook_event(self._hook(root, 'UserPromptSubmit'), state_root=state)
+            arguments = dict(root=root, work_item_ref=recorded['workItemRef'], relation='new-task', category='feature',
+                execution_class='direct', agent_selection='not-applicable', outcome='unknown', verification='unknown',
+                evidence_source='agent-reported', state_root=state)
+            harness_ops.annotate(**arguments)
+            second = harness_ops.annotate(**arguments)
+            path = next(state.rglob('operations/events/' + second['annotationEventId'] + '.json'))
+            event = json.loads(path.read_text())
+            event['payload']['supersedesEventId'] = None
+            path.write_text(json.dumps(harness_ops._seal(event)))
+            self.assertFalse(harness_ops.audit(root, state_root=state)['valid'])
+            with self.assertRaisesRegex(harness_ops.OperationsError, 'branched'):
+                harness_ops.annotate(**arguments)
 
     def test_annotation_requires_evidence_consistent_outcomes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

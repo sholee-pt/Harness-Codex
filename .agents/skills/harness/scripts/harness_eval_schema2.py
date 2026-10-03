@@ -332,7 +332,7 @@ def validate_run_record(value: Any, *, verify_hash: bool = True) -> dict[str, An
     ):
         raise types.EvaluationError("runtime.evaluationContract must be a bounded contract identity")
     if (record["runtime"]["harnessVersion"] not in READABLE_HARNESS_VERSIONS
-            and contract != harness_metadata.EVALUATION_MEASUREMENT_CONTRACT):
+            and contract not in harness_metadata.READABLE_EVALUATION_MEASUREMENT_CONTRACTS):
         raise types.EvaluationError("runtime.harnessVersion must be a readable Schema 2 Harness version")
     _validate_configuration(record["configuration"])
     _validate_result(record["result"])

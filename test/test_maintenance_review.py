@@ -2,7 +2,9 @@
 import contextlib
 import io
 import json
+import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import threading
@@ -70,6 +72,70 @@ class MaintenanceReviewTests(unittest.TestCase):
         disabled = maintenance.Maintenance(self.root, state)
         self.assertEqual(disabled.begin(evidence='pyproject.toml')['status'], 'disabled')
         self.assertFalse(state.exists())
+
+    def test_manual_begin_can_use_its_observed_active_session_without_rebinding_on_failure(self):
+        self.hook()
+        self.signal(session='original')
+        ref = self.manager.store.fingerprint(b'original')
+        self.assertEqual(self.manager.begin(evidence='pyproject.toml')['status'], 'deferred')
+        state = self.manager._read(self.manager._location())
+        self.assertEqual(next(iter(state['candidates'].values()))['session'], ref)
+        self.hook(session='other')
+        self.assertEqual(self.manager.begin(evidence='pyproject.toml', session_ref=ref)['status'], 'deferred')
+        self.hook('Stop', session='other')
+        lease = self.manager.begin(evidence='pyproject.toml', session_ref=ref)
+        self.assertEqual(lease['status'], 'claimed')
+        self.assertEqual(lease['session'], ref)
+
+    def test_manual_begin_rejects_unknown_session_and_active_child(self):
+        self.hook()
+        self.signal()
+        before = self.manager._location().read_bytes()
+        with self.assertRaisesRegex(ValueError, 'observed native session'):
+            self.manager.begin(evidence='pyproject.toml', session_ref='a' * 64)
+        self.assertEqual(self.manager._location().read_bytes(), before)
+        ref = self.manager.store.fingerprint(b'original')
+        self.hook('SubagentStart', agent_id='child')
+        self.assertEqual(self.manager.begin(evidence='pyproject.toml', session_ref=ref)['status'], 'deferred')
+        self.assertIsNone(next(iter(self.manager._read(self.manager._location())['candidates'].values()))['session'])
+
+    def test_real_cli_begin_forwards_the_current_session_reference(self):
+        self.hook()
+        self.signal(session='original')
+        ref = self.manager.store.fingerprint(b'original')
+        environment = {**os.environ, 'HARNESS_STATE_HOME': str(self.base / 'state'),
+                       'CODEX_HOME': str(self.base / 'codex'), 'HARNESS_NO_UPDATE_CHECK': '1'}
+        environment.pop('HARNESS_TOOL_HOME', None)
+        result = subprocess.run([sys.executable, '-B', str(Path(__file__).resolve().parents[1] / 'harness.py'),
+            '--no-update-check', 'maintenance', '--project', str(self.root), '--json', 'begin',
+            '--evidence', 'pyproject.toml', '--session-ref', ref], env=environment,
+            capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lease = json.loads(result.stdout)
+        self.assertEqual((lease['status'], lease['session']), ('claimed', ref))
+
+    def test_configuration_change_accounts_for_cancelled_lease_and_unchanged_settings_preserve_it(self):
+        self.signal()
+        lease = self.manager.begin()
+        self.now += 10
+        self.manager.configure('auto', policy={'reviewSeconds': 180})
+        self.assertEqual(self.manager._read(self.manager._location())['lease']['id'], lease['id'])
+        result = self.manager.configure(policy={'reportedTokensPerDay': 4000})
+        self.assertFalse(result['reviewInProgress'])
+        self.assertEqual(result['metrics']['reviewSeconds'], 10)
+        self.assertEqual(result['metrics']['unmeasuredReviews'], 1)
+        self.assertTrue(result['scheduling']['budgetBlocked'])
+        self.assertEqual(self.manager._read(self.manager._location())['recentReviews'][-1]['decision'], 'deferred')
+
+    def test_configuration_change_accounts_for_expired_lease_once(self):
+        self.signal()
+        lease = self.manager.begin()
+        self.now = lease['deadline'] + 40
+        self.manager.configure('off')
+        result = self.manager.configure('suggest')
+        self.assertEqual(result['metrics']['reviewSeconds'], lease['deadline'] - lease['started'])
+        self.assertEqual(result['metrics']['unmeasuredReviews'], 1)
+        self.assertEqual(self.manager._read(self.manager._location())['recentReviews'][-1]['decision'], 'expired')
 
     def test_source_edits_accumulate_independent_observations_without_filling_candidates(self):
         for index in range(40):

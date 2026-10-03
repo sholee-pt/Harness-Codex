@@ -62,6 +62,123 @@ class GenerationQualityTests(unittest.TestCase):
         self.assertFalse((self.base / 'report.json').exists())
         self.assertEqual(runner.snapshot(self.project), self.before)
 
+    def test_report_identity_changes_with_brief_task_verification_and_guidance(self):
+        first = runner.run(self.args())['experimentIdentity']
+        for filename, value, key in (('brief.md', 'Maintain another contract.', 'briefSha256'),
+                                     ('task.txt', 'Set VALUE to 2.', 'taskSha256')):
+            (self.base / filename).write_text(value)
+            changed = runner.run(self.args())['experimentIdentity']
+            self.assertNotEqual(first[key], changed[key])
+            first = changed
+        self.profile['argv'] = [sys.executable, '-B', '-c', 'raise SystemExit(7)']
+        (self.base / 'check.json').write_text(json.dumps(self.profile))
+        changed = runner.run(self.args())['experimentIdentity']
+        self.assertNotEqual(first['verificationSha256'], changed['verificationSha256'])
+        original_snapshot = runner.snapshot
+        def changed_guidance(root, **kwargs):
+            result = original_snapshot(root, **kwargs)
+            if root == REPO / '.agents/skills/harness':
+                result['additional-guidance.md'] = (b'Changed guidance.', 0o644)
+            return result
+        with mock.patch.object(runner, 'snapshot', side_effect=changed_guidance):
+            changed = runner.run(self.args())['experimentIdentity']
+        self.assertNotEqual(first['generatorSha256'], changed['generatorSha256'])
+        self.assertNotIn(str(self.project), json.dumps(changed))
+
+    def test_explicit_evidence_retains_generated_candidates_before_task_only(self):
+        evidence = self.base / 'private-evidence'
+        (self.project / 'AGENTS.md').write_text('private-user-instructions\n')
+        preview = runner.run(self.args('--evidence-dir', str(evidence)))
+        self.assertTrue(preview['artifactRetention']['enabled'])
+        self.assertFalse(evidence.exists())
+        with mock.patch.object(runner.capture, 'run_codex_jsonl', side_effect=self.capture), mock.patch.object(runner.evaluation, 'VERIFICATION_QUIESCENCE_SECONDS', 0):
+            report = runner.run(self.args('--live', '--evidence-dir', str(evidence)))
+        retained = evidence / 'pair-1'
+        self.assertEqual(report['pairs'][0]['generation']['artifactRetention']['state'], 'retained')
+        self.assertTrue((retained / '.harness/manifest.json').is_file())
+        self.assertTrue((retained / '.agents/skills/project-harness/SKILL.md').is_file())
+        self.assertFalse((retained / 'app.py').exists())
+        self.assertFalse((retained / '.agents/skills/harness').exists())
+        self.assertNotIn('private-user-instructions', (retained / 'AGENTS.md').read_text())
+        for path in retained.rglob('*'):
+            if path.is_file():
+                self.assertNotIn(b'private-fixture-value', path.read_bytes())
+                if os.name != 'nt':
+                    self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        if os.name != 'nt':
+            self.assertEqual(evidence.stat().st_mode & 0o777, 0o700)
+        with self.assertRaisesRegex(ValueError, 'new private evidence'):
+            runner.run(self.args('--live', '--evidence-dir', str(evidence)))
+        with self.assertRaisesRegex(ValueError, 'new private evidence'):
+            runner.run(self.args('--live', '--evidence-dir', str(self.project / 'evidence')))
+        with self.assertRaisesRegex(ValueError, 'separate from dedicated authentication'):
+            runner.run(self.args('--live', '--evidence-dir', str(self.codex_home / 'evidence')))
+
+    def test_failed_generation_candidate_is_retained_without_source_or_task_artifacts(self):
+        evidence = self.base / 'failed-evidence'
+        def failed(**kwargs):
+            if '$harness Configure' in kwargs['prompt']:
+                (kwargs['repository'] / '.harness').mkdir()
+                (kwargs['repository'] / '.harness/draft.json').write_text('{"incomplete":true}')
+                summary = runner.capture.CaptureSummary(True, 'failed', {}, {}, 0, 0, 'supported', None)
+                return summary, 1, 20, True, 'fixture-version'
+            return self.capture(**kwargs)
+        with mock.patch.object(runner.capture, 'run_codex_jsonl', side_effect=failed), mock.patch.object(runner.evaluation, 'VERIFICATION_QUIESCENCE_SECONDS', 0):
+            report = runner.run(self.args('--live', '--evidence-dir', str(evidence)))
+        self.assertEqual(report['generationFailed'], 1)
+        self.assertEqual((evidence / 'pair-1/.harness/draft.json').read_text(), '{"incomplete":true}')
+        self.assertFalse((evidence / 'pair-1/app.py').exists())
+
+    def test_authentication_setup_failure_preserves_attempts_and_denominator(self):
+        with mock.patch.object(runner, 'isolated_home', side_effect=OSError('fixture setup failure')), mock.patch.object(runner.capture, 'run_codex_jsonl') as native:
+            report = runner.run(self.args('--live', '--repetitions', '2'))
+        native.assert_not_called()
+        self.assertFalse(report['liveCodexInvoked'])
+        self.assertEqual(report['codexRunAttempts'], 0)
+        self.assertEqual(report['requestedPairs'], 2)
+        self.assertEqual(report['generationFailed'], 2)
+        self.assertEqual(report['pairs'][0]['generation']['failureKind'], 'OSError')
+        self.assertEqual(report['stoppedReason'], 'process-cleanup-unverified')
+
+    def test_invalid_manifest_cannot_retain_unrelated_modified_source(self):
+        evidence = self.base / 'untrusted-evidence'
+        (self.project / '.env').write_text('fixture credential before')
+        def failed(**kwargs):
+            if '$harness Configure' in kwargs['prompt']:
+                root = kwargs['repository']
+                (root / '.env').write_text('fixture credential after')
+                (root / '.harness').mkdir()
+                (root / '.harness/manifest.json').write_text(json.dumps({'managedFiles': [{'path': '.env', 'kind': 'file'}]}))
+                summary = runner.capture.CaptureSummary(True, 'failed', {}, {}, 0, 0, 'supported', None)
+                return summary, 1, 20, True, 'fixture-version'
+            return self.capture(**kwargs)
+        with mock.patch.object(runner.capture, 'run_codex_jsonl', side_effect=failed), mock.patch.object(runner.evaluation, 'VERIFICATION_QUIESCENCE_SECONDS', 0):
+            report = runner.run(self.args('--live', '--evidence-dir', str(evidence)))
+        self.assertEqual(report['generationFailed'], 1)
+        self.assertFalse((evidence / 'pair-1/.env').exists())
+
+    def test_changed_generator_excludes_pair_and_preserves_remaining_denominator(self):
+        changed = False
+        original_snapshot = runner.snapshot
+        def observe(root, **kwargs):
+            result = original_snapshot(root, **kwargs)
+            if changed and root == REPO / '.agents/skills/harness':
+                result['changed-guidance.md'] = (b'changed during experiment', 0o644)
+            return result
+        def change_guidance(**kwargs):
+            nonlocal changed
+            result = self.capture(**kwargs)
+            changed = True
+            return result
+        with mock.patch.object(runner, 'snapshot', side_effect=observe), mock.patch.object(runner.capture, 'run_codex_jsonl', side_effect=change_guidance):
+            report = runner.run(self.args('--live', '--repetitions', '2'))
+        self.assertEqual(report['stoppedReason'], 'experiment-sources-changed')
+        self.assertEqual(report['generationFailed'], 2)
+        self.assertEqual(report['codexRunAttempts'], 1)
+        self.assertEqual(report['baselineVerifiedPassed'], 0)
+        self.assertFalse(report['experimentSourcesUnchanged'])
+        self.assertEqual(report['pairs'][1]['generation']['state'], 'skipped-experiment-sources-changed')
+
     def test_live_generation_uses_only_brief_then_same_task_with_isolated_auth(self):
         with mock.patch.object(runner.capture, 'run_codex_jsonl', side_effect=self.capture), mock.patch.object(runner.evaluation, 'VERIFICATION_QUIESCENCE_SECONDS', 0):
             report = runner.run(self.args('--live', '--repetitions', '2'))

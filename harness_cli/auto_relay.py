@@ -121,9 +121,12 @@ class Policy:
         result['data'] = [first, *result['data'], *aliases]
         return result
 
-    def real(self, model):
+    def real(self, model, thread=None):
         if model == ALIAS:
             visible = {entry['model'] for entry in self.catalog}
+            current = self.contexts.get(thread, Context()).model
+            if current in visible:
+                return current
             model = self.default_model if self.default_model in visible else next((x['model'] for x in self.catalog if x.get('isDefault')), None)
             return model
         return self.aliases.get(model, model)
@@ -131,11 +134,11 @@ class Policy:
     def warn(self, thread, text):
         self.notices.append({'method': 'warning', 'params': {'threadId': thread, 'message': text}})
 
-    def seed(self, thread, settings):
+    def seed(self, thread, settings, *, active_task=True):
         model = selected_model(settings)
         if model:
             effort = settings.get('reasoningEffort') or settings.get('effort') or settings.get('reasoning_effort')
-            self.contexts[thread] = Context(model=self.real(model), effort=effort, active_task=True)
+            self.contexts[thread] = Context(model=self.real(model, thread), effort=effort, active_task=active_task)
 
     def reconcile(self, method, result, auto):
         thread = result.get('threadId')
@@ -207,11 +210,13 @@ class Policy:
                 result['edits'] = kept
             return result
         if selected == ALIAS or selected in self.aliases:
-            real = self.real(selected)
+            real = self.real(selected, thread)
             if real:
                 set_model(result, real)
         if inference and self.loaded:
             self.reconcile(method, result, auto)
+        if selected_model(result) == ALIAS:
+            raise SelectionRequired('Auto has no supported model selection. Select one with /model or use native mode. No task was submitted.')
         if method == 'thread/settings/update' and selected:
             self.pending_modes[thread] = selected == ALIAS or selected in self.aliases
         self.observe('request', method, result)
@@ -245,6 +250,8 @@ class Policy:
                 tier, _ = classify(text, context)
                 decision = Decision(tier, model, effort, 'manual-fixed', 'manual', False)
                 self.observe('decision', thread, text, decision, self.raw_catalog, context, self.profiles, allow_advice=False, params=result)
+        if method == 'turn/start' and thread in self.contexts:
+            self.contexts[thread] = replace(self.contexts[thread], active_task=True)
         return result
 
     def display(self, settings, thread):
@@ -270,7 +277,9 @@ class Policy:
         if method == 'thread/settings/update' and 'result' in message:
             self.settings(params)
             settings = result.get('threadSettings', result) if isinstance(result, dict) else {}
-            self.seed(params.get('threadId'), settings if selected_model(settings) else params)
+            thread = params.get('threadId')
+            self.seed(thread, settings if selected_model(settings) else params,
+                      active_task=self.contexts.get(thread, Context()).active_task)
         if method == 'thread/settings/update':
             self.pending_modes.pop(params.get('threadId'), None)
         if method in {'thread/start', 'thread/resume', 'thread/fork'} and isinstance(result, dict):
@@ -280,7 +289,7 @@ class Policy:
                 effort = result.get('reasoningEffort') or result.get('effort')
                 if model:
                     tier = 'deep' if effort in {'high', 'xhigh', 'max', 'ultra'} else 'fast' if effort in {'none', 'minimal', 'low'} else 'balanced'
-                    self.contexts[thread] = Context(tier=tier, model=self.real(model), effort=effort, active_task=True)
+                    self.contexts[thread] = Context(tier=tier, model=self.real(model), effort=effort, active_task=method != 'thread/start')
                 if selected_model(params) == ALIAS or selected_model(params) in self.aliases:
                     self.settings({**params, 'threadId': thread})
                 elif method == 'thread/fork':
@@ -521,7 +530,7 @@ class Relay:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-            if process.returncode is None:
+            if os.name == 'posix' or process.returncode is None:
                 try:
                     if os.name == 'posix':
                         os.killpg(process.pid, signal.SIGTERM)
@@ -532,6 +541,10 @@ class Relay:
                 try:
                     await asyncio.wait_for(process.wait(), 5)
                 except asyncio.TimeoutError:
+                    pass
+                finally:
+                    # The group can outlive its leader, including after a clean
+                    # backend exit. Never leave its children running on disconnect.
                     try:
                         if os.name == 'posix':
                             os.killpg(process.pid, signal.SIGKILL)
@@ -539,7 +552,7 @@ class Relay:
                             process.kill()
                     except ProcessLookupError:
                         pass
-                    await process.wait()
+                    await asyncio.wait_for(process.wait(), 5)
             await websocket.close()
 
 

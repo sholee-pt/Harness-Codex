@@ -92,6 +92,7 @@ class Server:
             self._put(exc)
         finally:
             self._put(None)
+            self.process.stdout.close()
 
     def _errors(self):
         try:
@@ -103,6 +104,8 @@ class Server:
                 del self.stderr[:-16384]
         except (OSError, ValueError):
             pass
+        finally:
+            self.process.stderr.close()
 
     def send(self, value):
         payload = json.dumps(value, ensure_ascii=False).encode('utf-8') + b'\n'
@@ -318,19 +321,26 @@ class Server:
             if os.name == 'nt':
                 subprocess.run([str(Path(os.environ['SystemRoot']) / 'System32/taskkill.exe'), '/PID', str(self.process.pid), '/T', '/F'],
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
-            else:
-                try:
-                    os.killpg(self.process.pid, signal.SIGTERM)
-                    self.process.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    os.killpg(self.process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-            self.process.wait(timeout=5)
-        for stream in (self.process.stdout, self.process.stderr):
-            stream.close()
+        if os.name == 'posix':
+            try:
+                os.killpg(self.process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
         for thread in self.readers:
             thread.join(timeout=1)
+        if os.name == 'posix':
+            try:
+                # A leader may already have exited while descendants retain
+                # its pipes. Reader threads close their own streams without
+                # making this thread wait on a buffered-reader lock.
+                os.killpg(self.process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        self.process.wait(timeout=5)
+        for thread in self.readers:
+            thread.join(timeout=1)
+        if any(thread.is_alive() for thread in self.readers):
+            raise TimeoutError('Codex metadata output did not close after stopping its process group')
 
 
 def run(command: list[str], root: Path, prompt: str, *, timeout=1800, resume_id=None, settings='native') -> Result:

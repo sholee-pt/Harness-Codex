@@ -30,20 +30,53 @@ validate_options() {
           --auto-update) case "$value" in compatible|check|off) ;; *) fail 'Invalid automatic update policy.' ;; esac ;;
           --existing) case "$value" in ask|reuse|reset) ;; *) fail 'Invalid existing-installation choice.' ;; esac ;;
           --activate) case "$value" in ask|shell|skip) ;; *) fail 'Invalid activation choice.' ;; esac ;;
+          --repository) case "${value%.git}" in
+            https://github.com/sholee-pt/Harness|https://github.com/sholee-pt/Harness-Codex|git@github.com:sholee-pt/Harness|git@github.com:sholee-pt/Harness-Codex|ssh://git@github.com/sholee-pt/Harness|ssh://git@github.com/sholee-pt/Harness-Codex) ;;
+            *) fail 'Select the Harness-Codex repository.' ;; esac ;;
+          --data-dir) data_directory=$value ;;
+          --bin-dir) bin_directory=$value ;;
         esac ;;
       *) fail "Unknown option: $1. Use --help." ;;
     esac
+  done
+}
+preflight_path() {
+  path=$1
+  printf '%s\n' "$path" | awk 'NR > 1 || /\r/ {exit 1}' || fail 'Installation paths must contain no line breaks.'
+  case "$path" in '~') path=$HOME ;; '~/'*) path=$HOME/${path#\~/} ;; esac
+  while [ "$path" != / ]; do
+    case "$path" in */.) path=${path%/.} ;; */) path=${path%/} ;; *) break ;; esac
+    [ -n "$path" ] || path=/
+  done
+  [ ! -L "$path" ] || fail "Installation root is a symlink; preserved: $path"
+  [ ! -e "$path" ] || [ -d "$path" ] || fail "Installation path is not a directory; preserved: $path"
+  resolved=$(realpath -m -- "$path") || fail 'Cannot resolve installation path.'
+  for candidate in "$1" "$path" "$resolved"; do
+    printf '%s\n' "$candidate" | awk -F/ 'NR > 1 || /\r/ {exit 1} {for (i=1;i<=NF;i++) {part=tolower($i); sub(/[ .]+$/, "", part); if (part == ".git") exit 1}}' \
+      || fail 'Installation paths must remain outside Git metadata and contain no line breaks.'
+  done
+  candidate=$resolved
+  while [ "$candidate" != / ]; do
+    [ ! -e "$candidate" ] || [ -d "$candidate" ] || fail "Installation path is not a directory; preserved: $candidate"
+    candidate=$(dirname -- "$candidate")
   done
 }
 main() {
   for argument in "$@"; do
     case "$argument" in --help|-h) usage; return ;; esac
   done
+  data_directory=${XDG_DATA_HOME:-$HOME/.local/share}/harness-codex
+  bin_directory=$HOME/.local/bin
   validate_options "$@"
   [ "$(uname -s)" = Linux ] || fail 'This installer supports Linux only.'
-  for prerequisite in curl bash tar sha256sum mktemp rm awk; do
+  for prerequisite in curl bash tar sha256sum mktemp rm awk realpath dirname; do
     command -v "$prerequisite" >/dev/null 2>&1 || fail "Required command missing: $prerequisite"
   done
+  preflight_path "$data_directory"
+  case "$data_directory" in '~') data_directory=$HOME ;; '~/'*) data_directory=$HOME/${data_directory#\~/} ;; esac
+  data_directory=$(realpath -m -- "$data_directory") || fail 'Cannot resolve installation path.'
+  preflight_path "$data_directory-runtime"
+  preflight_path "$bin_directory"
   temporary=$(mktemp -d "${TMPDIR:-/tmp}/harness-codex-install.XXXXXXXX")
   trap 'rm -rf -- "$temporary"' EXIT
   trap 'exit 130' INT

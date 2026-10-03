@@ -511,7 +511,7 @@ class StateTests(unittest.TestCase):
             self.assertEqual(upgraded["schemaVersion"], harness_metadata.MANIFEST_SCHEMA_VERSION)
             self.assertEqual(upgraded["topology"]["classification"]["class"], "minimal")
 
-    def test_schema_v4_upgrade_rejects_stale_legacy_evidence(self) -> None:
+    def test_schema_v4_upgrade_reanalyzes_stale_legacy_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / ".harness").mkdir()
@@ -524,8 +524,11 @@ class StateTests(unittest.TestCase):
                 "[project]\nname = 'changed-before-upgrade'\n", encoding="utf-8"
             )
 
-            with self.assertRaisesRegex(harness_apply.PlanError, "changed after analysis"):
-                harness_apply.build_application(root, minimal_plan(root))
+            plan = minimal_plan(root)
+            harness_apply.apply_application(harness_apply.build_application(root, plan))
+            report = validate_harness.Validator(root).run()
+            self.assertTrue(report["valid"], report["errors"])
+            self.assertEqual(harness_apply.apply_application(harness_apply.build_application(root, plan))["writes"], 0)
 
     def test_snapshot_detects_post_freeze_mutation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -832,7 +835,7 @@ class ApplyTests(unittest.TestCase):
             plan = harness_plan_builder.materialize_plan(plan, root=root)
             router = next(item['content'] for item in plan['artifacts'] if item['path'] == '.agents/skills/project-harness/SKILL.md')
             self.assertEqual(router.count(harness_teamplay.PROJECT_BLOCK), 1)
-            self.assertEqual(router.count(harness_teamplay.PROVISIONAL_GUIDANCE), 1)
+            self.assertEqual(router.count(harness_teamplay.ROUTER_GUIDANCE), 1)
 
             dry_run = harness_apply.build_application(root, plan)
             self.assertFalse((root / ".harness" / "manifest.json").exists())

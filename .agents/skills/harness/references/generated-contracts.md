@@ -6,7 +6,7 @@ Apply validates the incoming plan and independently classifies the existing inst
 
 Git authorization advice is added during new materialization outside the required canonical blocks. Existing v9.0 plans and installations remain valid without it. Updating the installer or generator does not automatically update project artifacts or establish runtime authorization enforcement; see [git-authorization.md](git-authorization.md).
 
-The current materializer emits the compact runtime-teamplay v3 block from the existing `HARNESS_PROJECT_TEAMPLAY_V2` authoring placeholder. Artifact Contract 2 accepts exactly one complete current or legacy v2 block, never a mixture. Installed legacy bytes remain unchanged during validation. Reviewed draft materialization replaces the old block with the compact one; ownership checks and dry-run still precede application. Detailed delegation procedures are loaded conditionally from the generator references.
+The current materializer emits the compact runtime-teamplay v4 block from the existing `HARNESS_PROJECT_TEAMPLAY_V2` authoring placeholder. Artifact Contract 2 accepts exactly one complete current or legacy v2/v3 block, never a mixture. Installed legacy bytes remain unchanged during validation. Reviewed draft materialization replaces the old block with the compact one; ownership checks and dry-run still precede application. Detailed delegation procedures are loaded conditionally from the generator references. 이전 agent coordination block도 읽기 호환성을 유지할 것. 검토된 새 materialization에서만 조건부 writer 격리 문구와 compact router 지침을 적용할 것.
 
 ## Agent instructions
 

@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 import time
 
-from .model_routing import catalog_entries, _effort, identifier
+from .model_routing import catalog_entries, identifier
 
 CONTEXT_SETTINGS = (('modelProvider', 'provider'), ('serviceTier', 'serviceTier'), ('sandbox', 'sandbox'),
                     ('sandboxPolicy', 'sandbox'), ('approvalPolicy', 'approval'), ('activePermissionProfile', 'permissions'),
@@ -23,6 +23,19 @@ def category(prompt):
     if re.search(r'implement|refactor|function|구현|수정|함수|리팩', prompt, re.I):
         return 'implementation'
     return 'general'
+
+
+def catalog_context(catalog):
+    """Ignore display copy while retaining availability and unknown capabilities."""
+    result = []
+    for entry in sorted(catalog, key=lambda item: item['model']):
+        item = {key: value for key, value in entry.items() if key not in {'displayName', 'description'}}
+        if 'supportedReasoningEfforts' in item:
+            item['supportedReasoningEfforts'] = sorted(
+                ({key: value for key, value in option.items() if key != 'description'}
+                 for option in item['supportedReasoningEfforts']), key=lambda option: option['reasoningEffort'])
+        result.append(item)
+    return result
 
 
 class Observer:
@@ -103,13 +116,12 @@ class Observer:
             return decision
         revision = self.revision(manager)
         if catalog is not self.catalog:
-            self.catalog, self.catalog_hash = catalog, self.module.digest(sorted(catalog, key=lambda item: item['model']))
+            self.catalog, self.catalog_hash = catalog, self.module.digest(catalog_context(catalog))
         group = manager.context(runtime=self.runtime, catalog=[self.catalog_hash, provenance], revision=revision, category=category(prompt), tier=decision.tier)
         entries = catalog_entries(catalog)
         allowed = profiles.get(decision.tier) if profiles else None
-        candidates = [(entry['model'], _effort(entry, decision.tier)) for entry in entries.values()
-                      if not allowed or entry['model'] in allowed]
-        candidates = [pair for pair in candidates if pair[1] is not None]
+        candidates = [(entry['model'], option['reasoningEffort']) for entry in entries.values()
+                      if not allowed or entry['model'] in allowed for option in entry.get('supportedReasoningEfforts', [])]
         recommendation = None
         if allow_advice and decision.reason not in {'continue-task', 'lighter-request-pending'}:
             recommendation = manager.recommend(group, (decision.model, decision.effort), candidates, active_task=context.active_task, state=state)

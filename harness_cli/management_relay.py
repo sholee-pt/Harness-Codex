@@ -92,7 +92,7 @@ class Controls:
                     length += len(chunks[-1])
             await process.wait()
         async def stop():
-            if process.returncode is None:
+            if os.name == 'posix' or process.returncode is None:
                 try:
                     if os.name == 'posix':
                         # Let Python helpers unwind and reap separately grouped
@@ -105,6 +105,10 @@ class Controls:
                 try:
                     await asyncio.wait_for(output(), 15)
                 except asyncio.TimeoutError:
+                    pass
+                finally:
+                    # A completed leader does not establish that its children
+                    # stopped; some helpers also close their inherited output.
                     try:
                         if os.name == 'posix':
                             os.killpg(process.pid, signal.SIGKILL)
@@ -112,7 +116,7 @@ class Controls:
                             process.kill()
                     except ProcessLookupError:
                         pass
-                    await process.wait()
+                    await asyncio.wait_for(process.wait(), 5)
         try:
             await asyncio.wait_for(output(), timeout)
         finally:

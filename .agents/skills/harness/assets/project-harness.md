@@ -25,25 +25,27 @@ Classify each current task as direct, delegated, or coordinated without changing
 - Recommend rerunning `$harness` only when stable workspace evidence shows a new or changed responsibility, contract boundary, recurring workflow, or verification risk.
 - Preserve clean managed artifacts during reassessment. Report obsolete artifacts as removal candidates and never remove them without explicit user authorization.
 
-## Direct execution
+## 작업과 조건부 지침
 
-After resolving routing and required quality checks, handle a small, tightly coupled task directly when delegation adds no material benefit. Keep its scope, expected output, and verification in the current task; do not create a runtime-plan file, coordination packet, relay receipt, or disposable capability probe just to perform direct work. Preserve an explicitly requested plan or audit and all applicable verification and permission requirements.
+작은 직접 작업은 범위·출력·검증만 현재 작업에 유지할 것. 위임 이점이 없으면 runtime plan·packet·receipt·별도 probe를 만들지 말 것. 사용자가 요청한 계획·검토와 필수 검증은 수행할 것. 인용·로그·질문의 workflow 이름만으로 새 workflow를 활성화하지 말 것.
 
-Read delegation references and validate an ephemeral runtime plan only when delegation or coordination is selected. If new evidence requires that transition, validate the plan before spawning agents. Do not reuse an earlier validation as proof of current permissions, file ownership, evidence freshness, or write scope. Report the changed result, checks, and remaining gaps without empty subagent-accounting fields.
+선택한 workspace와 현재 파일·소유권·권한을 확인할 것. 프로젝트 내부 경로는 현재 root 기준 상대경로로 다루고 외부 자료는 명시적으로 허용된 범위만 읽을 것. 과거 mount/interpreter 경로를 그대로 믿거나 sandbox·승인 권한을 몰래 넓히지 말 것. host 이전이나 경로·sandbox 문제가 있을 때만 `.agents/skills/harness/references/workspace-portability.md`를 읽을 것.
 
-<!-- harness:runtime-teamplay:v3:begin -->
+작업 인계·같은 범위 fallback 전에 이전 writer가 정지했음을 확인할 것. 결과 수신과 통합을 구분하고 현재 입력에 맞춰 검증할 것. 재시도 예산을 지키며 새로운 근거 없이 같은 실패를 반복하지 말 것. 수명주기·producer/consumer 변경에는 `references/contract-review.md`, 기존 specialist 절차 재사용에는 `references/external-skills.md`, 명시적으로 요청한 재개 작업에는 `references/task-checkpoints.md`를 generator 경로 아래에서 읽을 것. 임시 역할의 native mapping은 위임할 때 읽는 `references/native-subagent-relay.md`를 따를 것.
+
+<!-- harness:runtime-teamplay:v4:begin -->
 ## Runtime execution
 
 Select direct work, independent delegation, or coordinated feedback from the current task's needs, never agent count or persistent topology. One review pass is delegated; repeated negotiation may justify coordination. Keep task roles and state out of the manifest.
 
 ## Native subagent relay
 
-For delegated or coordinated work, first read `.agents/skills/harness/references/runtime-plan.md` and `.agents/skills/harness/references/native-subagent-relay.md`. Validate the ephemeral plan, assign one owner and bounded scope per task, and preserve required outputs and verification through fallback. Reviewers are read-only; default to one writer. Parallel writers require observed isolation and disjoint scopes; ordered overlapping writers require a verified handoff.
+For delegated or coordinated work, first read `.agents/skills/harness/references/runtime-plan.md` and `.agents/skills/harness/references/native-subagent-relay.md`. Validate the ephemeral plan, assign one owner and bounded scope per task, and preserve required outputs and verification through fallback. Reviewer와 scout는 읽기 전용으로 유지할 것. 단일·순차 writer는 선택한 workspace를 사용할 수 있음. 동시 writer는 겹치지 않는 쓰기 범위와 실제 격리 또는 명시적 shared-workspace 계약을 갖출 것. 순차 중첩 쓰기에는 검증된 handoff를 요구할 것.
 
 Use the first real selected participant to confirm spawn acknowledgement and its listed receiver handle. That confirms readiness for further independent delegation; collect terminal results at integration, without serializing the first task. Follow the reference's bounded progress/deadline policy. A polling timeout is not task failure and never releases a live writer's ownership.
 
 The parent relays material findings, validates returned packets, integrates required results and verifies current inputs. Load the relay-receipt reference for packet revisions; invalidate stale dependent reviews and bound targeted revision rounds. Runtime state is ephemeral by default; persistent audit retention requires an explicit choice. Read the runtime-observation reference only for requested live evidence capture. Report actual completion, failed or missing work, fallback and verification separately; missing optional observation is an evidence limitation.
-<!-- harness:runtime-teamplay:v3:end -->
+<!-- harness:runtime-teamplay:v4:end -->
 
 <!-- harness:change-discipline:v1:begin -->
 ## Change discipline

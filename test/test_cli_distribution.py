@@ -128,6 +128,9 @@ class DistributionTests(unittest.TestCase):
             stdout = (self.resolved + "\n").encode()
         elif "merge-base" in arguments:
             code = self.ancestor_code
+        elif "ls-tree" in arguments:
+            stdout = '\0'.join([name for name in sorted(dist.TOP_FILES) if (self.candidate / name).is_file()]
+                                + ['harness_cli', '.agents/skills/harness']).encode() + b'\0'
         elif "archive" in arguments:
             output = next(item.removeprefix("--output=") for item in arguments if item.startswith("--output="))
             archive(self.candidate, Path(output), self.archive_extra)
@@ -159,6 +162,31 @@ class DistributionTests(unittest.TestCase):
         self.assertIsNone(state["commit"])
         self.assertEqual(state["releaseId"], "content-" + state["treeHash"])
         self.assertEqual(state["auto_update"], "off")
+
+    def test_repeated_status_reuses_analysis_but_rechecks_owned_bytes(self):
+        installed = self.install()
+        dist._VERIFIED_SOURCE_INFO.clear()
+        with mock.patch.object(dist, '_source_info', wraps=dist._source_info) as inspect:
+            dist.installed_status(self.data)
+            dist.installed_status(self.data)
+            self.assertEqual(inspect.call_count, 1)
+            path = Path(installed['sourceRoot']) / 'harness_cli/main.py'
+            path.write_text('# locally changed\n')
+            with self.assertRaisesRegex(dist.DistributionError, 'local changes'):
+                dist.installed_status(self.data)
+            self.assertEqual(inspect.call_count, 1)
+            snapshot = dist._snapshot(Path(installed['sourceRoot']), managed=True)
+            hashes = dist._hashes(snapshot)
+            active_path = self.data / 'active.json'
+            active = json.loads(active_path.read_text())
+            active['treeHash'] = dist._tree_hash(hashes)
+            active_path.write_text(json.dumps(active))
+            receipt_path = self.data / 'receipts' / (active['releaseId'] + '.json')
+            receipt = json.loads(receipt_path.read_text())
+            receipt.update(treeHash=active['treeHash'], files=hashes)
+            receipt_path.write_text(json.dumps(receipt))
+            dist.installed_status(self.data)
+            self.assertEqual(inspect.call_count, 2)
 
     def test_explicit_foreign_runtime_metadata_is_rejected_before_install(self):
         metadata = self.source / "_release.json"
@@ -697,14 +725,20 @@ class DistributionTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("git"), "Git required for local provenance fixture")
     def test_clean_checkout_gets_provenance_but_local_edits_do_not(self):
         (self.source / "_release.json").unlink()
+        (self.source / 'docs').mkdir()
+        (self.source / 'docs/large-fixture').write_bytes(b'x' * 2048)
         def git(*args):
             subprocess.run(["git", "-c", "safe.directory=" + str(self.source), "-C", str(self.source), *args], check=True, capture_output=True)
         git("init")
         git("add", ".")
         git("-c", "user.name=Harness Test", "-c", "user.email=harness-test@example.invalid", "commit", "-m", "fixture")
-        commit = dist._checkout_commit(self.source, dist._snapshot(self.source))
+        with mock.patch.object(dist, 'MAX_FILE_BYTES', 1024):
+            commit = dist._checkout_commit(self.source, dist._snapshot(self.source))
         self.assertRegex(commit, r"^[0-9a-f]{40}$")
         (self.source / "harness_cli/main.py").write_text("# changed\n")
+        self.assertIsNone(dist._checkout_commit(self.source, dist._snapshot(self.source)))
+        git("checkout", "--", "harness_cli/main.py")
+        (self.source / 'harness_cli/main.py').unlink()
         self.assertIsNone(dist._checkout_commit(self.source, dist._snapshot(self.source)))
         git("checkout", "--", "harness_cli/main.py")
         (self.source / "harness_cli/untracked.py").write_text("# untracked runtime\n")

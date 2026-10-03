@@ -106,9 +106,31 @@ try {
         self.assertIn('0.12.0-beta Windows installer', result.stdout)
         self.assertFalse(self.marker.exists())
 
+    def test_git_metadata_paths_are_rejected_before_download(self):
+        for option in ('DataDir', 'BinDir', 'CondaHome'):
+            with self.subTest(option=option):
+                result = self.run_bootstrap("-" + option + " '" + str(self.base / '.git/tool') + "'")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('Git metadata', result.stdout)
+                self.assertNotIn('Downloading', result.stdout)
+                self.assertFalse((self.base / '.git').exists())
+
 
 @unittest.skipUnless(POWERSHELL, 'Requires native Windows PowerShell')
 class WindowsSourceInstallerTests(unittest.TestCase):
+    def test_git_metadata_paths_are_rejected_before_logs_or_conda(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            for option in ('DataDir', 'BinDir', 'CondaHome'):
+                with self.subTest(option=option):
+                    environment = {**os.environ, 'TEMP': str(base), 'TMP': str(base)}
+                    result = subprocess.run([POWERSHELL, '-NoProfile', '-NonInteractive', '-File',
+                                             str(ROOT / 'installer/install.ps1'), '-' + option, str(base / '.git/tool')],
+                                            env=environment, capture_output=True, text=True, timeout=30)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('Git metadata', result.stdout + result.stderr)
+                    self.assertEqual(list(base.iterdir()), [])
+
     def test_explicit_conda_home_never_selects_an_external_same_named_environment(self):
         for state in ('new', 'existing', 'incomplete'):
             with self.subTest(state=state), tempfile.TemporaryDirectory() as directory:

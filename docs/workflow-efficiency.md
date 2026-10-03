@@ -82,3 +82,6 @@ lifecycle remains a separate requirement.
 Deterministic regressions and upgrade tests verify these boundaries. They do not
 establish better fresh generation, live native delegation, model accuracy or token
 savings; those require separate real-task comparisons.
+
+
+현재 materializer는 direct·checkpoint·provisional·portability 상세 문단을 매 router에 반복하지 않고 작업·권한·소유권 핵심 규칙과 조건부 참조로 묶습니다. 검토된 draft만 이전의 알려진 문단을 교체하며 설치 검증은 원본을 변경하지 않습니다. 읽기 전용 scout, 단일·순차 writer, 명시적 shared workspace를 구분합니다. 정적 byte 감소는 실제 token 비용이나 작업 품질 개선을 증명하지 않습니다.

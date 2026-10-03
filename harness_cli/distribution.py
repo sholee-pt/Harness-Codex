@@ -38,6 +38,7 @@ RELEASE_RE = re.compile(r"(?:[0-9a-f]{40}|content-[0-9a-f]{64})\Z")
 MAX_FILES = 10000
 MAX_FILE_BYTES = 16 * 1024 * 1024
 MAX_TREE_BYTES = 96 * 1024 * 1024
+_VERIFIED_SOURCE_INFO: dict[str, tuple[str, str | None]] = {}
 METADATA = ".agents/skills/harness/scripts/harness_metadata.py"
 REQUIRED = frozenset({"harness.py", "install.py", "harness_cli/__init__.py", "harness_cli/main.py", "harness_cli/project.py", "harness_cli/distribution.py", ".agents/skills/harness/SKILL.md", METADATA})
 SOURCE_ENTRYPOINTS = REQUIRED - {"harness_cli/project.py"}
@@ -536,11 +537,19 @@ def _installation_status(data_root, *, launcher_hashes_override=None) -> dict:
     receipt = _read_json(data_root / "receipts" / (active["releaseId"] + ".json"))
     snapshot = _snapshot(source, managed=True)
     hashes = _hashes(snapshot)
+    tree_hash = _tree_hash(hashes)
     if (receipt.get("runtime", "codex") != "codex" or receipt.get("schema") != 1
             or receipt.get("treeHash") != active.get("treeHash") or receipt.get("files") != hashes
-            or active.get("treeHash") != _tree_hash(hashes)):
+            or active.get("treeHash") != tree_hash):
         raise DistributionError("managed release contains local changes; refusing to overwrite them")
-    version, declared_commit = _source_info(snapshot)
+    # Reuse syntax/import analysis only after re-reading every owned byte and
+    # verifying the current receipt. No path, mtime or persisted cache is trusted.
+    if tree_hash not in _VERIFIED_SOURCE_INFO:
+        source_info = _source_info(snapshot)
+        if len(_VERIFIED_SOURCE_INFO) >= 8:
+            _VERIFIED_SOURCE_INFO.pop(next(iter(_VERIFIED_SOURCE_INFO)))
+        _VERIFIED_SOURCE_INFO[tree_hash] = source_info
+    version, declared_commit = _VERIFIED_SOURCE_INFO[tree_hash]
     expected_id = active["commit"] or "content-" + active["treeHash"]
     if version != active["version"] or (declared_commit is not None and declared_commit != active["commit"]) or active["releaseId"] != expected_id:
         raise DistributionError("active source version or provenance mismatch")
@@ -1000,6 +1009,19 @@ def _git(arguments: list[str], *, timeout: int, git_executable: str = "git", all
     return result
 
 
+def _archive_runtime(location, commit, archive, *, timeout, git_executable="git"):
+    # Scope Git's output before applying transport/member size limits. Large
+    # documentation and test fixtures are not installed runtime dependencies.
+    roots = sorted(TOP_FILES) + ["harness_cli", ".agents/skills/harness"]
+    listed = _git([*location, "ls-tree", "-z", "--name-only", commit, "--", *roots],
+                  timeout=timeout, git_executable=git_executable).stdout.decode("utf-8")
+    selected = [name for name in listed.split("\0") if name]
+    if not selected or any(name not in roots for name in selected):
+        raise DistributionError("source commit contains no supported runtime layout")
+    _git([*location, "archive", "--format=tar", "--output=" + str(archive), commit, "--", *selected],
+         timeout=timeout, git_executable=git_executable)
+
+
 def _checkout_commit(source_root: Path, snapshot: dict[str, bytes]) -> str | None:
     """Use checkout provenance only when the runtime exactly equals its HEAD."""
     try:
@@ -1009,7 +1031,7 @@ def _checkout_commit(source_root: Path, snapshot: dict[str, bytes]) -> str | Non
         with tempfile.TemporaryDirectory(prefix="harness-provenance-") as temporary:
             temporary = Path(temporary).resolve()
             archive = Path(temporary) / "source.tar"
-            _git(["-C", str(source_root), "archive", "--format=tar", "--output=" + str(archive), commit], timeout=10)
+            _archive_runtime(["-C", str(source_root)], commit, archive, timeout=10)
             extracted = Path(temporary) / "runtime"
             extracted.mkdir()
             _extract_archive(archive, extracted)
@@ -1128,7 +1150,7 @@ def _update_tool(data_root, *, branch=None, repository=None, timeout=120, git_ex
                 if ancestry.returncode:
                     raise DistributionError("remote history is not a verified forward update; refusing rollback or rewritten history")
             archive = temporary / "source.tar"
-            _git(["--git-dir", str(git_root), "archive", "--format=tar", "--output=" + str(archive), resolved], timeout=timeout, git_executable=git_executable)
+            _archive_runtime(["--git-dir", str(git_root)], resolved, archive, timeout=timeout, git_executable=git_executable)
             extracted = temporary / "runtime"
             extracted.mkdir()
             _extract_archive(archive, extracted)

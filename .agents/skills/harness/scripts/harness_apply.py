@@ -114,7 +114,7 @@ def load_plan(path: Path) -> dict:
     return plan
 
 
-def validate_evidence(root: Path, value: object, label: str, *, snapshot=None) -> list[dict]:
+def validate_evidence(root: Path, value: object, label: str, *, snapshot=None, require_fresh: bool = True) -> list[dict]:
     own_snapshot = snapshot is None
     snapshot = snapshot if snapshot is not None else harness_state.EvidenceSnapshot()
     evidence = require_list(value, label)
@@ -130,29 +130,36 @@ def validate_evidence(root: Path, value: object, label: str, *, snapshot=None) -
             raise PlanError(f"{label}[{index}].path must be text")
         try:
             harness_state.validate_evidence_relative(relative)
-            path, present = harness_state.resolve_lexical_regular_inside(
-                root,
-                relative,
-                must_exist=True,
-                label="evidence",
-            )
+            if require_fresh:
+                path, present = harness_state.resolve_lexical_regular_inside(
+                    root,
+                    relative,
+                    must_exist=True,
+                    label="evidence",
+                )
         except harness_state.StateError as exc:
             raise PlanError(f"invalid {label}[{index}].path: {exc}") from exc
-        if not present:
+        if require_fresh and not present:
             raise PlanError(f"{label}[{index}].path does not exist: {relative}")
         if not isinstance(claim, str) or not claim.strip():
             raise PlanError(f"{label}[{index}].claim must be a non-empty string")
         if not isinstance(expected_hash, str) or not HASH_RE.fullmatch(expected_hash):
             raise PlanError(f"{label}[{index}].sha256 must be a SHA-256 hash")
-        content, actual_hash = snapshot.read(path)
-        try:
-            if "contentScope" in entry:
-                content = harness_state.evidence_content(root, entry, content)
-                actual_hash = harness_state.digest_bytes(content)
-        except harness_state.StateError as exc:
-            raise PlanError(f"invalid {label}[{index}]: {exc}") from exc
-        if actual_hash != expected_hash:
-            raise PlanError(f"{label}[{index}] changed after analysis: {relative}")
+        if "contentScope" in entry:
+            if entry["contentScope"] != harness_state.INSTRUCTION_EVIDENCE_SCOPE:
+                raise PlanError(f"invalid {label}[{index}]: unsupported evidence contentScope")
+            if not harness_state.is_instruction_relative(root, relative):
+                raise PlanError(f"invalid {label}[{index}]: instruction-user-content evidence requires a configured root instruction")
+        if require_fresh:
+            content, actual_hash = snapshot.read(path)
+            try:
+                if "contentScope" in entry:
+                    content = harness_state.evidence_content(root, entry, content)
+                    actual_hash = harness_state.digest_bytes(content)
+            except harness_state.StateError as exc:
+                raise PlanError(f"invalid {label}[{index}]: {exc}") from exc
+            if actual_hash != expected_hash:
+                raise PlanError(f"{label}[{index}] changed after analysis: {relative}")
         lines = entry.get("lines")
         if lines is not None:
             line_range = require_object(lines, f"{label}[{index}].lines")
@@ -169,28 +176,29 @@ def validate_evidence(root: Path, value: object, label: str, *, snapshot=None) -
                 raise PlanError(
                     f"{label}[{index}].lines must contain integers with 1 <= start <= end"
                 )
-            try:
-                line_count = len(content.decode("utf-8").splitlines()) if "contentScope" in entry else snapshot.line_count(path)
-            except (OSError, UnicodeError) as exc:
-                raise PlanError(
-                    f"{label}[{index}] uses lines for a non-UTF-8 file: {relative}"
-                ) from exc
-            if end > line_count:
-                raise PlanError(
-                    f"{label}[{index}].lines ends at {end}, but {relative} has {line_count} lines"
-                )
+            if require_fresh:
+                try:
+                    line_count = len(content.decode("utf-8").splitlines()) if "contentScope" in entry else snapshot.line_count(path)
+                except (OSError, UnicodeError) as exc:
+                    raise PlanError(
+                        f"{label}[{index}] uses lines for a non-UTF-8 file: {relative}"
+                    ) from exc
+                if end > line_count:
+                    raise PlanError(
+                        f"{label}[{index}].lines ends at {end}, but {relative} has {line_count} lines"
+                    )
         validated.append(entry)
     if own_snapshot:
         snapshot.verify()
     return validated
 
 
-def validate_project(root: Path, plan: dict, *, snapshot=None) -> dict:
+def validate_project(root: Path, plan: dict, *, snapshot=None, require_fresh: bool = True) -> dict:
     project = require_object(plan.get("project"), "project")
     summary = project.get("summary")
     if not isinstance(summary, str) or not summary.strip():
         raise PlanError("project.summary must be a non-empty string")
-    validate_evidence(root, project.get("evidence"), "project.evidence", snapshot=snapshot)
+    validate_evidence(root, project.get("evidence"), "project.evidence", snapshot=snapshot, require_fresh=require_fresh)
     rationale = require_object(project.get("rationale"), "project.rationale")
     rationale_summary = rationale.get("summary")
     if not isinstance(rationale_summary, str) or not rationale_summary.strip():
@@ -466,7 +474,9 @@ def existing_manifest_state(root: Path) -> tuple[dict | None, dict[str, dict]]:
         except ValueError as exc:
             raise PlanError(f"existing manifest artifact compatibility: {exc}; apply refused") from exc
     if manifest.get("schemaVersion") == harness_state.UPGRADE_SOURCE_SCHEMA_VERSION:
-        validate_project(root, manifest)
+        # Reviewed replacement evidence must be fresh; the old source may have
+        # changed or disappeared without changing ownership of installed files.
+        validate_project(root, manifest, require_fresh=False)
         legacy_topology = require_object(manifest.get("topology"), "existing topology")
         for kind in ("skills", "agents"):
             for index, item in enumerate(
@@ -477,6 +487,7 @@ def existing_manifest_state(root: Path) -> tuple[dict | None, dict[str, dict]]:
                     root,
                     component.get("evidence"),
                     f"existing topology.{kind}[{index}].evidence",
+                    require_fresh=False,
                 )
     entries = require_list(manifest.get("managedFiles"), "existing managedFiles")
     if not all(isinstance(entry, dict) for entry in entries):
@@ -529,7 +540,7 @@ def classify_file(
     if relative not in managed:
         raise PlanError(f"target path is user-owned and will not be overwritten: {relative}")
     try:
-        current = path.read_text(encoding="utf-8")
+        current = path.read_bytes().decode("utf-8")
     except (OSError, UnicodeError) as exc:
         raise PlanError(f"cannot read managed target {relative}: {exc}") from exc
     content_matches = current == desired

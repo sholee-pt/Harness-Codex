@@ -12,12 +12,13 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
-from build import build_release, source as build_source
+from build import build_release, release_publish, source as build_source
 from harness_cli import distribution as dist
 
 
@@ -74,6 +75,20 @@ class ReleaseBuildTests(unittest.TestCase):
             link.symlink_to(target, target_is_directory=directory)
         except OSError as exc:
             self.skipTest(f"Symlink creation unavailable: {exc}")
+
+    def test_linux_publication_verifies_real_committed_payload_before_remote_calls(self):
+        build_release.build(self.root, self.output)
+        notes = self.base / 'notes.md'
+        notes.write_text('Fixture release')
+        with mock.patch.object(release_publish, '__file__', str(self.root / 'build/release_publish.py')):
+            assets, content = release_publish.verified_assets(self.output, self.commit, 'v' + self.version, notes)
+            self.assertEqual(set(assets), {f'harness-codex-{self.version}-linux.tar.gz',
+                                          'install_harness_codex.sh', 'SHA256SUMS', 'build.json'})
+            self.assertEqual(content, b'Fixture release')
+            (self.root / 'harness.py').write_text('# changed after the build\n')
+            with mock.patch.object(release_publish, 'gh') as github, self.assertRaisesRegex(ValueError, 'clean committed source'):
+                release_publish.publish(self.output, self.commit, 'v' + self.version, notes, 'sholee-pt/Harness-Codex')
+            github.assert_not_called()
 
     def test_clean_build_binds_payload_checksums_metadata_and_commit(self):
         report = build_release.build(self.root, self.output, platform='both')

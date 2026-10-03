@@ -103,7 +103,14 @@ justify a persistent correction before anything is applied.
 `--session-ref`를 전달할 것. ref 없는 신호와 구형 기록, 종료·compaction으로 문맥을 잃은
 신호는 보존하며 status의 `contextRequired`로 알림. 현재 근거를 다시 읽어 신호를 재기록하거나
 `maintenance begin --evidence PATH`로 명시적으로 근거를 선택하여 검토할 것.
+현재 Codex 대화 안에서 실행하면 hook이 제공한 `--session-ref REF`도 전달할 것.
+자기 세션은 검토 주체로 식별하되 다른 활성 세션과 자식 agent는 계속 차단함.
+예약이 보류되면 기존 후보의 세션 연결은 바꾸지 않음.
 상대경로·원문·대화 내용은 유지보수 기록에 저장하지 않음.
+
+동일한 mode·정책을 재적용하면 진행 중 lease를 보존함. 실제 설정 변경은 해당 lease를
+연기 또는 만료로 종료하며, 경과 시간·미측정 token 비용을 예산 기록에 반영함.
+별도 명시적 `clear`만 비용·관찰 기록을 초기화함.
 
 At a subsequent turn boundary, auto mode may reserve one review batch. The native
 agent reviews only that batch in the existing conversation; it does not spawn an

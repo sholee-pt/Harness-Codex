@@ -13,7 +13,7 @@ Use these recipes as decision examples, not persistent templates. Every plan rem
 ## Producer-reviewer code change
 
 - Choose delegated execution for one independent review pass; choose coordinated only for bounded repeated correction rounds.
-- Roles: isolated writer producer, read-only reviewer, primary integrator.
+- Roles: scoped writer producer, read-only reviewer, primary integrator. 단일 writer는 선택한 workspace를 사용할 수 있음.
 - Graph: implement, freeze diff/hash, review, integrate, verify.
 - Messages: handoff, challenge, decision, complete. The producer alone owns its write scope.
 - Stop after acceptance or the declared review budget; unresolved critical findings fail.

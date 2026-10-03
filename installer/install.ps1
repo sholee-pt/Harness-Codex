@@ -33,18 +33,29 @@ if (-not $BinDir) { $BinDir = Join-Path $env:LOCALAPPDATA 'Programs\HarnessCodex
 $DataDir = [IO.Path]::GetFullPath($DataDir)
 $BinDir = [IO.Path]::GetFullPath($BinDir)
 function Assert-HarnessPath([string]$Path) {
-    $current = [IO.Path]::GetFullPath($Path)
+    $selected = [IO.Path]::GetFullPath($Path)
+    $current = $selected
     while ($current) {
+        if ((Split-Path -Leaf $current).TrimEnd(' ', '.') -ieq '.git') {
+            throw 'Installation paths must remain outside Git metadata.'
+        }
         if ((Test-Path -LiteralPath $current) -and ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
             throw "Installation path contains a reparse point; preserved: $current"
+        }
+        if ($current -ne $selected -and (Test-Path -LiteralPath $current) -and -not (Test-Path -LiteralPath $current -PathType Container)) {
+            throw "Installation path is not a directory; preserved: $current"
         }
         $current = Split-Path -Parent $current
     }
 }
-foreach ($directory in @($BinDir, $DataDir)) {
+foreach ($directory in @($BinDir, $DataDir, "$DataDir-runtime", $CondaHome) | Where-Object { $_ }) {
     if ($directory -match '[%!";\r\n]') { throw 'Installation paths contain unsupported characters.' }
     Assert-HarnessPath $directory
+    if ((Test-Path -LiteralPath $directory) -and -not (Test-Path -LiteralPath $directory -PathType Container)) {
+        throw "Installation path is not a directory; preserved: $directory"
+    }
 }
+if ($CondaExe -and -not (Test-Path -LiteralPath $CondaExe -PathType Leaf)) { throw '-CondaExe does not name an existing executable.' }
 
 $installLog = Join-Path ([IO.Path]::GetTempPath()) ('harness-codex-install-log-' + [guid]::NewGuid().ToString('N') + '.txt')
 $logStream = [IO.File]::Open($installLog, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)

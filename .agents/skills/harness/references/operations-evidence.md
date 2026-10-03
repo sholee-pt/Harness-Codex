@@ -62,6 +62,22 @@ The audit always reports `regenerationRecommended: false`. Evidence is a trigger
 
 Operations Event Schema 1 stores one immutable hash-sealed file per event. It retains local HMAC references, timestamps, finite enums, and integrity metadata. It does not retain raw prompts, responses, transcripts, agent names, agent IDs, absolute workspace paths, commands, or source content. The repository registry stores only a keyed locator and a random repository ID.
 
+일반 hook은 최대 4,096개 항목의 HMAC 검증 index로 중복·충돌·용량을 확인함.
+재전달은 기존 event를 직접 검증하며 최신 작업 순서를 바꾸지 않음. index가 없거나 손상되거나
+event 디렉터리가 바뀌면 원본을 전수 검증하여 재구축함. 기록 후 index 갱신 전 중단도 이 경로로 복구함.
+기존 event 본문을 외부에서 수정한 경우 매 hook이 모든 본문을 다시 읽지는 않음.
+전체 무결성은 `audit`로 확인할 것. index는 감사 원본이 아니며 `purge` 시 함께 제거됨.
+
+Auto 관찰이 활성화된 경우 완료 전 enum 평가를 최대 256개까지 대기 보존하고 실제 완료 관찰과
+같은 work-item ID로 결합함. 관찰 없이 성공 표본을 생성하지 않음. 후속 평가가 잠정·포기·미확인으로
+정정되거나 외부 근거가 철회되면 이전 verified 값을 routing 근거에서 제거함.
+전달 실패에 대비하여 event ID와 enum cause만 가진 서명된 대기 기록을 최대 4,096개 보존함.
+실제 annotation event의 무결성과 identity를 확인한 뒤 기록 순으로 재전달하며, 미완료 stage는
+평가에 반영하지 않음. 미전달 정정이 있으면 재동기화 전 routing 추천을 보류함.
+`purge`는 남은 정정을 먼저 전달하며, routing `clear`는 대기 전달 기록도 초기화함.
+Auto가 off일 때 새 관찰을 수집하지 않음. 이미 보존한 관찰에 대한 명시적 operations 정정은
+반영하여 다시 on으로 바꿨을 때 철회된 검증 결과가 살아나지 않도록 함.
+
 Each workspace is limited to 4,096 operations events. Once the limit is reached, the hook remains fail-open, emits a generic local warning, and records nothing further until the user audits and purges the collection. The audit exposes the limit condition explicitly.
 
 State uses `HARNESS_STATE_HOME` when set, otherwise the platform user-local Harness state directory. It must remain outside the observed workspace. `purge --root WORKSPACE` explicitly removes operations event files for that workspace; it does not remove project files or evaluation records.

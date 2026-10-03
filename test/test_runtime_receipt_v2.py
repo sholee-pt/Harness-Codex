@@ -568,7 +568,7 @@ class RuntimeReceiptV2Tests(unittest.TestCase):
         self.assertEqual(profile["collaborationCompleteness"], "not-exposed")
         self.assertTrue(receipt["agents"][0]["completed"])
 
-    def test_core_profile_with_collaboration_event_is_conflicted(self) -> None:
+    def test_core_profile_with_collaboration_event_degrades_observation_only(self) -> None:
         plan = self._single_agent_plan()
         control = control_plane_report(plan)
         bindings = local_bindings(plan, control)
@@ -579,8 +579,9 @@ class RuntimeReceiptV2Tests(unittest.TestCase):
             control_plane=control,
             observation_bindings=bindings,
         )
-        self.assertEqual(receipt["collaborationCompleteness"], "conflicted")
-        self.assertFalse(receipt["provesLiveSubagentExecution"])
+        self.assertEqual(receipt["eventProfiles"][0]["compatibility"], "degraded")
+        self.assertFalse(receipt["agents"][0]["failed"])
+        self.assertTrue(receipt["provesLiveSubagentExecution"])
 
     def test_public_and_local_shapes_work_with_future_version_labels(self) -> None:
         plan = self._single_agent_plan()

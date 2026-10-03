@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -25,6 +27,8 @@ import harness_state
 OPS_EVENT_SCHEMA_VERSION = harness_metadata.OPERATIONS_EVENT_SCHEMA_VERSION
 MAX_HOOK_INPUT_BYTES = 1024 * 1024
 MAX_EVENTS_PER_REPOSITORY = 4096
+MAX_INDEX_BYTES = 2 * 1024 * 1024
+MAX_EVENT_BYTES = 16 * 1024
 WORK_ITEM_RE = re.compile(r"^work-item:[0-9a-f]{32}$")
 SESSION_RE = re.compile(r"^session:[0-9a-f]{32}$")
 TURN_RE = re.compile(r"^turn:[0-9a-f]{32}$")
@@ -329,13 +333,103 @@ def _read_events(
     errors: list[str] = []
     for path in store.records(root):
         try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-            validate_event(value)
+            value = _read_event(path)
             events.append(value)
         except (OSError, UnicodeError, json.JSONDecodeError, OperationsError) as exc:
             errors.append(f"{path.name}: {exc}")
     events.sort(key=lambda item: (item["createdAt"], item["eventId"]))
     return events, errors
+
+
+def _read_event(path: Path) -> dict[str, Any]:
+    with path.open('rb') as stream:
+        content = stream.read(MAX_EVENT_BYTES + 1)
+    if len(content) > MAX_EVENT_BYTES:
+        raise OperationsError("operations event exceeds its size limit")
+    value = json.loads(content)
+    validate_event(value)
+    return value
+
+
+def _event_key(event: dict[str, Any], *, lifecycle: bool = False) -> str:
+    fields = ("eventType", "workItemRef") if lifecycle else ("eventType", "sessionRef", "turnRef", "workItemRef", "payload")
+    return hashlib.sha256(_canonical_text([event[key] for key in fields]).encode()).hexdigest()
+
+
+def _directory_stamp(root: Path) -> list[int] | None:
+    if not root.exists():
+        return None
+    info = root.stat()
+    return [info.st_dev, info.st_ino, info.st_mtime_ns, info.st_ctime_ns]
+
+
+def _index_path(store: harness_eval_store.EvaluationStore, repository_id: str) -> Path:
+    return store.checked(_events_root(store, repository_id).parent / "index.json")
+
+
+def _index_add(index: dict[str, Any], event: dict[str, Any]) -> None:
+    index["count"] += 1
+    if event["eventType"] in HOOK_EVENTS:
+        index["replay"][_event_key(event)] = event["eventId"]
+    if event["eventType"] in {"UserPromptSubmit", "Stop"}:
+        index["lifecycle"][_event_key(event, lifecycle=True)] = event["eventId"]
+
+
+def _write_index(store: harness_eval_store.EvaluationStore, repository_id: str, index: dict[str, Any]) -> None:
+    index["directory"] = _directory_stamp(_events_root(store, repository_id))
+    value = {**index, "signature": store.fingerprint(_canonical_text(index).encode())}
+    content = _canonical_text(value)
+    if len(content.encode()) > MAX_INDEX_BYTES:
+        raise OperationsError("operations index exceeds its size limit")
+    path = _index_path(store, repository_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if os.name != 'nt':
+        path.parent.chmod(0o700)
+    harness_state.atomic_write_text(path, content, mode=0o600)
+
+
+def _event_index(store: harness_eval_store.EvaluationStore, repository_id: str) -> dict[str, Any]:
+    # This is a disposable, authenticated replay index, not an audit substitute.
+    # Directory changes include an event committed before an interrupted index
+    # write. Rebuild from the immutable records under the repository lock.
+    path = _index_path(store, repository_id)
+    if path.is_file():
+        try:
+            with path.open('rb') as stream:
+                content = stream.read(MAX_INDEX_BYTES + 1)
+            if len(content) > MAX_INDEX_BYTES:
+                raise ValueError('oversized index')
+            value = json.loads(content)
+            signature = value.pop('signature')
+            if (set(value) != {'schemaVersion', 'repositoryId', 'directory', 'count', 'replay', 'lifecycle'}
+                    or value['schemaVersion'] != 1 or value['repositoryId'] != repository_id
+                    or type(value['count']) is not int or not 0 <= value['count'] <= MAX_EVENTS_PER_REPOSITORY
+                    or not isinstance(signature, str)
+                    or not hmac.compare_digest(signature, store.fingerprint(_canonical_text(value).encode()))
+                    or value['directory'] != _directory_stamp(_events_root(store, repository_id))):
+                raise ValueError('stale index')
+            for field in ('replay', 'lifecycle'):
+                if not isinstance(value[field], dict) or len(value[field]) > value['count']:
+                    raise ValueError('invalid index')
+                for key, event_id in value[field].items():
+                    if not HASH_RE.fullmatch(key) or str(uuid.UUID(event_id)) != event_id:
+                        raise ValueError('invalid index entry')
+            return value
+        except (OSError, UnicodeError, ValueError, TypeError, AttributeError, KeyError):
+            pass
+    events, errors = _read_events(store, repository_id)
+    if errors:
+        raise OperationsError("operations state contains invalid records; run audit for details")
+    if len(events) > MAX_EVENTS_PER_REPOSITORY:
+        raise OperationsError("operations event limit reached; audit and purge local state")
+    index = {'schemaVersion': 1, 'repositoryId': repository_id, 'directory': None,
+             'count': 0, 'replay': {}, 'lifecycle': {}}
+    for event in events:
+        if event['repositoryId'] != repository_id:
+            raise OperationsError("operations event belongs to another repository")
+        _index_add(index, event)
+    _write_index(store, repository_id, index)
+    return index
 
 
 def _same_event(existing: dict[str, Any], candidate: dict[str, Any]) -> bool:
@@ -354,26 +448,22 @@ def _store_event(
 ) -> tuple[dict[str, Any], bool]:
     validate_event(event)
     with store.repository_lock(repository_id):
-        events, errors = _read_events(store, repository_id)
-        if errors:
-            raise OperationsError("operations state contains invalid records; run audit for details")
+        index = _event_index(store, repository_id)
         if deduplicate:
-            matching = [item for item in events if _same_event(item, event)]
+            matching = index['replay'].get(_event_key(event))
             if matching:
-                return matching[-1], False
-            same_lifecycle = [
-                item
-                for item in events
-                if item["eventType"] == event["eventType"]
-                and item["workItemRef"] == event["workItemRef"]
-                and item["eventType"] in {"UserPromptSubmit", "Stop"}
-            ]
-            if same_lifecycle:
+                previous = _read_event(store.checked(_events_root(store, repository_id) / f"{matching}.json"))
+                if previous['repositoryId'] != repository_id or previous['eventId'] != matching or not _same_event(previous, event):
+                    raise OperationsError("operations replay record changed; run audit for details")
+                return previous, False
+            if event['eventType'] in {'UserPromptSubmit', 'Stop'} and _event_key(event, lifecycle=True) in index['lifecycle']:
                 raise OperationsError("hook replay contradicts an existing work-item event")
-        if len(events) >= MAX_EVENTS_PER_REPOSITORY:
+        if index['count'] >= MAX_EVENTS_PER_REPOSITORY:
             raise OperationsError("operations event limit reached; audit and purge local state")
         path = store.checked(_events_root(store, repository_id) / f"{event['eventId']}.json")
         _write_exclusive(path, event)
+        _index_add(index, event)
+        _write_index(store, repository_id, index)
     return event, True
 
 
@@ -460,7 +550,102 @@ def _latest_annotation(events: Iterable[dict[str, Any]], work_item_ref: str) -> 
         for event in events
         if event["eventType"] == "Annotation" and event["workItemRef"] == work_item_ref
     ]
-    return matches[-1] if matches else None
+    if not matches:
+        return None
+    by_id = {event['eventId']: event for event in matches}
+    replaced = {event['payload']['supersedesEventId'] for event in matches} - {None}
+    active = set(by_id) - replaced
+    if len(by_id) != len(matches) or not replaced <= set(by_id) or len(active) != 1:
+        raise OperationsError("annotation replacement history is incomplete or branched")
+    latest = by_id[active.pop()]
+    seen, current = set(), latest
+    while current is not None and current['eventId'] not in seen:
+        seen.add(current['eventId'])
+        current = by_id.get(current['payload']['supersedesEventId'])
+    if current is not None or len(seen) != len(matches):
+        raise OperationsError("annotation replacement history contains a cycle")
+    return latest
+
+
+def _feedback_files(store: harness_eval_store.EvaluationStore, repository_id: str) -> list[Path]:
+    directory = store.checked(_events_root(store, repository_id).parent / "routing-feedback")
+    paths = store.records(directory) if directory.is_dir() else []
+    if len(paths) > MAX_EVENTS_PER_REPOSITORY:
+        raise OperationsError("pending routing feedback exceeds its limit")
+    return paths
+
+
+def _stage_routing_feedback(routing: Any, event: dict[str, Any], cause: str) -> None:
+    state = routing.read()
+    if not state['enabled'] and event['workItemRef'] not in state['samples'] and event['workItemRef'] not in state['pending']:
+        return
+    repository_id = event['repositoryId']
+    # The repository lock is already held. An interrupted pre-commit stage is
+    # removable only here, where its event writer cannot still be running.
+    paths = _feedback_files(routing.store, repository_id)
+    for path in paths:
+        event_path = routing.store.checked(_events_root(routing.store, repository_id) / path.name)
+        if not event_path.exists():
+            path.unlink()
+    if len(_feedback_files(routing.store, repository_id)) >= MAX_EVENTS_PER_REPOSITORY:
+        raise OperationsError("pending routing feedback limit reached")
+    value = {'schemaVersion': 1, 'eventId': event['eventId'], 'repositoryId': repository_id, 'cause': cause}
+    value['signature'] = routing.store.fingerprint(_canonical_text(value).encode())
+    path = routing.store.checked(_events_root(routing.store, repository_id).parent / 'routing-feedback' / f"{event['eventId']}.json")
+    _write_exclusive(path, value)
+
+
+def _flush_routing_feedback(routing: Any, repository_id: str, *, events: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    # Always acquire repository before routing locks. Validate committed events
+    # before replaying the bounded outbox; a staged but uncommitted annotation
+    # cannot become quality evidence. Replacement links, not wall-clock order,
+    # determine the current verdict when the system clock moves backwards.
+    from harness_routing_evidence import OUTCOMES as ROUTING_OUTCOMES
+    pending = []
+    for path in _feedback_files(routing.store, repository_id):
+        with path.open('rb') as stream:
+            content = stream.read(MAX_EVENT_BYTES + 1)
+        if len(content) > MAX_EVENT_BYTES:
+            raise OperationsError("pending routing feedback exceeds its size limit")
+        value = json.loads(content)
+        signature = value.pop('signature', None) if isinstance(value, dict) else None
+        if (not isinstance(value, dict) or set(value) != {'schemaVersion', 'eventId', 'repositoryId', 'cause'}
+                or value['schemaVersion'] != 1 or value['repositoryId'] != repository_id
+                or not isinstance(value['cause'], str) or value['cause'] not in {'unknown', 'inference', 'environment'}
+                or not isinstance(value['eventId'], str) or not isinstance(signature, str)
+                or not hmac.compare_digest(signature, routing.store.fingerprint(_canonical_text(value).encode()))
+                or str(uuid.UUID(value['eventId'])) != value['eventId'] or path.name != value['eventId'] + '.json'):
+            raise OperationsError("invalid pending routing feedback")
+        event_path = routing.store.checked(_events_root(routing.store, repository_id) / path.name)
+        if not event_path.exists():
+            path.unlink()
+            continue
+        event = _read_event(event_path)
+        if event['eventId'] != value['eventId'] or event['repositoryId'] != repository_id or event['eventType'] != 'Annotation':
+            raise OperationsError("routing feedback event identity changed")
+        pending.append((event, value['cause'], path))
+    result = {'recorded': False, 'reason': 'disabled-or-no-pending-feedback'}
+    if pending and events is None:
+        events, errors = _read_events(routing.store, repository_id)
+        if errors:
+            raise OperationsError("operations state contains invalid records; run audit for details")
+    for reference in dict.fromkeys(item[0]['workItemRef'] for item in pending):
+        event = _latest_annotation(events, reference)
+        if event is None:
+            raise OperationsError("pending routing annotation is missing")
+        cause = next((cause for item, cause, path in pending if item['eventId'] == event['eventId']), 'unknown')
+        outcome, source = event['payload']['outcome'], event['payload']['evidenceSource']
+        supported = (outcome in ROUTING_OUTCOMES and (outcome != 'verified' or source == 'verification')
+                     and (outcome != 'user-accepted' or source == 'user-reported'))
+        if source in {'verification', 'user-reported'}:
+            result = routing._feedback(event['workItemRef'], outcome if supported else 'unknown', source, cause, existing_when_disabled=True)
+        else:
+            result = routing._feedback(event['workItemRef'], 'unknown', 'runtime', 'unknown', existing_when_disabled=True)
+        if result.get('reason') != 'disabled':
+            for item, cause, path in pending:
+                if item['workItemRef'] == reference:
+                    path.unlink()
+    return result
 
 
 def annotate(
@@ -489,6 +674,8 @@ def annotate(
     selected_root = _find_harness_root(root)
     if selected_root is None:
         raise OperationsError("--root must be inside a local Harness workspace")
+    if routing_cause is not None and routing_cause not in {'unknown', 'inference', 'environment'}:
+        raise OperationsError("unsupported routing cause")
     store = harness_eval_store.EvaluationStore(state_root=state_root)
     repository_id = store.register_workspace(selected_root)
     with store.repository_lock(repository_id):
@@ -555,9 +742,18 @@ def annotate(
         validate_event(event)
         if len(events) >= MAX_EVENTS_PER_REPOSITORY:
             raise OperationsError("operations event limit reached; audit and purge local state")
+        from harness_routing_evidence import RoutingEvidence
+        routing = RoutingEvidence(selected_root, state_root)
+        _stage_routing_feedback(routing, event, routing_cause or 'unknown')
         _write_exclusive(
             store.checked(_events_root(store, repository_id) / f"{event['eventId']}.json"), event
         )
+        # Preserve annotation order while merging feedback with a possibly later
+        # turn/completed observation. Only the enum summary crosses this boundary.
+        try:
+            routing_result = _flush_routing_feedback(routing, repository_id, events=[*events, event])
+        except (OSError, ValueError, TimeoutError):
+            routing_result = {'available': False, 'recordPreserved': True}
     result = {
         "valid": True,
         "repositoryId": repository_id,
@@ -565,13 +761,8 @@ def annotate(
         "annotationEventId": event["eventId"],
         "supersedesEventId": payload["supersedesEventId"],
         "rawContentStored": False,
+        "routing": routing_result,
     }
-    if evidence_source in {'verification', 'user-reported'}:
-        try:
-            from harness_routing_evidence import RoutingEvidence
-            result['routing'] = RoutingEvidence(selected_root, state_root).feedback(work_item_ref, outcome, evidence_source, routing_cause or 'unknown')
-        except (OSError, ValueError, TimeoutError):
-            result['routing'] = {'available': False, 'recordPreserved': True}
     if maintenance_reason or maintenance_evidence or maintenance_change or maintenance_session_ref:
         # Optional, explicitly linked evidence only. A task failure alone never
         # declares a harness defect. A maintenance error cannot erase the record.
@@ -603,11 +794,12 @@ def audit(root: Path, *, state_root: Path | None = None) -> dict[str, Any]:
     with store.repository_lock(repository_id):
         events, errors = _read_events(store, repository_id)
     prompts = [event for event in events if event["eventType"] == "UserPromptSubmit"]
-    annotations = {
-        item["workItemRef"]: item
-        for item in events
-        if item["eventType"] == "Annotation"
-    }
+    annotations = {}
+    for reference in dict.fromkeys(item['workItemRef'] for item in events if item['eventType'] == 'Annotation'):
+        try:
+            annotations[reference] = _latest_annotation(events, reference)
+        except OperationsError as exc:
+            errors.append(f"{reference}: {exc}")
     starts = [event for event in events if event["eventType"] == "SubagentStart"]
     stops = [event for event in events if event["eventType"] == "SubagentStop"]
     stopped_instances = {
@@ -907,10 +1099,19 @@ def command_purge(args: argparse.Namespace) -> int:
     events_root = _events_root(store, repository_id)
     removed = 0
     with store.repository_lock(repository_id):
+        index_path = _index_path(store, repository_id)
+        feedback_files = _feedback_files(store, repository_id)
+        if feedback_files:
+            from harness_routing_evidence import RoutingEvidence
+            _flush_routing_feedback(RoutingEvidence(selected_root, store.root), repository_id)
         if events_root.is_dir():
-            for path in store.records(events_root):
+            records = store.records(events_root)
+            for path in records:
                 path.unlink()
                 removed += 1
+            for path in feedback_files:
+                path.unlink(missing_ok=True)
+            index_path.unlink(missing_ok=True)
             try:
                 events_root.rmdir()
                 events_root.parent.rmdir()

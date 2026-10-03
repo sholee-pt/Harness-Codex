@@ -189,6 +189,6 @@ fn native_rust_bridge_executes_the_isolated_conda_selector() {
         ],
     });
     let value = super::super::harness_routing::invoke_with_paths(payload, python.into_os_string(), script).expect("native selector");
-    assert_eq!(value["model"], "gpt-5.6-luna");
-    assert_eq!(value["effort"], "low");
+    assert_eq!(value["model"], "gpt-6-astra");
+    assert_eq!(value["effort"], "high");
 }

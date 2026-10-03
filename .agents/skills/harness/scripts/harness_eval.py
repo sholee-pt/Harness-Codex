@@ -736,11 +736,11 @@ def command_view(args: argparse.Namespace) -> int:
     repository_id, run = evaluation_store.find_run(args.run)
     if run["schemaVersion"] != 2:
         raise types.EvaluationError("derived evaluation view requires a Schema 2 run")
-    view = evaluation_view.derived_evaluation_view(
-        run,
-        evaluation_store.observations_for_run(repository_id, args.run),
-        evaluation_store.annotations_for_run(repository_id, args.run),
-    )
+    captured = evaluation_store.evaluation_inputs(repository_id, [args.run])[args.run]
+    if captured is None:
+        raise store_module.StoreError("derived view inputs are unavailable; run repair before interpreting this history")
+    run, observations, annotations = captured
+    view = evaluation_view.derived_evaluation_view(run, observations, annotations)
     # Presentation only: keep persisted records and comparison view digests unchanged.
     _print({**view, "usageSummary": harness_usage.usage_summary(run, view)})
     return 0
@@ -798,16 +798,11 @@ def command_compare(args: argparse.Namespace) -> int:
     pair_id = baseline["comparison"].get("pairId") or treatment["comparison"].get("pairId") or str(evaluation_store.ids.new_uuid())
     comparison_arguments: dict[str, Any] = {}
     if baseline.get("schemaVersion") == 2 and treatment.get("schemaVersion") == 2:
-        baseline_view = evaluation_view.derived_evaluation_view(
-            baseline,
-            evaluation_store.observations_for_run(baseline_repository, baseline["runId"]),
-            evaluation_store.annotations_for_run(baseline_repository, baseline["runId"]),
-        )
-        treatment_view = evaluation_view.derived_evaluation_view(
-            treatment,
-            evaluation_store.observations_for_run(treatment_repository, treatment["runId"]),
-            evaluation_store.annotations_for_run(treatment_repository, treatment["runId"]),
-        )
+        inputs = evaluation_store.evaluation_inputs(baseline_repository, [baseline["runId"], treatment["runId"]])
+        if any(captured is None for captured in inputs.values()):
+            raise store_module.StoreError("derived view inputs are unavailable; run repair before comparing this history")
+        baseline_view = evaluation_view.derived_evaluation_view(*inputs[baseline["runId"]])
+        treatment_view = evaluation_view.derived_evaluation_view(*inputs[treatment["runId"]])
 
         def correction_count(view: dict[str, Any]) -> float | None:
             item = view["selectedValues"].get("userOutcome.correctionCount")
@@ -883,6 +878,11 @@ def _proposal_eligibility(
     relevant: list[dict[str, Any]] = []
     reasons: dict[str, set[str]] = {}
     matching_strata: set[str] = set()
+    inputs = evaluation_store.evaluation_inputs(repository_id, {
+        item[key] for item in comparisons
+        if item.get("schemaVersion") == 2 and item.get("repositoryId") == repository_id
+        for key in ("baselineRunId", "treatmentRunId")
+    })
 
     def exclude(comparison_id: str, reason: str) -> None:
         reasons.setdefault(comparison_id, set()).add(reason)
@@ -930,14 +930,13 @@ def _proposal_eligibility(
         effective_runs: dict[str, dict[str, Any]] = {}
         for key, arm in (("baselineRunId", "baseline"), ("treatmentRunId", "treatment")):
             try:
-                run = evaluation_store.read_run(
-                    repository_id, comparison_record[key], allow_pending=False
-                )
+                captured = inputs.get(comparison_record[key])
+                if captured is None:
+                    raise store_module.StoreError("derived view inputs are unavailable")
+                run, observations, annotations = captured
                 runs[arm] = run
                 view = evaluation_view.derived_evaluation_view(
-                    run,
-                    evaluation_store.observations_for_run(repository_id, run["runId"]),
-                    evaluation_store.annotations_for_run(repository_id, run["runId"]),
+                    run, observations, annotations,
                 )
             except (store_module.StoreError, types.EvaluationError):
                 exclude(comparison_id, "derived-view-unavailable")

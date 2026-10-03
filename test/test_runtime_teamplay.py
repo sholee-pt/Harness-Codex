@@ -622,7 +622,7 @@ class CapabilityFallbackTests(unittest.TestCase):
             root = Path(directory)
             manifest = write_manifest(root)
             plan = valid_plan(root, manifest)
-            plan["task"]["summary"] = "Use TeamCreate for this task."
+            plan["execution"]["adapter"] = "TeamCreate"
             with self.assertRaisesRegex(runtime_plan.RuntimePlanError, "runtime-specific tool"):
                 runtime_plan.validate_runtime_plan(root, plan)
 

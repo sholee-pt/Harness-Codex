@@ -18,6 +18,29 @@ if ($Help) {
 if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitProcess -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
     throw 'This installer requires Windows x64 and a 64-bit PowerShell process.'
 }
+if ($CondaExe -and $CondaHome) { throw 'Choose -CondaExe or -CondaHome, not both.' }
+if ($CondaExe -and -not (Test-Path -LiteralPath $CondaExe -PathType Leaf)) { throw '-CondaExe does not name an existing executable.' }
+$selectedData = $DataDir
+if (-not $selectedData) { $selectedData = Join-Path $env:LOCALAPPDATA 'HarnessCodex' }
+$selectedBin = $BinDir
+if (-not $selectedBin) { $selectedBin = Join-Path $env:LOCALAPPDATA 'Programs\HarnessCodex\bin' }
+foreach ($directory in @($selectedData, $selectedBin, "$selectedData-runtime", $CondaHome) | Where-Object { $_ }) {
+    if ($directory -match '[%!";\r\n]') { throw 'Installation paths contain unsupported characters.' }
+    $current = [IO.Path]::GetFullPath($directory)
+    if ((Test-Path -LiteralPath $current) -and -not (Test-Path -LiteralPath $current -PathType Container)) {
+        throw "Installation path is not a directory; preserved: $current"
+    }
+    while ($current) {
+        if ((Split-Path -Leaf $current).TrimEnd(' ', '.') -ieq '.git') { throw 'Installation paths must remain outside Git metadata.' }
+        if ((Test-Path -LiteralPath $current) -and ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw "Installation path contains a reparse point; preserved: $current"
+        }
+        if ((Test-Path -LiteralPath $current) -and -not (Test-Path -LiteralPath $current -PathType Container)) {
+            throw "Installation path is not a directory; preserved: $current"
+        }
+        $current = Split-Path -Parent $current
+    }
+}
 $version = '0.12.0-beta'
 $name = "harness-codex-$version-windows.zip"
 $release = "https://github.com/sholee-pt/Harness-Codex/releases/download/v$version"

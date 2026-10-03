@@ -86,18 +86,94 @@ def _require_text_list(value: Any, label: str) -> list[str]:
 
 
 def _require_keys(
-    value: dict[str, Any], *, required: Iterable[str], label: str
+    value: dict[str, Any], *, required: Iterable[str], label: str, optional: Iterable[str] = ()
 ) -> None:
     expected = set(required)
-    if set(value) != expected:
+    if not expected.issubset(value) or set(value) - expected - set(optional):
         missing = expected - set(value)
-        extra = set(value) - expected
+        extra = set(value) - expected - set(optional)
         details: list[str] = []
         if missing:
             details.append("missing " + ", ".join(sorted(missing)))
         if extra:
             details.append("unsupported " + ", ".join(sorted(extra)))
         raise RelayReceiptError(f"{label} fields are invalid: {'; '.join(details)}")
+
+
+def _input_lineage(value: Any, revisions: dict, tasks: dict, participants: dict) -> dict:
+    """Check complete declared snapshots and derive conservative dependency closure.
+
+    Like packet hashes, these declarations prove lineage, not live source capture.
+    Legacy envelopes without this explicit contract retain global invalidation.
+    """
+    lineage = _require_object(value, "inputLineage")
+    _require_keys(lineage, required=("contract", "revisions"), label="inputLineage")
+    if lineage["contract"] != "scoped-inputs-v1":
+        raise RelayReceiptError("inputLineage contract is unsupported")
+    snapshots = {}
+    for raw in _require_list(lineage["revisions"], "inputLineage.revisions"):
+        entry = _require_object(raw, "input lineage revision")
+        _require_keys(entry, required=("revision", "tasks"), label="input lineage revision")
+        revision = _require_integer(entry["revision"], "input lineage revision")
+        if revision not in revisions or revision in snapshots:
+            raise RelayReceiptError("input lineage revision is unknown or duplicated")
+        entries = _require_object(entry["tasks"], "input lineage tasks")
+        if set(entries) != set(tasks):
+            raise RelayReceiptError("input lineage must account for every runtime task")
+        for task_id, snapshot in entries.items():
+            snapshot = _require_object(snapshot, "task input snapshot")
+            _require_keys(snapshot, required=("inputs", "readScopes", "outputs"), label="task input snapshot")
+            task = tasks[task_id]
+            expected = {"inputs": task["inputs"], "outputs": task["outputs"],
+                        "readScopes": participants[task["owner"]]["readScopes"]}
+            for field, names in expected.items():
+                hashes = _require_object(snapshot[field], f"snapshot.{field}")
+                if set(hashes) != set(names):
+                    raise RelayReceiptError(f"snapshot.{field} does not cover the complete declared contract")
+                for key, digest_value in hashes.items():
+                    _require_hash(digest_value, f"snapshot.{field}.{key}")
+            for source in set(snapshot["inputs"]) & set(snapshot["readScopes"]):
+                if snapshot["inputs"][source] != snapshot["readScopes"][source]:
+                    raise RelayReceiptError("literal input and read-scope hashes disagree")
+        fingerprints = {}
+        active = set()
+
+        def derive(task_id):
+            if task_id in fingerprints:
+                return fingerprints[task_id]
+            if task_id in active:
+                raise RelayReceiptError("input lineage dependencies contain a cycle")
+            active.add(task_id)
+            task, snapshot = tasks[task_id], entries[task_id]
+            dependencies = {}
+            for dependency in task["dependsOn"]:
+                if dependency not in tasks:
+                    raise RelayReceiptError("input lineage references an unknown dependency")
+                dependencies[dependency] = {"inputsSha256": derive(dependency),
+                                            "outputs": entries[dependency]["outputs"]}
+            upstream = {output: digest_value for ancestor in tasks
+                        if validate_runtime_plan._has_dependency_path(tasks, ancestor, task_id)
+                        for output, digest_value in entries[ancestor]["outputs"].items()}
+            for source, digest_value in snapshot["inputs"].items():
+                if source in upstream and digest_value != upstream[source]:
+                    raise RelayReceiptError("input lineage does not match its dependency output")
+            fingerprints[task_id] = sha256({"task": task, "inputs": snapshot["inputs"],
+                                           "readScopes": snapshot["readScopes"], "outputs": snapshot["outputs"],
+                                           "dependencies": dependencies})
+            active.remove(task_id)
+            return fingerprints[task_id]
+
+        for task_id in tasks:
+            derive(task_id)
+        snapshots[revision] = fingerprints
+    if set(snapshots) != set(revisions):
+        raise RelayReceiptError("input lineage must account for every packet revision")
+    for revision in sorted(revisions)[1:]:
+        changed = {tasks[task_id]["owner"] for task_id in tasks
+                   if snapshots[revision][task_id] != snapshots[revision - 1][task_id]}
+        if changed - set(revisions[revision]["affectedAgents"]):
+            raise RelayReceiptError("affectedAgents omits changed input or dependency owners")
+    return snapshots
 
 
 def validate_relay_receipt(
@@ -119,6 +195,7 @@ def validate_relay_receipt(
             "integrity",
         ),
         label="relay receipt",
+        optional=("inputLineage",),
     )
     if receipt.get("schemaVersion") != RELAY_RECEIPT_SCHEMA_VERSION:
         raise RelayReceiptError(
@@ -163,6 +240,8 @@ def validate_relay_receipt(
         raise RelayReceiptError("runtime plan communication budget is invalid")
     if len(ordered) - 1 > max_rounds:
         raise RelayReceiptError("packet revisions exceed the runtime-plan round budget")
+    lineage = (_input_lineage(receipt["inputLineage"], revisions, tasks, participants)
+               if "inputLineage" in receipt else None)
 
     reviews_by_id: dict[str, dict[str, Any]] = {}
     for index, raw in enumerate(_require_list(receipt.get("reviews"), "reviews")):
@@ -251,11 +330,18 @@ def validate_relay_receipt(
         raise RelayReceiptError("integration must cite at least one review")
     if set(review_ids) - set(reviews_by_id):
         raise RelayReceiptError("integration references an unknown review")
-    stale_ids = [
-        review_id
-        for review_id in review_ids
-        if reviews_by_id[review_id]["inputPacketSha256"] != final_hash
-    ]
+    stale_ids = []
+    for review_id in review_ids:
+        review = reviews_by_id[review_id]
+        if review["inputPacketSha256"] == final_hash:
+            continue
+        reusable = lineage is not None and all(
+            lineage[revision][review["taskId"]] == lineage[review["revision"]][review["taskId"]]
+            and review["participant"] not in revisions[revision]["affectedAgents"]
+            for revision in ordered if revision > review["revision"]
+        )
+        if not reusable:
+            stale_ids.append(review_id)
     if stale_ids:
         raise RelayReceiptError(
             "integration uses stale reviews: " + ", ".join(sorted(stale_ids))

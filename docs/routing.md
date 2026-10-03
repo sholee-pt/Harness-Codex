@@ -97,13 +97,15 @@ failures and unknown causes never do. Do not infer quality from reassuring prose
 or generate a model-based rating after every conversation.
 
 Advice groups evidence by workspace, harness revision, actual runtime version,
-catalog revision, observed provider/service tier/permission settings, task category
+catalog capabilities, observed provider/service tier/permission settings, task category
 and routing tier. Missing provider metadata leaves ordinary routing active without
 collecting comparable performance evidence. Model/reasoning names are hashed
 in local records and matched to the current advertised catalog in memory. A new
-catalog/runtime/revision starts without transferable performance confidence.
+catalog capability/runtime/revision starts without transferable performance confidence.
+Display labels and descriptions do not reset an otherwise identical catalog group.
 Unrated models keep the ordinary rule/profile/default behavior; no universal model
-ranking or causal benefit is claimed. Existing profiles still limit candidates.
+ranking or causal benefit is claimed. Existing profiles still limit models, while
+all their advertised reasoning options can qualify through observed quality and cost.
 
 Within a matching group, an alternative needs a quality confidence bound above
 the configured floor and a sufficiently clear token/duration improvement without
@@ -113,6 +115,14 @@ require a larger gain; ambiguous continuations keep their choice. The next turn
 can use advice; running turns and permissions are unchanged. Corrections replace
 the work item's feedback, duplicates do not add confidence, and old evidence ages
 out. There are at most 256 local samples and no raw prompts or transcripts.
+
+완료 전에 기록한 enum feedback은 별도의 최대 256개 대기 항목으로 보존하며, 실제 완료 시
+같은 work-item 관찰에 결합함. 대기 항목은 관찰을 대신하지 않으며 같은 보존 기간을 적용함.
+후속 operations 평가가 잠정 수락·포기·미확인으로 바뀌거나 외부 검증 근거를 철회하면 이전
+verified 결과를 사용하지 않음. 기존 routing state schema 1은 관찰을 보존하여 schema 2로 이행함.
+annotation 저장과 feedback 전달 사이의 중단은 event ID 기반 대기 기록으로 복구함.
+전달하지 못한 정정이 있으면 재동기화 전 관찰 기반 추천을 보류함. off 상태에서는 새 관찰을
+모으지 않지만, 기존 관찰에 대한 명시적 operations 정정은 보존하여 재활성화 시에도 적용함.
 
 Use `--adaptive-policy policy.json` to adjust `qualityFloor` (default 0.8),
 `confidence` (0.95), `minimumGain` (0.15) and `historyDays` (30), inside validated

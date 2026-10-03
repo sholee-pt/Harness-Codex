@@ -278,7 +278,7 @@ def _compare_runs_v1(
 def _observation_value(item: Any) -> Any:
     if not isinstance(item, dict) or item.get("state") != "measured":
         return None
-    return item.get("value") if "value" in item else item.get("refs")
+    return evaluation_view._material(item)
 
 
 def _factor_values(record: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -384,7 +384,7 @@ def _execution_protocol_deviations(record: dict[str, Any], arm: str) -> list[dic
             continue
         left_value = _observation_value(left)
         right_value = _observation_value(right)
-        if left_value == right_value:
+        if not evaluation_view.observations_mismatch(left, right):
             continue
         deviations.append(
             {

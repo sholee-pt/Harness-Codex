@@ -110,6 +110,19 @@ class NativeRouterTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual((result.stdout, result.stderr), ('', ''))
 
+    def test_isolated_selector_without_profiles_keeps_the_advertised_default(self):
+        value = request()
+        for entry in value['catalog']:
+            effort = 'high' if entry['is_default'] else 'low'
+            entry['default_reasoning_effort'] = effort
+            entry['supported_reasoning_efforts'] = [{'effort': effort}]
+        environment = {key: value for key, value in os.environ.items() if key != 'HARNESS_ROUTER_PROFILES'}
+        result = subprocess.run([sys.executable, '-I', '-B', str(ROOT / 'harness_cli/native_router.py')],
+            input=json.dumps(value), capture_output=True, text=True, timeout=5, env=environment)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        selection = json.loads(result.stdout)
+        self.assertEqual((selection['model'], selection['effort']), ('gpt-6-astra', 'high'))
+
     def test_obsolete_launcher_environment_cannot_rewrite_the_users_task(self):
         value = request('Read the security architecture instructions and wait.')
         with mock.patch.dict(os.environ, {'HARNESS_ROUTER_INITIAL_PROMPT_SHA256': hashlib.sha256(value['prompt'].encode()).hexdigest()}):

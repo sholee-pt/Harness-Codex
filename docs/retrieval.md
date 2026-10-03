@@ -113,12 +113,20 @@ hits (rounded down, at least one) when queried. The default is therefore at most
 six project and three external hits. External text uses only the remaining
 `--max-chars` budget and never cuts project text. When space is exhausted,
 `--json` reports `externalDisplayed: false` and `truncated: true`; increase
-`--max-chars` to display it. External failures are reported in `externalWarning`
+`--max-chars` to display it. If even the external heading cannot fit, external
+collection and indexing are skipped (`externalSkipped: output-budget-exhausted`),
+so no external hit count is claimed. `--limit 1` still permits one external hit
+when output space remains. External failures are reported in `externalWarning`
 and in text when the remaining budget permits.
 External results never enter Jev network advice. Removing a binding immediately
 excludes it from queries; disposable snapshots may remain in user-local cache.
 Opt-ins, executable provenance and external bindings are local selections, so
 reselect them after moving to another server or changing the project mount path.
+Settings, Jev state, bundled Node/package roots and index bindings are partitioned by a stable local host
+identity even when two servers share the same home and absolute project path.
+The older unscoped layout is preserved; its explicit Graft/Jev opt-outs remain
+effective until explicitly enabled, but its executable paths and external
+bindings are not imported into the new host scope.
 
 New configuration records ownership of the unchanged static retrieval skill in
 the portable context receipt. Init on a new host can reuse that file while
@@ -126,6 +134,12 @@ preparing a locally selected runtime; it does not import the old host's executab
 path, credentials or external bindings. For a legacy skill without that receipt,
 `harness-codex graft enable --adopt-skill --project PATH` explicitly adopts only
 the byte-identical bundled skill. Modified/user-authored skills remain preserved.
+
+Before Jev advice starts, the query rechecks Graft settings under the settings
+lock. A completed disable prevents a new advice request from that older query.
+An already running bounded advice call can temporarily keep the settings lock;
+a disable command that reports lock contention has not completed the preference
+change and can be repeated after the call finishes.
 
 For broader adoption, compare selective retrieval on cross-file edits, interface
 discovery and change-impact questions first. Upstream also provides callers,

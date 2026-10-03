@@ -49,7 +49,7 @@ For Windows source development, run from an existing checkout:
 ## Source installation
 
 ```bash
-git clone --branch v0.33.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
+git clone --branch v0.34.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
 bash Harness-Codex/installer/install.sh
 source ~/.bashrc
 ```
@@ -67,6 +67,8 @@ remove compatibility files in the bridge itself or claim that every older
 updater can directly install a future refactored package.
 
 ## Path boundaries
+
+Installers validate options and selected tool, command and runtime paths before creating logs, bootstrap locks or environments; public downloaders check their selected paths before downloading. Help remains offline wherever it appears in the argument list. Paths inside Git metadata are refused, including an external parent alias that resolves there. Linux permits external parent aliases but preserves redirected managed roots; Windows refuses reparse points along managed installation paths.
 
 On Linux, an incomplete dedicated runtime can remain after an interrupted setup or an uninstall that preserved unknown files. This includes interrupted Miniforge extraction before the environment or ownership receipt was created. If its ownership marker matches this installation and neither an active installation nor its runtime reference remains, the installer moves the entire old runtime to an adjacent `harness-codex-runtime.recovery.*` directory before preparing a fresh environment. It prints the recovery path and records it in the installation log; retained files and the old ownership receipt are not deleted or claimed by the new install. Keep that recovery copy until you have reviewed its contents. Active installations, unowned directories and redirected runtime paths require inspection instead of automatic recovery. An atomic bootstrap lock directory prevents overlapping installers and is removed on normal exit, failure or Ctrl+C. A power loss or forced kill can leave that lock: confirm no installer is running before removing the empty lock directory named in the diagnostic.
 

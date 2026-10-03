@@ -10,12 +10,18 @@ from test_harness_evaluation import (
 
 
 class EvaluationCompatibilityTests(unittest.TestCase):
-    def test_previous_measurement_contract_remains_eligible_without_rewriting(self) -> None:
-        record = manual_record(uuid_text(1), uuid_text(2), harness_version="0.32.4-beta")
-        original = copy.deepcopy(record)
-        types.validate_run_record(record)
-        self.assertTrue(harness_metadata.evaluation_contract_eligible(record))
-        self.assertEqual(record, original)
+    def test_previous_measurement_contract_remains_readable_without_retroactive_attribution(self) -> None:
+        for version, contract in (("0.32.4-beta", None), ("0.33.0-beta", "schema2-parser1-attribution2"),
+                                  ("99.0.0-beta", "schema2-parser1-attribution2")):
+            with self.subTest(version=version, contract=contract):
+                record = manual_record(uuid_text(1), uuid_text(2), harness_version=version)
+                if contract is not None:
+                    record["runtime"]["evaluationContract"] = contract
+                    record = types.seal_record(record)
+                original = copy.deepcopy(record)
+                types.validate_run_record(record)
+                self.assertFalse(harness_metadata.evaluation_contract_eligible(record))
+                self.assertEqual(record, original)
 
     def test_explicit_contract_decouples_release_and_rejects_unknown_semantics(self) -> None:
         record = manual_record(uuid_text(1), uuid_text(2))
@@ -28,6 +34,10 @@ class EvaluationCompatibilityTests(unittest.TestCase):
         record = types.seal_record(record)
         types.validate_run_record(record)
         self.assertFalse(harness_metadata.evaluation_contract_eligible(record))
+        record["runtime"]["harnessVersion"] = "99.0.0-beta"
+        with self.assertRaises(types.EvaluationError):
+            types.validate_run_record(types.seal_record(record))
+        record["runtime"]["harnessVersion"] = harness_metadata.HARNESS_VERSION
         record["runtime"]["evaluationContract"] = harness_metadata.EVALUATION_MEASUREMENT_CONTRACT
         record["capture"]["parserVersion"] = "unknown-parser"
         self.assertFalse(harness_metadata.evaluation_contract_eligible(record))

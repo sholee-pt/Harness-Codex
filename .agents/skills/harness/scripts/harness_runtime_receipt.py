@@ -601,6 +601,7 @@ def _normalize_bindings(
     *,
     states: dict[str, dict[str, Any]],
     controls: dict[str, dict[str, Any]],
+    expected_roles: dict[str, str | None],
     salt: bytes,
 ) -> tuple[str | None, dict[str, str], dict[str, str], str | None, bool]:
     if value is None:
@@ -662,12 +663,13 @@ def _normalize_bindings(
             and control.get("spawnInstanceId") == spawn_instance
             and child_parent == parent
             and entry.get("threadSource") == "subagent"
-            and role == participant
         )
-        if matches:
+        expected_role = expected_roles[participant]
+        role_conflict = expected_role is not None and role != expected_role
+        if matches and expected_role is not None and not role_conflict:
             state["sessionBound"] = True
             state["_childId"] = child
-        else:
+        elif not matches or role_conflict:
             conflicted = True
             _add_failure(state, "binding-conflict", "binding")
         child_to_participant[child] = participant
@@ -676,7 +678,7 @@ def _normalize_bindings(
             {
                 "participant": participant,
                 "child": pseudonym("child", child, salt),
-                "matches": matches,
+                "matches": state["sessionBound"],
                 "spawnInstance": digest({"salt": salt.hex(), "value": spawn_instance}),
             }
         )
@@ -764,6 +766,9 @@ def _parse_public_events(
             unknown += 1
             continue
         if event_type == "thread.started":
+            if compatibility == "unsupported":
+                unknown += 1
+                continue
             raw_parent = event.get("thread_id", event.get("threadId"))
             if isinstance(raw_parent, str) and raw_parent:
                 if parent is not None and parent != raw_parent:
@@ -780,7 +785,7 @@ def _parse_public_events(
             observed_terminal = (
                 "succeeded" if event_type == "turn.completed" else "failed"
             )
-            if terminal_status is not None and terminal_status != observed_terminal:
+            if compatibility != "unsupported" and terminal_status is not None and terminal_status != observed_terminal:
                 conflict = True
                 for state in states.values():
                     _add_failure(state, "completion-conflict", "public-event")
@@ -809,9 +814,8 @@ def _parse_public_events(
             continue
         relevant += 1
         if profile_id == PUBLIC_CORE_PROFILE:
-            conflict = True
-            for state in states.values():
-                _add_failure(state, "profile-conflict", "public-event")
+            # An optional surface extension is not a native task failure.
+            unknown += 1
             continue
         if compatibility != "supported" or event_type != "item.completed":
             continue
@@ -1007,13 +1011,15 @@ def _parse_local_events(
         control = controls.get(participant)
         state = states[participant]
         if (
-            not state["sessionBound"]
-            or binding_parent != parent
+            binding_parent != parent
             or control is None
             or control.get("receiverHandle") != handle
         ):
             conflict = True
             _add_failure(state, "binding-conflict", "binding")
+            continue
+        if not state["sessionBound"]:
+            unknown += 1
             continue
         state["observed"] = True
         if kind in {"started", "interacted"} and state["lifecycleState"] != "terminal":
@@ -1192,6 +1198,8 @@ def build_runtime_receipt(
         observation_bindings,
         states=states,
         controls=controls,
+        expected_roles={_participant_id(item): item.get("agent", item.get("nativeAgentRole"))
+                        for item in plan.get("participants", [])},
         salt=salt,
     )
     (
@@ -1392,7 +1400,9 @@ def _validate_schema2(receipt: dict[str, Any]) -> dict[str, Any]:
     if not HASH_RE.fullmatch(_text(receipt.get("runtimePlanSha256"), "runtimePlanSha256")):
         raise RuntimeReceiptError("runtimePlanSha256 is invalid")
     harness = _object(receipt.get("harness"), "harness")
-    if set(harness) != {"version", "commit"} or harness.get("version") != harness_metadata.HARNESS_VERSION:
+    if set(harness) != {"version", "commit"} or not re.fullmatch(
+        r"[0-9]+(?:\.[0-9]+){1,2}(?:-beta)?", _text(harness.get("version"), "harness.version")
+    ):
         raise RuntimeReceiptError("harness metadata is invalid")
     if not re.fullmatch(r"[0-9a-f]{7,64}", _text(harness.get("commit"), "harness.commit")):
         raise RuntimeReceiptError("harness.commit is invalid")

@@ -201,7 +201,7 @@ class OrderedWriterTests(unittest.TestCase):
             task['inputs'] = [f'part-{index}/**']
             plan['participants'][index]['readScopes'] = [f'part-{index}/**']
             plan['participants'][index]['writeScopes'] = [f'part-{index}/**']
-        with self.assertRaisesRegex(ValueError, 'parallel runtime writers require an isolated worktree'):
+        with self.assertRaisesRegex(ValueError, 'parallel runtime writers require isolation'):
             runtime_plan.validate_runtime_plan(self.root, plan)
         for participant in plan['participants']:
             participant['isolation'] = 'equivalent'

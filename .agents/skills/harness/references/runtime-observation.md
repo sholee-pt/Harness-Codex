@@ -113,3 +113,6 @@ harness-codex helper harness_runtime_receipt \
 Omit both local options and observation bindings when local evidence is unavailable. An optional fallback report contains `participant`, `taskIds`, `adapter`, `preserves`, `reasonCode`, and `source: agent-reported`. The closed reason-code set is `capability-unavailable`, `missing-receiver-handle`, `packet-invalid`, `required-result-missing`, `subagent-unavailable`, `unknown-receiver-handle`, `wait-budget-exhausted`, and `wait-failed`. Delete or securely retain raw inputs according to the selected audit policy; never commit them.
 
 The tool does not create `CODEX_HOME`, copy credentials, authenticate Codex, launch Codex, schedule agents, or change repository state. A receipt hash proves only integrity of the derived record.
+
+
+기존 Schema 2 receipt는 Harness release 번호가 달라도 receipt·parser·profile·wait-policy 계약이 호환되면 원본 그대로 읽을 것. 버전은 출처 정보이며 현재 버전으로 바꿔 검증하지 말 것. Core profile에 새 collaboration 이벤트가 나타나면 선택적 관측을 degraded로 기록하고 정상 native 완료를 실패로 바꾸지 말 것. 실제 parent·handle·spawn·명시된 role·terminal 모순은 계속 실패 처리할 것. 임시 participant는 plan의 `nativeAgentRole`을 예상 role로 사용하며, mapping이 없으면 binding 확인을 주장하지 말 것.

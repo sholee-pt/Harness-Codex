@@ -232,13 +232,17 @@ class Maintenance:
             raise ValueError('Unknown maintenance mode')
         self.manifest()
         with self.transaction(create=True) as state:
+            previous = (state['mode'], state['policy'])
             if mode is not None:
                 state['mode'] = mode
             if policy is not None:
                 candidate = {**state['policy'], **policy}
                 cadence.validate(candidate, state['recentReviews'])
                 state['policy'] = candidate
-            state['lease'] = None
+            if previous != (state['mode'], state['policy']):
+                self._expire(state)
+                if state['lease'] is not None:
+                    self._defer_lease(state)
         return self.status()
 
     def _eligible(self, state, session=None):
@@ -490,7 +494,9 @@ class Maintenance:
         state['metrics']['reviews'] += 1
         return state['lease']
 
-    def begin(self, session='manual', *, evidence=None):
+    def begin(self, session='manual', *, evidence=None, session_ref=None):
+        if session_ref is not None and not history.hashed(session_ref):
+            raise ValueError('Use the opaque session ref supplied by the current maintenance hook')
         if self._read(self._location())['mode'] == 'off':
             return {'status': 'disabled'}
         selected = None
@@ -505,14 +511,20 @@ class Maintenance:
         with self.transaction() as state:
             if state['mode'] == 'off':
                 return {'status': 'disabled'}
-            session_ref = self.store.fingerprint(session.encode())
+            if session_ref is not None and session_ref not in state['sessions']:
+                raise ValueError('The selected review context is not an observed native session')
+            session_ref = session_ref or self.store.fingerprint(session.encode())
             if selected is not None:
                 for reason in REASONS:
                     self._merge_legacy_candidates(state, reason, name, current)
-                for key in selected & state['candidates'].keys():
-                    if state['candidates'][key]['evidence'] == current:
-                        state['candidates'][key]['session'] = session_ref
-            lease = self._claim(state, session_ref, bound=selected is not None, selection=selected)
+                selected = {key for key in selected & state['candidates'].keys()
+                            if state['candidates'][key]['evidence'] == current}
+            # Explicitly selected current source establishes review context, but
+            # a blocked reservation must not steal the original session binding.
+            lease = self._claim(state, session_ref, selection=selected)
+            if lease and selected is not None:
+                for key in lease['candidates']:
+                    state['candidates'][key]['session'] = session_ref
             return {'status': 'claimed', **lease} if lease else {'status': 'deferred'}
 
     def _limited_application(self, plan):
@@ -803,6 +815,7 @@ def main():
     signal.add_argument('--session-ref', help='Opaque current-session ref supplied by the native maintenance hook')
     begin = commands.add_parser('begin')
     begin.add_argument('--session', default='manual')
+    begin.add_argument('--session-ref', help='Opaque current-session ref supplied by the native maintenance hook')
     begin.add_argument('--evidence', required=True, help='Explicitly reselect the source evidence for this manual review')
     finish = commands.add_parser('finish')
     finish.add_argument('--lease', required=True)
@@ -844,7 +857,7 @@ def main():
         elif args.command == 'signal':
             result = manager.signal(args.reason, args.evidence, args.observation, session_ref=args.session_ref)
         elif args.command == 'begin':
-            result = manager.begin(args.session, evidence=args.evidence)
+            result = manager.begin(args.session, evidence=args.evidence, session_ref=args.session_ref)
         elif args.command in {'observe', 'resolve'}:
             result = effect_command(manager, args, args.command)
         else:

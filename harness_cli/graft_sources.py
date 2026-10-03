@@ -129,6 +129,11 @@ def snapshot(folder, files):
 
 def query(args, source_root, root, folder, settings, result, *, timeout):
     from .graft import _invoke
+    heading = '\n\nExternal code (separate structural index; verify original files; cross-root edges are not inferred):\n'
+    if len(result['text']) + len(heading) >= args.max_chars:
+        result.update(projectHits=result.get('hits', 0), externalDisplayed=False,
+                      externalSkipped='output-budget-exhausted', truncated=True)
+        return result
     started = time.monotonic()
     files = collect(root, settings.get('externalSources', {}))
     if not files:
@@ -148,7 +153,6 @@ def query(args, source_root, root, folder, settings, result, *, timeout):
     pointers = {key: original for name, (_, original) in files.items() for key in (str(tree / name), name)}
     text = re.sub('|'.join(re.escape(key) for key in sorted(pointers, key=len, reverse=True)),
                   lambda match: pointers[match.group()], text)
-    heading = '\n\nExternal code (separate structural index; verify original files; cross-root edges are not inferred):\n'
     remaining = max(0, args.max_chars - len(result['text']) - len(heading))
     notice = '\n[External results truncated; inspect the selected source or increase --max-chars.]'
     displayed = bool(text and (len(text) <= remaining or remaining >= len(notice) + 1))

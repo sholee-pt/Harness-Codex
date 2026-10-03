@@ -50,6 +50,7 @@ def register(commands):
     signal.add_argument('--session-ref', help='Opaque current-session ref supplied by the native maintenance hook.')
     begin = actions.add_parser('begin', help='Reserve one eligible bounded review batch with explicitly selected current evidence.')
     begin.add_argument('--evidence', required=True)
+    begin.add_argument('--session-ref', help='Opaque current-session ref supplied by the native maintenance hook.')
     finish = actions.add_parser('finish', help='Finish a reserved review; automatic apply enforces its existing-skill scope.')
     finish.add_argument('--lease', required=True)
     finish.add_argument('--decision', choices=('unchanged', 'proposed', 'deferred', 'apply'), required=True)
@@ -338,6 +339,8 @@ def run(args, source_root):
                 arguments += ['--session-ref', args.session_ref]
         elif args.maintenance_action == 'begin':
             arguments += ['--evidence', args.evidence]
+            if args.session_ref is not None:
+                arguments += ['--session-ref', args.session_ref]
         elif args.maintenance_action == 'finish':
             arguments += ['--lease', args.lease, '--decision', args.decision]
             if args.plan is not None:

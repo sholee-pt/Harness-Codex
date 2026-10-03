@@ -52,11 +52,17 @@ def _materialize_contract(value: str, placeholder: str, canonical: str, label: s
     """Replace one placeholder, or preserve one already-materialized canonical block."""
     normalized_value = harness_change_discipline.normalize_line_endings(value)
     normalized_canonical = harness_change_discipline.normalize_line_endings(canonical)
-    if canonical == harness_teamplay.PROJECT_BLOCK and harness_teamplay.LEGACY_PROJECT_BLOCK in normalized_value:
-        if (normalized_value.count(harness_teamplay.LEGACY_PROJECT_BLOCK) != 1
+    compatible = (
+        (harness_teamplay.LEGACY_PROJECT_BLOCK, harness_teamplay.LEGACY_PROJECT_BLOCK_V3)
+        if canonical == harness_teamplay.PROJECT_BLOCK else
+        (harness_teamplay.LEGACY_AGENT_BLOCK,) if canonical == harness_teamplay.AGENT_BLOCK else ()
+    )
+    previous = [block for block in compatible if block in normalized_value]
+    if previous:
+        if (len(previous) != 1 or normalized_value.count(previous[0]) != 1
                 or placeholder in value or normalized_canonical in normalized_value):
             raise PlanBuilderError(f"{label} must contain exactly one current or legacy teamplay contract")
-        pattern = re.escape(harness_teamplay.LEGACY_PROJECT_BLOCK).replace("\\\n", r"(?:\r\n|\r|\n)")
+        pattern = re.escape(previous[0]).replace("\\\n", r"(?:\r\n|\r|\n)")
         return re.sub(pattern, lambda match: canonical.replace("\n", "\r\n") if "\r\n" in match[0] else canonical, value, count=1)
     placeholder_count = value.count(placeholder)
     canonical_count = normalized_value.count(normalized_canonical)
@@ -191,22 +197,21 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
             )
             # Legacy routers remain readable; reviewed materialization emits
             # the compact contract with conditional delegation references.
-            if harness_teamplay.DIRECT_EXECUTION_GUIDANCE not in artifact["content"]:
-                artifact["content"] = artifact["content"].replace(
-                    harness_teamplay.PROJECT_BLOCK,
-                    harness_teamplay.DIRECT_EXECUTION_GUIDANCE + "\n\n" + harness_teamplay.PROJECT_BLOCK,
-                    1,
-                )
-            if harness_teamplay.CHECKPOINT_GUIDANCE not in artifact["content"]:
-                artifact["content"] += "\n\n" + harness_teamplay.CHECKPOINT_GUIDANCE + "\n"
-            if harness_teamplay.WORKFLOW_GUIDANCE not in harness_change_discipline.normalize_line_endings(artifact["content"]):
-                artifact["content"] += "\n\n" + harness_teamplay.WORKFLOW_GUIDANCE + "\n"
-            if harness_teamplay.PROCEDURE_GUIDANCE not in harness_change_discipline.normalize_line_endings(artifact["content"]):
-                artifact["content"] += "\n\n" + harness_teamplay.PROCEDURE_GUIDANCE + "\n"
-            if harness_teamplay.PROVISIONAL_GUIDANCE not in harness_change_discipline.normalize_line_endings(artifact["content"]):
-                artifact["content"] += "\n\n" + harness_teamplay.PROVISIONAL_GUIDANCE + "\n"
+            # Replace only complete known advice during reviewed materialization.
+            # Installed bytes and user-owned files are never changed by validation.
+            for guidance in (
+                harness_teamplay.DIRECT_EXECUTION_GUIDANCE,
+                harness_teamplay.CHECKPOINT_GUIDANCE, harness_teamplay.WORKFLOW_GUIDANCE,
+                harness_teamplay.PROCEDURE_GUIDANCE, harness_teamplay.PROVISIONAL_GUIDANCE,
+                harness_portability.GUIDANCE,
+            ):
+                for known in (guidance, guidance.replace("\n", "\r\n")):
+                    if known in artifact["content"]:
+                        artifact["content"] = artifact["content"].replace(known, "", 1)
+                        break
+            if harness_teamplay.ROUTER_GUIDANCE not in harness_change_discipline.normalize_line_endings(artifact["content"]):
+                artifact["content"] += "\n\n" + harness_teamplay.ROUTER_GUIDANCE + "\n"
             artifact["content"] = harness_git_policy.append_guidance(artifact["content"])
-            artifact["content"] = harness_portability.append_guidance(artifact["content"])
         elif path in agent_paths:
             try:
                 original_instructions = tomllib.loads(content).get("developer_instructions")

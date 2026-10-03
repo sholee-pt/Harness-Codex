@@ -5,7 +5,9 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import shutil
+import socket
 import subprocess
 import tempfile
 import time
@@ -136,7 +138,7 @@ def home():
     return storage_location(os.environ.get('HARNESS_GRAFT_HOME', str(Path.home() / '.local/share/harness-codex-retrieval')))
 
 
-def storage(root):
+def legacy_storage(root):
     # Opt-in and executable provenance belong to the current user, not a cloned
     # project's editable files. Graphs remain disposable and separate from manifests.
     base = home()
@@ -144,9 +146,27 @@ def storage(root):
     return checked_path(base / identity)
 
 
+def host_key():
+    identity = [platform.system(), socket.gethostname(), str(getattr(os, 'getuid', lambda: '')())]
+    if platform.system() == 'Linux':
+        try:
+            identity.append(Path('/etc/machine-id').read_text().strip())
+        except OSError:
+            pass
+    return hashlib.sha256(json.dumps(identity).encode()).hexdigest()
+
+
+def storage(root):
+    return checked_path(legacy_storage(root) / 'hosts' / host_key())
+
+
 def automatic(root, source_root, *, disabled=False):
     """Init convenience; never scan/rebuild a previously enabled project here."""
     settings = _load(checked_path(storage(root) / 'settings.json'))
+    if not disabled and settings is None:
+        previous = _load(checked_path(legacy_storage(root) / 'settings.json'))
+        if previous and previous.get('disabledByUser', not previous['enabled']):
+            return {'state': 'disabled', 'guidance': 'Explicit Graft opt-out from the previous local layout preserved.'}
     if not disabled and settings:
         if settings.get('disabledByUser', not settings['enabled']):
             return {'state': 'disabled', 'guidance': 'Explicit Graft opt-out preserved.'}
@@ -255,8 +275,10 @@ def execute(args, source_root):
             with _settings_lock(folder):
                 previous = _settings_or_new(state_path)
                 from .workspace_context import retrieval_owned
+                legacy = _load(checked_path(legacy_storage(root) / 'settings.json'))
                 if (skill.is_file() and skill.read_bytes() == SKILL.encode()
-                        and (getattr(args, 'adopt_skill', False) or retrieval_owned(root, previous['skillHash']))):
+                        and (getattr(args, 'adopt_skill', False) or retrieval_owned(root, previous['skillHash'])
+                             or legacy and legacy.get('skillOwned', True))):
                     previous['skillOwned'] = True
                 _check_skill(skill, previous)
                 # Reserve a retryable first setup before slow external work. A
@@ -264,7 +286,7 @@ def execute(args, source_root):
                 _save(state_path, previous)
             if args.package is None:
                 from .graft_setup import prepare
-                args.node, args.package = prepare(home(), PACKAGE_VERSION)
+                args.node, args.package = prepare(checked_path(home() / 'hosts' / host_key()), PACKAGE_VERSION)
             node = shutil.which(os.path.expanduser(args.node))
             if node is None:
                 raise ValueError('Node.js 20 or newer is required only for optional Graft retrieval.')
@@ -287,7 +309,13 @@ def execute(args, source_root):
                          limit=limit, max_chars=getattr(args, 'max_chars', 12000), advice=advice)
         candidates = result.pop('candidates', None)
         if advice:
-            observation = jev.advise(root, args.question, candidates)
+            try:
+                with _settings_lock(folder):
+                    current = _load(state_path)
+                    observation = (jev.advise(root, args.question, candidates) if current == settings and current['enabled']
+                                   else {'state': 'preferences-changed'})
+            except (OSError, ValueError):
+                observation = {'state': 'unavailable'}
             result['jev'] = observation
             if observation.get('mode') == 'suggest':
                 order = ', '.join(str(int(key[1:]) + 1) for key in observation['suggestedOrder'])
@@ -323,7 +351,7 @@ def execute(args, source_root):
                     raise
                 result.update(state='enabled', enabled=True)
             _record_skill(root)
-        if action == 'query' and settings.get('externalSources') and (args.limit > 1 or not result.get('hits')):
+        if action == 'query' and settings.get('externalSources'):
             from .graft_sources import query
             # The same project settings lock serializes registration and snapshot refresh.
             # External snippets never enter Jev's separately enabled network advice.
@@ -341,7 +369,7 @@ def execute(args, source_root):
                 if len(result['text']) + len(notice) <= args.max_chars:
                     result['text'] += notice
     if action == 'query':
-        external_limit = max(1, args.limit // 2) if settings.get('externalSources') and (args.limit > 1 or result.get('externalHits') or not result.get('hits')) else 0
+        external_limit = max(1, args.limit // 2) if settings.get('externalSources') else 0
         result['limits'] = {'projectHits': args.limit, 'externalHits': external_limit,
                             'totalHits': args.limit + external_limit, 'characters': args.max_chars}
     return result

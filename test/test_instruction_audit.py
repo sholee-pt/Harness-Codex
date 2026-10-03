@@ -55,7 +55,7 @@ class InstructionAuditTests(unittest.TestCase):
             draft = json.loads((ROOT / '.agents/skills/harness/references/minimal-draft-plan.json').read_text())
             materialized = harness_plan_builder.materialize_plan(draft)
             text = materialized['artifacts'][0]['content']
-            self.assertEqual(text.count(harness_teamplay.WORKFLOW_GUIDANCE), 1)
+            self.assertEqual(text.count(harness_teamplay.ROUTER_GUIDANCE), 1)
             repeat = copy.deepcopy(materialized)
             repeat['authoringContractVersion'] = draft['authoringContractVersion']
             self.assertEqual(harness_plan_builder.materialize_plan(repeat), materialized)

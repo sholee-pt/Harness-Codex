@@ -8,7 +8,7 @@ Read this reference after artifacts have been generated or updated.
 - Every skill has valid frontmatter and a directory-matching name.
 - Manifest paths stay inside the selected workspace and all topology references resolve.
 - The root instruction file has at most one complete managed block.
-- Managed-pointer mode points to the root instruction file Codex will actually load (`AGENTS.override.md` before `AGENTS.md`); explicit-skill mode has no managed pointer and preserves the user's instruction file.
+- `managed-pointer`의 `instructionFile`은 `AGENTS.override.md`, `AGENTS.md`, 설정된 fallback 후보의 우선순위와 빈 파일 여부를 반영해 선택된 실제 root instruction으로 지정할 것. `explicit-skill`은 managed pointer 없이 사용자 instruction을 보존하는 상태임.
 - Manifest Schema 7 records project-local scope, selected workspace kind, instruction activation, and `not-managed` Git protection with empty patterns.
 - Managed hashes match after generation.
 - Manifest Schema 7 declares journaled application with Transaction Schema 2; generation never modifies Git metadata.
@@ -29,7 +29,7 @@ Read this reference after artifacts have been generated or updated.
 - Generated files contain no Claude-only or obsolete Agent Teams primitives.
 - A clean plan dry-run reports the same create, update, or unchanged actions that the actual apply performs.
 - A runtime plan is bound to the exact current manifest and canonical topology, references only allowed persistent agents or explicitly provisional participants, and does not modify either file.
-- Coordinated runtime plans have finite communication and reassignment budgets, evidence-backed challenges, stopping conditions, capability fallback, isolated writers, and ephemeral retention by default.
+- Coordinated runtime plans have finite communication and reassignment budgets, evidence-backed challenges, stopping conditions, capability fallback, safe writer ownership, and ephemeral retention by default.
 - Draft plans materialize every deterministic change-discipline, teamplay, and topology-derived agent contract exactly once before apply checks the Schema 3 plan and Artifact Contract 2.
 - Runtime receipts reject invalid receiver/control-plane state, duplicate spawns, and verified role/parent/session-source contradictions. Poll counts do not determine terminal success. Current receipts distinguish bounded-budget warnings from actual failure; legacy wait-policy receipts retain their original interpretation. Unregistered event profiles are unsupported; malformed or unknown event structures degrade evidence. Missing optional evidence alone is not a verified conflict.
 - Relay receipts bind reviews to input packet hashes, invalidate stale reviews, and account for exactly the affected agents without changing Coordination Packet Schema 1.
@@ -82,7 +82,7 @@ Test the applicable cases, using an isolated temporary repository when possible:
 35. Ephemeral retention is the default; full audit requires explicit user opt-in and redacted retention stores no raw messages.
 36. Missing or duplicate deterministic placeholders fail before apply; a correct builder output remains an ordinary valid Schema 3 plan.
 37. A missing or unlisted canonical receiver handle, wait on an unknown handle, agent-reported-only result, or verified terminal/binding contradiction cannot be reported as observed completion. A task with no terminal result at its deadline remains incomplete; multiple polls or late delivery do not negate an actual completed result. Missing optional public or local evidence lowers evidence strength without stopping a valid bounded handle wait.
-38. Runtime Receipt Schema 2 marks an unregistered event profile as unsupported; the CLI version is provenance rather than an allowlist. It reports malformed or unknown structures as degraded; absence alone is not a conflict. An exact profile contradiction, verified binding mismatch, or incompatible terminal outcome fails closed, while raw prompts, messages, paths, IDs, handles, task names, and credentials never enter a receipt.
+38. Runtime Receipt Schema 2 marks an unregistered event profile as unsupported; the CLI version is provenance rather than an allowlist. It reports malformed or unknown structures as degraded; absence alone is not a conflict. A verified binding mismatch or incompatible terminal outcome fails closed; an optional profile expansion degrades observation only, while raw prompts, messages, paths, IDs, handles, task names, and credentials never enter a receipt.
 39. A review bound to an older packet hash is stale after revision, and rerun accounting rejects both missing affected agents and unrelated reruns.
 40. Main and linked worktrees both support generation without modifying their shared Git metadata.
 41. Portable path checks reject traversal, case aliases, controls, and symlink or junction escapes before writes.

@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.34.0‑beta`](#harness-for-codex-v0340-beta) | Schema 3 | Schema 7 | Schema 2 | Repair runtime and evaluation boundaries, reduce repeated work, and make bounded collaboration more flexible. |
 | [`v0.33.0‑beta`](#harness-for-codex-v0330-beta) | Schema 3 | Schema 7 | Schema 2 | Relax unnecessary generation and maintenance gates, preserve native update choices, and add fresh-generation comparison. |
 | [`v0.32.4‑beta`](#harness-for-codex-v0324-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve incomplete orphan runtimes before reinstalling and report bootstrap errors in the installation log. |
 | [`v0.32.3‑beta`](#harness-for-codex-v0323-beta) | Schema 3 | Schema 7 | Schema 2 | Align runtime receipt read limits with creation and preserve bounded metadata reads. |
@@ -98,6 +99,18 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.34.0-beta
+
+- Correct first-turn Auto selection, native model fallback, descendant cleanup, and verified routing feedback. Reuse observations across cosmetic catalog changes and consider supported reasoning choices within the selected policy.
+- Preserve maintenance session bindings and consumed budgets, and reduce repeated operations-history scans without changing immutable audit evidence.
+- Preserve CRLF-owned instructions and old compatible installations, share root-instruction discovery, and distinguish logical participants, native roles, optional observation confidence, and terminal execution failures.
+- Scope runtime-plan restrictions to executable metadata, enforce read-only scouts, support explicitly bounded shared-workspace writers, and invalidate review evidence by its actual inputs and dependencies.
+- Keep Jev disablement effective before new transmission, separate host-local retrieval state, and avoid external indexing without a usable output budget.
+- Validate installer arguments and protected paths before writes, verify the exact release payload before publication, reuse content-bound source analysis, and limit development archives to distribution inputs.
+- Recover interrupted evaluation finalization, compare reference sets with partial-observation semantics, and reuse a per-command observation snapshot. Attribution contract 3 remains separate from readable historical records.
+- Identify fresh-generation experiments by their inputs and actual guidance, and offer explicit private retention of generated artifacts for independent review. Live task quality and cost benefits remain unmeasured.
+- Compare upgrades against v0.33.0-beta only; preserve release tags and published installation links.
 
 ## Harness for Codex v0.33.0-beta
 

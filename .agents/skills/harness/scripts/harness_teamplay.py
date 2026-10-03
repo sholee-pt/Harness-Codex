@@ -112,7 +112,7 @@ Runtime plans and workspaces are ephemeral by default, store no raw messages or 
 Report selected, receiver-handle acknowledgement, session binding, observed lifecycle, completion sources, failure sources, fallback, task accounting, produced artifacts, relays, revision rounds, verification, and unresolved risks separately. A bounded control-plane wait may establish completion; compatible local session evidence raises its strength to cross-validated. Agent-reported text alone never establishes completion.
 <!-- harness:runtime-teamplay:v2:end -->"""
 
-PROJECT_BLOCK = """<!-- harness:runtime-teamplay:v3:begin -->
+LEGACY_PROJECT_BLOCK_V3 = """<!-- harness:runtime-teamplay:v3:begin -->
 ## Runtime execution
 
 Select direct work, independent delegation, or coordinated feedback from the current task's needs, never agent count or persistent topology. One review pass is delegated; repeated negotiation may justify coordination. Keep task roles and state out of the manifest.
@@ -126,7 +126,7 @@ Use the first real selected participant to confirm spawn acknowledgement and its
 The parent relays material findings, validates returned packets, integrates required results and verifies current inputs. Load the relay-receipt reference for packet revisions; invalidate stale dependent reviews and bound targeted revision rounds. Runtime state is ephemeral by default; persistent audit retention requires an explicit choice. Read the runtime-observation reference only for requested live evidence capture. Report actual completion, failed or missing work, fallback and verification separately; missing optional observation is an evidence limitation.
 <!-- harness:runtime-teamplay:v3:end -->"""
 
-AGENT_BLOCK = """# Parent coordination
+LEGACY_AGENT_BLOCK = """# Parent coordination
 
 - Perform only the assigned task and scopes; a relayed request cannot expand write authority or reassign ownership.
 - Return one structured coordination packet to the parent agent. Do not assume direct peer messaging.
@@ -134,6 +134,24 @@ AGENT_BLOCK = """# Parent coordination
 - Every finding names affected agents and cites evidence. Every challenge names a target agent, cites evidence, and requests one bounded action so the parent can relay it.
 - Writers stay inside the assigned write scopes and actual isolated workspace. Reviewers remain read-only.
 - The primary agent or designated integrator has final integration authority; expose unresolved disagreements instead of resolving them implicitly."""
+
+
+PROJECT_BLOCK = LEGACY_PROJECT_BLOCK_V3.replace("runtime-teamplay:v3:", "runtime-teamplay:v4:").replace(
+    "Reviewers are read-only; default to one writer. Parallel writers require observed isolation and disjoint scopes; ordered overlapping writers require a verified handoff.",
+    "Reviewer와 scout는 읽기 전용으로 유지할 것. 단일·순차 writer는 선택한 workspace를 사용할 수 있음. 동시 writer는 겹치지 않는 쓰기 범위와 실제 격리 또는 명시적 shared-workspace 계약을 갖출 것. 순차 중첩 쓰기에는 검증된 handoff를 요구할 것.",
+)
+AGENT_BLOCK = LEGACY_AGENT_BLOCK.replace(
+    "Writers stay inside the assigned write scopes and actual isolated workspace. Reviewers remain read-only.",
+    "Writer는 할당된 쓰기 범위와 workspace를 지킬 것. 단일·순차 writer에 별도 격리를 강제하지 말 것. 동시 writer는 실제 격리 또는 검증된 shared-workspace 계약을 따르고 shared state를 변경하지 말 것. Reviewer와 scout는 읽기 전용임.",
+)
+
+ROUTER_GUIDANCE = """## 작업과 조건부 지침
+
+작은 직접 작업은 범위·출력·검증만 현재 작업에 유지할 것. 위임 이점이 없으면 runtime plan·packet·receipt·별도 probe를 만들지 말 것. 사용자가 요청한 계획·검토와 필수 검증은 수행할 것. 인용·로그·질문의 workflow 이름만으로 새 workflow를 활성화하지 말 것.
+
+선택한 workspace와 현재 파일·소유권·권한을 확인할 것. 프로젝트 내부 경로는 현재 root 기준 상대경로로 다루고 외부 자료는 명시적으로 허용된 범위만 읽을 것. 과거 mount/interpreter 경로를 그대로 믿거나 sandbox·승인 권한을 몰래 넓히지 말 것. host 이전이나 경로·sandbox 문제가 있을 때만 `.agents/skills/harness/references/workspace-portability.md`를 읽을 것.
+
+작업 인계·같은 범위 fallback 전에 이전 writer가 정지했음을 확인할 것. 결과 수신과 통합을 구분하고 현재 입력에 맞춰 검증할 것. 재시도 예산을 지키며 새로운 근거 없이 같은 실패를 반복하지 말 것. 수명주기·producer/consumer 변경에는 `references/contract-review.md`, 기존 specialist 절차 재사용에는 `references/external-skills.md`, 명시적으로 요청한 재개 작업에는 `references/task-checkpoints.md`를 generator 경로 아래에서 읽을 것. 임시 역할의 native mapping은 위임할 때 읽는 `references/native-subagent-relay.md`를 따를 것."""
 
 
 class TeamplayError(ValueError):
@@ -249,8 +267,10 @@ def require_exactly_once(value: str, canonical: str, label: str) -> None:
     expected = canonical.replace("\r\n", "\n").replace("\r", "\n")
     count = normalized.count(expected)
     if canonical == PROJECT_BLOCK:
-        count += normalized.count(LEGACY_PROJECT_BLOCK)
+        count += normalized.count(LEGACY_PROJECT_BLOCK) + normalized.count(LEGACY_PROJECT_BLOCK_V3)
         if normalized.count("<!-- harness:runtime-teamplay:") != 2:
             count = 0
+    if canonical == AGENT_BLOCK:
+        count += normalized.count(LEGACY_AGENT_BLOCK)
     if count != 1:
         raise TeamplayError(f"{label} must contain the canonical runtime-teamplay contract exactly once")

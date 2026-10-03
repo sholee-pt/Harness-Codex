@@ -63,6 +63,7 @@ class Validator:
         self.legacy_artifacts = False
         self.upgrade_requirements: list[str] = []
         self.compatibility_state = "failed"
+        self.root_context: dict | None = None
 
     def error(self, message: str) -> None:
         self.errors.append(message)
@@ -579,7 +580,7 @@ class Validator:
                     self.error(f"obsolete runtime token {token!r} found in {relative}")
 
     def validate_workspace(self) -> None:
-        context = inventory.require_workspace_root(self.root)
+        context = self.root_context if self.root_context is not None else inventory.require_workspace_root(self.root)
         workspace = self.manifest.get("workspace")
         if not isinstance(workspace, dict):
             return
@@ -602,6 +603,7 @@ class Validator:
         harness_workspace.validate_manifest_protection(self.root, workspace, paths)
 
     def run(self) -> dict:
+        self.root_context = None
         def validate_transaction_state() -> None:
             transaction = harness_state.transaction_status(self.root)
             if transaction is not None:
@@ -618,7 +620,7 @@ class Validator:
 
         def validate_root_context() -> None:
             try:
-                inventory.require_workspace_root(self.root)
+                self.root_context = inventory.require_workspace_root(self.root)
             except ValueError as exc:
                 self.error(str(exc))
 

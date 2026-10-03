@@ -318,8 +318,8 @@ def _plan(root: Path, include_generator: bool, helpers) -> tuple[dict, list, lis
         if entry is not None:
             owned = current.data
             if kind == "managed-block":
-                owned = state.extract_managed_block(owned.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")).encode("utf-8")
-            if hashlib.sha256(owned).hexdigest() != entry["sha256"]:
+                owned = state.extract_managed_block(owned.decode("utf-8")).encode("utf-8")
+            if not state.owned_content_matches(owned, kind, entry["sha256"]):
                 raise LifecycleError(f"Managed file changed during preparation: {relative}")
             if (kind == "file" and os.name != "nt" and entry.get("mode") is not None
                     and current.mode != state.parse_mode(entry["mode"], "managed mode")):

@@ -69,6 +69,32 @@ esac
         self.assertEqual(unrelated.read_text(), 'user')
         self.assertEqual(list(self.root.glob('harness-codex-install.*')), [])
 
+    def test_git_metadata_paths_are_rejected_before_download_or_temporary_writes(self):
+        for option in ('--data-dir', '--bin-dir'):
+            for spelling in ('.git', '.GiT. '):
+                with self.subTest(option=option, spelling=spelling):
+                    result = self.invoke(option, str(self.root / spelling / 'tool'))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('Git metadata', result.stderr)
+                    self.assertNotIn('Downloading', result.stdout)
+                    self.assertFalse((self.root / spelling).exists())
+                    self.assertFalse(list(self.root.glob('harness-codex-install.*')))
+
+    def test_file_ancestor_and_disguised_managed_link_are_rejected_before_download(self):
+        regular = self.root / 'user-file'
+        regular.write_text('preserve')
+        target = self.root / 'user-directory'
+        target.mkdir()
+        alias = self.root / 'managed-alias'
+        alias.symlink_to(target, target_is_directory=True)
+        for value in (str(regular / 'tool'), str(alias) + '/', str(alias) + '/.'):
+            result = self.invoke('--data-dir', value)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn('Downloading', result.stdout)
+        self.assertEqual(regular.read_text(), 'preserve')
+        self.assertEqual(list(target.iterdir()), [])
+        self.assertFalse((self.root / 'user-directory-runtime').exists())
+
     def test_checksum_failure_never_executes_payload(self):
         self.make_archive()
         self.sums.write_text('0' * 64 + '  harness-codex-0.12.0-beta-linux.tar.gz\n')
@@ -238,6 +264,46 @@ esac
             self.assertNotIn("--agent", help_result.stdout)
             self.assertNotIn("--runtime", help_result.stdout)
             self.assertFalse(marker.exists())
+
+    def test_unpacked_source_options_and_paths_are_checked_before_any_writes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            environment = {**os.environ, 'HOME': str(base), 'TMPDIR': str(base)}
+            for key in ('BASH_ENV', 'ENV', 'XDG_DATA_HOME'):
+                environment.pop(key, None)
+            cases = [('--unknown',), ('--auto-update', 'typo'), ('--existing=typo',),
+                     ('--branch', 'main'), ('--branch', 'v999.0.0-beta'), ('--repository', 'https://example.invalid/repo'),
+                     ('--data-dir',), ('--data-dir=',), ('--activate', 'typo'),
+                     ('--data-dir', str(base / '.git/tool')), ('--bin-dir', str(base / '.GiT. /bin'))]
+            for arguments in cases:
+                with self.subTest(arguments=arguments):
+                    result = subprocess.run([BASH, str(ROOT / 'installer/install.sh'), *arguments],
+                                            env=environment, capture_output=True, text=True, timeout=20)
+                    self.assertNotEqual(result.returncode, 0, result.stdout)
+                    self.assertEqual(list(base.iterdir()), [], result.stdout + result.stderr)
+            result = subprocess.run([BASH, str(ROOT / 'installer/install.sh'), '--data-dir', str(base / 'tool'), '--help'],
+                                    env=environment, capture_output=True, text=True, timeout=20)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('Usage:', result.stdout)
+            self.assertEqual(list(base.iterdir()), [])
+
+    @unittest.skipUnless(os.name == 'posix', 'Requires POSIX symlinks')
+    def test_unpacked_source_normalizes_managed_leaf_before_link_check(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            target = base / 'user-directory'
+            target.mkdir()
+            alias = base / 'managed-alias'
+            alias.symlink_to(target, target_is_directory=True)
+            environment = {**os.environ, 'HOME': str(base), 'TMPDIR': str(base)}
+            for key in ('BASH_ENV', 'ENV', 'XDG_DATA_HOME'):
+                environment.pop(key, None)
+            for suffix in ('/', '/.'):
+                result = subprocess.run([BASH, str(ROOT / 'installer/install.sh'), '--data-dir', str(alias) + suffix],
+                                        env=environment, capture_output=True, text=True, timeout=20)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('symlink', result.stderr)
+                self.assertEqual(set(base.iterdir()), {target, alias})
 
 
 if __name__ == "__main__":

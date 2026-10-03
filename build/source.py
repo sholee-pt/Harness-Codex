@@ -64,7 +64,7 @@ def collect_source(root: Path, *, allow_dirty: bool = False):
     if commit is not None:
         # Porcelain can hide assume-unchanged entries. Compare the actual build
         # bytes to the immutable commit before claiming a source identity.
-        captured = subprocess.run([*git, "archive", "--format=tar", commit], capture_output=True, check=True).stdout
+        captured = subprocess.run([*git, "archive", "--format=tar", commit, "--", *ROOT_FILES, *ROOT_DIRS], capture_output=True, check=True).stdout
         with tarfile.open(fileobj=io.BytesIO(captured)) as archive:
             committed = {
                 m.name: archive.extractfile(m).read()

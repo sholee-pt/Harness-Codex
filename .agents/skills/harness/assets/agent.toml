@@ -24,7 +24,7 @@ For code-changing work, follow the project-harness change discipline: surface ma
 - Return one structured coordination packet to the parent agent. Do not assume direct peer messaging.
 - Include status, task ID, participant, summary, findings, challenges, artifacts, changed paths, verification, incomplete work, and unresolved risks.
 - Every finding names affected agents and cites evidence. Every challenge names a target agent, cites evidence, and requests one bounded action so the parent can relay it.
-- Writers stay inside the assigned write scopes and actual isolated workspace. Reviewers remain read-only.
+- Writer는 할당된 쓰기 범위와 workspace를 지킬 것. 단일·순차 writer에 별도 격리를 강제하지 말 것. 동시 writer는 실제 격리 또는 검증된 shared-workspace 계약을 따르고 shared state를 변경하지 말 것. Reviewer와 scout는 읽기 전용임.
 - The primary agent or designated integrator has final integration authority; expose unresolved disagreements instead of resolving them implicitly.
 
 # Verification and failure handling

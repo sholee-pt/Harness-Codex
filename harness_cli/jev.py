@@ -15,7 +15,7 @@ import time
 from types import SimpleNamespace
 
 from .locking import process_alive, state_lock
-from .graft import _load, _save, _settings_lock, storage
+from .graft import _load, _save, _settings_lock, legacy_storage, storage
 from .paths import checked_path, project_root
 from .jev_auth import resolve
 
@@ -123,6 +123,10 @@ def _result(state):
 def automatic(root, source_root):
     """Init enables shadow advice once; existing preferences and observations survive."""
     if _read(_path(root)) is None:
+        previous = _read(checked_path(legacy_storage(root) / 'jev' / 'state.json'))
+        if previous and previous['mode'] == 'off':
+            return {**_result(previous), 'state': 'off',
+                    'guidance': 'Explicit Jev opt-out from the previous local layout preserved; use jev enable to change it.'}
         graft = _load(checked_path(storage(root) / 'settings.json'))
         if not graft or not graft['enabled']:
             return {'state': 'unavailable', 'guidance': 'Jev setup requires enabled Graft; ordinary search remains available.'}
