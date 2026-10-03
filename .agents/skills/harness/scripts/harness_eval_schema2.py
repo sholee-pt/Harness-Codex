@@ -299,6 +299,7 @@ def validate_run_record(value: Any, *, verify_hash: bool = True) -> dict[str, An
     legacy = copy.deepcopy(record)
     legacy["schemaVersion"] = 1
     legacy["runtime"]["harnessVersion"] = "5.5"
+    legacy["runtime"].pop("evaluationContract", None)
     arm = record.get("configuration", {}).get("arm", "unpaired")
     legacy["configuration"] = {
         "arm": arm,
@@ -321,7 +322,17 @@ def validate_run_record(value: Any, *, verify_hash: bool = True) -> dict[str, An
         "processCleanupVerified": record.get("result", {}).get("processCleanupVerified"),
     }
     types._validate_run_record_v1(legacy, verify_hash=False)
-    if record["runtime"]["harnessVersion"] not in READABLE_HARNESS_VERSIONS:
+    version = record["runtime"]["harnessVersion"]
+    if not isinstance(version, str) or not version or len(version) > 128:
+        raise types.EvaluationError("runtime.harnessVersion must be a bounded version string")
+    contract = record["runtime"].get("evaluationContract")
+    if contract is not None and (
+        not isinstance(contract, str) or not contract or len(contract) > 128
+        or not all(character.isalnum() or character in "-_." for character in contract)
+    ):
+        raise types.EvaluationError("runtime.evaluationContract must be a bounded contract identity")
+    if (record["runtime"]["harnessVersion"] not in READABLE_HARNESS_VERSIONS
+            and contract != harness_metadata.EVALUATION_MEASUREMENT_CONTRACT):
         raise types.EvaluationError("runtime.harnessVersion must be a readable Schema 2 Harness version")
     _validate_configuration(record["configuration"])
     _validate_result(record["result"])

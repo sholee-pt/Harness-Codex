@@ -53,6 +53,11 @@ Subagent start and stop events support task-level agent-use and incomplete-lifec
 
 The audit always reports `regenerationRecommended: false`. Evidence is a trigger for human or agent review, not permission to rewrite topology. Repeated route mismatch, corrections concentrated around one responsibility, or unused agents may justify a new project audit only after current workspace evidence confirms a stable boundary or workflow change.
 
+유지보수 신호를 명시적으로 연결할 때 `--maintenance-reason`과 `--maintenance-evidence`를 사용할 것.
+현재 근거를 읽은 세션의 자동 검토로 연결하려면 maintenance hook이 제공한
+`--maintenance-session-ref`를 함께 전달할 것. ref 없는 신호는 자동 검토 문맥으로 추정하지 않음.
+기존 operations work-item ID를 재사용하며, 신호 전달 실패가 operations 기록을 삭제하지 않도록 할 것.
+
 ## Privacy, retention, and integrity
 
 Operations Event Schema 1 stores one immutable hash-sealed file per event. It retains local HMAC references, timestamps, finite enums, and integrity metadata. It does not retain raw prompts, responses, transcripts, agent names, agent IDs, absolute workspace paths, commands, or source content. The repository registry stores only a keyed locator and a random repository ID.

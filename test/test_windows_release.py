@@ -69,6 +69,22 @@ class WindowsReleaseTests(unittest.TestCase):
                 self.original = saved
         self.save_original()
 
+    def test_official_relay_linux_release_accepts_windows_without_a_linux_native_asset(self):
+        self.original.pop('nativeUi')
+        self.old_sums.pop(self.linux_native)
+        self.save_original()
+        self.save_sums()
+        original = self.original.copy()
+        merged, sums, additions = release.prepare(self.dist, self.published, self.commit)
+        self.assertEqual(set(merged['nativeUi']), {self.native})
+        self.assertNotIn(self.linux_native, sums)
+        for name in ('commit', 'sha256', 'bootstrapSha256', 'artifact'):
+            self.assertEqual(merged[name], original[name])
+        self.original, self.old_sums = merged, sums
+        self.save_original()
+        self.save_sums()
+        self.assertEqual(release.prepare(self.dist, self.published, self.commit), (merged, sums, additions))
+
     def test_changed_existing_windows_binary_is_never_replaced(self):
         self.old_sums[self.native] = 'e' * 64
         self.save_sums()
@@ -88,11 +104,13 @@ class WindowsReleaseTests(unittest.TestCase):
             release.prepare(self.dist, self.published, self.commit)
 
     def test_mismatched_tag_cannot_start_remote_uploads(self):
-        responses = [json.dumps({'isDraft': False, 'assets': [], 'body': ''}), json.dumps({'sha': 'f' * 40})]
+        responses = [json.dumps({'isDraft': False, 'assets': [], 'body': ''}),
+                     json.dumps({'object': {'type': 'commit', 'sha': 'f' * 40}})]
         with mock.patch.object(release.subprocess, 'check_output', side_effect=responses) as gh:
             with self.assertRaisesRegex(ValueError, 'Release tag'):
                 release.publish(self.dist, self.commit, 'sholee-pt/Harness-Codex')
         self.assertEqual(gh.call_count, 2)
+        self.assertIn('/git/ref/tags/v' + VERSION, gh.call_args_list[1].args[0][-1])
         self.assertFalse(any('upload' in call.args[0] for call in gh.call_args_list))
 
     def test_notes_are_additive_and_authorization_is_not_persistent(self):

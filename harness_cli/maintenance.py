@@ -47,7 +47,9 @@ def register(commands):
     signal.add_argument('--reason', choices=('scope-changed', 'workflow-gap', 'routing-mismatch', 'verification-gap', 'user-request'), required=True)
     signal.add_argument('--evidence', required=True)
     signal.add_argument('--observation', required=True)
-    actions.add_parser('begin', help='Reserve one eligible bounded review batch.')
+    signal.add_argument('--session-ref', help='Opaque current-session ref supplied by the native maintenance hook.')
+    begin = actions.add_parser('begin', help='Reserve one eligible bounded review batch with explicitly selected current evidence.')
+    begin.add_argument('--evidence', required=True)
     finish = actions.add_parser('finish', help='Finish a reserved review; automatic apply enforces its existing-skill scope.')
     finish.add_argument('--lease', required=True)
     finish.add_argument('--decision', choices=('unchanged', 'proposed', 'deferred', 'apply'), required=True)
@@ -332,6 +334,10 @@ def run(args, source_root):
                 arguments += ['--session-ref', args.session_ref]
         elif args.maintenance_action == 'signal':
             arguments += ['--reason', args.reason, '--evidence', args.evidence, '--observation', args.observation]
+            if args.session_ref is not None:
+                arguments += ['--session-ref', args.session_ref]
+        elif args.maintenance_action == 'begin':
+            arguments += ['--evidence', args.evidence]
         elif args.maintenance_action == 'finish':
             arguments += ['--lease', args.lease, '--decision', args.decision]
             if args.plan is not None:
@@ -375,7 +381,13 @@ def run(args, source_root):
         print('Automatic changes: existing skills only. Quality benefit is unmeasured; token counts are not a billing total.')
         print('Automatic changes paused: ' + ('yes' if result.get('automaticChangesPaused') else 'no'))
         if result.get('trackingIncomplete'):
-            print('Session tracking reached capacity. After confirming every native session and child for this project stopped, use maintenance recover-session --session-ref all. Observations and project files are retained.')
+            print('Session tracking is incomplete. After confirming every native session and child for this project stopped, use maintenance recover-session --session-ref all. Observations and project files are retained.')
+        if result.get('contextRequired'):
+            print('Some concerns need current source context. Re-record selected evidence with the current hook session ref, or use maintenance begin --evidence PATH for explicit review.')
+        if result.get('historyCapacityBlocked'):
+            print('Maintenance history is full of unresolved changes. Review them before another automatic review can start.')
+        if result.get('applicationMarkerPresent'):
+            print('An application marker is present. Wait for active maintenance to finish. After an interruption, recover any project transaction, confirm every project session and child stopped, then use maintenance recover-session --session-ref all.')
         for session in result.get('blockingSessions', []):
             print(f"  Active session marker: {session['ref']} | active: {session['active']} | children: {session['children']}")
         if result.get('blockingSessions'):

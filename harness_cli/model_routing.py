@@ -133,6 +133,12 @@ def _request_tier(text):
 
 
 def _complex(text):
+    review = re.search(r'\b(review|audit|inspect)\b|검토|감사|점검|전수', text)
+    broad = re.search(r'\b(whole|entire|all)\b.{0,40}\b(repository|repositories|repo|codebase|code|files|modules)\b'
+        r'|\b(repository|repo|codebase)[- ]wide\b|(?:전체|전반).{0,20}(저장소|레포지토리|리포지토리|코드|모듈|파일)'
+        r'|(저장소|레포지토리|리포지토리|코드베이스).{0,20}(전체|전반)|모든\s*(파일|코드|모듈)', text)
+    if review and broad:
+        return True
     return bool(re.search(
         r'\b(architecture|concurrency|race condition|deadlock|data leakage|security|authentication|authorization|migration)\b'
         r'|아키텍처|동시성|교착|데이터\s*누수|보안|인증|권한|마이그레이션|여러\s*(모듈|저장소)|반복.{0,12}실패'

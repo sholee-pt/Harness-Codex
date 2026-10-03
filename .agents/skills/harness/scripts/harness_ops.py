@@ -478,6 +478,7 @@ def annotate(
     state_root: Path | None = None,
     maintenance_reason: str | None = None,
     maintenance_evidence: str | None = None,
+    maintenance_session_ref: str | None = None,
     maintenance_change: str | None = None,
     maintenance_revision: str | None = None,
     model: str | None = None,
@@ -571,17 +572,19 @@ def annotate(
             result['routing'] = RoutingEvidence(selected_root, state_root).feedback(work_item_ref, outcome, evidence_source, routing_cause or 'unknown')
         except (OSError, ValueError, TimeoutError):
             result['routing'] = {'available': False, 'recordPreserved': True}
-    if maintenance_reason or maintenance_evidence or maintenance_change:
+    if maintenance_reason or maintenance_evidence or maintenance_change or maintenance_session_ref:
         # Optional, explicitly linked evidence only. A task failure alone never
         # declares a harness defect. A maintenance error cannot erase the record.
         try:
             if bool(maintenance_reason) != bool(maintenance_evidence):
                 raise ValueError('Maintenance signal requires both reason and evidence')
+            if maintenance_session_ref and not maintenance_reason:
+                raise ValueError('Maintenance session context requires a selected evidence signal')
             from harness_maintenance import Maintenance
             manager = Maintenance(selected_root, state_root)
             linked = {}
             if maintenance_reason and maintenance_evidence:
-                linked['signal'] = manager.signal(maintenance_reason, maintenance_evidence, work_item_ref)
+                linked['signal'] = manager.signal(maintenance_reason, maintenance_evidence, work_item_ref, session_ref=maintenance_session_ref)
             if maintenance_change:
                 linked['observation'] = manager.observe(maintenance_change, work_item_ref, outcome, evidence_source,
                     maintenance_revision, model=model, effort=effort, category=category, runtime=runtime)
@@ -869,6 +872,7 @@ def command_annotate(args: argparse.Namespace) -> int:
         evidence_source=args.evidence_source,
         maintenance_reason=args.maintenance_reason,
         maintenance_evidence=args.maintenance_evidence,
+        maintenance_session_ref=args.maintenance_session_ref,
         maintenance_change=args.maintenance_change,
         maintenance_revision=args.maintenance_revision,
         model=args.model,
@@ -957,7 +961,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--evidence-source", choices=sorted(EVIDENCE_SOURCES), default="agent-reported"
     )
     annotation.add_argument("--state-home")
-    for name in ('maintenance-reason', 'maintenance-evidence', 'maintenance-change', 'maintenance-revision', 'model', 'effort', 'runtime'):
+    for name in ('maintenance-reason', 'maintenance-evidence', 'maintenance-session-ref', 'maintenance-change', 'maintenance-revision', 'model', 'effort', 'runtime'):
         annotation.add_argument('--' + name)
     annotation.set_defaults(handler=command_annotate)
 

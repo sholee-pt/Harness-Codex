@@ -42,4 +42,4 @@ For a small direct task, keep scope, outputs, and verification in the current ta
 
 ## Generated orchestrator contents
 
-The `project-harness` skill should contain the project-specific trigger, topology, task-routing rules, inputs and outputs, and the canonical contracts from the bundled template. Do not restate those contracts in a second generic run protocol. The builder adds concise direct-execution guidance without changing the required canonical v2 block. Keep detailed domain procedures in separate project skills and load delegation references only when that execution path is selected.
+The `project-harness` skill should contain the project-specific trigger, topology, task-routing rules, inputs and outputs, and the compact canonical contracts from the bundled template. Do not restate those contracts in a second generic run protocol. The builder adds concise direct-execution guidance and emits the compact runtime block; existing canonical v2 routers remain readable without mutation. Keep detailed domain procedures in separate project skills and load delegation references only when that execution path is selected.

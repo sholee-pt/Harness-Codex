@@ -39,7 +39,7 @@ def journal_path(root: Path) -> Path:
     return _resolve_inside(root, JOURNAL_RELATIVE)
 
 
-def is_allowed_target(relative: str) -> bool:
+def is_allowed_target(relative: str, *, root: Path | None = None) -> bool:
     if not isinstance(relative, str) or "\\" in relative:
         return False
     path = PurePosixPath(relative)
@@ -65,7 +65,7 @@ def is_allowed_target(relative: str) -> bool:
         "AGENTS.md",
         "AGENTS.override.md",
         ".harness/manifest.json",
-    }
+    } or (root is not None and harness_state.is_instruction_relative(root, relative))
 
 
 def _transaction_relative(transaction_id: str) -> str:
@@ -206,7 +206,7 @@ def validate_journal(root: Path, journal: object) -> dict:
             raise TransactionError(f"transaction operation {index} must be an object")
         relative = operation.get("path")
         action = operation.get("action")
-        if not isinstance(relative, str) or not is_allowed_target(relative):
+        if not isinstance(relative, str) or not is_allowed_target(relative, root=root):
             raise TransactionError(f"transaction target is not allowed: {relative!r}")
         if relative in seen:
             raise TransactionError(f"duplicate transaction target: {relative}")
@@ -343,7 +343,7 @@ def prepare_transaction(
     except harness_state.StateError as exc:
         raise TransactionError(str(exc)) from exc
     for relative in outputs:
-        if not isinstance(relative, str) or not is_allowed_target(relative):
+        if not isinstance(relative, str) or not is_allowed_target(relative, root=root):
             raise TransactionError(f"transaction target is not allowed: {relative!r}")
         _resolve_inside(root, relative)
     if not all(isinstance(entry, dict) for entry in managed_preconditions):

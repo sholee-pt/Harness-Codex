@@ -55,6 +55,7 @@ class Controls:
         self.submit = submit
         self.source = Path(__file__).resolve().parents[1]
         self.tasks, self.answers, self.busy, self.configuring = {}, {}, set(), {}
+        self.completions, self.completion_turns = {}, {}
         self.prefix = 'harness-control-' + uuid.uuid4().hex + '-'
 
     async def event(self, method, **params):
@@ -90,22 +91,37 @@ class Controls:
                     chunks.append(block[:output_limit - length])
                     length += len(chunks[-1])
             await process.wait()
+        async def stop():
+            if process.returncode is None:
+                try:
+                    if os.name == 'posix':
+                        # Let Python helpers unwind and reap separately grouped
+                        # npm, sandbox probes and native metadata subprocesses.
+                        os.killpg(process.pid, signal.SIGINT)
+                    else:
+                        process.terminate()
+                except ProcessLookupError:
+                    pass
+                try:
+                    await asyncio.wait_for(output(), 15)
+                except asyncio.TimeoutError:
+                    try:
+                        if os.name == 'posix':
+                            os.killpg(process.pid, signal.SIGKILL)
+                        else:
+                            process.kill()
+                    except ProcessLookupError:
+                        pass
+                    await process.wait()
         try:
             await asyncio.wait_for(output(), timeout)
         finally:
-            if process.returncode is None:
-                if os.name == 'posix':
-                    os.killpg(process.pid, signal.SIGTERM)
-                else:
-                    process.terminate()
-                try:
-                    await asyncio.wait_for(process.wait(), 3)
-                except asyncio.TimeoutError:
-                    if os.name == 'posix':
-                        os.killpg(process.pid, signal.SIGKILL)
-                    else:
-                        process.kill()
-                    await process.wait()
+            cleanup = asyncio.create_task(stop())
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                await cleanup
+                raise
         text = ui.clean(b''.join(chunks).decode('utf-8', errors='replace').replace('\r\n', '\n'))
         if truncated:
             raise ValueError('Management output exceeded its display limit. Inspect the project with the terminal CLI before continuing.')
@@ -150,6 +166,7 @@ class Controls:
         from .project import _configuration_prompt, load_installer, _assert_no_transaction
         goal, _ = goal_arguments(root, arguments)
         _assert_no_transaction(root, load_installer(self.source))
+        await self.cancel_completion(params['threadId'])
         await self.cli(root, ['init', '--install-only'], timeout=90)
         await self.call('skills/list', {'cwds': [str(root)], 'forceReload': True})
         self.configuring[params['threadId']] = (root, command, manifest_stamp(root))
@@ -169,6 +186,11 @@ class Controls:
                 future.set_result(message)
             return True
         params = message.get('params') or {}
+        if method == 'turn/interrupt' and params.get('turnId') in self.completion_turns:
+            thread = self.completion_turns[params['turnId']]
+            await self.cancel_completion(thread)
+            await self.send({'id': identity, 'result': {}})
+            return True
         if method == 'turn/interrupt' and params.get('turnId') in self.tasks:
             self.tasks[params['turnId']].cancel()
             await self.send({'id': identity, 'result': {}})
@@ -292,6 +314,7 @@ class Controls:
             if choice == 'Back':
                 return 'Removal cancelled; no files changed.'
             self.configuring.pop(thread, None)
+            await self.cancel_completion(thread)
             result = await self.cli(root, ['remove', *arguments, '--yes', '--json', '--expected-plan', plan['planDigest']], output_limit=4 * 1024 * 1024)
             report = json.loads(result)
             from .project_cleanup import candidates, remove_empty
@@ -409,11 +432,33 @@ class Controls:
                     self.configuring.pop(thread, None)
                 else:
                     current = manifest_stamp(root)
-                    if current is not None and current != previous:
+                    if current is not None and current != previous and thread not in self.completions:
                         self.configuring[thread] = (root, command, current)
-                        if await self.complete_init(thread, params['turn']['id'], root, command):
-                            self.configuring.pop(thread, None)
+                        turn = params['turn']['id']
+                        task = asyncio.create_task(self.finish_configuration(thread, turn, root, command, current))
+                        self.completions[thread] = task
+                        self.completion_turns[turn] = thread
             self.busy.discard(thread)
+
+    async def finish_configuration(self, thread, turn, root, command, stamp):
+        try:
+            if await self.complete_init(thread, turn, root, command):
+                if self.configuring.get(thread) == (root, command, stamp):
+                    self.configuring.pop(thread, None)
+        finally:
+            self.completions.pop(thread, None)
+            self.completion_turns.pop(turn, None)
+
+    async def cancel_completion(self, thread):
+        task = self.completions.get(thread)
+        if task is not None:
+            self.configuring.pop(thread, None)
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            self.completions.pop(thread, None)
+            for turn, owner in list(self.completion_turns.items()):
+                if owner == thread:
+                    self.completion_turns.pop(turn, None)
 
     async def complete_init(self, thread, turn, root, command):
         try:
@@ -429,10 +474,12 @@ class Controls:
             return False
 
     async def close(self):
-        tasks = list(self.tasks.values())
+        tasks = [*self.tasks.values(), *self.completions.values()]
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        self.completions.clear()
+        self.completion_turns.clear()
         for future in self.answers.values():
             if not future.done():
                 future.cancel()

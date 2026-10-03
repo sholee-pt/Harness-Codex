@@ -139,17 +139,24 @@ def query(args, source_root, root, folder, settings, result, *, timeout):
         raise TimeoutError('External snapshot preparation exhausted the query deadline.')
     external = _invoke(source_root, tree, folder / 'external-graph', settings, 'query', timeout=timeout,
                        question=args.question, limit=max(1, args.limit // 2), max_chars=max(512, args.max_chars // 2), advice=False)
+    if not external.get('hits'):
+        result.update(projectHits=result.get('hits', 0), externalHits=0,
+                      externalRefreshed=external.get('refreshed', False), externalFiles=len(files))
+        return result
     text = external['text']
     # Report the selected originals, never imply the disposable snapshot is editable.
     pointers = {key: original for name, (_, original) in files.items() for key in (str(tree / name), name)}
     text = re.sub('|'.join(re.escape(key) for key in sorted(pointers, key=len, reverse=True)),
                   lambda match: pointers[match.group()], text)
     heading = '\n\nExternal code (separate structural index; verify original files; cross-root edges are not inferred):\n'
-    remaining = max(0, args.max_chars - len(heading))
-    share = remaining // 2
-    combined = result['text'][:remaining - share] + heading + text[:share]
+    remaining = max(0, args.max_chars - len(result['text']) - len(heading))
+    notice = '\n[External results truncated; inspect the selected source or increase --max-chars.]'
+    displayed = bool(text and (len(text) <= remaining or remaining >= len(notice) + 1))
+    suffix = text if len(text) <= remaining else text[:max(0, remaining - len(notice))] + notice
+    combined = result['text'] + (heading + suffix if displayed else '')
     result.update(text=combined, projectHits=result.get('hits', 0), hits=result.get('hits', 0) + external.get('hits', 0), externalHits=external.get('hits', 0),
                   externalRefreshed=external.get('refreshed', False), externalFiles=len(files),
+                  externalDisplayed=displayed,
                   truncated=result.get('truncated', False) or external.get('truncated', False)
-                  or len(result['text']) > remaining - share or len(text) > share)
+                  or not displayed or len(text) > remaining)
     return result

@@ -72,6 +72,14 @@ def _signed_improvement(delta: float, direction_rule: str) -> float:
     return delta if direction_rule == "higher-is-better" else -delta
 
 
+def _correctness_regression(comparison: dict) -> bool:
+    gate = comparison["correctnessGate"]
+    failed = gate.get("status") == "failed" if "status" in gate else (
+        gate["policy"] == "no-regression" and not gate["passed"]
+    )
+    return failed and gate["criticalRegression"]
+
+
 def _support_strength_v2(
     *,
     direction: str,
@@ -84,16 +92,30 @@ def _support_strength_v2(
     critical_regression: bool,
     isolation_failed: bool,
     confounders: set[str],
+    correctness_regression_count: int = 0,
 ) -> str:
     if (
         direction not in {"beneficial", "harmful"}
         or pair_count < 3
         or non_tie_count < 3
-        or median_signed_improvement is None
+        or (median_signed_improvement is None and not correctness_regression_count)
         or isolation_failed
     ):
         return "insufficient"
     positive = direction == "beneficial"
+    # Repeated verified correctness regressions remain adverse evidence even
+    # when the efficiency outcome improved. Do not mix their vote count with
+    # efficiency-only losses to manufacture stronger support.
+    if not positive and correctness_regression_count >= 3:
+        if (pair_count >= 10 and _meets_ratio(correctness_regression_count, pair_count, 4, 5)
+                and isolation_ratio == 1.0 and not confounders):
+            return "strong"
+        if pair_count >= 5 and _meets_ratio(correctness_regression_count, pair_count, 7, 10):
+            return "moderate"
+        if _meets_ratio(correctness_regression_count, pair_count, 2, 3):
+            return "weak"
+    if median_signed_improvement is None:
+        return "insufficient"
     weak_effect = median_signed_improvement > 0 if positive else median_signed_improvement < 0
     moderate_effect = (
         median_signed_improvement >= minimum_effect
@@ -382,7 +404,11 @@ def _proposal_from_comparisons_v2(
             "Schema 2 proposal evidence must share task, runtime, outcome, and configuration-delta strata"
         )
     basis = eligible
-    directions = [item["primaryOutcome"]["direction"] for item in basis]
+    directions = [
+        "harmful" if _correctness_regression(item)
+        and item["primaryOutcome"]["direction"] in {"beneficial", "tie"}
+        else item["primaryOutcome"]["direction"] for item in basis
+    ]
     beneficial = directions.count("beneficial")
     harmful = directions.count("harmful")
     ties = directions.count("tie")
@@ -426,7 +452,9 @@ def _proposal_from_comparisons_v2(
     minimum_effect = (
         float(basis[0]["primaryOutcome"]["minimumEffect"]) if basis else 0.0
     )
-    direction_count = beneficial if direction == "beneficial" else harmful
+    direction_count = beneficial if direction == "beneficial" else sum(
+        improvement < 0 and improvement <= -minimum_effect for improvement in signed_improvements
+    )
     strength = _support_strength_v2(
         direction=direction,
         pair_count=len(basis),
@@ -438,6 +466,9 @@ def _proposal_from_comparisons_v2(
         critical_regression=critical_regression,
         isolation_failed=isolation_failed,
         confounders=confounders,
+        correctness_regression_count=sum(
+            _correctness_regression(item) for item in basis
+        ),
     )
     delta = eligible[0]["configurationDelta"] if eligible else None
     scope = delta["attributionScope"] if delta is not None else "none"

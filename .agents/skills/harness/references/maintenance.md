@@ -17,7 +17,8 @@ raw conversation text. The file is a relevant project source, not a log or trans
 
 ```sh
 harness-codex maintenance signal \
-  --reason workflow-gap --evidence PROJECT.md --observation TURN_OR_RUN_REFERENCE
+  --reason workflow-gap --evidence PROJECT.md --observation TURN_OR_RUN_REFERENCE \
+  --session-ref CURRENT_HOOK_SESSION_REF
 ```
 
 The CLI selects its dedicated interpreter; do not activate or alter the project environment. Reasons are
@@ -26,6 +27,17 @@ Distinct observations make a recurring concern eligible for review; they do not
 prove the harness caused it. Explicit scope/user requests need only one signal.
 Duplicate observations and already-reviewed concerns with identical evidence are
 ignored. Only HMAC references and enums persist in user-local maintenance state.
+
+현재 hook이 제공한 불투명 session ref를 사용할 것. 근거를 읽은 세션에만 자동 검토를 연결하며,
+다른 세션의 ref를 추측하거나 재사용하지 말 것. 파일 내용이 바뀌어도 같은 파일·사유의 독립 관찰은
+누적됨. 마지막 근거 버전은 별도로 확인하며, 같은 작업의 중복 기록은 반복 관찰로 세지 않음.
+ref를 생략한 신호, 구형 기록, 종료 또는 compaction으로 문맥을 잃은 신호는 보존하되 자동 검토하지 않음.
+현재 근거를 다시 읽고 신호를 재기록하거나, 명시적인 검토에서 다음처럼 근거를 직접 선택할 것.
+원문과 경로를 사용자 로컬 관찰 기록에 저장하지 말 것.
+
+```sh
+harness-codex maintenance begin --evidence PROJECT.md
+```
 
 ## A review lease
 
@@ -57,18 +69,18 @@ or propose a separate configuration review. New roles are considered only when
 recurring independent responsibility and verification needs justify their overhead.
 Never reduce verification or claim a quality/cost benefit merely from token counts.
 
-If unchanged, unsupported, or out of budget, finish the lease without file changes:
+검토 결과 변경할 필요가 없을 때 다음처럼 파일 변경 없이 lease를 마칠 것.
 
 ```sh
 harness-codex maintenance finish \
   --lease LEASE_ID --decision unchanged
 ```
 
-Decisions `proposed` and `deferred` also resolve the batch without rewriting the
-harness. The same evidence must not cause another automatic review. Explain a
-proposal or missing evidence concisely when relevant; an explicit `config` can
-review broader changes without resetting the project. Never infer deletion/Git
-authorization from this maintenance mode.
+`unchanged`는 검토 후 변경 불필요로 판단한 경우에만 선택할 것. 범위 밖의 변경 제안은
+`proposed`, 시간·근거 부족이나 일시적 충돌은 `deferred`로 마칠 것. `deferred`와 lease 만료는
+해결 완료가 아니며, 후보를 보존하여 기존 간격·일일 예산 안에서 다시 검토함.
+`unchanged`와 `proposed`로 실제 검토한 동일 근거 버전은 중복 검토하지 않음.
+더 넓은 변경은 명시적 `config`로 검토하며, 유지보수 모드를 삭제나 Git 작업 권한으로 해석하지 말 것.
 
 ## Applying an existing-skill correction
 
@@ -92,6 +104,11 @@ deadline, scope, ownership, references and artifact contracts, and reuses journa
 apply/recovery. On conflict or interruption preserve the existing files/recovery
 state; use `doctor` and the existing recovery protocol. Never refresh hashes manually.
 Do not bypass this helper with direct file writes during automatic maintenance.
+
+검증 중에도 native 활동 관찰을 계속하며, 실제 적용 직전에 revision·소유권·활동을 다시 확인함.
+hook 잠금 기록에 실패하면 자동 변경만 중지하며, 모든 세션 종료 확인 후 `recover-session --session-ref all`로 복구할 것.
+실제 파일 적용과 겹친 `UserPromptSubmit`만 제한된 대기 후 native `decision: block`으로 보류할 수 있음.
+이 경우 완료 후 사용자가 다시 요청하도록 안내하며, 요청을 자동 재실행하지 말 것.
 
 After a successful change, re-read the affected skill before the user's task.
 Subsequent hooked turns receive a revision notice once per observed session.
@@ -128,6 +145,9 @@ after the normal ownership/revision checks. Never invent the previous content or
 overwrite intervening user edits. Use config review if restoration is unavailable.
 If explicit config superseded the recorded revision, inspect the current files and
 use `keep` to close the old record without replacing the newer configuration.
+새 유지보수 변경이 성공하면 이전 revision의 `observing` 기록은 `superseded`로 마감됨.
+이는 효과가 입증되었다는 뜻이 아님. 보존 한도가 실제 미해결 기록으로 가득 찬 경우 status가
+이를 알리고 새 검토 예약을 보류함. 실패·미확정 적용 기록을 한도 확보 목적으로 삭제하지 말 것.
 Controlled effect evaluation remains optional and separate from these observations.
 
 ## Cost and limitations

@@ -18,6 +18,7 @@ from typing import Any, Iterable
 
 import harness_eval_types as types
 import harness_eval_schema2 as schema2
+import harness_metadata
 
 
 KNOWN_EVENTS = {
@@ -143,6 +144,7 @@ def base_record(
         },
         "runtime": {
             "harnessVersion": types.HARNESS_VERSION,
+            "evaluationContract": harness_metadata.EVALUATION_MEASUREMENT_CONTRACT,
             "codexVersion": None,
             "surface": surface,
             "modelRef": model_ref,

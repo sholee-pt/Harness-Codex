@@ -51,7 +51,7 @@ def register(commands):
             command.add_argument('--adopt-skill', action='store_true', help='Adopt only a byte-identical legacy retrieval skill after changing hosts.')
         if name == 'query':
             command.add_argument('question')
-            command.add_argument('--limit', type=int, default=6)
+            command.add_argument('--limit', type=int, default=6, help='Project hits (1-20); selected external sources share up to half as many additional hits. --max-chars bounds the combined text.')
             command.add_argument('--max-chars', type=int, default=12000)
         if name == 'add':
             command.add_argument('source', type=Path, help='Explicit external code file/directory; no project ancestors.')
@@ -282,8 +282,6 @@ def execute(args, source_root):
         advice = action == 'query' and jev.enabled(root)
         started = time.monotonic()
         limit = getattr(args, 'limit', 6)
-        if action == 'query' and settings.get('externalSources'):
-            limit = (limit + 1) // 2
         result = _invoke(source_root, root, cache, settings, action,
                          timeout=args.timeout, question=getattr(args, 'question', ''),
                          limit=limit, max_chars=getattr(args, 'max_chars', 12000), advice=advice)
@@ -340,7 +338,12 @@ def execute(args, source_root):
             except (OSError, ValueError, subprocess.SubprocessError) as exc:
                 result['externalWarning'] = str(exc)
                 notice = '\n[External retrieval unavailable; use ordinary reads of the selected source.]'
-                result['text'] = result['text'][:max(0, args.max_chars - len(notice))] + notice
+                if len(result['text']) + len(notice) <= args.max_chars:
+                    result['text'] += notice
+    if action == 'query':
+        external_limit = max(1, args.limit // 2) if settings.get('externalSources') and (args.limit > 1 or result.get('externalHits') or not result.get('hits')) else 0
+        result['limits'] = {'projectHits': args.limit, 'externalHits': external_limit,
+                            'totalHits': args.limit + external_limit, 'characters': args.max_chars}
     return result
 
 

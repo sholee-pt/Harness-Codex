@@ -80,19 +80,27 @@ def _install(node, prefix, version, log):
                npm_config_fetch_retries='1', npm_config_fetch_timeout='30000')
     arguments = [str(node), str(npm), 'install', '--prefix', str(prefix), '--no-audit', '--no-fund',
                  '--no-update-notifier', '--save-exact', '@nanonets/graft@' + version]
-    with log.open('wb') as output, subprocess.Popen(arguments, cwd=prefix.parent, env=env,
-            stdout=output, stderr=subprocess.STDOUT, start_new_session=True) as process:
-        try:
-            result = process.wait(timeout=180)
-        except (subprocess.TimeoutExpired, KeyboardInterrupt):
+    def terminate(signum, frame):
+        raise KeyboardInterrupt
+    previous = signal.signal(signal.SIGTERM, terminate)
+    try:
+        with log.open('wb') as output, subprocess.Popen(arguments, cwd=prefix.parent, env=env,
+                stdout=output, stderr=subprocess.STDOUT, start_new_session=True) as process:
             try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            process.wait()
-            raise
-        if result:
-            raise ValueError('Graft dependency preparation failed; details: ' + str(log))
+                result = process.wait(timeout=180)
+            except BaseException:
+                # Management cancellation terminates this Python process first.
+                # Reap npm's separate group before unwinding the staging tree.
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+                raise
+            if result:
+                raise ValueError('Graft dependency preparation failed; details: ' + str(log))
+    finally:
+        signal.signal(signal.SIGTERM, previous)
 
 
 def prepare(home, version):

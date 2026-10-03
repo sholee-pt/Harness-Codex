@@ -16,6 +16,7 @@ if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from harness_cli import native_package
 from harness_cli.versions import VERSION_RE
+from build.release_publish import tag_commit
 
 
 def digest(path):
@@ -53,7 +54,7 @@ def prepare(dist, published, commit):
             raise ValueError('Rebuilt Linux payload differs from the published release')
     linux_native = f'harness-codex-ui-{version}-linux-x86_64.tar.gz'
     linux_record = original.get('nativeUi', {}).get(linux_native, {})
-    if not linux_record.get('sha256') or linux_record['sha256'] != old_sums.get(linux_native):
+    if (linux_native in old_sums or linux_record) and (not linux_record.get('sha256') or linux_record['sha256'] != old_sums.get(linux_native)):
         raise ValueError('The Linux native release is not complete')
     windows = f'harness-codex-{version}-windows.zip'
     bootstrap = 'install_harness_codex.ps1'
@@ -84,7 +85,7 @@ def prepare(dist, published, commit):
             raise ValueError('An existing Windows asset has different bytes; replacement refused')
     merged = {**original, 'platforms': ['linux', 'windows'], 'windowsArtifact': windows,
               'windowsSha256': additions[windows], 'windowsBootstrapSha256': additions[bootstrap],
-              'nativeUi': {**original['nativeUi'], native: native_record}}
+              'nativeUi': {**original.get('nativeUi', {}), native: native_record}}
     sums = {**old_sums, **additions}
     return merged, sums, additions
 
@@ -129,7 +130,8 @@ def publish(dist, commit, repository):
         release = json.loads(gh('release', 'view', tag, '--repo', repository, '--json', 'body,assets,isDraft'))
     except subprocess.CalledProcessError as exc:
         raise ValueError('Matching Linux release is not published. Preserve the Windows artifact and retry only publication after Linux succeeds; no polling was started.') from exc
-    if release['isDraft'] or json.loads(gh('api', f'repos/{repository}/commits/{tag}'))['sha'] != commit:
+    endpoint = f'repos/{repository}'
+    if release['isDraft'] or tag_commit(gh, endpoint, gh('api', endpoint + '/git/ref/tags/' + tag)) != commit:
         raise ValueError('Release tag does not identify the selected published source')
     with tempfile.TemporaryDirectory(prefix='harness-windows-publish-') as temporary:
         root = Path(temporary)

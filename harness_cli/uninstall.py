@@ -125,16 +125,22 @@ def prepare(data_root: Path, *, locked=False) -> dict:
     directories = {root, root / 'releases', root / 'receipts'}
     for path in expected:
         directories.update(parent for parent in path.parents if parent == root or root in parent.parents)
-    # Do not infer ownership from a parent directory: unknown/empty directories,
-    # links, Git metadata, journals and orphaned receipts all block removal.
-    seen = set()
+    # Unknown entries stay in place. Pending control records still require
+    # recovery; never traverse an unowned directory or a redirected entry.
+    seen, retained = set(), []
     for directory, dirs, files in os.walk(root, followlinks=False):
-        for name in dirs + files:
-            path = dist._storage_path(Path(directory) / name)
+        for name in list(dirs) + files:
+            path = Path(directory) / name
             if locked and path == root / '.install.lock':
                 continue
             if path not in expected and path not in directories:
-                raise ValueError(f'Unrecognized file or directory preserved: {path}')
+                if path.parent == root / 'receipts' or path.name in {'.install.lock', '.launcher-migration.json', '.entrypoint-migration.json'}:
+                    raise ValueError(f'Unrecognized control record requires recovery: {path}')
+                retained.append(str(path))
+                if name in dirs:
+                    dirs.remove(name)
+                continue
+            dist._storage_path(path)
             seen.add(path)
     if not expected.issubset(seen):
         raise ValueError('Managed files disappeared during uninstall inspection')
@@ -163,7 +169,8 @@ def prepare(data_root: Path, *, locked=False) -> dict:
     hooks = removal_plan(root, installed=state)
     return {'root': root, 'binary': binary, 'version': state['version'], 'command': state.get('command', 'harness'),
             'files': fingerprints, 'directories': directories, 'external': external, 'path': path_change,
-            'integrationPath': integration_change, 'runtime': runtime, 'hooks': hooks, 'binaryAlias': binary_alias}
+            'integrationPath': integration_change, 'runtime': runtime, 'hooks': hooks, 'binaryAlias': binary_alias,
+            'retained': sorted(retained)}
 
 
 def _purge_files(files: dict[Path, tuple], directories: set[Path]) -> list[str]:
@@ -195,14 +202,15 @@ def remove(plan: dict) -> dict:
         if prepare(root, locked=True) != plan:
             raise ValueError('Installation or PATH changed after the preview; run uninstall again')
         backup = Path(tempfile.mkdtemp(prefix='.harness-uninstall-', dir=root.parent))
+        staging_directories = {backup}
         try:
             from .hook_state import apply_changes, rollback_changes
             apply_changes(plan['hooks'].get('changes', []), hook_changes)
-            for path in sorted(root.iterdir()):
-                if path.name == '.install.lock':
-                    continue
-                target = backup / path.name
-                os.replace(path, target)
+            for path in sorted(set(plan['files']) - plan['external']):
+                target = backup / path.relative_to(root)
+                staging_directories.update(parent for parent in target.parents if parent == backup or backup in parent.parents)
+                _io_path(target.parent).mkdir(parents=True, exist_ok=True)
+                os.replace(_io_path(path), _io_path(target))
                 moved.append((path, target))
             for path in sorted(plan['external']):
                 target = path.with_name('.harness-uninstall-' + uuid.uuid4().hex + '-' + path.name)
@@ -257,6 +265,11 @@ def remove(plan: dict) -> dict:
                 except (OSError, ValueError):
                     failures.append(str(target))
             failures.extend(rollback_changes(hook_changes, backup))
+            for directory in sorted(staging_directories - {backup}, key=lambda p: len(p.parts), reverse=True):
+                try:
+                    _io_path(directory).rmdir()
+                except (OSError, ValueError):
+                    pass
             try:
                 backup.rmdir()
             except OSError:
@@ -266,13 +279,18 @@ def remove(plan: dict) -> dict:
             raise
         # PATH update is the last pre-commit operation. Subsequent cleanup never
         # restores removed command paths or overwrites edits in staged files.
-        directories = {backup / path.relative_to(root) for path in plan['directories']}
-        leftovers = _purge_files(staged, directories)
+        leftovers = _purge_files(staged, staging_directories)
+        for directory in sorted(plan['directories'] - {root}, key=lambda p: len(p.parts), reverse=True):
+            try:
+                _io_path(directory).rmdir()
+            except (OSError, ValueError):
+                pass  # Remaining user files and concurrent additions stay in place.
     try:
         root.rmdir()
     except OSError:
         leftovers.append(str(root))
-    return {'state': 'uninstalled', 'cleanupRemaining': leftovers, 'batchCleanup': [str(path) for path in batch_cleanup]}
+    return {'state': 'uninstalled', 'cleanupRemaining': leftovers, 'batchCleanup': [str(path) for path in batch_cleanup],
+            'retained': plan['retained']}
 
 
 def run(data_root: Path, *, dry_run=False) -> int:
@@ -293,6 +311,8 @@ def run(data_root: Path, *, dry_run=False) -> int:
     display.line('\nWill keep', style='heading')
     display.line('  Project harnesses, reused Conda environments and other commands.')
     display.line('  User-added/modified runtime files and shell environment values.')
+    for path in plan['retained']:
+        display.line('  Unowned installation entry: ' + path)
     display.line('\nPATH: ' + ('remove the owned registration' if plan['path']['state'] == 'would-remove' else 'preserve existing settings'), style='muted')
     if 'reason' in plan['path']:
         display.line('  ' + plan['path']['reason'], style='muted')
@@ -332,5 +352,5 @@ def run(data_root: Path, *, dry_run=False) -> int:
     if result['batchCleanup']:
         display.line('Windows batch cleanup is pending until its launcher returns: ' + ', '.join(result['batchCleanup']), style='muted')
     if result['cleanupRemaining']:
-        display.line('Some staged files could not be cleaned up; preserved at: ' + ', '.join(result['cleanupRemaining']), style='warning')
+        display.line('Remaining installation directories or staged files were preserved at: ' + ', '.join(result['cleanupRemaining']), style='warning')
     return 0

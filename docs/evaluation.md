@@ -102,5 +102,82 @@ Use `--recover` only when status or a failed apply reports a pending journal. Us
 
 If Windows Conda raises `UnicodeEncodeError` while forwarding a child-process error, inspect transaction status before retrying and rerun the diagnostic with `conda run --no-capture-output -n harness python ...`. This keeps the required environment while exposing the original Harness result.
 
-The current Harness for Codex uses Manifest Schema 7, Artifact Contract 2, Inventory Schema 5, and Root Context Schema 3. Authoring Contract 3, generation Plan Schema 3, Transaction Schema 2, runtime-plan Schema 1, coordination-packet Schema 1, relay-receipt Schema 1, Runtime Receipt Schema 2, and Evaluation Schema 2 remain unchanged. Operations Event Schema 1 remains separate user-local evidence. Supported historical evaluation records remain readable descriptively; only runs from the current release in complete, independent, plan-verified pairs support concrete attribution. Persistent topology is not changed by runtime, relay, receipt, operations, or evaluation validation.
+The current Harness for Codex uses Manifest Schema 7, Artifact Contract 2, Inventory Schema 5, and Root Context Schema 3. Authoring Contract 3, generation Plan Schema 3, Transaction Schema 2, runtime-plan Schema 1, coordination-packet Schema 1, relay-receipt Schema 1, Runtime Receipt Schema 2, and Evaluation Schema 2 remain unchanged. Operations Event Schema 1 remains separate user-local evidence. Supported historical evaluation records remain readable descriptively. Concrete attribution requires a compatible measurement contract and complete, independent, plan-verified pairs; it does not require release-number equality. New records declare `runtime.evaluationContract`; the known equivalent v0.32.3-beta and v0.32.4-beta records remain eligible without rewriting their receipts. Unknown contracts or parser semantics are excluded. Runtime/version strata remain separate, so compatibility never pools evidence across versions automatically. Paired evaluation accepts validated installations with the supported project artifact contract. Persistent topology is not changed by runtime, relay, receipt, operations, or evaluation validation.
 
+Repeated verified correctness regressions can support a negative signal even when the primary efficiency measurement improves or ties. Their support uses the independent regression count, with the same minimum pair counts and consistency thresholds; efficiency losses and correctness regressions are not added together to manufacture stronger support. Missing verification, isolated failures and incomplete pairs do not become causal claims.
+
+## Optional held-out generation and task experiment
+
+`test/integration/evaluate_generation_quality.py` starts from a raw project that
+has no generated Harness installation. It compares a freshly generated harness
+with an independent plain copy of that same project. Unlike a topology fixture,
+the live generation phase receives only the user's ordinary project brief and
+the installed generator instructions. No expected topology or held-out task is
+inserted into its generation prompt.
+
+```shell
+conda run -n harness python -B test/integration/evaluate_generation_quality.py \
+  --project /path/to/raw-held-out-project \
+  --brief-file /path/to/project-brief.md \
+  --task-file /path/to/held-out-task.txt \
+  --verification /path/to/verification-profile.json \
+  --dry-run
+```
+
+Dry-run is the default and only validates inputs: no clones, model calls,
+verification commands, credentials copies or evaluation-state writes occur.
+Use `--live --codex-home /path/to/dedicated-auth --repetitions 4 --seed 7` to
+explicitly run the experiment. The dedicated Codex home must meet the existing
+paired-run clean-home requirements. Only its bounded `auth.json` is copied into
+private temporary homes, with directory mode 0700 and file mode 0600. Every
+generation/task call has a separate Codex and user home, uses ephemeral native
+JSONL capture, ignores user config and rules, and removes copied credentials
+after capture. Environment authentication remains inherited as in paired runs.
+Use the same explicitly selected official `--codex-binary`, `--model` and
+`--reasoning-effort` for all phases. No external advice or generation service is
+called by the runner.
+
+Both arms receive the same source bytes and modes, task and user-selected
+verification profile. Git metadata and Python/pytest caches are omitted; source
+links and special files are refused. Copies have no source Git remote or linked
+Git metadata. The source is read and checked again for changes, never reset or
+written by the runner. Inputs are bounded to 4096 file/directory entries, 8 MiB
+per file and 64 MiB total. Generated copies have an additional 2048-entry/16-MiB
+inspection budget for installed and generated files. The original source and
+inactive arm are checked after each phase; detected changes exclude that pair.
+These checks detect contamination but are not a filesystem security boundary.
+Keep the held-out task and verification profile outside
+the raw project so generation cannot read them as workspace evidence. The
+verification profile uses the existing Schema 1 fields: `schemaVersion`, `id`,
+`kind`, `argv` and `timeoutSeconds`. Its explicitly authorized command executes
+in the disposable arm; use a self-contained, non-mutating check. Checks that
+change copied project content or do not clean up are excluded from success.
+External services or absolute paths used by that command are not isolated by
+this runner.
+
+There are 1-10 requested pairs. Seeded counterbalancing alternates AB/BA, with
+the seed choosing the first order; `--order randomized` is also available.
+Generation runs once per pair, without repair loops or retries. Each inference
+phase is bounded by `--timeout` (default 900 seconds, maximum 3600), and each
+verification by its profile (maximum 300 seconds). The preview reports maximum
+native Codex runs and time budgets; these do not bound provider requests or child
+inference within a run. Unverified process cleanup stops all remaining runs and
+retains skipped pairs in the requested denominator. A generation failure remains in the requested
+pair denominator; its treatment task is skipped, while the plain task is still
+measured. Valid generation that changes application source before the task is
+also counted as failed, preventing generation from pre-solving the experiment.
+
+The JSON report includes every attempt's elapsed time, available token counters,
+process/stream status, generation validity, source preservation, verification
+result and observed subagent-event count. Generation costs remain separate from
+the subsequent task costs, including failed attempts; missing usage is not zero.
+`--output NEW_REPORT.json` optionally saves metadata only, outside the source and
+authentication directory, after a live run. Existing report files are preserved.
+No prompts, final responses, source excerpts or credentials enter that report.
+
+These are descriptive results on user-selected projects and checks. A passing
+check, static validity or observed subagent event does not establish domain
+correctness, successful native skill discovery, general task benefit,
+or a causal cost reduction. `semanticBenefit` remains `not-measured`; the runner
+does not modify the installed product, propose a topology change or silently
+promote these reports into concrete-attribution evidence.

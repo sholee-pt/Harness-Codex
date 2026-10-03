@@ -45,7 +45,7 @@ PROCEDURE_GUIDANCE = """When a change crosses producer/consumer or lifecycle bou
 PROVISIONAL_GUIDANCE = """For a validated provisional runtime plan, `participants` may instead name temporary `runtimeParticipantId` roles. The canonical block's project-custom-agent selection rule applies to persistent `agent` entries. For a temporary role, confirm native ephemeral delegation is available, pass its bounded task, scopes, parent-coordination rules and verification to that receiver, and map the plan ID to its acknowledged handle. Read `.agents/skills/harness/references/native-subagent-relay.md` for this distinction. If unsupported, use the plan's declared fallback while preserving its task contract and native permissions. Never create a persistent agent just to satisfy a temporary role."""
 
 
-PROJECT_BLOCK = """<!-- harness:runtime-teamplay:v2:begin -->
+LEGACY_PROJECT_BLOCK = """<!-- harness:runtime-teamplay:v2:begin -->
 ## Runtime execution classification
 
 - Classify the current task as `direct`, `delegated`, or `coordinated`; do not infer runtime coordination from the persistent topology or agent count alone.
@@ -111,6 +111,20 @@ Runtime plans and workspaces are ephemeral by default, store no raw messages or 
 
 Report selected, receiver-handle acknowledgement, session binding, observed lifecycle, completion sources, failure sources, fallback, task accounting, produced artifacts, relays, revision rounds, verification, and unresolved risks separately. A bounded control-plane wait may establish completion; compatible local session evidence raises its strength to cross-validated. Agent-reported text alone never establishes completion.
 <!-- harness:runtime-teamplay:v2:end -->"""
+
+PROJECT_BLOCK = """<!-- harness:runtime-teamplay:v3:begin -->
+## Runtime execution
+
+Select direct work, independent delegation, or coordinated feedback from the current task's needs, never agent count or persistent topology. One review pass is delegated; repeated negotiation may justify coordination. Keep task roles and state out of the manifest.
+
+## Native subagent relay
+
+For delegated or coordinated work, first read `.agents/skills/harness/references/runtime-plan.md` and `.agents/skills/harness/references/native-subagent-relay.md`. Validate the ephemeral plan, assign one owner and bounded scope per task, and preserve required outputs and verification through fallback. Reviewers are read-only; default to one writer. Parallel writers require observed isolation and disjoint scopes; ordered overlapping writers require a verified handoff.
+
+Use the first real selected participant to confirm spawn acknowledgement and its listed receiver handle. That confirms readiness for further independent delegation; collect terminal results at integration, without serializing the first task. Follow the reference's bounded progress/deadline policy. A polling timeout is not task failure and never releases a live writer's ownership.
+
+The parent relays material findings, validates returned packets, integrates required results and verifies current inputs. Load the relay-receipt reference for packet revisions; invalidate stale dependent reviews and bound targeted revision rounds. Runtime state is ephemeral by default; persistent audit retention requires an explicit choice. Read the runtime-observation reference only for requested live evidence capture. Report actual completion, failed or missing work, fallback and verification separately; missing optional observation is an evidence limitation.
+<!-- harness:runtime-teamplay:v3:end -->"""
 
 AGENT_BLOCK = """# Parent coordination
 
@@ -233,5 +247,10 @@ def select_adapter(execution_class: str, available_capabilities: Iterable[str]) 
 def require_exactly_once(value: str, canonical: str, label: str) -> None:
     normalized = value.replace("\r\n", "\n").replace("\r", "\n")
     expected = canonical.replace("\r\n", "\n").replace("\r", "\n")
-    if normalized.count(expected) != 1:
+    count = normalized.count(expected)
+    if canonical == PROJECT_BLOCK:
+        count += normalized.count(LEGACY_PROJECT_BLOCK)
+        if normalized.count("<!-- harness:runtime-teamplay:") != 2:
+            count = 0
+    if count != 1:
         raise TeamplayError(f"{label} must contain the canonical runtime-teamplay contract exactly once")

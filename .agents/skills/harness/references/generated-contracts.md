@@ -6,6 +6,8 @@ Apply validates the incoming plan and independently classifies the existing inst
 
 Git authorization advice is added during new materialization outside the required canonical blocks. Existing v9.0 plans and installations remain valid without it. Updating the installer or generator does not automatically update project artifacts or establish runtime authorization enforcement; see [git-authorization.md](git-authorization.md).
 
+The current materializer emits the compact runtime-teamplay v3 block from the existing `HARNESS_PROJECT_TEAMPLAY_V2` authoring placeholder. Artifact Contract 2 accepts exactly one complete current or legacy v2 block, never a mixture. Installed legacy bytes remain unchanged during validation. Reviewed draft materialization replaces the old block with the compact one; ownership checks and dry-run still precede application. Detailed delegation procedures are loaded conditionally from the generator references.
+
 ## Agent instructions
 
 Put `{{HARNESS_AGENT_CONTRACT_V1}}` exactly once inside each agent's TOML `developer_instructions`. The builder derives a marked canonical block from that agent's name, responsibility, scope, boundary references, skill dependencies, full file-access lanes, relevant execution phases, and incoming/outgoing handoffs. Describe these fields in the topology once. Use the remaining prose for project-specific methods, evidence, inputs, outputs, and verification; do not repeat scope or ownership declarations there.

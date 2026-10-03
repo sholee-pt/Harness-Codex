@@ -269,11 +269,11 @@ class UninstallTests(unittest.TestCase):
         self.invoke()
         self.assertFalse(self.data.exists())
 
-    def test_edits_unknown_files_journals_and_old_release_changes_block_before_prompt(self):
+    def test_edits_journals_and_old_release_changes_block_before_prompt(self):
         candidate = source(self.base / 'candidate', '9.9', B)
         dist.install_tool(candidate, self.data, self.bin, sys.executable)
         for path in (self.data / 'releases' / A / 'harness.py', self.bin / 'harness-codex',
-                     self.data / 'user.txt', self.data / '.launcher-migration.json',
+                     self.data / '.launcher-migration.json',
                      self.data / 'receipts/orphan.json', self.data / 'releases' / B / 'user.txt'):
             with self.subTest(path=path):
                 original = path.read_bytes() if path.exists() else None
@@ -287,12 +287,41 @@ class UninstallTests(unittest.TestCase):
                     path.unlink()
                 else:
                     path.write_bytes(original)
-        for name in ('unknown-empty', '.git'):
-            directory = self.data / name
-            directory.mkdir()
-            with self.assertRaises(ValueError):
-                uninstall.prepare(self.data)
-            directory.rmdir()
+
+    def test_unowned_files_and_directories_are_preserved_in_place(self):
+        paths = [self.data / 'user.txt', self.data / 'notes/nested.txt', self.data / '.git/HEAD']
+        for path in paths:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'user-owned content\r\n')
+        empty = self.data / 'unknown-empty'
+        empty.mkdir()
+        before = {path: (path.read_bytes(), path.stat().st_mtime_ns, path.stat().st_ino) for path in paths}
+        empty_inode = empty.stat().st_ino
+        result, output, _ = self.invoke()
+        self.assertEqual(result, 0)
+        self.assertIn('Unowned installation entry:', output)
+        for path, expected in before.items():
+            self.assertEqual((path.read_bytes(), path.stat().st_mtime_ns, path.stat().st_ino), expected)
+        self.assertEqual(empty.stat().st_ino, empty_inode)
+        self.assertFalse((self.data / 'active.json').exists())
+        self.assertFalse((self.bin / 'harness-codex').exists())
+
+    def test_user_file_added_during_file_staging_is_never_moved(self):
+        plan = uninstall.prepare(self.data)
+        added = self.data / 'new-user-file'
+        replace = os.replace
+        captured = []
+        def move(original, target):
+            if not captured:
+                added.write_text('concurrent user addition')
+                captured.append(added.stat().st_ino)
+            return replace(original, target)
+        with mock.patch.object(os, 'replace', side_effect=move):
+            result = uninstall.remove(plan)
+        self.assertEqual(result['state'], 'uninstalled')
+        self.assertEqual(added.read_text(), 'concurrent user addition')
+        self.assertEqual(added.stat().st_ino, captured[0])
+        self.assertFalse((self.data / 'active.json').exists())
 
     def test_lock_and_changed_confirmation_plan_prevent_mutation(self):
         plan = uninstall.prepare(self.data)
@@ -354,8 +383,8 @@ class UninstallTests(unittest.TestCase):
     def test_symlink_inside_managed_storage_is_preserved(self):
         (self.data / 'linked').symlink_to(self.source, target_is_directory=True)
         before = files(self.source)
-        with self.assertRaises(ValueError):
-            uninstall.prepare(self.data)
+        self.invoke()
+        self.assertTrue((self.data / 'linked').is_symlink())
         self.assertEqual(files(self.source), before)
 
 

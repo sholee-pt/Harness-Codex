@@ -29,15 +29,20 @@ MODES = ('off', 'suggest', 'auto')
 MAX_STATE = 512 * 1024
 MAX_CANDIDATES = 32
 MAX_SESSIONS = 32
-SIGNAL_POLICY = '1'
+SIGNAL_POLICY = '2'
 
 
-def signal_context(mode):
+class ApplyInProgress(TimeoutError):
+    pass
+
+
+def signal_context(mode, session_ref):
     return ('Project maintenance is ' + mode + '. Keep the existing harness by default. '
             'Only explicit responsibility changes or recurring workflow/routing/verification gaps justify a signal; '
             'then read .agents/skills/harness/references/maintenance.md and record the bounded evidence signal. '
             'Ordinary bugs, single failures and new topics do not justify harness review. '
-            'Do not review every turn or add agents merely because scope grows. Native hooks announce eligible batches.')
+            'Do not review every turn or add agents merely because scope grows. Native hooks announce eligible batches. '
+            'When recording current evidence, use --session-ref ' + session_ref + '. Other sessions cannot review that context.')
 
 
 def digest(value):
@@ -45,7 +50,7 @@ def digest(value):
 
 
 def default_state():
-    return {'schema': 4, 'mode': 'off', 'candidates': {}, 'sessions': {}, 'trackingIncomplete': False, 'lease': None, 'changes': [],
+    return {'schema': 5, 'mode': 'off', 'candidates': {}, 'sessions': {}, 'trackingIncomplete': False, 'lease': None, 'changes': [],
             'policy': dict(cadence.DEFAULTS), 'recentReviews': [], 'retired': {},
             'attempts': [], 'notified': None, 'appliedRevision': None,
             'metrics': {'reviews': 0, 'applied': 0, 'unchanged': 0, 'reviewSeconds': 0,
@@ -84,6 +89,7 @@ class Maintenance:
             raise ValueError('Maintenance state exceeds its size limit')
         value = json.loads(path.read_text(encoding='utf-8'))
         expected = default_state()
+        legacy_context = False
         previous_fields = set(expected) - {'trackingIncomplete'}
         new_fields = {'policy', 'recentReviews', 'retired'}
         if isinstance(value, dict) and value.get('schema') == 1 and set(value) == previous_fields - {'changes', *new_fields}:
@@ -92,7 +98,14 @@ class Maintenance:
             value = {**value, 'schema': 3, **{name: expected[name] for name in new_fields}}
         if isinstance(value, dict) and value.get('schema') == 3 and set(value) == previous_fields:
             value = {**value, 'schema': 4, 'trackingIncomplete': False}
-        if (not isinstance(value, dict) or set(value) != set(expected) or value['schema'] != 4
+        if isinstance(value, dict) and value.get('schema') == 4 and set(value) == set(expected):
+            legacy_context = True
+            value['schema'] = 5
+            for item in value['candidates'].values():
+                item['session'] = None
+            if value['lease'] is not None:
+                value['lease']['evidence'] = {key: value['candidates'][key]['evidence'] for key in value['lease']['candidates']}
+        if (not isinstance(value, dict) or set(value) != set(expected) or value['schema'] != 5
                 or type(value['trackingIncomplete']) is not bool
                 or value['mode'] not in MODES or not isinstance(value['candidates'], dict)
                 or len(value['candidates']) > MAX_CANDIDATES or not isinstance(value['sessions'], dict)
@@ -107,7 +120,8 @@ class Maintenance:
             raise ValueError('Invalid retired maintenance candidates')
         for key, item in value['candidates'].items():
             if (not re.fullmatch(r'[0-9a-f]{64}', key) or not isinstance(item, dict)
-                    or set(item) != {'reason', 'evidence', 'observations', 'status'}
+                    or set(item) != {'reason', 'evidence', 'observations', 'status', 'session'}
+                    or item['session'] is not None and not history.hashed(item['session'])
                     or item['reason'] not in REASONS or item['status'] not in {'pending', 'resolved'}
                     or not re.fullmatch(r'[0-9a-f]{64}', item['evidence'])
                     or not isinstance(item['observations'], list) or len(item['observations']) > 8
@@ -116,7 +130,7 @@ class Maintenance:
         for key, session in value['sessions'].items():
             if (not re.fullmatch(r'[0-9a-f]{64}', key) or not isinstance(session, dict)
                     or not {'active', 'children', 'seenRevision'} <= set(session) <= {'active', 'children', 'seenRevision', 'seenPolicy'}
-                    or ('seenPolicy' in session and session['seenPolicy'] not in {None, *('1:' + mode for mode in MODES)})
+                    or ('seenPolicy' in session and session['seenPolicy'] not in {None, *(version + ':' + mode for version in ('1', SIGNAL_POLICY) for mode in MODES)})
                     or type(session['active']) is not bool or not isinstance(session['children'], list)
                     or len(session['children']) > 64
                     or any(not re.fullmatch(r'[0-9a-f]{64}', ref) for ref in session['children'])
@@ -128,18 +142,58 @@ class Maintenance:
             raise ValueError('Invalid maintenance metrics')
         lease = value['lease']
         if lease is not None:
-            if (not isinstance(lease, dict) or set(lease) != {'id', 'revision', 'candidates', 'session', 'started', 'deadline'}
+            if (not isinstance(lease, dict) or set(lease) != {'id', 'revision', 'candidates', 'evidence', 'session', 'started', 'deadline'}
                     or not re.fullmatch(r'[0-9a-f]{32}', lease['id'])
                     or not re.fullmatch(r'[0-9a-f]{64}', lease['revision'])
                     or not isinstance(lease['candidates'], list)
                     or any(key not in value['candidates'] for key in lease['candidates'])
+                    or not isinstance(lease['evidence'], dict) or set(lease['evidence']) != set(lease['candidates'])
+                    or any(not history.hashed(ref) for ref in lease['evidence'].values())
                     or type(lease['started']) not in (int, float) or type(lease['deadline']) not in (int, float)
                     or not 0 < lease['deadline'] - lease['started'] <= cadence.MAX_SECONDS):
                 raise ValueError('Invalid maintenance lease')
         for name in ('notified', 'appliedRevision'):
             if value[name] is not None and not re.fullmatch(r'[0-9a-f]{64}', value[name]):
                 raise ValueError('Invalid maintenance revision')
+        if legacy_context:
+            value['lease'] = None  # Valid legacy evidence has no recoverable review context.
+        history.supersede(value['changes'], value['appliedRevision'])
         return value
+
+    def _tracking_marker(self):
+        path = self._location()
+        return checked(path.with_name('tracking-incomplete')) if path is not None else None
+
+    def _tracking_incomplete(self, state):
+        marker = self._tracking_marker()
+        return state['trackingIncomplete'] or marker is not None and marker.exists()
+
+    def _mark_tracking_incomplete(self):
+        marker = self._tracking_marker()
+        if marker is not None:
+            try:
+                descriptor = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            except FileExistsError:
+                return
+            os.close(descriptor)
+
+    def _pending_hooks(self, own=None):
+        path = self._location()
+        return path is not None and any(item != own for item in path.parent.glob('hook-pending-*'))
+
+    def _application_active(self):
+        path = self._location()
+        return path is not None and checked(path.with_name('apply-active')).exists()
+
+    @contextmanager
+    def _applying(self):
+        marker = checked(self._location().with_name('apply-active'))
+        descriptor = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.close(descriptor)
+        try:
+            yield
+        finally:
+            marker.unlink()
 
     @contextmanager
     def transaction(self, *, create=False):
@@ -187,9 +241,10 @@ class Maintenance:
             state['lease'] = None
         return self.status()
 
-    def _eligible(self, state):
+    def _eligible(self, state, session=None):
         return [key for key, item in state['candidates'].items()
-                if item['status'] == 'pending' and (item['reason'] in {'scope-changed', 'user-request'}
+                if item['status'] == 'pending' and (session is None or item['session'] == session)
+                and (item['reason'] in {'scope-changed', 'user-request'}
                                                    or len(item['observations']) >= 2)]
 
     def clear(self):
@@ -198,13 +253,22 @@ class Maintenance:
         with self.transaction() as state:
             state.clear()
             state.update(default_state())
+            marker = self._tracking_marker()
+            if marker is not None:
+                marker.unlink(missing_ok=True)
+                path = self._location()
+                for pending in (checked(path.with_name('apply-active')), *path.parent.glob('hook-pending-*')):
+                    checked(pending).unlink(missing_ok=True)
         return self.status()
 
     def status(self):
         state = self._read(self._location())
         expired = state['lease'] is not None and self.clock() > state['lease']['deadline']
         changes = history.summary(state['changes'])
+        incomplete = self._tracking_incomplete(state) or self._pending_hooks()
+        applying = self._application_active()
         return {'mode': state['mode'], 'pending': len(self._eligible(state)),
+                'contextRequired': sum(state['candidates'][key]['session'] not in state['sessions'] for key in self._eligible(state)),
                 'blockingSessions': [{'ref': key, 'active': item['active'], 'children': len(item['children'])}
                                      for key, item in state['sessions'].items() if item['active'] or item['children']],
                 'reviewInProgress': state['lease'] is not None and not expired, 'reviewExpired': expired, 'metrics': state['metrics'],
@@ -212,8 +276,8 @@ class Maintenance:
                 'tokenBudgetEnforcement': 'not-available-in-native-interactive-session',
                 'reviewTimeLimitSeconds': state['policy']['reviewSeconds'], 'reviewsPerDay': state['policy']['reviewsPerDay'],
                 'policy': state['policy'], 'scheduling': cadence.schedule(state, self.clock(), [state['candidates'][key] for key in self._eligible(state)]),
-                **changes, 'trackingIncomplete': state['trackingIncomplete'],
-                'automaticChangesPaused': state['trackingIncomplete'] or changes['automaticChangesPaused']}
+                **changes, 'trackingIncomplete': incomplete, 'applicationMarkerPresent': applying,
+                'automaticChangesPaused': incomplete or applying or changes['automaticChangesPaused']}
 
     def recover_session(self, session_ref):
         if not isinstance(session_ref, str) or (session_ref != 'all' and not re.fullmatch(r'[0-9a-f]{64}', session_ref)):
@@ -222,9 +286,13 @@ class Maintenance:
             # A caller must confirm that the session and its children stopped.
             # Elapsed time alone never establishes that native writers exited.
             if session_ref == 'all':
-                recovered = bool(state['sessions']) or state['trackingIncomplete']
+                recovered = bool(state['sessions']) or self._tracking_incomplete(state) or self._pending_hooks() or self._application_active()
                 state['sessions'].clear()
                 state['trackingIncomplete'] = False
+                path = self._location()
+                if path is not None:
+                    for marker in (self._tracking_marker(), checked(path.with_name('apply-active')), *path.parent.glob('hook-pending-*')):
+                        checked(marker).unlink(missing_ok=True)
             else:
                 recovered = state['sessions'].pop(session_ref, None) is not None
             if state['lease'] is not None and (session_ref == 'all' or state['lease']['session'] == session_ref):
@@ -294,7 +362,10 @@ class Maintenance:
                     item['status'] = 'rolling-back'
                     item['rollbackRevision'] = digest(json.loads(application['manifestText']))
                     self._write(self._location(), state)
-                    harness_apply.apply_application(application)
+                    with self._applying():
+                        if self._busy(state, None):
+                            raise ValueError('Native activity changed before rollback; wait until observed tasks are idle')
+                        harness_apply.apply_application(application)
                     state['appliedRevision'] = digest(self.manifest())
                     item['status'] = 'rolled-back'
                 else:
@@ -312,9 +383,27 @@ class Maintenance:
                 files[self.store.fingerprint(name.encode())] = [before, after]
         return files
 
-    def signal(self, reason, evidence, observation):
+    def _merge_legacy_candidates(self, state, reason, evidence, evidence_hash):
+        key = self.store.fingerprint((reason + '\0' + evidence).encode())
+        legacy = [name for name, item in state['candidates'].items() if name != key and item['reason'] == reason
+                  and name == self.store.fingerprint((reason + '\0' + evidence + '\0' + item['evidence']).encode())]
+        if legacy:
+            items = [state['candidates'][name] for name in ([key] if key in state['candidates'] else []) + legacy]
+            observations = list(dict.fromkeys(ref for item in items for ref in item['observations']))[:8]
+            resolved = any(item['evidence'] == evidence_hash and item['status'] == 'resolved' for item in items)
+            if state['lease'] is not None and any(name in state['lease']['candidates'] for name in legacy):
+                self._defer_lease(state)
+            for name in legacy:
+                del state['candidates'][name]
+            state['candidates'][key] = {'reason': reason, 'evidence': evidence_hash, 'observations': observations,
+                                        'status': 'resolved' if resolved else 'pending', 'session': None}
+        return key
+
+    def signal(self, reason, evidence, observation, *, session_ref=None):
         if reason not in REASONS or not observation or len(observation) > 256:
             raise ValueError('A supported reason and bounded observation reference are required')
+        if session_ref is not None and not history.hashed(session_ref):
+            raise ValueError('Use the opaque session ref supplied by the current maintenance hook')
         # Only relevant, explicitly selected source evidence is read; never scan a tree.
         path = harness_state.resolve_inside(self.root, evidence, must_exist=True)
         if (not path.is_file() or path.stat().st_size > 1024 * 1024
@@ -323,11 +412,15 @@ class Maintenance:
         with self.transaction() as state:
             if state['mode'] == 'off':
                 return {'recorded': False, 'reason': 'disabled'}
+            if session_ref is not None and session_ref not in state['sessions']:
+                raise ValueError('The selected review context is not an observed native session')
             evidence_hash = self.store.fingerprint(path.read_bytes())
-            key = self.store.fingerprint((reason + '\0' + evidence + '\0' + evidence_hash).encode())
+            evidence = path.relative_to(self.root).as_posix()
+            key = self._merge_legacy_candidates(state, reason, evidence, evidence_hash)
+            legacy = self.store.fingerprint((reason + '\0' + evidence + '\0' + evidence_hash).encode())
             ref = self.store.fingerprint(observation.encode())
             state['retired'] = {key: at for key, at in state['retired'].items() if at > self.clock()}
-            if key in state['retired']:
+            if digest([key, evidence_hash]) in state['retired'] or legacy in state['retired']:
                 return {'recorded': False, 'reason': 'recently-reviewed-with-this-evidence'}
             if key not in state['candidates']:
                 if len(state['candidates']) >= MAX_CANDIDATES:
@@ -336,54 +429,90 @@ class Maintenance:
                         return {'recorded': False, 'reason': 'pending-candidate-limit; review existing concerns first'}
                     if len(state['retired']) >= 128:
                         del state['retired'][min(state['retired'], key=state['retired'].get)]
-                    state['retired'][retired] = self.clock() + 7 * 86400
+                    state['retired'][digest([retired, state['candidates'][retired]['evidence']])] = self.clock() + 7 * 86400
                     del state['candidates'][retired]
-                state['candidates'][key] = {'reason': reason, 'evidence': evidence_hash, 'observations': [], 'status': 'pending'}
+                state['candidates'][key] = {'reason': reason, 'evidence': evidence_hash, 'observations': [], 'status': 'pending', 'session': session_ref}
             candidate = state['candidates'][key]
-            if candidate['status'] == 'resolved':
+            if candidate['status'] == 'resolved' and candidate['evidence'] == evidence_hash:
                 return {'recorded': False, 'reason': 'already-reviewed-with-this-evidence'}
+            candidate.update(evidence=evidence_hash, status='pending', session=session_ref)
             if ref not in candidate['observations'] and len(candidate['observations']) < 8:
                 candidate['observations'].append(ref)
             return {'recorded': True, 'candidate': key, 'eligible': key in self._eligible(state)}
 
-    def _busy(self, state, session):
-        return state['trackingIncomplete'] or any(item['children'] or (key != session and item['active']) for key, item in state['sessions'].items())
+    def _busy(self, state, session, pending=None):
+        return (self._tracking_incomplete(state) or self._pending_hooks(pending)
+                or any(item['children'] or (key != session and item['active']) for key, item in state['sessions'].items()))
 
     def _expire(self, state):
         lease = state['lease']
         if lease and self.clock() > lease['deadline']:
-            for key in lease['candidates']:
-                state['candidates'][key]['status'] = 'resolved'
             state['metrics']['reviewSeconds'] += lease['deadline'] - lease['started']
             state['metrics']['unmeasuredReviews'] += 1
             cadence.record(state, lease['deadline'], lease['deadline'] - lease['started'], None, 'expired')
             state['lease'] = None
 
-    def _claim(self, state, session):
+    def _forget_context(self, state, session):
+        for candidate in state['candidates'].values():
+            if candidate['session'] == session:
+                candidate['session'] = None
+        lease = state['lease']
+        if lease is not None and lease['session'] == session:
+            self._defer_lease(state)
+
+    def _defer_lease(self, state):
+        lease = state['lease']
+        duration = max(0, min(self.clock(), lease['deadline']) - lease['started'])
+        state['metrics']['reviewSeconds'] += duration
+        state['metrics']['unmeasuredReviews'] += 1
+        cadence.record(state, self.clock(), duration, None, 'deferred')
+        state['lease'] = None
+
+    def _claim(self, state, session, *, bound=False, pending=None, selection=None):
         self._expire(state)
         now = self.clock()
         state['attempts'] = [t for t in state['attempts'] if now - t < 86400]
-        if state['lease'] or self._busy(state, session) or history.summary(state['changes'])['automaticChangesPaused']:
+        if state['lease'] or self._application_active() or self._busy(state, session, pending) or history.summary(state['changes'])['automaticChangesPaused']:
             return None
-        candidates = self._eligible(state)
+        candidates = self._eligible(state, session if bound else None)
+        if selection is not None:
+            candidates = [key for key in candidates if key in selection]
         schedule = cadence.schedule(state, now, [state['candidates'][key] for key in candidates])
         if (not candidates or schedule['budgetBlocked'] or len(state['attempts']) >= schedule['reviewsPerDay']
                 or (state['attempts'] and now - state['attempts'][-1] < schedule['intervalSeconds'])):
             return None
         manifest = self.manifest()
         state['lease'] = {'id': uuid.uuid4().hex, 'revision': digest(manifest),
-                          'candidates': candidates, 'session': session, 'started': now,
+                          'candidates': candidates, 'evidence': {key: state['candidates'][key]['evidence'] for key in candidates},
+                          'session': session, 'started': now,
                           'deadline': now + schedule['applicationSeconds']}
         state['attempts'].append(now)
         state['metrics']['reviews'] += 1
         return state['lease']
 
-    def begin(self, session='manual'):
+    def begin(self, session='manual', *, evidence=None):
+        if self._read(self._location())['mode'] == 'off':
+            return {'status': 'disabled'}
+        selected = None
+        if evidence is not None:
+            path = harness_state.resolve_inside(self.root, evidence, must_exist=True)
+            if not path.is_file() or path.stat().st_size > 1024 * 1024:
+                raise ValueError('Review evidence must be a bounded project source file')
+            name = path.relative_to(self.root).as_posix()
+            current = self.store.fingerprint(path.read_bytes())
+            selected = {self.store.fingerprint((reason + '\0' + name).encode()) for reason in REASONS}
+            selected.update(self.store.fingerprint((reason + '\0' + name + '\0' + current).encode()) for reason in REASONS)
         with self.transaction() as state:
             if state['mode'] == 'off':
                 return {'status': 'disabled'}
             session_ref = self.store.fingerprint(session.encode())
-            lease = self._claim(state, session_ref)
+            if selected is not None:
+                for reason in REASONS:
+                    self._merge_legacy_candidates(state, reason, name, current)
+                for key in selected & state['candidates'].keys():
+                    if state['candidates'][key]['evidence'] == current:
+                        state['candidates'][key]['session'] = session_ref
+            lease = self._claim(state, session_ref, bound=selected is not None, selection=selected)
             return {'status': 'claimed', **lease} if lease else {'status': 'deferred'}
 
     def _limited_application(self, plan):
@@ -424,6 +553,26 @@ class Maintenance:
             raise ValueError('Unknown maintenance decision')
         if tokens is not None and (type(tokens) is not int or tokens < 0):
             raise ValueError('Reported tokens must be a nonnegative integer')
+        application = None
+        if decision == 'apply':
+            initial = self._read(self._location())
+            lease = initial['lease']
+            if not lease or lease['id'] != lease_id:
+                raise ValueError('Review lease is missing or no longer current')
+            if initial['mode'] != 'auto':
+                raise ValueError('Automatic apply was not enabled for this project')
+            if plan is None:
+                raise ValueError('An independently validated application plan is required')
+            if self.clock() > lease['deadline']:
+                raise ValueError('Review deadline passed; preserve the existing harness and finish as deferred')
+            # Planning can read many files. Let hooks continue recording native
+            # activity while planning; recheck everything in the final section.
+            with project_lock(self.root):
+                if self.clock() > lease['deadline']:
+                    raise ValueError('Review deadline passed before planning')
+                if digest(self.manifest()) != lease['revision']:
+                    raise ValueError('Project harness changed during review; review the current revision')
+                application = self._limited_application(plan)
         with self.transaction() as state:
             lease = state['lease']
             if not lease or lease['id'] != lease_id:
@@ -435,16 +584,15 @@ class Maintenance:
                     raise ValueError('Review the unresolved previous maintenance change before applying another')
                 if self._busy(state, lease['session']):
                     raise ValueError('Another task or child agent is active; defer maintenance')
-                if plan is None:
-                    raise ValueError('An independently validated application plan is required')
                 import harness_apply
                 # Keep the lease checks and application on the same locked revision.
                 with project_lock(self.root):
                     if self.clock() > lease['deadline']:
-                        raise ValueError('Review deadline passed; preserve the existing harness and finish as deferred')
+                        raise ValueError('Review deadline passed before apply; preserve the existing harness and finish as deferred')
                     if digest(self.manifest()) != lease['revision']:
                         raise ValueError('Project harness changed during review; review the current revision')
-                    application = self._limited_application(plan)
+                    if any(state['candidates'][key]['evidence'] != expected for key, expected in lease['evidence'].items()):
+                        raise ValueError('Maintenance evidence changed during review; defer and review the current concern')
                     if self.clock() > lease['deadline']:
                         raise ValueError('Review deadline passed before apply')
                     if len(state['changes']) >= history.LIMIT:
@@ -452,20 +600,25 @@ class Maintenance:
                         if discard is None:
                             raise ValueError('Review existing maintenance changes before extending the bounded history')
                         state['changes'].pop(discard)
-                    state['changes'].append({'id': lease['id'], 'before': lease['revision'],
-                        'after': digest(json.loads(application['manifestText'])),
-                        'reasons': sorted({state['candidates'][key]['reason'] for key in lease['candidates']}),
-                        'evidence': sorted({state['candidates'][key]['evidence'] for key in lease['candidates']}),
-                        'files': self._change_files(application), 'status': 'applying', 'observations': {}, 'reviewed': 0})
-                    # Record intent before project writes. An interruption pauses future
-                    # changes until ordinary transaction recovery and explicit review.
-                    self._write(self._location(), state)
-                    harness_apply.apply_application(application)
-                    state['appliedRevision'] = digest(self.manifest())
-                    state['changes'][-1]['status'] = 'observing'
+                    with self._applying():
+                        if self._busy(state, lease['session']):
+                            raise ValueError('Native activity changed before apply; defer maintenance')
+                        state['changes'].append({'id': lease['id'], 'before': lease['revision'],
+                            'after': digest(json.loads(application['manifestText'])),
+                            'reasons': sorted({state['candidates'][key]['reason'] for key in lease['candidates']}),
+                            'evidence': sorted({state['candidates'][key]['evidence'] for key in lease['candidates']}),
+                            'files': self._change_files(application), 'status': 'applying', 'observations': {}, 'reviewed': 0})
+                        # Record intent before project writes. An interruption pauses future
+                        # changes until ordinary transaction recovery and explicit review.
+                        self._write(self._location(), state)
+                        harness_apply.apply_application(application)
+                        state['appliedRevision'] = digest(self.manifest())
+                        state['changes'][-1]['status'] = 'observing'
+                        history.supersede(state['changes'], state['appliedRevision'])
                 state['metrics']['applied'] += 1
             for key in lease['candidates']:
-                state['candidates'][key]['status'] = 'resolved'
+                if decision != 'deferred' and state['candidates'][key]['evidence'] == lease['evidence'][key]:
+                    state['candidates'][key]['status'] = 'resolved'
             if decision == 'unchanged':
                 state['metrics']['unchanged'] += 1
             state['metrics']['reviewSeconds'] += max(0, self.clock() - lease['started'])
@@ -482,9 +635,28 @@ class Maintenance:
         kind = event.get('hook_event_name')
         if kind not in {'SessionStart', 'UserPromptSubmit', 'Stop', 'Interrupt', 'SessionEnd', 'SubagentStart', 'SubagentStop'}:
             return ''
+        state = self._read(self._location())
+        if state['mode'] == 'off' and kind not in {'Stop', 'Interrupt', 'SessionEnd', 'SubagentStop'}:
+            return ''
+        if state['mode'] == 'off' and not state['sessions']:
+            return ''
+        path = self._location()
+        pending = checked(path.with_name('hook-pending-' + uuid.uuid4().hex))
+        descriptor = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.close(descriptor)
+        try:
+            return self._hook(event, pending)
+        except TimeoutError as exc:
+            if kind == 'UserPromptSubmit' and checked(path.with_name('apply-active')).exists():
+                raise ApplyInProgress('A Harness skill update is still finishing. Retry this request after it completes; it was not replayed.') from exc
+            self._mark_tracking_incomplete()
+            raise
+        finally:
+            pending.unlink(missing_ok=True)
+
+    def _hook(self, event, pending):
+        kind = event['hook_event_name']
         with self.transaction() as state:
-            if state['mode'] == 'off':
-                return ''
             # A missed/ignored review cannot permanently block maintenance or
             # cause repeated model work on the same unresolved batch.
             self._expire(state)
@@ -493,10 +665,13 @@ class Maintenance:
                 return ''
             session_id = self.store.fingerprint(raw_id.encode())
             if kind == 'SessionEnd':
-                state['sessions'].pop(session_id, None)
+                ended = state['sessions'].pop(session_id, None)
+                if ended is not None and ended['children']:
+                    state['trackingIncomplete'] = True
+                self._forget_context(state, session_id)
                 return ''
             if session_id not in state['sessions']:
-                if kind in {'Stop', 'Interrupt', 'SubagentStop'}:
+                if state['mode'] == 'off' or kind in {'Stop', 'Interrupt', 'SubagentStop'}:
                     return ''
                 if len(state['sessions']) >= MAX_SESSIONS:
                     state['trackingIncomplete'] = True
@@ -504,6 +679,8 @@ class Maintenance:
                 state['sessions'][session_id] = {'active': False, 'children': [], 'seenRevision': None}
             session = state['sessions'][session_id]
             if kind in {'SubagentStart', 'SubagentStop'}:
+                if state['mode'] == 'off' and kind == 'SubagentStart':
+                    return ''
                 child = self.store.fingerprint(str(event.get('agent_id', 'unknown')).encode())
                 if kind == 'SubagentStart' and child not in session['children']:
                     if len(session['children']) >= 64:
@@ -516,12 +693,16 @@ class Maintenance:
             if kind in {'Stop', 'Interrupt'}:
                 session['active'] = False
                 return ''
+            if state['mode'] == 'off':
+                return ''
             policy = SIGNAL_POLICY + ':' + state['mode']
             messages = []
             if session.get('seenPolicy') != policy or kind == 'SessionStart' and event.get('source') == 'compact':
-                messages.append(signal_context(state['mode']))
+                messages.append(signal_context(state['mode'], session_id))
                 session['seenPolicy'] = policy
             if kind == 'SessionStart':
+                if event.get('source') == 'compact':
+                    self._forget_context(state, session_id)
                 # Compaction can emit SessionStart during an active turn.
                 # Keep existing activity; a new entry already starts inactive.
                 return '\n'.join(messages)
@@ -543,10 +724,10 @@ class Maintenance:
                         'Continue project work; use harness-codex maintenance to inspect and resolve it.')
                     state['notified'] = '0' * 64
                 return '\n'.join(messages)
-            eligible = self._eligible(state)
+            eligible = self._eligible(state, session_id)
             if eligible:
                 if state['mode'] == 'auto':
-                    lease = self._claim(state, session_id)
+                    lease = self._claim(state, session_id, bound=True, pending=pending)
                     if lease:
                         reasons = sorted({state['candidates'][key]['reason'] for key in eligible})
                         messages.append('A bounded Harness maintenance review is due, reasons: ' + ', '.join(reasons) + '. '
@@ -562,6 +743,13 @@ class Maintenance:
                         messages.append('Harness maintenance has review candidates. Mention them briefly when relevant; '
                                         'keep the current harness until the user requests config review. Do not launch an automatic review.')
                         state['notified'] = fingerprint
+            else:
+                unbound = [key for key in self._eligible(state) if state['candidates'][key]['session'] not in state['sessions']]
+                fingerprint = digest(['context-required', *sorted(unbound)])
+                if unbound and state['notified'] != fingerprint:
+                    messages.append('Harness concerns are retained without review context. When relevant, reselect current source evidence '
+                                    'and record its signal with this hook session ref, or request explicit config review. Do not guess the missing concern.')
+                    state['notified'] = fingerprint
             return '\n'.join(messages)
 
 
@@ -612,8 +800,10 @@ def main():
     signal.add_argument('--reason', choices=REASONS, required=True)
     signal.add_argument('--evidence', required=True)
     signal.add_argument('--observation', required=True, help='A turn/run reference, never raw task text')
+    signal.add_argument('--session-ref', help='Opaque current-session ref supplied by the native maintenance hook')
     begin = commands.add_parser('begin')
     begin.add_argument('--session', default='manual')
+    begin.add_argument('--evidence', required=True, help='Explicitly reselect the source evidence for this manual review')
     finish = commands.add_parser('finish')
     finish.add_argument('--lease', required=True)
     finish.add_argument('--decision', choices=('unchanged', 'proposed', 'deferred', 'apply'), required=True)
@@ -652,14 +842,19 @@ def main():
         elif args.command == 'configure':
             result = manager.configure(args.mode, json.loads(args.policy_json) if args.policy_json else None)
         elif args.command == 'signal':
-            result = manager.signal(args.reason, args.evidence, args.observation)
+            result = manager.signal(args.reason, args.evidence, args.observation, session_ref=args.session_ref)
         elif args.command == 'begin':
-            result = manager.begin(args.session)
+            result = manager.begin(args.session, evidence=args.evidence)
         elif args.command in {'observe', 'resolve'}:
             result = effect_command(manager, args, args.command)
         else:
             result = manager.finish(args.lease, args.decision, plan=args.plan, tokens=args.reported_tokens)
         print(json.dumps(result, indent=2))
+        return 0
+    except ApplyInProgress as exc:
+        # Native UserPromptSubmit contract: reject only this overlapping prompt,
+        # never replay it or turn a Stop hook into an automatic continuation.
+        print(json.dumps({'decision': 'block', 'reason': str(exc)}))
         return 0
     except Exception as exc:
         if args.command == 'hook':

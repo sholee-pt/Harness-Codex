@@ -478,7 +478,7 @@ def _compare_runs_v2(
         direction = _direction(delta_value, outcome["direction"], float(outcome["minimumEffect"]))
         completeness = 1.0
     gate = correctness_gate(effective_baseline, effective_treatment, plan["correctnessGate"])
-    if gate["status"] == "failed" and direction == "beneficial":
+    if gate["status"] == "failed" and direction in {"beneficial", "tie"}:
         direction = "harmful"
 
     configuration_delta, deviations = _configuration_delta(effective_baseline, effective_treatment, plan)
@@ -502,6 +502,8 @@ def _compare_runs_v2(
         "runtime": [
             {
                 "harnessVersion": record["runtime"]["harnessVersion"],
+                **({"evaluationContract": record["runtime"]["evaluationContract"]}
+                   if "evaluationContract" in record["runtime"] else {}),
                 "modelRef": record["runtime"]["modelRef"],
                 "codexVersion": record["runtime"]["codexVersion"],
                 "reasoningEffort": record["runtime"]["reasoningEffort"],

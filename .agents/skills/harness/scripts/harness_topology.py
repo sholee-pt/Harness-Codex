@@ -243,6 +243,24 @@ def scopes_equivalent(first: str, second: str) -> bool:
     return first_prefix == second_prefix and first_base.casefold() == second_base.casefold()
 
 
+def handoff_path_covers(edges: Iterable[tuple], source: object, target: object, scope: str) -> bool:
+    """Accept a complete ordered ownership chain, never a partial scope transfer."""
+    graph: dict[object, list[object]] = {}
+    for edge_source, edge_target, edge_scope in edges:
+        if scope_contains(edge_scope, scope):
+            graph.setdefault(edge_source, []).append(edge_target)
+    pending = [source]
+    seen: set[object] = set()
+    while pending:
+        current = pending.pop()
+        if current == target:
+            return True
+        if current not in seen:
+            seen.add(current)
+            pending.extend(graph.get(current, []))
+    return False
+
+
 def _has_interaction_cycle(boundaries: list[dict]) -> bool:
     graph = {item["id"]: item.get("interactsWith", []) for item in boundaries}
     visiting: set[str] = set()
@@ -628,13 +646,10 @@ def _validate_components(
                 source_agent, target_agent = second_agent, first_agent
                 source_lane, target_lane = second_lane, first_lane
             shared_scope = scope_intersection(first["scope"], second["scope"])
-            has_handoff = shared_scope is not None and any(
-                scopes_equivalent(scope, shared_scope)
-                and source == source_agent
-                and target == target_agent
-                and from_lane == source_lane
-                and to_lane == target_lane
-                for source, target, scope, from_lane, to_lane in handoff_pairs
+            has_handoff = shared_scope is not None and handoff_path_covers(
+                (((source, from_lane), (target, to_lane), scope)
+                 for source, target, scope, from_lane, to_lane in handoff_pairs),
+                (source_agent, source_lane), (target_agent, target_lane), shared_scope,
             )
             if not has_handoff:
                 raise TopologyError(

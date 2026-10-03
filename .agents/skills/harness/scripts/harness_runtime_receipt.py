@@ -25,8 +25,14 @@ PARSER_SCHEMA_VERSION = 2
 CONTROL_PLANE_SCHEMA_VERSION = 1
 OBSERVATION_SCHEMA_VERSION = 2
 PROFILE_SCHEMA_VERSION = 1
-MAX_WAIT_ATTEMPTS_PER_AGENT = 3
-MAX_WAIT_TOTAL_MS_PER_AGENT = 300_000
+MAX_WAIT_ATTEMPTS_PER_AGENT = 3  # Legacy receipt callers only; current policy has no poll-count gate.
+MAX_WAIT_TOTAL_MS_PER_AGENT = 1_800_000
+LEGACY_WAIT_POLICY = {"maxAttemptsPerAgent": 3, "maxTotalMsPerAgent": 300_000}
+WAIT_POLICY = {
+    "maxAttemptsPerAgent": None,
+    "progressCheckpointMs": 300_000,
+    "maxTotalMsPerAgent": MAX_WAIT_TOTAL_MS_PER_AGENT,
+}
 
 PUBLIC_CORE_PROFILE = "codex-public-jsonl-core-v1"
 PUBLIC_COLLAB_PROFILE = "codex-public-jsonl-collab-v1"
@@ -489,8 +495,8 @@ def _normalize_control_plane(
         state["waitTimeMs"] = wait_ms
         state["_controlHandle"] = handle
         state["_spawnInstance"] = spawn_instance
-        if attempts > MAX_WAIT_ATTEMPTS_PER_AGENT or wait_ms > MAX_WAIT_TOTAL_MS_PER_AGENT:
-            _add_failure(state, "wait-budget-exhausted", "control-plane")
+        # Polling cadence and elapsed budget are policy observations, not
+        # native terminal failures. Preserve the observed execution outcome.
         if spawn_requested and handle is None:
             _add_failure(state, "empty-receiver-handle", "control-plane")
             if attempts:
@@ -1065,6 +1071,13 @@ def _fallback_warnings(participant: str, state: dict[str, Any]) -> list[str]:
     return warnings
 
 
+def _agent_warnings(state: dict[str, Any], wait_policy: dict[str, Any]) -> list[str]:
+    warnings = _fallback_warnings(state["participant"], state) if state["fallback"] else []
+    if wait_policy == WAIT_POLICY and state["waitTimeMs"] > MAX_WAIT_TOTAL_MS_PER_AGENT:
+        warnings.append(f"wait budget for {state['participant']} exceeded the bounded policy; observed terminal outcome is preserved and unfinished work requires an explicit new task budget")
+    return warnings
+
+
 def _normalize_fallbacks(
     value: Any,
     *,
@@ -1214,8 +1227,8 @@ def build_runtime_receipt(
     )
     conflict = binding_conflict or public_conflict or local_conflict
     agent_records = [_finalize_state(states[name]) for name in participants]
-    warnings = [warning for agent in agent_records if agent["fallback"]
-                for warning in _fallback_warnings(agent["participant"], agent)]
+    warnings = [warning for agent in agent_records
+                for warning in _agent_warnings(agent, WAIT_POLICY)]
     if any("completion-conflict" in item["failureCodes"] for item in agent_records):
         conflict = True
     profiles = [public_profile] + ([local_profile] if local_profile is not None else [])
@@ -1262,10 +1275,7 @@ def build_runtime_receipt(
         "runtime": {
             "bindingFingerprint": binding_fingerprint,
             "parentTerminalOutcome": parent_terminal_outcome,
-            "waitPolicy": {
-                "maxAttemptsPerAgent": MAX_WAIT_ATTEMPTS_PER_AGENT,
-                "maxTotalMsPerAgent": MAX_WAIT_TOTAL_MS_PER_AGENT,
-            },
+            "waitPolicy": dict(WAIT_POLICY),
             "conflictDetected": conflict,
         },
         "agents": agent_records,
@@ -1451,10 +1461,7 @@ def _validate_schema2(receipt: dict[str, Any]) -> dict[str, Any]:
     )
     if receipt["streamCompleteness"] != expected_stream:
         raise RuntimeReceiptError("streamCompleteness is inconsistent")
-    if runtime.get("waitPolicy") != {
-        "maxAttemptsPerAgent": MAX_WAIT_ATTEMPTS_PER_AGENT,
-        "maxTotalMsPerAgent": MAX_WAIT_TOTAL_MS_PER_AGENT,
-    }:
+    if runtime.get("waitPolicy") not in (WAIT_POLICY, LEGACY_WAIT_POLICY):
         raise RuntimeReceiptError("runtime wait policy is invalid")
     _boolean(runtime.get("conflictDetected"), "runtime conflictDetected")
     agents = receipt.get("agents")
@@ -1528,9 +1535,9 @@ def _validate_schema2(receipt: dict[str, Any]) -> dict[str, Any]:
             reason = _text(agent.get("fallbackReasonCode"), "fallbackReasonCode")
             if reason not in FALLBACK_REASON_CODES:
                 raise RuntimeReceiptError("fallbackReasonCode is unsupported")
-            expected_warnings.extend(_fallback_warnings(participant, agent))
         elif agent.get("fallbackAdapter") is not None or agent.get("fallbackReasonCode") is not None:
             raise RuntimeReceiptError("non-fallback agent cannot retain fallback metadata")
+        expected_warnings.extend(_agent_warnings(agent, runtime["waitPolicy"]))
         if agent["completed"]:
             completed_count += 1
     tasks = receipt.get("taskAccounting")

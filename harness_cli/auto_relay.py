@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+from dataclasses import replace
 import importlib.util
 import json
 import os
@@ -17,7 +18,7 @@ import signal
 import subprocess
 import sys
 
-from .model_routing import Context, Decision, classify, choose, catalog_entries, available_model, MAX_PROMPT
+from .model_routing import Context, Decision, classify, choose, catalog_entries, available_model, starts_new_task, MAX_PROMPT
 
 ALIAS = 'codex-auto-harness'
 MAX_MESSAGE = 16 * 1024 * 1024
@@ -222,9 +223,12 @@ class Policy:
             # Image-only and large inputs retain native inference settings, never reject the user's task.
             has_images = any(item.get('type') in {'image', 'localImage'} for item in result.get('input', []))
             if text.strip() and '\0' not in text and len(text.encode()) <= MAX_PROMPT and not has_images:
-                decision = choose(text, self.raw_catalog, context=self.contexts.get(thread, Context()), profiles=self.profiles)
+                context = self.contexts.get(thread, Context())
+                if starts_new_task(text):
+                    context = replace(context, failures=0, active_task=False, lighter_requests=0)
+                decision = choose(text, self.raw_catalog, context=context, profiles=self.profiles)
                 if decision.model:
-                    decision = self.observe('decision', thread, text, decision, self.raw_catalog, self.contexts.get(thread, Context()), self.profiles, params=result) or decision
+                    decision = self.observe('decision', thread, text, decision, self.raw_catalog, context, self.profiles, params=result) or decision
                     set_model(result, decision.model, decision.effort)
                     self.contexts[thread] = Context(tier=decision.tier, model=decision.model, effort=decision.effort,
                         active_task=True, lighter_requests=int(decision.reason == 'lighter-request-pending'))
@@ -518,17 +522,23 @@ class Relay:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             if process.returncode is None:
-                if os.name == 'posix':
-                    os.killpg(process.pid, signal.SIGTERM)
-                else:
-                    process.terminate()
+                try:
+                    if os.name == 'posix':
+                        os.killpg(process.pid, signal.SIGTERM)
+                    else:
+                        process.terminate()
+                except ProcessLookupError:
+                    pass
                 try:
                     await asyncio.wait_for(process.wait(), 5)
                 except asyncio.TimeoutError:
-                    if os.name == 'posix':
-                        os.killpg(process.pid, signal.SIGKILL)
-                    else:
-                        process.kill()
+                    try:
+                        if os.name == 'posix':
+                            os.killpg(process.pid, signal.SIGKILL)
+                        else:
+                            process.kill()
+                    except ProcessLookupError:
+                        pass
                     await process.wait()
             await websocket.close()
 

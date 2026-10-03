@@ -56,6 +56,42 @@ def contract_source(root, version):
 
 
 class SourceContractTests(unittest.TestCase):
+    def test_bridge_keeps_legacy_updaters_source_requirements(self):
+        contents = dist._snapshot(REPO)
+        required = dist.REQUIRED.union(*(files for _, files in dist.VERSION_REQUIRED))
+        self.assertTrue(required <= contents.keys())
+        self.assertEqual(dist.source_contract(contents), dist.SOURCE_CONTRACT)
+
+    def test_current_generator_instructions_and_templates_are_required(self):
+        contents = dist._snapshot(REPO)
+        resources = sorted(name for name in contents if name.startswith((
+            '.agents/skills/harness/references/', '.agents/skills/harness/assets/')))
+        self.assertTrue(set(resources) <= set(dist.source_contract(contents)['resources']))
+        for name in resources:
+            with self.subTest(missing=name):
+                with self.assertRaisesRegex(dist.DistributionError, name.replace('.', r'\.')):
+                    dist._source_info({key: value for key, value in contents.items() if key != name})
+
+    def test_declared_layout_allows_a_future_refactor_without_legacy_filenames(self):
+        contents = {name: b'pass\n' if name.endswith('.py') else b'Harness\n' for name in dist.SOURCE_ENTRYPOINTS}
+        contract = {'schema': 1, 'resources': ['harness_cli/new-resource.txt']}
+        contents['harness_cli/distribution.py'] = ('SOURCE_CONTRACT = ' + repr(contract) + '\n').encode()
+        contents[dist.METADATA] = b'HARNESS_VERSION = "0.34.0-beta"\n'
+        for name in dist.GENERATOR_ENTRYPOINTS:
+            contents.setdefault('.agents/skills/harness/scripts/' + name + '.py', b'pass\n')
+        contents['harness_cli/main.py'] = b'from .refactored import run\n'
+        contents['harness_cli/refactored.py'] = b'def run(): pass\n'
+        contents['harness_cli/new-resource.txt'] = b'new layout resource\n'
+        self.assertEqual(dist._source_info(contents), ('0.34.0-beta', None))
+        self.assertNotIn('harness_cli/project.py', contents)
+        for name in ('harness_cli/refactored.py', 'harness_cli/new-resource.txt'):
+            with self.subTest(missing=name):
+                with self.assertRaisesRegex(ValueError, name.replace('.', r'\.')):
+                    dist._source_info({key: value for key, value in contents.items() if key != name})
+        contents['harness_cli/distribution.py'] = b'SOURCE_CONTRACT = {"schema": 2, "resources": []}\n'
+        with self.assertRaisesRegex(ValueError, 'contract'):
+            dist._source_info(contents)
+
     def test_generator_imports_and_entrypoints_are_required_before_writes(self):
         for name in ("harness_state", "validate_harness", "harness_doctor", "harness_eval_capture"):
             with self.subTest(module=name):
@@ -242,7 +278,7 @@ class SourceContractTests(unittest.TestCase):
             with self.subTest(missing=name):
                 source = write_source(self.base / ('incomplete-' + str(index)), files)
                 (source / name).unlink()
-                self.assert_rejected_before_writes(source, 'missing required')
+                self.assert_rejected_before_writes(source, 'source is missing')
 
 
 if __name__ == "__main__":

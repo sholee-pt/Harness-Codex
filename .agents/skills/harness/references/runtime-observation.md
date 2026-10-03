@@ -14,7 +14,7 @@ Runtime Receipt Schema 2 separates execution control, optional observation, comp
 
 Use the canonical handle for wait, follow-up, and interrupt. A raw child thread ID is never a model-visible acknowledgement prerequisite. Missing optional event evidence lowers evidence strength and cannot stop a valid handle execution. Fail closed only for an actual binding or incompatible terminal-outcome contradiction.
 
-The first real selected task agent is the capability probe. Never wait on an empty or unlisted handle. Bound each agent to three waits and 300000 total milliseconds. Do not automatically restart an ephemeral run as persistent; that retention-policy change requires explicit user consent.
+The first real selected task agent is the capability probe. A listed acknowledged handle establishes readiness for other independent tasks; its terminal result is collected at integration. Never wait on an empty or unlisted handle. Follow the relay reference's five-minute progress checkpoints and thirty-minute total task budget; poll counts and elapsed waits are observations, not native terminal failures. Do not automatically restart an ephemeral run as persistent; that retention-policy change requires explicit user consent.
 
 ## Registered event profiles
 
@@ -32,7 +32,7 @@ The profile fingerprint uses only the registered profile ID and version, CLI ver
 
 ## Runtime Receipt Schema 2
 
-Schema 2 separates `streamCompleteness`, `collaborationCompleteness`, and `taskAccountingStatus`. A parent run may be `complete-fallback` while collaboration is `partial`, `unobserved`, or `not-exposed`; fallback never erases a collaboration conflict.
+Schema 2 separates `streamCompleteness`, `collaborationCompleteness`, and `taskAccountingStatus`. A parent run may be `complete-fallback` while collaboration is `partial`, `unobserved`, or `not-exposed`; fallback never erases a collaboration conflict. Current receipts record a progress-aware `waitPolicy` with no poll-count limit and a finite total budget. Waits above that budget produce a policy warning, preserving the actual terminal outcome. Receipts do not authenticate progress or enforce the agent's deadline. Existing receipts with the legacy three-poll/five-minute policy retain their original interpretation and are not rewritten.
 
 Completion sources are `control-plane-wait`, `public-event`, `local-session-terminal`, and `agent-reported`. The last value is descriptive only. Agent-level failure and fallback sources are preserved independently. Schema 1 receipts remain validation-only legacy records and are never rewritten or promoted to Schema 2 evidence.
 

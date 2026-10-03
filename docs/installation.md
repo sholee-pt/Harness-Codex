@@ -49,16 +49,26 @@ For Windows source development, run from an existing checkout:
 ## Source installation
 
 ```bash
-git clone --branch v0.32.4-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
+git clone --branch v0.33.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
 bash Harness-Codex/installer/install.sh
 source ~/.bashrc
 ```
 
 On Windows, the source installer can be exercised from PowerShell for development: `& ./Harness-Codex/installer/install.ps1` under your normal script execution policy. This does not establish a verified Windows native release. The source scripts install an existing checkout; `install_harness_codex.sh` and `.ps1` first download a release and then invoke the corresponding source installer. Installation does not alter project Git state.
 
+The v0.33.0-beta updater introduces a source-layout contract while retaining the
+complete earlier file layout as an upgrade bridge. Later refactors can declare
+their current resources and dynamic entrypoints alongside statically checked
+imports; an earlier filename is not permanently required just because of its
+introduction version. Old immutable receipts retain their existing checks. An
+updater predating this bridge cannot interpret a future reduced layout: install
+the bridge first, or use the later version's verified release installer. Do not
+remove compatibility files in the bridge itself or claim that every older
+updater can directly install a future refactored package.
+
 ## Path boundaries
 
-On Linux, an incomplete dedicated runtime can remain after an interrupted setup or an uninstall that preserved unknown files. If its ownership marker matches this installation and neither an active installation nor its runtime reference remains, the installer moves the entire old runtime to an adjacent `harness-codex-runtime.recovery.*` directory before preparing a fresh environment. It prints the recovery path and records it in the installation log; retained files and the old ownership receipt are not deleted or claimed by the new install. Keep that recovery copy until you have reviewed its contents. Active installations, unowned directories and redirected runtime paths require inspection instead of automatic recovery. An atomic bootstrap lock directory prevents overlapping installers and is removed on normal exit, failure or Ctrl+C. A power loss or forced kill can leave that lock: confirm no installer is running before removing the empty lock directory named in the diagnostic.
+On Linux, an incomplete dedicated runtime can remain after an interrupted setup or an uninstall that preserved unknown files. This includes interrupted Miniforge extraction before the environment or ownership receipt was created. If its ownership marker matches this installation and neither an active installation nor its runtime reference remains, the installer moves the entire old runtime to an adjacent `harness-codex-runtime.recovery.*` directory before preparing a fresh environment. It prints the recovery path and records it in the installation log; retained files and the old ownership receipt are not deleted or claimed by the new install. Keep that recovery copy until you have reviewed its contents. Active installations, unowned directories and redirected runtime paths require inspection instead of automatic recovery. An atomic bootstrap lock directory prevents overlapping installers and is removed on normal exit, failure or Ctrl+C. A power loss or forced kill can leave that lock: confirm no installer is running before removing the empty lock directory named in the diagnostic.
 
 `--project` may name a directory alias, including a symbolic-link home on a shared
 Linux server. Harness resolves the selected workspace to its physical directory;
@@ -142,7 +152,7 @@ Interactive yes/no confirmations use `[Y/n]`: Enter, `y` and `yes` approve; `n` 
 
 `update` shows current/latest versions and distinguishes an available update, a completed update and an already-current installation. An unchanged installation does not refresh its Codex integration or print update-completion advice. A failed check exits with an error and does not claim that the installation is current.
 
-The CLI removes only verified files from its own installation. New dedicated runtime files have immutable SHA-256 ownership receipts. Added or changed runtime files are retained and reported; reused and legacy Conda installations have no inferred ownership and remain installed. Temporary failure logs and other historical untracked files are not deleted by matching their names.
+The CLI removes only verified files from its own installation. Unowned files, empty directories and unrelated links in tool storage are preserved in place; only receipt-owned files enter removal staging. Pending recovery records and conflicting receipts still stop removal. New dedicated runtime files have immutable SHA-256 ownership receipts. Added or changed runtime files are retained and reported; reused and legacy Conda installations have no inferred ownership and remain installed. Temporary failure logs and other historical untracked files are not deleted by matching their names.
 
 Project harnesses survive tool uninstall. Reinstall, select the same project and run `status`: no global registry is needed because its manifest is stored in the project. Use native `codex` for a compatible harness, update its generator and run `config` when needed, or explicitly `reset`. `remove --include-generator --yes` removes the unchanged owned project installation before tool uninstall if desired. Native Codex history and credentials belong to Codex and remain untouched.
 

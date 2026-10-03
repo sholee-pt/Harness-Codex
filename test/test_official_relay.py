@@ -155,6 +155,19 @@ class PolicyTests(unittest.TestCase):
         policy.model_list(catalog())
         self.assertEqual(policy.request('thread/start', {'cwd': '/project'}), {'cwd': '/project'})
 
+    def test_explicit_task_boundary_releases_adaptive_switching_penalty(self):
+        observer = mock.Mock()
+        observer.decision.side_effect = lambda thread, text, decision, *args, **kwargs: decision
+        policy = relay.Policy(mode='auto', observer=observer)
+        policy.model_list(catalog())
+        policy.response({'result': {'thread': {'id': 't1'}, 'model': 'gpt-5.6-sol', 'reasoningEffort': 'medium'}}, 'thread/start', {})
+        for text, active in [('Implement a function.', True), ('New task: implement a function.', False),
+                             ('Continue.', True), ('다음 작업: 함수를 구현해줘.', False)]:
+            with self.subTest(text=text):
+                policy.request('turn/start', {'threadId': 't1', 'input': [{'type': 'text', 'text': text}]})
+                self.assertEqual(observer.decision.call_args.args[4].active_task, active)
+                self.assertTrue(policy.contexts['t1'].active_task)
+
 
 class UpdateTests(unittest.TestCase):
     def test_official_package_switches_only_after_verification_and_preserves_older_packages(self):
@@ -440,6 +453,36 @@ for line in sys.stdin:
         self.assertFalse(adapter.connection_lock.locked())
         self.assertIn('backend could not start', adapter.error)
         socket.close.assert_awaited_once_with(code=1011, reason='Codex backend unavailable')
+
+    async def test_backend_exit_during_cleanup_is_not_a_start_failure(self):
+        for escalation in (False, True):
+            with self.subTest(escalation=escalation):
+                adapter = relay.Relay('codex', {})
+                process = SimpleNamespace(pid=1234, returncode=None,
+                    stdout=SimpleNamespace(readline=mock.AsyncMock(return_value=b'')),
+                    wait=mock.AsyncMock(side_effect=[asyncio.TimeoutError(), 0] if escalation else [0]))
+                signal_process = mock.Mock(side_effect=[None, ProcessLookupError()] if escalation else ProcessLookupError())
+
+                class Socket:
+                    request = SimpleNamespace(path='/', headers={'Authorization': 'Bearer ' + adapter.token})
+                    close = mock.AsyncMock()
+                    def __aiter__(self):
+                        return self
+                    async def __anext__(self):
+                        raise StopAsyncIteration
+
+                socket = Socket()
+                with mock.patch.object(relay.asyncio, 'create_subprocess_exec', return_value=process), \
+                     mock.patch.object(relay, 'os', SimpleNamespace(name='posix', killpg=signal_process)):
+                    await adapter.connect(socket)
+                self.assertIsNone(adapter.error)
+                self.assertFalse(adapter.connection_lock.locked())
+                socket.close.assert_awaited_once_with()
+                self.assertEqual(process.wait.await_count, 2 if escalation else 1)
+                expected = [mock.call(process.pid, relay.signal.SIGTERM)]
+                if escalation:
+                    expected.append(mock.call(process.pid, relay.signal.SIGKILL))
+                self.assertEqual(signal_process.call_args_list, expected)
 
     async def test_real_websocket_reconnect_keeps_authentication_and_new_request_ids(self):
         try:

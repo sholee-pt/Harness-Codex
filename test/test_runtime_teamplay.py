@@ -366,10 +366,9 @@ class ScopeAndWorktreeTests(RuntimeFixtureTestCase):
         with self.assertRaisesRegex(runtime_plan.RuntimePlanError, "read-only"):
             self.validate()
 
-    def test_writer_requires_isolated_worktree_or_equivalent(self) -> None:
+    def test_single_writer_does_not_require_a_separate_worktree(self) -> None:
         del self.plan["participants"][0]["isolation"]
-        with self.assertRaisesRegex(runtime_plan.RuntimePlanError, "isolated worktree"):
-            self.validate()
+        self.assertTrue(self.validate()["valid"])
 
     def test_frozen_input_change_invalidates_downstream_validation(self) -> None:
         handoff = {"frozenSha256": "a" * 64}

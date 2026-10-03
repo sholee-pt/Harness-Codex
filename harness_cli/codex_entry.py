@@ -63,15 +63,26 @@ def update_choices(root):
     changed = False
     for name in selected:
         try:
-            with Progress('Updating ' + name):
+            with Progress('Updating ' + name) as progress:
                 if name == 'Codex':
-                    official_codex.install(root, selected=findings[name])
+                    official_codex.install(root, selected=findings[name],
+                        native_fallback=lambda version, error: choose_native_install(version, error, progress=progress))
                 else:
                     result = release_updates.update(root, selected=findings[name])
                     changed = result['updated']
         except (OSError, ValueError, TimeoutError, subprocess.SubprocessError) as error:
             print(name + ' update was not applied: ' + clean(error), file=sys.stderr)
     return changed
+
+
+def choose_native_install(version, error, *, progress=None):
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return False
+    progress = progress or Progress('Official Codex is available without the Harness adapter')
+    progress.line('Auto compatibility check failed: ' + clean(error))
+    progress.line('Native mode preserves Codex permissions and history. Harness Auto and /harness/ controls remain disabled until codex update --auto succeeds.')
+    return choose(progress, 'Install official Codex ' + version + ' in native mode?', [
+        'Keep the current installation', 'Install this version in native mode']) == 1
 
 
 def sessions(root):
@@ -129,9 +140,10 @@ def main(args):
     integration = codex_integration.read(root)
     if not integration or integration['schema'] != 2:
         raise ValueError('Run harness-codex config to register the official Codex entry point')
-    if args == ['update']:
-        with Progress('Updating official Codex'):
-            official_codex.install(root)
+    if args in (['update'], ['update', '--auto']):
+        with Progress('Updating official Codex') as progress:
+            official_codex.install(root, prefer_auto='--auto' in args,
+                native_fallback=lambda version, error: choose_native_install(version, error, progress=progress))
         return 0
     if interactive(args) and update_choices(root):
         # Load new Python source only between conversations, once per launch.
@@ -152,6 +164,9 @@ def main(args):
         os.execve(str(binary), [str(binary), *args], env)
     if profile_requested(args):
         print('Using native Codex to preserve the selected profile. Harness Auto is unavailable for this launch.', file=sys.stderr)
+        os.execve(str(binary), [str(binary), *args], env)
+    if (official_codex.read(root) or {}).get('mode') == 'native':
+        print('Using the selected native Codex mode. Run codex update --auto to check and re-enable the Harness adapter.', file=sys.stderr)
         os.execve(str(binary), [str(binary), *args], env)
     # Harness owns this package's update transaction; avoid a second native prompt.
     args = ['-c', 'check_for_update_on_startup=false', *args]

@@ -7,6 +7,7 @@ import argparse
 import copy
 import json
 import os
+import re
 import tempfile
 import tomllib
 from pathlib import Path
@@ -51,6 +52,12 @@ def _materialize_contract(value: str, placeholder: str, canonical: str, label: s
     """Replace one placeholder, or preserve one already-materialized canonical block."""
     normalized_value = harness_change_discipline.normalize_line_endings(value)
     normalized_canonical = harness_change_discipline.normalize_line_endings(canonical)
+    if canonical == harness_teamplay.PROJECT_BLOCK and harness_teamplay.LEGACY_PROJECT_BLOCK in normalized_value:
+        if (normalized_value.count(harness_teamplay.LEGACY_PROJECT_BLOCK) != 1
+                or placeholder in value or normalized_canonical in normalized_value):
+            raise PlanBuilderError(f"{label} must contain exactly one current or legacy teamplay contract")
+        pattern = re.escape(harness_teamplay.LEGACY_PROJECT_BLOCK).replace("\\\n", r"(?:\r\n|\r|\n)")
+        return re.sub(pattern, lambda match: canonical.replace("\n", "\r\n") if "\r\n" in match[0] else canonical, value, count=1)
     placeholder_count = value.count(placeholder)
     canonical_count = normalized_value.count(normalized_canonical)
     if placeholder_count == 1 and canonical_count == 0:
@@ -182,8 +189,8 @@ def materialize_plan(value: Any, *, root: Path | None = None) -> dict[str, Any]:
             harness_teamplay.require_exactly_once(
                 artifact["content"], harness_teamplay.PROJECT_BLOCK, path
             )
-            # Advisory routing refinement, not a new required artifact contract.
-            # The canonical v2 runtime block itself remains unchanged.
+            # Legacy routers remain readable; reviewed materialization emits
+            # the compact contract with conditional delegation references.
             if harness_teamplay.DIRECT_EXECUTION_GUIDANCE not in artifact["content"]:
                 artifact["content"] = artifact["content"].replace(
                     harness_teamplay.PROJECT_BLOCK,

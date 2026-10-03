@@ -57,6 +57,18 @@ class RoutingTests(unittest.TestCase):
         decision = routing.choose('Fix the README sentence.', CATALOG, context=context, new_task=True)
         self.assertEqual(decision.tier, 'fast')
 
+    def test_repository_wide_audits_escalate_after_a_narrow_edit(self):
+        context = routing.Context('fast', 'gpt-5.6-luna', 'low', active_task=True)
+        for prompt in ('Review the entire repository for bugs.', 'Audit all code paths.',
+                       'Inspect the whole codebase.', '전체 레포지토리를 검토해줘.',
+                       '저장소 전체 사항에 대하여 검토해줘.', '모든 모듈을 점검해줘.'):
+            with self.subTest(prompt=prompt):
+                decision = routing.choose(prompt, CATALOG, context=context)
+                self.assertEqual((decision.tier, decision.effort), ('deep', 'high'))
+                self.assertEqual(decision.reason, 'complex-change')
+        self.assertEqual(routing.choose('Review this README sentence.', CATALOG).tier, 'fast')
+        self.assertEqual(routing.choose('이 문서의 전체 문장을 검토해줘.', CATALOG).tier, 'fast')
+
     def test_verified_failures_escalate_without_retrying_or_adding_roles(self):
         context = routing.Context('fast', 'gpt-5.6-luna', 'low', 2, True)
         decision = routing.choose('다시 확인해줘.', CATALOG, context=context)

@@ -166,8 +166,11 @@ class Validator:
         instruction_file = self.manifest.get("instructionFile")
         instruction_mode = workspace.get("instructionMode") if isinstance(workspace, dict) else None
         if instruction_mode == "managed-pointer":
-            if instruction_file not in {"AGENTS.md", "AGENTS.override.md"}:
-                self.error("managed-pointer mode requires AGENTS.md or AGENTS.override.md")
+            try:
+                if not harness_state.is_instruction_relative(self.root, instruction_file):
+                    self.error("managed-pointer mode requires a configured root instruction")
+            except (OSError, harness_state.StateError) as exc:
+                self.error(str(exc))
         elif instruction_mode == "explicit-skill" and instruction_file is not None:
             self.error("explicit-skill mode requires a null instructionFile")
         topology = self.manifest.get("topology")
@@ -241,8 +244,11 @@ class Validator:
                 continue
             if isinstance(expected_hash, str) and re.fullmatch(r"[0-9a-f]{64}", expected_hash):
                 try:
-                    _, actual_hash = snapshot.read(path)
-                except OSError as exc:
+                    content, actual_hash = snapshot.read(path)
+                    if "contentScope" in relative:
+                        content = harness_state.evidence_content(self.root, relative, content)
+                        actual_hash = harness_state.digest_bytes(content)
+                except (OSError, harness_state.StateError) as exc:
                     self.error(f"could not read {label}.path: {exc}")
                     continue
                 if actual_hash != expected_hash:
@@ -265,8 +271,13 @@ class Validator:
                     self.error(f"{label}.lines must satisfy 1 <= start <= end")
                     continue
                 try:
-                    line_count = snapshot.line_count(path)
-                except (OSError, UnicodeError):
+                    if "contentScope" in relative:
+                        content, _ = snapshot.read(path)
+                        content = harness_state.evidence_content(self.root, relative, content)
+                        line_count = len(content.decode("utf-8").splitlines())
+                    else:
+                        line_count = snapshot.line_count(path)
+                except (OSError, UnicodeError, harness_state.StateError):
                     self.error(f"{label}.lines requires a UTF-8 file: {evidence_path}")
                     continue
                 if end > line_count:
@@ -449,8 +460,10 @@ class Validator:
                 self.error("managedFiles entries must be objects")
                 continue
             relative = entry.get("path")
-            if not harness_transaction.is_allowed_target(relative):
+            if not harness_transaction.is_allowed_target(relative, root=self.root):
                 self.error(f"managed path is outside project artifact ownership: {relative!r}")
+            if harness_state.is_instruction_relative(self.root, relative) and entry.get("kind") != "managed-block":
+                self.error(f"root instruction must retain managed-block ownership: {relative}")
             if relative in managed_paths:
                 self.error(f"duplicate managed path: {relative}")
             elif isinstance(relative, str):

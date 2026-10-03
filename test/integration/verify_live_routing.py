@@ -19,7 +19,8 @@ sys.path.insert(0, str(ROOT))
 
 from harness_cli.configuration import Server
 from harness_cli.presentation import Progress
-from harness_cli.model_routing import Context, choose
+from harness_cli.model_routing import choose
+from harness_cli.routing import read_json
 from harness_cli.session_settings import model_catalog
 
 
@@ -42,7 +43,15 @@ def turn(server, text, decision):
     return server.completed.popleft()['status']
 
 
-def verify(output, codex):
+def select_models(catalog, profiles):
+    first = choose('Fix the README wording.', catalog, profiles=profiles)
+    second = choose('Review a concurrency architecture.', catalog, new_task=True, profiles=profiles)
+    if not first.model or not second.model or first.model == second.model:
+        raise ValueError('The supplied routing profiles must select two distinct available models; model-switch smoke cannot be claimed.')
+    return first, second
+
+
+def verify(output, codex, profiles):
     executable = shutil.which(codex)
     if not executable:
         raise ValueError('Codex executable unavailable.')
@@ -56,10 +65,7 @@ def verify(output, codex):
         try:
             server.initialize()
             catalog = model_catalog(server, time.monotonic() + 30)
-            first = choose('Fix the README wording.', catalog)
-            second = choose('Review a concurrency architecture.', catalog, new_task=True)
-            if not first.model or not second.model or first.model == second.model:
-                raise ValueError('Two distinct policy models are not available; model-switch smoke cannot be claimed.')
+            first, second = select_models(catalog, profiles)
             server.thread_id = server.call('thread/start', {'cwd': str(root)})['thread']['id']
             session_id = server.thread_id
             marker = 'HARNESS_ROUTING_SMOKE_0_12'
@@ -95,5 +101,6 @@ if __name__ == '__main__':
     parser.add_argument('--live', action='store_true', required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--codex-binary', default='codex')
+    parser.add_argument('--profiles', type=Path, required=True, help='Routing preferences selecting distinct available fast and deep models.')
     args = parser.parse_args()
-    verify(args.output, args.codex_binary)
+    verify(args.output, args.codex_binary, read_json(args.profiles))

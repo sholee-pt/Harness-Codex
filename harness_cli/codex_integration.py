@@ -163,12 +163,13 @@ def status(data_root, *, verify_package=True):
         directory = Path(value['directory'])
         if value['schema'] == 2:
             from . import official_codex
+            official = official_codex.read(data_root)
             if verify_package:
                 official_codex.binary(data_root)
             resolved = shutil.which('codex')
             return {'state': 'configured' if resolved and Path(resolved).resolve().parent == directory else 'shell-refresh-or-path-review-required',
-                    'version': dist.installed_status(data_root)['version'], 'codexVersion': official_codex.read(data_root)['version'],
-                    'mode': value['mode'], 'directory': str(directory), 'resolvedCodex': resolved,
+                    'version': dist.installed_status(data_root)['version'], 'codexVersion': official['version'],
+                    'mode': official.get('mode', value['mode']), 'directory': str(directory), 'resolvedCodex': resolved,
                     'runtimeDiscovery': 'not-tested', 'distribution': 'official-prebuilt'}
         if verify_package:
             native_package.verify(directory.parent, value['version'], directory.parent.name)
@@ -215,8 +216,9 @@ def _official_install(root, state, previous, mode, profiles, home):
     auto_relay.dependency(install=True)
     if official_codex.read(root) is None:
         from .presentation import Progress
-        with Progress('Preparing the official Codex release'):
-            official_codex.install(root)
+        from .codex_entry import choose_native_install
+        with Progress('Preparing the official Codex release') as progress:
+            official_codex.install(root, native_fallback=lambda version, error: choose_native_install(version, error, progress=progress))
     else:
         official_codex.binary(root)
     directory = root / 'codex-bin'
@@ -264,6 +266,6 @@ def _official_install(root, state, previous, mode, profiles, home):
             if not any(directory.iterdir()):
                 directory.rmdir()
             raise
-    return {'state': 'installed', 'version': state['version'], 'directory': str(directory), 'mode': mode,
+    return {'state': 'installed', 'version': state['version'], 'directory': str(directory), 'mode': (official_codex.read(root) or {}).get('mode', mode),
             'path': integration_path.describe(change), 'nextStep': 'Apply PATH: source ~/.bashrc',
             'runtimeDiscovery': 'not-tested', 'distribution': 'official-prebuilt'}

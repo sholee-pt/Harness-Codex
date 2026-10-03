@@ -98,7 +98,7 @@ def _seal(journal: dict) -> dict:
     return {**value, "seal": digest}
 
 
-def _allowed(operation: dict, installer, transaction) -> bool:
+def _allowed(operation: dict, installer, transaction, *, root: Path | None = None) -> bool:
     path, kind = operation.get("path"), operation.get("kind")
     if not isinstance(path, str):
         return False
@@ -109,7 +109,7 @@ def _allowed(operation: dict, installer, transaction) -> bool:
     if kind == 'workspace-context':
         return path == '.harness/context.json'
     if kind == "managed-block":
-        return path in {"AGENTS.md", "AGENTS.override.md"}
+        return path in {"AGENTS.md", "AGENTS.override.md"} or (root is not None and transaction.harness_state.is_instruction_relative(root, path))
     if kind == "generator-receipt":
         return path == f"{GENERATOR}/{installer.RECEIPT}"
     if kind == "generator-file":
@@ -153,7 +153,7 @@ def _load_journal(root: Path, helpers) -> dict | None:
     paths = []
     for operation in value["operations"]:
         if (not isinstance(operation, dict) or set(operation) != {"path", "kind", "before", "after"}
-                or not _allowed(operation, installer, transaction) or not _validate_metadata(operation["before"])
+                or not _allowed(operation, installer, transaction, root=root) or not _validate_metadata(operation["before"])
                 or (operation["after"] is not None and
                     (operation["kind"] != "managed-block" or not _validate_metadata(operation["after"])))):
             raise LifecycleError("The removal journal contains an unsupported file operation.")
@@ -327,7 +327,7 @@ def _plan(root: Path, include_generator: bool, helpers) -> tuple[dict, list, lis
         after = None if replacement is None else FileState(replacement, current.mode, current.mtime_ns)
         operation = {"path": relative, "kind": kind, "before": current.metadata(),
                      "after": None if after is None else after.metadata()}
-        if not _allowed(operation, installer, transaction):
+        if not _allowed(operation, installer, transaction, root=root):
             raise LifecycleError("A manifest claims a path outside supported removal ownership.")
         operations.append(operation)
         snapshots.append(current)

@@ -8,6 +8,7 @@ Read this reference before modifying a repository that already contains harness 
 - **Managed and modified:** listed but hash differs; preserve and report a conflict.
 - **User-owned:** not listed in the manifest; never overwrite it.
 - **Managed pointer block:** only text between `<!-- harness:begin -->` and `<!-- harness:end -->` is owned by Harness.
+- **Root instruction evidence:** `instruction-user-content` hash는 위 pointer를 제외한 사용자 원문에 적용할 것. Pointer 갱신은 근거 변경으로 취급하지 않으며, 사용자 본문 변경은 현재 source를 다시 검토할 것. 사용자 지정 fallback instruction에도 같은 소유권·복구 계약을 적용할 것.
 - **Tracked target:** Git tracking is independent of Harness ownership. A clean managed file may be updated, while a user-owned file stays protected regardless of tracking.
 - **Legacy exclusion block:** an earlier Harness marker in Git metadata remains outside v9.5 ownership and is preserved without blocking generation.
 

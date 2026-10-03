@@ -39,8 +39,9 @@ managed policy. This setup makes no inference call and starts no conversation.
 
 When `init` reports hook trust ready, no separate approval step is needed. Trust
 is user-level, while maintenance and adaptive routing are per-project choices.
-Turning a project off retains trust and returns without review, tracking or
-instruction injection; it does not disable hooks needed by other projects.
+프로젝트를 off로 설정하면 trust는 보존하며 새 검토·활동 기록·지침 주입을 중지함.
+이미 관찰한 세션과 자식의 종료 이벤트만 정리하여 재활성화 시 종료된 작업이 차단 요소로 남지 않도록 함.
+다른 프로젝트에서 필요한 hook은 비활성화하지 않음.
 The hook still starts a local process to check the project setting. Turning the
 feature back on reuses unchanged trust. Adaptive routing remains separate and is
 not activated by trusting maintenance hooks.
@@ -67,11 +68,23 @@ project have stopped, run `harness-codex maintenance recover-session --session-r
 Its confirmation resets tracking and defers an outstanding review; project files,
 concerns, observations and preferences are retained. Ordinary Stop/Interrupt events
 for unknown sessions do not consume tracking slots. Maintenance state migrates
-from schema 3 to 4 on the next write; status inspection remains read-only.
+from schemas 1–4 to 5 on the next write; status inspection remains read-only.
 
 The handler uses the native [Codex hooks contract](https://developers.openai.com/codex/hooks/).
 It checks the installed tool's integrity and bounded local state, not every project
 file. This incurs local process/filesystem work, even when no model review is due.
+
+hook은 state 잠금 전에 불투명한 활동 마커를 남김. 잠금 실패로 활동을 기록하지 못하면
+독립 마커를 보존하고 이후 자동 변경을 중지함. 모든 프로젝트 세션과 자식의 종료를 확인한 뒤
+`recover-session --session-ref all`로 복구할 것. 계획 검증은 state 잠금 밖에서 수행하고,
+최종 revision·파일·활동 확인과 적용만 짧은 임계 구역에서 수행함.
+실제 적용 중인 구역과 새 `UserPromptSubmit`이 겹쳐 제한된 대기 안에 끝나지 않으면
+[native hook 계약](https://developers.openai.com/codex/hooks/#userpromptsubmit)의 `decision: block`으로
+해당 요청만 보류함. 완료 후 사용자가 다시 요청해야 하며 자동 재실행은 하지 않음.
+일반 관찰 오류는 사용자 작업을 막지 않으며 자동 변경만 중지함.
+적용 마커만 남은 중단도 `applicationMarkerPresent`와 `automaticChangesPaused`로 표시하며,
+새 검토 예산을 사용하기 전에 예약을 보류함. 실행 중인 유지보수가 끝났는지 먼저 확인하고,
+중단된 경우 프로젝트 transaction 복구와 모든 세션 종료 확인 후 기존 global recovery로 정리할 것.
 
 ## When anything changes
 
@@ -80,6 +93,17 @@ gaps become candidates. Only selected source evidence is read. Duplicate signals
 are merged; already-reviewed evidence is suppressed, including no-change results.
 Signals are assessments, not proof of root cause. Current source evidence must
 justify a persistent correction before anything is applied.
+
+같은 파일·사유의 후보 식별자는 내용 변경과 분리하여 독립적인 반복 관찰을 누적함.
+최신 근거 hash는 따로 보존하고 적용 전에 검토한 버전과 일치하는지 확인함.
+`deferred`와 lease 만료는 후보를 해결 처리하지 않으며 기존 간격·일일 예산 내에서 재시도함.
+`unchanged`·`proposed`로 실제 검토한 동일 근거 버전만 중복 억제함.
+
+자동 검토는 근거를 읽은 세션에서만 예약함. `maintenance signal`에 현재 hook의
+`--session-ref`를 전달할 것. ref 없는 신호와 구형 기록, 종료·compaction으로 문맥을 잃은
+신호는 보존하며 status의 `contextRequired`로 알림. 현재 근거를 다시 읽어 신호를 재기록하거나
+`maintenance begin --evidence PATH`로 명시적으로 근거를 선택하여 검토할 것.
+상대경로·원문·대화 내용은 유지보수 기록에 저장하지 않음.
 
 At a subsequent turn boundary, auto mode may reserve one review batch. The native
 agent reviews only that batch in the existing conversation; it does not spawn an
@@ -162,7 +186,7 @@ harness-codex maintenance --project PATH recover-session --session-ref REF
 
 Confirm with Enter/`y`/`yes`, or cancel with `n`/`no`. This releases only that activity marker and its review lease; concerns, change history, other sessions and project files are retained. Use `--yes` only after making the same check in automation. Elapsed time alone never releases native writers. A pending file transaction or interrupted change still requires its separate recovery procedure.
 
-Each automatic correction records an opaque change ID, before/after manifest revisions, reason/evidence references and the prior/new hashes of affected skills. The bounded user-local history stores no skill text, model IDs, paths or transcripts. Local state schemas 1, 2 and 3 are read as schema 4 in memory; a status read does not rewrite them and existing off/suggest/auto choices remain unchanged. Init/config display maintenance and adaptive Auto preferences; controlled task-effect comparison remains a separate opt-in procedure.
+Each automatic correction records an opaque change ID, before/after manifest revisions, reason/evidence references and the prior/new hashes of affected skills. The bounded user-local history stores no skill text, model IDs, paths or transcripts. Local state schemas 1, 2, 3 and 4 are read as schema 5 in memory; a status read does not rewrite them and existing off/suggest/auto choices remain unchanged. Init/config display maintenance and adaptive Auto preferences; controlled task-effect comparison remains a separate opt-in procedure.
 
 Applied changes start as `observing`: instructions updated, effect not established. The next hooked request carries a one-time revision notice and change ID. Record an outcome only when it is explicitly related to that correction, with the revision actually used by the task. Known model, effort, task category and runtime identity are hashed into a context group; unknown context remains descriptive and cannot trigger a comparison. Multiple records of one work item count once. Two independent, externally reported adverse outcomes in one known context group pause further automatic changes (`review-required`); they do not prove causality or stop ordinary work. Positive reports never automatically become a measured quality/cost benefit.
 
@@ -178,3 +202,9 @@ harness-codex maintenance resolve --change CHANGE_ID --decision rollback --plan 
 `resolve` is an explicit review action. Rollback requires an independently reviewed plan restoring exactly the prior recorded skill bytes; no project backup is hidden in evaluation state. It refuses changed revisions, user edits, topology changes, observed live writers and pending transactions. Interrupted apply/rollback leaves an intent record that pauses new changes; recover any file transaction, wait for the review lease to expire, then explicitly resolve it. A completed rollback can close its intent without repeating writes. If explicit config has already replaced that revision, inspect it and use `keep` to close the prior record as `superseded`; rollback cannot overwrite the newer configuration. Without a prior plan, use explicit config review rather than guessing old content. The history retains at most 16 changes with 32 outcome records each; only reviewed, rolled-back or superseded entries can be retired to make space. Local state is bounded at 512 KiB, with oversized writes refused before replacing the previous record.
 
 Existing operations annotations can optionally carry `--maintenance-reason` plus `--maintenance-evidence`, or `--maintenance-change` plus `--maintenance-revision` and observed model/effort/runtime. They reuse the existing work-item ID. An ordinary failed task does not create a maintenance signal. Maintenance failures preserve the independent operations record, and neither path enables the other automatically. Controlled before/after evaluation remains separate; this history does not learn model-routing policy or automatically tune Jev/Graft.
+
+새 변경이 성공하면 이전 revision의 `observing` 기록은 `superseded`로 마감하여 보존 한도 안에서
+이후 변경을 계속할 수 있음. 이전 효과가 입증된 것으로 간주하지 않음. 실제 미해결 기록이
+한도를 채우면 `historyCapacityBlocked`와 `automaticChangesPaused`를 표시하고 lease 발급 전에
+보류함. operations 신호를 현재 세션의 자동 검토로 연결할 때는 hook의 불투명
+`--maintenance-session-ref`도 함께 전달할 것. 생략한 신호는 문맥 미확인 상태로 보존함.

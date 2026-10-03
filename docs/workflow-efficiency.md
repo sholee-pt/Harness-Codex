@@ -37,6 +37,20 @@ The inventory stores no report or raw paragraphs and performs no deletion.
 Review context before removing repetition. Static size is not measured token use,
 cache behavior, latency, task quality or cost reduction.
 
+New router materialization uses a compact canonical teamplay block. Detailed task
+plans, packets, relay receipts and observation procedures are loaded only when
+the relevant delegation path is selected. Existing canonical v2 installations
+remain valid without being rewritten; a reviewed `config` can adopt the compact
+block. The first real subagent's acknowledged handle is a dispatch-readiness
+check, so independent agents can start before that first task completes.
+
+Delegated tasks use five-minute progress checkpoints and a thirty-minute total
+budget. Extensions require new observed progress; a repeated running status does
+not renew a deadline. Poll counts are measurements, not failure conditions.
+Receipt policy overruns remain separate warnings and preserve an observed
+terminal outcome. These checks remain instruction-driven; receipts do not act
+as a scheduler or prove that a deadline was enforced.
+
 ## Existing projects and state
 
 Update the tool with `harness-codex update`. Existing supported project contracts

@@ -511,8 +511,8 @@ class RuntimePlanValidator:
                     raise RuntimePlanError(f"{label}.writeScopes exceeds persistent file access")
             if participant.get("runtimeRole") == "reviewer" and write_scopes:
                 raise RuntimePlanError("reviewer runtime roles must be read-only")
-            if write_scopes and participant.get("isolation") not in {"worktree", "equivalent"}:
-                raise RuntimePlanError("runtime writers require an isolated worktree or equivalent")
+            if write_scopes and participant.get("isolation") is not None and participant["isolation"] not in {"worktree", "equivalent"}:
+                raise RuntimePlanError("runtime writer isolation must be worktree or equivalent when declared")
             if not write_scopes and participant.get("isolation") is not None:
                 if participant.get("isolation") not in {"read-only", "frozen-diff"}:
                     raise RuntimePlanError("read-only participants use read-only or frozen-diff isolation")
@@ -612,6 +612,11 @@ class RuntimePlanValidator:
                 second_participant = participants[second_task["owner"]]
                 if first_task["owner"] == second_task["owner"]:
                     continue
+                ordered = _has_dependency_path(tasks, first_id, second_id) or _has_dependency_path(tasks, second_id, first_id)
+                if first_participant["writeScopes"] and second_participant["writeScopes"] and not ordered:
+                    if any(participant.get("isolation") not in {"worktree", "equivalent"}
+                           for participant in (first_participant, second_participant)):
+                        raise RuntimePlanError("parallel runtime writers require an isolated worktree or equivalent")
                 for first_scope in first_participant["writeScopes"]:
                     for second_scope in second_participant["writeScopes"]:
                         if not harness_topology.scopes_overlap(first_scope, second_scope):
@@ -623,11 +628,9 @@ class RuntimePlanValidator:
                         else:
                             raise RuntimePlanError("concurrent runtime writers have overlapping scopes")
                         shared = harness_topology.scope_intersection(first_scope, second_scope)
-                        if shared is None or not any(
-                            item["fromTask"] == source
-                            and item["toTask"] == target
-                            and harness_topology.scopes_equivalent(item["scope"], shared)
-                            for item in handoffs
+                        if shared is None or not harness_topology.handoff_path_covers(
+                            ((item["fromTask"], item["toTask"], item["scope"]) for item in handoffs),
+                            source, target, shared,
                         ):
                             raise RuntimePlanError(
                                 "ordered overlapping runtime writers require a complete verified handoff"

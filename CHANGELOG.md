@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.33.0‑beta`](#harness-for-codex-v0330-beta) | Schema 3 | Schema 7 | Schema 2 | Relax unnecessary generation and maintenance gates, preserve native update choices, and add fresh-generation comparison. |
 | [`v0.32.4‑beta`](#harness-for-codex-v0324-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve incomplete orphan runtimes before reinstalling and report bootstrap errors in the installation log. |
 | [`v0.32.3‑beta`](#harness-for-codex-v0323-beta) | Schema 3 | Schema 7 | Schema 2 | Align runtime receipt read limits with creation and preserve bounded metadata reads. |
 | [`v0.32.2‑beta`](#harness-for-codex-v0322-beta) | Schema 3 | Schema 7 | Schema 2 | Prevent upgrade verification from writing Python caches into baseline evidence. |
@@ -97,6 +98,17 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.33.0-beta
+
+- Bind recurring maintenance evidence to its originating session, retain retryable candidates, clean up disabled sessions, and serialize automatic changes against concurrent work. Supersede completed observation windows so bounded history does not permanently stop maintenance.
+- Support safe custom instruction filenames and user-content evidence in managed instruction files. Permit single or sequential writers without unnecessary isolation and accept complete transitive ownership handoffs.
+- Keep direct-task instructions compact and load delegation guidance when needed. Separate readiness from terminal collection and preserve completed results across repeated bounded waits.
+- Recognize whole-repository review requests and explicit new tasks in Auto routing. Let users select verified official Codex updates in native mode when adapter capabilities are unavailable, and retain that choice.
+- Keep management post-initialization off the protocol pump, clean up installer descendants on cancellation, and preserve primary Graft candidates when bounded external retrieval is enabled.
+- Recover owned pre-environment bootstrap remnants, uninstall only verified owned files, verify existing release tags before publishing, and migrate source completeness checks to an explicit payload contract. Preserve the previous layout during this bridge release and support official Linux assets when supplementing Windows releases.
+- Attribute compatible evaluation records by measurement contract, preserve repeated correctness regressions as negative signals, and add a bounded opt-in runner for fresh generation and downstream baseline comparisons. Keep live effectiveness unmeasured until actual trials are performed.
+- Compare upgrades against v0.32.4-beta only; retain existing release tags and published installation links.
 
 ## Harness for Codex v0.32.4-beta
 

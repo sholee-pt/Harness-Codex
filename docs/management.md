@@ -105,8 +105,12 @@ does not automatically change retrieval, maintenance or hook-trust preferences.
 New native agents may require a fresh conversation even after files validate.
 If the model asks a clarification question, answer normally. Completion waits
 for a changed manifest in the same conversation; unchanged turns only check its
-file metadata and do not repeat validation or inference. Interrupted setup stops
-this pending completion. Run `config` again to explicitly continue it.
+file metadata and do not repeat validation or inference. Validation and optional
+retrieval preparation run separately from the native response stream; subsequent
+conversation events continue while they finish. Leaving the connection or
+interrupting that setup cancels its pending subprocess work, including npm and
+its installation children. A new configuration or confirmed removal first stops
+the earlier completion. Run `config` again to explicitly continue interrupted setup.
 
 ## Project switching
 

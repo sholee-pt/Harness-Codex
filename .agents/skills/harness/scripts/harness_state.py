@@ -35,6 +35,7 @@ DEFAULT_FILE_MODE = 0o644
 PROJECT_CONFIG_RELATIVE = ".codex/config.toml"
 PROJECT_CONFIG_MAX_BYTES = 1024 * 1024
 DEFAULT_INSTRUCTION_CANDIDATES = ("AGENTS.override.md", "AGENTS.md")
+INSTRUCTION_EVIDENCE_SCOPE = "instruction-user-content"
 
 
 class StateError(ValueError):
@@ -394,6 +395,45 @@ def project_instruction_candidates(root: Path) -> list[str]:
     return candidates
 
 
+def is_instruction_relative(root: Path, relative: object) -> bool:
+    if not isinstance(relative, str) or len(PurePosixPath(relative).parts) != 1:
+        return False
+    if relative in DEFAULT_INSTRUCTION_CANDIDATES:
+        return True
+    try:
+        return relative in project_instruction_candidates(root)
+    except (OSError, StateError):
+        return False
+
+
+def instruction_user_content(content: bytes) -> bytes:
+    """Keep user bytes exactly, excluding only one complete Harness pointer."""
+    begin, end = BEGIN_MARKER.encode("utf-8"), END_MARKER.encode("utf-8")
+    if begin not in content and end not in content:
+        return content
+    if content.count(begin) != 1 or content.count(end) != 1:
+        raise StateError("instruction evidence contains incomplete or duplicate Harness markers")
+    start = content.index(begin)
+    finish = content.find(end, start)
+    if finish < 0:
+        raise StateError("instruction evidence Harness markers are out of order")
+    return content[:start] + content[finish + len(end):]
+
+
+def evidence_content(root: Path, entry: dict, content: bytes) -> bytes:
+    scope = entry.get("contentScope")
+    if "contentScope" not in entry:
+        return content
+    if scope != INSTRUCTION_EVIDENCE_SCOPE:
+        raise StateError("unsupported evidence contentScope")
+    if not is_instruction_relative(root, entry.get("path")):
+        raise StateError("instruction-user-content evidence requires a configured root instruction")
+    result = instruction_user_content(content)
+    if not result.strip():
+        raise StateError("instruction evidence requires nonempty user content")
+    return result
+
+
 def validate_file_namespace(paths: Iterable[str], *, label: str = "managed paths") -> None:
     entries: list[tuple[str, tuple[str, ...]]] = []
     for relative in paths:
@@ -735,7 +775,11 @@ def evidence_data(root: Path, paths: list[str]) -> dict:
             raise StateError(f"duplicate evidence path: {relative}")
         seen.add(relative)
         path = resolve_inside(root, relative, must_exist=True)
-        records.append({"path": relative, "sha256": digest_bytes(path.read_bytes())})
+        entry = {"path": relative}
+        if is_instruction_relative(root, relative):
+            entry["contentScope"] = INSTRUCTION_EVIDENCE_SCOPE
+        entry["sha256"] = digest_bytes(evidence_content(root, entry, path.read_bytes()))
+        records.append(entry)
     return {"schemaVersion": 1, "evidence": records}
 
 

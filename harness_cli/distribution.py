@@ -40,6 +40,66 @@ MAX_FILE_BYTES = 16 * 1024 * 1024
 MAX_TREE_BYTES = 96 * 1024 * 1024
 METADATA = ".agents/skills/harness/scripts/harness_metadata.py"
 REQUIRED = frozenset({"harness.py", "install.py", "harness_cli/__init__.py", "harness_cli/main.py", "harness_cli/project.py", "harness_cli/distribution.py", ".agents/skills/harness/SKILL.md", METADATA})
+SOURCE_ENTRYPOINTS = REQUIRED - {"harness_cli/project.py"}
+# This bridge release retains every legacy filename. New updaters validate the
+# candidate's declared resources and actual imports instead of cumulative names.
+SOURCE_CONTRACT = {"schema": 1, "resources": [
+    "harness_cli/prepare_conda.sh", "harness_cli/runtime_cleanup.ps1", "harness_cli/graft_bridge.mjs",
+    "harness_cli/jev_client.py", "harness_cli/native_router.py",
+    ".agents/skills/harness/scripts/validate_runtime_plan.py",
+    ".agents/skills/harness/scripts/validate_coordination_packet.py",
+    ".agents/skills/harness/scripts/evaluate_topology.py",
+    ".agents/skills/harness/scripts/harness_runtime_receipt.py",
+    ".agents/skills/harness/scripts/harness_relay_receipt.py",
+    ".agents/skills/harness/scripts/harness_eval.py",
+    ".agents/skills/harness/scripts/harness_ops.py",
+    ".agents/skills/harness/scripts/harness_checkpoint.py",
+    ".agents/skills/harness/scripts/harness_maintenance.py",
+    ".agents/skills/harness/scripts/harness_external_skills.py",
+    ".agents/skills/harness/scripts/harness_eval_lock.py",
+    ".agents/skills/harness/assets/agent.toml",
+    ".agents/skills/harness/assets/managed-agents-block.md",
+    ".agents/skills/harness/assets/manifest.json",
+    ".agents/skills/harness/assets/project-harness.md",
+    ".agents/skills/harness/assets/skill.md",
+    ".agents/skills/harness/references/agent-design.md",
+    ".agents/skills/harness/references/capture-provenance.md",
+    ".agents/skills/harness/references/codex-smoke-test.md",
+    ".agents/skills/harness/references/contract-review.md",
+    ".agents/skills/harness/references/evaluation-contract.md",
+    ".agents/skills/harness/references/evaluation-isolation.md",
+    ".agents/skills/harness/references/evaluation-observations.md",
+    ".agents/skills/harness/references/experience-evidence.md",
+    ".agents/skills/harness/references/external-skills.md",
+    ".agents/skills/harness/references/generated-contracts.md",
+    ".agents/skills/harness/references/generation-quality-evaluation.md",
+    ".agents/skills/harness/references/git-authorization.md",
+    ".agents/skills/harness/references/maintenance.md",
+    ".agents/skills/harness/references/minimal-draft-plan.json",
+    ".agents/skills/harness/references/model-workflows.md",
+    ".agents/skills/harness/references/native-subagent-relay.md",
+    ".agents/skills/harness/references/operations-evidence.md",
+    ".agents/skills/harness/references/orchestration.md",
+    ".agents/skills/harness/references/patch-scope.md",
+    ".agents/skills/harness/references/plan-format.md",
+    ".agents/skills/harness/references/privacy-retention.md",
+    ".agents/skills/harness/references/project-analysis.md",
+    ".agents/skills/harness/references/project-workspaces.md",
+    ".agents/skills/harness/references/relay-receipt.md",
+    ".agents/skills/harness/references/run-record-schema.md",
+    ".agents/skills/harness/references/runtime-observation.md",
+    ".agents/skills/harness/references/runtime-plan.md",
+    ".agents/skills/harness/references/safe-update.md",
+    ".agents/skills/harness/references/scientific-workflows.md",
+    ".agents/skills/harness/references/skill-design.md",
+    ".agents/skills/harness/references/task-checkpoints.md",
+    ".agents/skills/harness/references/team-recipes.md",
+    ".agents/skills/harness/references/teamplay-contract.md",
+    ".agents/skills/harness/references/topology-contract.md",
+    ".agents/skills/harness/references/transaction-recovery.md",
+    ".agents/skills/harness/references/validation.md",
+    ".agents/skills/harness/references/workspace-portability.md",
+]}
 # These are release-specific source dependencies, not a new installation schema.
 # Keep the original common set valid for complete v9.2 and v9.3 distributions.
 # Later releases inherit each dependency from its numeric introduction version.
@@ -271,9 +331,30 @@ def _cli_imports(name: str, tree: ast.AST) -> set[str]:
             if module == "harness_cli" or module.startswith("harness_cli.")}
 
 
+def source_contract(snapshot: dict[str, bytes]) -> dict | None:
+    """Read a candidate's data-only layout contract without importing its code."""
+    try:
+        tree = ast.parse(snapshot["harness_cli/distribution.py"])
+        values = [ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)
+                  and any(isinstance(target, ast.Name) and target.id == "SOURCE_CONTRACT" for target in node.targets)]
+        if not values:
+            return None
+        value, = values
+        if (not isinstance(value, dict) or set(value) != {"schema", "resources"}
+                or type(value["schema"]) is not int or value["schema"] != 1
+                or not isinstance(value["resources"], list)
+                or any(not isinstance(name, str) or _relative(name) != name or not _runtime(name) for name in value["resources"])
+                or len(set(value["resources"])) != len(value["resources"])):
+            raise ValueError("unsupported source contract")
+        return value
+    except (KeyError, TypeError, ValueError, SyntaxError, UnicodeError) as exc:
+        raise DistributionError("source layout contract is invalid or unsupported") from exc
+
+
 def _source_info(snapshot: dict[str, bytes]) -> tuple[str, str | None]:
-    if not REQUIRED.issubset(snapshot):
+    if not SOURCE_ENTRYPOINTS.issubset(snapshot):
         raise DistributionError("source is missing required CLI or generator files")
+    contract = source_contract(snapshot)
     try:
         syntax = ast.parse(snapshot[METADATA].decode("utf-8-sig"))
         versions = [ast.literal_eval(node.value) for node in syntax.body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "HARNESS_VERSION" for target in node.targets)]
@@ -300,9 +381,12 @@ def _source_info(snapshot: dict[str, bytes]) -> tuple[str, str | None]:
                 raise ValueError("release metadata commit")
             if release.get("branch") is not None and _branch(release["branch"]) != _version(version):
                 raise ValueError("release metadata branch mismatch")
+            if "sourceContract" in release and release["sourceContract"] != contract:
+                raise ValueError("release metadata source contract mismatch")
     except (ValueError, TypeError, SyntaxError, UnicodeError) as exc:
         raise DistributionError("source version, runtime, release metadata, or Python syntax is invalid") from exc
-    required = REQUIRED.union(*(files for minimum, files in VERSION_REQUIRED if version_number >= minimum))
+    required = (SOURCE_ENTRYPOINTS.union(contract["resources"]) if contract is not None else
+                REQUIRED.union(*(files for minimum, files in VERSION_REQUIRED if version_number >= minimum)))
     missing = sorted(required.difference(snapshot))
     if missing:
         raise DistributionError(f"source is missing required files for Harness {version}: {', '.join(missing)}")

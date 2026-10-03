@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from harness_cli import graft, graft_sources, main
+from harness_cli import graft, graft_sources, jev, main
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -101,6 +101,78 @@ class ExternalSourcesTests(unittest.TestCase):
         self.assertIn('primary', result['text'])
         self.assertIn('externalWarning', result)
         self.assertNotIn('externalHits', result)
+
+    def test_empty_or_missing_external_source_preserves_primary_hits_text_and_jev(self):
+        question = 'Where is project request validation implemented?'
+        baseline = 'Project source and context. ' * 16
+        def invoke(source, root, cache, settings, action, **kw):
+            if root != self.root:
+                return {'text': 'No external hits.', 'hits': 0, 'refreshed': False}
+            return {'text': baseline, 'hits': kw['limit'], 'candidates': [
+                {'id': f'c{i}', 'text': f'project candidate function_{i}'} for i in range(kw['limit'])]}
+        def reply(payload):
+            return {'model': payload['model'], 'answers': {
+                key: {'type': 'noul', 'noul': .9} for key in payload['questions']},
+                'usage': {'input_tokens': 1, 'output_tokens': 1}}
+        args = main.build_parser(REPO).parse_args(['jev', 'enable', '--project', str(self.root)])
+        with mock.patch.object(jev, 'resolve', return_value='fixture-key'), mock.patch.object(jev, '_request', side_effect=reply) as request, mock.patch.object(graft, '_invoke', side_effect=invoke):
+            jev.execute(args, REPO)
+            original = self.execute('query', question, '--max-chars', '512')
+            self.execute('add', str(self.external / 'model.py'), '--name', 'library')
+            empty = self.execute('query', question, '--max-chars', '512')
+            (self.external / 'model.py').unlink()
+            missing = self.execute('query', question, '--max-chars', '512')
+        for result in (original, empty, missing):
+            self.assertEqual(result['hits'], 6)
+            self.assertEqual(result['text'], baseline)
+            self.assertIn(result['jev']['state'], {'observed', 'cached'})
+        self.assertEqual(empty['externalHits'], 0)
+        self.assertIn('externalWarning', missing)
+        self.assertEqual(request.call_count, 1)
+
+    def test_external_results_use_remaining_output_budget_without_cutting_project_results(self):
+        self.execute('add', str(self.external / 'model.py'), '--name', 'library')
+        for size in (100, 500):
+            with self.subTest(primary_size=size):
+                baseline = 'P' * size
+                def invoke(source, root, cache, settings, action, **kw):
+                    return {'text': baseline if root == self.root else 'library/model.py:1 external result ' * 30,
+                            'hits': kw['limit'], 'refreshed': False}
+                with mock.patch.object(graft, '_invoke', side_effect=invoke), mock.patch.object(jev, 'enabled', return_value=False):
+                    result = self.execute('query', 'predict', '--max-chars', '512')
+                self.assertTrue(result['text'].startswith(baseline))
+                self.assertLessEqual(len(result['text']), 512)
+                self.assertEqual(result['projectHits'], 6)
+                self.assertEqual(result['externalHits'], 3)
+                self.assertTrue(result['truncated'])
+                self.assertEqual(result['externalDisplayed'], size == 100)
+
+    def test_external_bindings_share_one_fixed_hit_and_character_budget(self):
+        for i in range(3):
+            source = self.external / f'library_{i}.py'
+            source.write_text(f'def external_{i}(): return {i}\n')
+            self.execute('add', str(source), '--name', f'library-{i}')
+        limits = []
+        def invoke(source, root, cache, settings, action, **kw):
+            limits.append(kw['limit'])
+            return {'text': 'project result' if root == self.root else 'external result', 'hits': kw['limit']}
+        with mock.patch.object(graft, '_invoke', side_effect=invoke), mock.patch.object(jev, 'enabled', return_value=False):
+            result = self.execute('query', 'predict', '--max-chars', '512')
+        self.assertEqual(limits, [6, 3])
+        self.assertEqual(result['hits'], 9)
+        self.assertEqual(result['limits'], {'projectHits': 6, 'externalHits': 3, 'totalHits': 9, 'characters': 512})
+        self.assertLessEqual(len(result['text']), 512)
+
+    def test_complete_short_external_hit_does_not_need_room_for_truncation_notice(self):
+        self.execute('add', str(self.external / 'model.py'), '--name', 'library')
+        baseline = 'P' * 360
+        def invoke(source, root, cache, settings, action, **kw):
+            return {'text': baseline if root == self.root else 'short external hit', 'hits': 1}
+        with mock.patch.object(graft, '_invoke', side_effect=invoke), mock.patch.object(jev, 'enabled', return_value=False):
+            result = self.execute('query', 'predict', '--max-chars', '512')
+        self.assertTrue(result['externalDisplayed'])
+        self.assertFalse(result['truncated'])
+        self.assertTrue(result['text'].endswith('short external hit'))
 
     def test_relocated_skill_adopts_static_ownership_but_not_old_executable_or_sources(self):
         from harness_cli import workspace_context as context

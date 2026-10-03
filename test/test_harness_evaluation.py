@@ -83,6 +83,7 @@ def manual_record(
     record["runtime"]["codexVersion"] = "codex-fixture"
     if harness_version is not None:
         record["runtime"]["harnessVersion"] = harness_version
+        record["runtime"].pop("evaluationContract", None)
     record["timestamps"]["endedAt"] = "2026-08-31T12:01:00Z"
     record["outcome"]["completion"] = "completed"
     record["outcome"]["criticalFailure"] = critical_failure
@@ -1291,7 +1292,7 @@ class ComparisonTests(unittest.TestCase):
             v64["runtime"]["harnessVersion"],
             schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS,
         )
-        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, {harness_metadata.HARNESS_VERSION})
+        self.assertEqual(schema2.ATTRIBUTION_ELIGIBLE_HARNESS_VERSIONS, harness_metadata.ATTRIBUTION_ELIGIBLE_EVALUATION_VERSIONS)
         plan = self.comparison_plan()
         v60_comparison = compare.compare_runs(
             baseline=manual_record(repository_id, uuid_text(2), arm="baseline", verification="failed", harness_version="6.0"),
@@ -2895,6 +2896,7 @@ class Schema2ContractTests(unittest.TestCase):
         legacy = copy.deepcopy(record)
         legacy["schemaVersion"] = 1
         legacy["runtime"]["harnessVersion"] = "5.5"
+        legacy["runtime"].pop("evaluationContract", None)
         legacy["configuration"] = {
             "arm": "unpaired",
             "configuredExecutionClass": "unknown",

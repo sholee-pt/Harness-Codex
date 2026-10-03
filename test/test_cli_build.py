@@ -18,6 +18,7 @@ import zipfile
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 from build import build_release, source as build_source
+from harness_cli import distribution as dist
 
 
 class ReleaseBuildTests(unittest.TestCase):
@@ -104,7 +105,7 @@ class ReleaseBuildTests(unittest.TestCase):
         self.assertEqual(report['windowsBootstrapSha256'], hashlib.sha256(bootstrap.read_bytes()).hexdigest())
         metadata = json.loads(files["_release.json"])
         self.assertEqual(metadata, {"runtime": "codex", "version": self.version, "commit": self.commit,
-                                    "branch": f"v{self.version}"})
+                                    "branch": f"v{self.version}", "sourceContract": dist.SOURCE_CONTRACT})
         expected = {}
         for name in build_source.ROOT_FILES:
             if Path(name).name not in {"install_harness_codex.sh", "install_harness_codex.ps1"}:

@@ -49,6 +49,15 @@ def find(changes, identity):
     return next((item for item in changes if item['id'] == identity), None)
 
 
+def supersede(changes, revision):
+    # A later successful configuration closes observation of older revisions,
+    # without converting their outcomes into evidence of benefit.
+    if revision is not None:
+        for item in changes:
+            if item['status'] == 'observing' and item['after'] != revision:
+                item['status'] = 'superseded'
+
+
 def observe(item, reference, outcome, source, stratum):
     if outcome not in OUTCOMES or source not in SOURCES:
         raise ValueError('Invalid maintenance effect outcome/source')
@@ -77,7 +86,9 @@ def observe(item, reference, outcome, source, stratum):
 
 
 def summary(changes):
-    return {'automaticChangesPaused': any(item['status'] in {'applying', 'rolling-back', 'review-required'} for item in changes),
+    full = len(changes) >= LIMIT and not any(item['status'] in {'reviewed', 'rolled-back', 'superseded'} for item in changes)
+    return {'automaticChangesPaused': full or any(item['status'] in {'applying', 'rolling-back', 'review-required'} for item in changes),
+            'historyCapacityBlocked': full,
             'changes': [{'id': item['id'], 'beforeRevision': item['before'], 'afterRevision': item['after'],
                          'status': item['status'], 'reasons': item['reasons'], 'observations': len(item['observations']),
                          'effect': 'not-established'} for item in changes],

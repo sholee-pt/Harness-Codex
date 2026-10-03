@@ -4,6 +4,7 @@ import io
 import json
 import os
 from pathlib import Path
+import signal
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -92,6 +93,7 @@ class LocalControls(unittest.IsolatedAsyncioTestCase):
         self.controls.busy.add('thread')
         self.controls.cli = mock.AsyncMock(return_value='configured')
         await self.controls.observe({'method': 'turn/completed', 'params': {'threadId': 'thread', 'turn': {'id': 'real-turn', 'status': 'completed'}}})
+        await asyncio.gather(*list(self.controls.completions.values()))
         self.assertTrue(all(item['params']['turnId'] == 'real-turn' for item in self.sent))
         self.assertFalse(self.controls.busy)
         self.assertEqual(self.controls.cli.call_args.args[1], ['_complete-config', '--codex-binary', 'codex'])
@@ -108,8 +110,106 @@ class LocalControls(unittest.IsolatedAsyncioTestCase):
         (self.root / '.harness/manifest.json').write_text('{}')
         await self.controls.observe(completed)
         await self.controls.observe(completed)
+        await asyncio.gather(*list(self.controls.completions.values()))
         self.controls.cli.assert_awaited_once()
         self.assertNotIn('thread', self.controls.configuring)
+
+    async def test_slow_completion_does_not_block_native_events_and_is_cancelled_on_close(self):
+        (self.root / '.harness').mkdir()
+        (self.root / '.harness/manifest.json').write_text('{}')
+        self.controls.configuring['thread'] = (self.root, 'init', None)
+        started, cancelled = asyncio.Event(), asyncio.Event()
+        async def pending(*args, **kwargs):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+        self.controls.cli = pending
+        completed = {'method': 'turn/completed', 'params': {'threadId': 'thread', 'turn': {'id': 'real-turn', 'status': 'completed'}}}
+        await asyncio.wait_for(self.controls.observe(completed), .5)
+        await asyncio.wait_for(started.wait(), .5)
+        self.assertFalse(await self.controls.intercept(self.request('Continue ordinary project work')))
+        await self.controls.observe({'method': 'turn/started', 'params': {'threadId': 'other'}})
+        self.assertIn('other', self.controls.busy)
+        await self.controls.close()
+        self.assertTrue(cancelled.is_set())
+        self.assertFalse(self.controls.completions)
+        self.assertFalse(self.controls.completion_turns)
+
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux process-group cancellation')
+    async def test_management_timeout_and_cancellation_reap_npm_process_group(self):
+        node = self.root / 'runtime/node/bin/node'
+        node.parent.mkdir(parents=True)
+        pid_file = self.root / 'npm-pids.json'
+        node.write_text('#!' + sys.executable + '\nimport json, os, subprocess, sys, time\n'
+                        'from pathlib import Path\n'
+                        'child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])\n'
+                        'Path(' + repr(str(pid_file)) + ').write_text(json.dumps([os.getpid(), child.pid]))\n'
+                        'time.sleep(30)\n')
+        node.chmod(0o700)
+        (self.root / 'harness.py').write_text('import sys\nfrom pathlib import Path\n'
+            'sys.path.insert(0, ' + repr(str(REPO)) + ')\nfrom harness_cli.graft_setup import _install\n'
+            '_install(Path(' + repr(str(node)) + '), Path(' + repr(str(self.root / 'runtime/package')) + '), '
+            '"0.18.0", Path(' + repr(str(self.root / 'npm.log')) + '))\n')
+        self.controls.source = self.root
+        def running(pid):
+            try:
+                return Path('/proc/' + str(pid) + '/stat').read_text().split(') ', 1)[1].split()[0] != 'Z'
+            except FileNotFoundError:
+                return False
+        for interrupted in (False, True):
+            with self.subTest(interrupted=interrupted):
+                task = asyncio.create_task(self.controls.cli(self.root, ['graft', 'enable'], timeout=2))
+                pids = []
+                try:
+                    for _ in range(100):
+                        if pid_file.exists():
+                            pids = json.loads(pid_file.read_text())
+                            break
+                        await asyncio.sleep(.02)
+                    self.assertTrue(pids, 'The npm fixture did not start')
+                    if interrupted:
+                        task.cancel()
+                    with self.assertRaises(asyncio.CancelledError if interrupted else TimeoutError):
+                        await task
+                    self.assertFalse(any(running(pid) for pid in pids))
+                finally:
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+                    for pid in pids:
+                        try:
+                            os.kill(pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    pid_file.unlink(missing_ok=True)
+
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux sandbox probe cancellation')
+    async def test_management_cancellation_reaps_separate_sandbox_probe(self):
+        heartbeat = self.root / 'probe-heartbeat'
+        child = ('from pathlib import Path; import time\n'
+                 'path = Path(' + repr(str(heartbeat)) + ')\n'
+                 'for i in range(100):\n path.write_text(str(i)); time.sleep(.02)\n')
+        (self.root / 'harness.py').write_text('import sys\nfrom pathlib import Path\n'
+            'sys.path.insert(0, ' + repr(str(REPO)) + ')\nfrom harness_cli.workspace_context import _run\n'
+            '_run([sys.executable, "-c", ' + repr(child) + '], Path(' + repr(str(self.root)) + '))\n')
+        self.controls.source = self.root
+        task = asyncio.create_task(self.controls.cli(self.root, ['_complete-init'], timeout=5))
+        try:
+            for _ in range(100):
+                if heartbeat.exists():
+                    break
+                await asyncio.sleep(.02)
+            self.assertTrue(heartbeat.exists())
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+            before = heartbeat.read_bytes()
+            await asyncio.sleep(.15)
+            self.assertEqual(before, heartbeat.read_bytes())
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
     async def test_switch_only_queues_target_and_keeps_current_history(self):
         other = self.root / 'second project'

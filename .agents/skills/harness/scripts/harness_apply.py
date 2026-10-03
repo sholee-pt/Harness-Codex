@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import re
 import sys
@@ -144,6 +145,12 @@ def validate_evidence(root: Path, value: object, label: str, *, snapshot=None) -
         if not isinstance(expected_hash, str) or not HASH_RE.fullmatch(expected_hash):
             raise PlanError(f"{label}[{index}].sha256 must be a SHA-256 hash")
         content, actual_hash = snapshot.read(path)
+        try:
+            if "contentScope" in entry:
+                content = harness_state.evidence_content(root, entry, content)
+                actual_hash = harness_state.digest_bytes(content)
+        except harness_state.StateError as exc:
+            raise PlanError(f"invalid {label}[{index}]: {exc}") from exc
         if actual_hash != expected_hash:
             raise PlanError(f"{label}[{index}] changed after analysis: {relative}")
         lines = entry.get("lines")
@@ -163,7 +170,7 @@ def validate_evidence(root: Path, value: object, label: str, *, snapshot=None) -
                     f"{label}[{index}].lines must contain integers with 1 <= start <= end"
                 )
             try:
-                line_count = snapshot.line_count(path)
+                line_count = len(content.decode("utf-8").splitlines()) if "contentScope" in entry else snapshot.line_count(path)
             except (OSError, UnicodeError) as exc:
                 raise PlanError(
                     f"{label}[{index}] uses lines for a non-UTF-8 file: {relative}"
@@ -479,8 +486,10 @@ def existing_manifest_state(root: Path) -> tuple[dict | None, dict[str, dict]]:
         relative = entry.get("path")
         if not isinstance(relative, str) or relative in by_path:
             raise PlanError(f"invalid or duplicate existing managed path: {relative!r}")
-        if not harness_transaction.is_allowed_target(relative):
+        if not harness_transaction.is_allowed_target(relative, root=root):
             raise PlanError(f"existing managed path cannot enter project artifact ownership: {relative!r}; apply refused")
+        if harness_state.is_instruction_relative(root, relative) and entry.get("kind") != "managed-block":
+            raise PlanError(f"root instruction must retain managed-block ownership: {relative}")
         by_path[relative] = entry
         state = harness_state.entry_status(root, entry)
         if state.get("state") != "unchanged":
@@ -536,8 +545,31 @@ def build_application(root: Path, plan: dict) -> dict:
     except ValueError as exc:
         raise PlanError(str(exc)) from exc
     harness_transaction.ensure_no_pending_transaction(root)
+    plan = copy.deepcopy(plan)
     reject_runtime_state(plan)
     snapshot = harness_state.EvidenceSnapshot()
+    instruction_relative = harness_state.active_instruction_relative(root)
+    evidence_project = plan.get("project")
+    evidence_topology = plan.get("topology")
+    evidence_sets = [evidence_project.get("evidence", []) if isinstance(evidence_project, dict) else []]
+    evidence_sets.extend(values for _, values in harness_topology.iter_evidence(evidence_topology if isinstance(evidence_topology, dict) else {}))
+    for values in evidence_sets:
+        for entry in values if isinstance(values, list) else []:
+            if not isinstance(entry, dict) or entry.get("path") != instruction_relative or "contentScope" in entry:
+                continue
+            path, _ = harness_state.resolve_lexical_regular_inside(root, instruction_relative, must_exist=True, label="evidence")
+            content, digest = snapshot.read(path)
+            scoped = {**entry, "contentScope": harness_state.INSTRUCTION_EVIDENCE_SCOPE}
+            user_content = harness_state.evidence_content(root, scoped, content)
+            user_digest = harness_state.digest_bytes(user_content)
+            if not isinstance(entry.get("sha256"), str) or entry["sha256"] not in {digest, user_digest}:
+                raise PlanError(f"source instruction evidence changed after analysis: {instruction_relative}")
+            lines = entry.get("lines")
+            if entry.get("sha256") != user_digest and isinstance(lines, dict) and type(lines.get("start")) is int and type(lines.get("end")) is int:
+                start, end = lines["start"] - 1, lines["end"]
+                if content.decode("utf-8").splitlines()[start:end] != user_content.decode("utf-8").splitlines()[start:end]:
+                    raise PlanError("instruction evidence line ranges must refer to user content; recapture scoped evidence")
+            entry.update(contentScope=harness_state.INSTRUCTION_EVIDENCE_SCOPE, sha256=user_digest)
     project = validate_project(root, plan, snapshot=snapshot)
     artifacts, artifact_modes = validate_artifacts(root, plan)
     topology, topology_warnings = validate_topology(root, plan, artifacts, snapshot=snapshot)
@@ -628,7 +660,7 @@ def build_application(root: Path, plan: dict) -> dict:
     elif managed_instruction is not None:
         raise PlanError("a previously managed instruction pointer cannot be abandoned implicitly")
 
-    late_overlap = sorted(evidence_paths(project, topology) & planned_paths)
+    late_overlap = sorted((evidence_paths(project, topology) & planned_paths) - {instruction_relative})
     if late_overlap:
         raise PlanError(
             "evidence files cannot also be planned outputs: " + ", ".join(late_overlap)
@@ -705,10 +737,9 @@ def build_application(root: Path, plan: dict) -> dict:
         "originalModes": original_modes,
         "desiredModes": desired_modes,
         "managedPreconditions": list(old_managed.values()),
-        "evidencePreconditions": {
-            item["path"]: item["sha256"] for item in project["evidence"] +
-            [entry for _, entries in harness_topology.iter_evidence(topology) for entry in entries]
-        },
+        "evidencePreconditions": list({(item["path"], item.get("contentScope")): item
+            for item in project["evidence"] +
+            [entry for _, entries in harness_topology.iter_evidence(topology) for entry in entries]}.values()),
         "report": {
             "runtime": harness_state.RUNTIME,
             "valid": True,
@@ -792,9 +823,10 @@ def _apply_application(application: dict) -> dict:
     action_by_path = application_actions(application)
     desired_modes = application_modes(application)
     root = application["manifestPath"].parents[1]
-    for relative, expected in application["evidencePreconditions"].items():
+    for entry in application["evidencePreconditions"]:
+        relative, expected = entry["path"], entry["sha256"]
         path = harness_state.resolve_inside(root, relative, must_exist=True)
-        if harness_state.digest_bytes(path.read_bytes()) != expected:
+        if harness_state.digest_bytes(harness_state.evidence_content(root, entry, path.read_bytes())) != expected:
             raise PlanError(f"source evidence changed before apply; review the current source: {relative}")
     journal = harness_transaction.prepare_transaction(
         root,

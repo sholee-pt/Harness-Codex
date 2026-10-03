@@ -37,7 +37,9 @@ def read(data_root):
     if not pointer.exists():
         return None
     state = dist._read_json(pointer)
-    if (set(state) != {'schema', 'version', 'target'} or state['schema'] != 1
+    legacy = set(state) == {'schema', 'version', 'target'} and state.get('schema') == 1
+    native = set(state) == {'schema', 'version', 'target', 'mode'} and state.get('schema') == 2 and state.get('mode') == 'native'
+    if (not (legacy or native)
             or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', str(state['version']))
             or state['target'] not in {'x86_64-unknown-linux-musl', 'aarch64-unknown-linux-musl'}):
         raise ValueError('Invalid official Codex pointer; preserve installation')
@@ -76,20 +78,38 @@ def check(root, *, timeout=5):
             'availableVersion': version, 'release': release}
 
 
-def install(root, *, selected=None):
+def install(root, *, selected=None, native_fallback=None, prefer_auto=False):
     from .codex_entry import compatible
     root = dist._storage_path(root)
     before = read(root)
     selected = selected or check(root)
     if before and not selected['updateAvailable']:
-        return binary(root)
+        executable = binary(root)
+        if prefer_auto and before.get('mode') == 'native':
+            compatible(executable, ())
+            with dist._lock(root):
+                if read(root) != before:
+                    raise ValueError('Official Codex changed during compatibility checking; retry')
+                dist._write_json(root / POINTER, {name: before[name] for name in ('version', 'target')} | {'schema': 1})
+        return executable
     release = selected['release']
     version, platform_target = release_version(release), target()
     if before and dist._version(version) < dist._version(before['version']):
         raise ValueError('Official Codex downgrade refused')
     value = releases.asset(release, 'codex-package-' + platform_target + '.tar.gz', REPOSITORY)
     state = {'schema': 1, 'version': version, 'target': platform_target}
+    if before and before.get('mode') == 'native' and not prefer_auto:
+        state.update(schema=2, mode='native')
     destination = directory(root, state)
+    def probe(executable):
+        if state.get('mode') == 'native':
+            return
+        try:
+            compatible(executable, ())
+        except (OSError, ValueError, ImportError, TimeoutError, subprocess.SubprocessError) as error:
+            if native_fallback is None or native_fallback(version, error) is not True:
+                raise
+            state.update(schema=2, mode='native')
     with tempfile.TemporaryDirectory(prefix='harness-official-codex-') as temporary:
         temporary = Path(temporary).resolve()
         archive = temporary / 'codex.tar.gz'
@@ -112,7 +132,7 @@ def install(root, *, selected=None):
                 raise ValueError('Official Codex changed during download; retry')
             if destination.exists():
                 verify(destination)
-                compatible(destination / 'bin/codex', ())
+                probe(destination / 'bin/codex')
             else:
                 created = [path for path in (destination.parent.parent, destination.parent) if not path.exists()]
                 destination.parent.mkdir(parents=True, exist_ok=True)
@@ -120,8 +140,8 @@ def install(root, *, selected=None):
                 try:
                     shutil.copytree(unpacked, staging, dirs_exist_ok=True)
                     verify(staging)
-                    # Keep the active package until the candidate's Auto protocol probe succeeds.
-                    compatible(staging / 'bin/codex', ())
+                    # An unsupported adapter needs an explicit native-only choice.
+                    probe(staging / 'bin/codex')
                     os.replace(staging, destination)
                 finally:
                     if staging.exists():

@@ -118,6 +118,21 @@ esac
         self.assertTrue((self.prefix / 'conda-meta/history').is_file())
         self.assertFalse((self.runtime / '.harness-runtime-files.json').exists())
 
+    def test_incomplete_miniforge_without_environment_or_receipt_is_preserved(self):
+        (self.prefix / 'user-file').unlink()
+        self.prefix.rmdir()
+        (self.runtime / '.harness-runtime-files.json').unlink()
+        partial = self.runtime / 'conda/partial'
+        partial.mkdir(parents=True)
+        (partial / 'retained.txt').write_text('incomplete Miniforge extraction\n')
+        before = files(self.runtime)
+        result, log = self.install()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr + log)
+        backup = next(self.base.glob('tool data-runtime.recovery.*'))
+        self.assertEqual(files(backup / 'runtime'), before)
+        self.assertTrue((self.prefix / 'conda-meta/history').is_file())
+        self.assertFalse((self.runtime / 'conda').exists())
+
     def test_active_reference_or_unowned_runtime_stops_before_conda(self):
         for state in ('active.json', 'runtime.json', '.install.lock', 'unowned'):
             with self.subTest(state=state):

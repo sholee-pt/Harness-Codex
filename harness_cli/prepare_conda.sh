@@ -30,7 +30,7 @@ environment_selector=(-n harness)
 # A fresh tool gets an exact prefix. Never create by a name that could select
 # and remove an environment belonging to another Conda installation.
 if [[ ! -f "$data_directory/active.json" || -f "$data_directory/runtime.json" || -f "$runtime_root/.harness-runtime-owner" ]]; then
-  for managed in "$runtime_root/envs" "$runtime_root/envs/harness" "$runtime_root/envs/harness/conda-meta" "$runtime_root/envs/harness/conda-meta/history"; do
+  for managed in "$runtime_root/conda" "$runtime_root/envs" "$runtime_root/envs/harness" "$runtime_root/envs/harness/conda-meta" "$runtime_root/envs/harness/conda-meta/history"; do
     [[ ! -L "$managed" ]] || runtime_error "Runtime path is a symlink; preserved: $managed"
   done
   if [[ -e "$runtime_root" || -L "$runtime_root" ]]; then
@@ -50,7 +50,7 @@ if [[ ! -f "$data_directory/active.json" || -f "$data_directory/runtime.json" ||
   fi
   environment_selector=(--prefix "$runtime_root/envs/harness")
   owned_runtime=(--owned-runtime "$runtime_root")
-  if [[ ! -f "$runtime_root/envs/harness/conda-meta/history" && ( -e "$runtime_root/envs/harness" || -e "$runtime_root/.harness-runtime-files.json" || -L "$runtime_root/.harness-runtime-files.json" ) ]]; then
+  if [[ ! -f "$runtime_root/envs/harness/conda-meta/history" && ( -e "$runtime_root/envs/harness" || -e "$runtime_root/.harness-runtime-files.json" || -L "$runtime_root/.harness-runtime-files.json" || ( -e "$runtime_root/conda" && ! -x "$runtime_root/conda/bin/conda" ) ) ]]; then
     # Uninstall deliberately retains unknown files. Preserve the entire orphan
     # (including its old receipt) outside the fresh runtime before recreating it.
     for recorded in "$data_directory/active.json" "$data_directory/runtime.json" "$data_directory/.install.lock"; do

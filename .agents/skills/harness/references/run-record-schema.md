@@ -17,6 +17,8 @@ A record contains:
 - explicit privacy flags and content fingerprints; and
 - a canonical SHA-256 integrity digest.
 
+새 Run에는 `runtime.evaluationContract`를 기록할 것. 기존 기록에서는 선택 필드이며, 생략된 이전 버전의 호환성은 명시된 legacy 매핑으로만 판단할 것. 측정 계약은 릴리스 번호와 별개이며, parser 또는 측정 의미가 바뀌면 계약 식별자도 갱신할 것.
+
 Pending records have `endedAt: null`. Completed records are immutable and require a timestamp. Later facts use separate Observation Schema 1 records; user outcomes use an Annotation Schema 2 active chain.
 
 `resultFingerprint` covers the tracked diff from the evaluator's task base plus every non-ignored untracked regular file or symlink. For `paired-run`, the task base is a clean synthetic commit created after arm preparation; both arms still record the original user commit as `sourceSnapshotId`. Capture is bounded and all-or-nothing: incomplete capture stores an unavailable value, never a digest of a partial result, without lowering environment isolation. Annotation correction count may be unavailable; measured values are non-negative integers, and `accepted-with-corrections` requires a measured value of at least one.

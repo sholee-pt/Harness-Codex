@@ -98,6 +98,8 @@ The manifest binding uses SHA-256 over the raw `.harness/manifest.json` bytes. T
 
 `participants` is the complete set of persistent agents or explicitly provisional temporary roles activated for the current task; do not add a second active-agent list. Optional `handoffs` bind ordered overlapping writers with `fromTask`, `toTask`, the complete shared `scope`, `frozenSha256`, and `verification`. Optional `messages` are checked against communication budgets and semantic packet requirements. Do not store concrete runtime tool names or absolute repository paths.
 
+A single writer or writers ordered by task dependencies may omit `isolation`. Only writers whose tasks can run concurrently require separate worktrees or equivalent isolation. An ordered same-scope chain may use adjacent handoffs instead of all-pairs handoffs when every edge covers the complete shared scope; missing or narrower edges do not establish the transfer.
+
 Provisional greenfield participants use `runtimeParticipantId` instead of `agent`, require `execution.evidenceStatus: provisional` and `persistenceAllowed: false`, and are not written to `.codex/agents/`. Promotion requires later repository evidence and a reviewed generation plan.
 
 ## Validation
@@ -108,7 +110,7 @@ harness-codex helper validate_runtime_plan \
   --plan RUNTIME_PLAN.json
 ```
 
-The command is no-write. A valid result proves source binding, references, task graph, selected scope structure, communication budgets (at most two revision rounds), fallback declaration, and retention shape. Existing path ancestors are checked without scanning descendants; missing targets remain allowed for new outputs. This check is not a sandbox against concurrent filesystem replacement. It does not prove that a native collaboration adapter exists or ran. The current generator keeps this schema unchanged and places its fixed liveness budget—three waits and 300000 total milliseconds per agent—in the runtime observation policy rather than adding optional Schema 1 fields.
+The command is no-write. A valid result proves source binding, references, task graph, selected scope structure, communication budgets (at most two revision rounds), fallback declaration, and retention shape. Existing path ancestors are checked without scanning descendants; missing targets remain allowed for new outputs. This check is not a sandbox against concurrent filesystem replacement. It does not prove that a native collaboration adapter exists or ran. The schema remains unchanged: keep the relay reference's five-minute progress checkpoints, observed extension evidence and thirty-minute total task deadline in ephemeral execution state. The optional receipt distinguishes budget observations from actual terminal outcomes; it is not a scheduler or deadline enforcer.
 
 After each delegated task, validate the returned parent-facing packet against the same plan:
 

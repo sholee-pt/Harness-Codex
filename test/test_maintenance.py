@@ -129,7 +129,10 @@ class MaintenanceTests(unittest.TestCase):
                 for p in self.root.rglob('*') if p.is_file()}
 
     def signal(self, reason='scope-changed', observation='turn-a'):
-        return self.manager.signal(reason, 'pyproject.toml', observation)
+        if self.manager.store.fingerprint(b'session-a') not in self.manager._read(self.manager._location())['sessions']:
+            self.hook('SessionStart')
+        return self.manager.signal(reason, 'pyproject.toml', observation,
+                                   session_ref=self.manager.store.fingerprint(b'session-a'))
 
     def hook(self, kind='UserPromptSubmit', session='session-a', **extra):
         return self.manager.hook({'hook_event_name': kind, 'session_id': session,
@@ -182,7 +185,7 @@ class MaintenanceTests(unittest.TestCase):
         self.assertFalse(self.manager.status()['trackingIncomplete'])
         self.assertEqual((path.read_bytes(), path.stat().st_mtime_ns), before)
         self.hook('SessionStart')
-        self.assertEqual(json.loads(path.read_bytes())['schema'], 4)
+        self.assertEqual(json.loads(path.read_bytes())['schema'], 5)
 
     def test_hook_output_is_event_appropriate_and_diagnostics_do_not_echo_input(self):
         import contextlib
@@ -267,8 +270,10 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(run('--json')['mode'], 'off')
         self.assertFalse(self.state.exists())
         self.assertEqual(run('--json', '--mode', 'auto')['mode'], 'auto')
+        run('--hook', event={'cwd': str(self.root), 'session_id': 'live-fixture', 'hook_event_name': 'SessionStart'})
+        session_ref = maintenance.Maintenance(self.root, self.state).store.fingerprint(b'live-fixture')
         self.assertTrue(run('--json', 'signal', '--reason', 'scope-changed', '--evidence',
-                            'pyproject.toml', '--observation', 'turn-1')['recorded'])
+                            'pyproject.toml', '--observation', 'turn-1', '--session-ref', session_ref)['recorded'])
         notice = run('--hook', event={'cwd': str(self.root), 'session_id': 'live-fixture',
                                       'hook_event_name': 'UserPromptSubmit'})
         self.assertIn('review lease', notice['hookSpecificOutput']['additionalContext'].lower())
@@ -399,7 +404,7 @@ class MaintenanceTests(unittest.TestCase):
         self.assertFalse(self.manager.status()['automaticChangesPaused'])
         self.now += 3700
         (self.root / 'review.txt').write_text('An explicitly reviewed workflow gap')
-        self.manager.signal('user-request', 'review.txt', 'next-review')
+        self.manager.signal('user-request', 'review.txt', 'next-review', session_ref=self.manager.store.fingerprint(b'session-a'))
         self.hook()
         result = self.manager.finish(self.lease()['id'], 'apply', plan=self.updated_plan())
         self.hook('Stop')
@@ -538,7 +543,7 @@ class MaintenanceTests(unittest.TestCase):
         for raw in (str(self.root), 'selected project', 'pyproject.toml', 'session-a', 'turn-a', 'Never store'):
             self.assertNotIn(raw, data)
 
-    def test_ignored_review_expires_without_repeating_the_same_work(self):
+    def test_ignored_review_expires_and_retries_inside_the_review_budget(self):
         self.manager.configure('auto')
         self.signal(); self.hook()
         self.assertIsNotNone(self.lease())
@@ -547,6 +552,9 @@ class MaintenanceTests(unittest.TestCase):
         self.assertIsNone(self.lease())
         self.assertEqual(self.hook(), '')
         self.assertEqual(self.manager.status()['metrics']['unmeasuredReviews'], 1)
+        self.hook('Stop')
+        self.now += 3700
+        self.assertIn('Review lease', self.hook())
 
     def test_replaced_manifest_refuses_apply_and_keeps_newer_harness(self):
         self.manager.configure('auto')

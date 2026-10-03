@@ -178,10 +178,12 @@ The builder requires authoring contract 3 and every target exactly once, validat
 - Optional evidence line ranges are inclusive and one-based and apply only to UTF-8 text files.
 - Every artifact declares a four-digit POSIX permission mode such as `0644` or `0755`; special permission bits are unsupported.
 - Missing, escaped, stale, or invalid evidence is rejected before a dry-run action map is created.
-- Evidence paths may not also be planned outputs.
+- Evidence paths may not also be planned outputs, except the preserved user content of the active root instruction.
+- Root instruction evidence에는 `contentScope: "instruction-user-content"`를 사용할 것. `harness_state.py evidence`가 Harness pointer block을 제외한 사용자 원문 bytes의 SHA-256을 기록하며, line range도 해당 사용자 본문 기준임. 생성 시 기존 raw evidence는 현재 전체 또는 사용자 본문 hash와 일치하는 경우에만 정규화할 것. 일반 source나 생성 전용 pointer를 이 scope로 검증하지 말 것.
 - If an agent lists a skill dependency, mention that skill in its generated `developer_instructions`.
 - Do not include `.harness/manifest.json`; the apply script derives Manifest Schema 7.
 - Do not specify the root instruction path. Harness selects the active path and creates or appends an owned pointer block. Existing user text outside that block is preserved byte-for-byte. Modified or unowned Harness markers block apply. Manifest Schema 7 records `managed-pointer` activation; legacy `explicit-skill` installations remain readable.
+- `.codex/config.toml`의 `project_doc_fallback_filenames`로 선택된 root instruction도 생성·검증·복구·제거에서 같은 managed-block 소유권을 적용할 것. 설정되지 않은 임의 root 파일이나 instruction 전체를 Harness 소유로 취급하지 말 것.
 - Do not specify Git or GitHub state in the plan. Manifest Schema 7 records the selected workspace context and `not-managed` Git protection; generation does not edit Git metadata.
 - Do not include `taskExecution`, `taskExecutionClass`, the current task's selected agent list, or runtime-only quality decisions.
 - Keep the plan in a temporary location. It is a proposal, not managed project state.

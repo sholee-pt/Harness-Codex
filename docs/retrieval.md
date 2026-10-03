@@ -106,7 +106,15 @@ Queries retain the primary project graph and use a separate, project-specific
 structural index for selected external files. Unchanged snapshots are reused;
 changed files refresh on demand. Results identify original source locations.
 This does not infer dependency edges between the two graphs. Missing external
-sources leave the primary results usable and report an external retrieval warning.
+sources and empty external results retain the full primary candidates and text.
+Jev uses the same project candidates whether or not external sources are selected.
+`--limit` bounds project hits; external retrieval can add up to half that many
+hits (rounded down, at least one) when queried. The default is therefore at most
+six project and three external hits. External text uses only the remaining
+`--max-chars` budget and never cuts project text. When space is exhausted,
+`--json` reports `externalDisplayed: false` and `truncated: true`; increase
+`--max-chars` to display it. External failures are reported in `externalWarning`
+and in text when the remaining budget permits.
 External results never enter Jev network advice. Removing a binding immediately
 excludes it from queries; disposable snapshots may remain in user-local cache.
 Opt-ins, executable provenance and external bindings are local selections, so
