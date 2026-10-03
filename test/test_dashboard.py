@@ -19,6 +19,8 @@ REPO = Path(__file__).resolve().parents[1]
 
 class DashboardTests(unittest.TestCase):
     def setUp(self):
+        token = presentation.JSON_MODE.set(False)
+        self.addCleanup(presentation.JSON_MODE.reset, token)
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.base = Path(temporary.name)

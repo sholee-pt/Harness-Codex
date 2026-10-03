@@ -24,6 +24,60 @@ class EntryUiTests(unittest.TestCase):
         self.enterContext(mock.patch.object(sys.stdout, 'isatty', return_value=True))
         self.enterContext(mock.patch.dict(os.environ, {'TERM': 'dumb', 'HARNESS_NO_UPDATE_CHECK': '0', 'HARNESS_CODEX_NATIVE': '0'}))
 
+    def test_explicit_model_config_preserves_manual_choice_and_later_auto_selection(self):
+        from test_official_relay import catalog
+        choices = [['--model', 'gpt-6-astra'], ['--model=gpt-6-astra'], ['-mgpt-6-astra'],
+                   ['-c', 'model="gpt-6-astra"'], ['--config', ' model = "gpt-6-astra" '],
+                   ['-cmodel="gpt-6-astra"'], ['--config=model="gpt-6-astra"'],
+                   ['-c', 'model="first"', '--config', 'model="gpt-6-astra"']]
+        for arguments in choices:
+            arguments = [*arguments, '--sandbox', 'read-only', '--ask-for-approval', 'on-request']
+            async def launch(binary, forwarded, environment, policy):
+                self.assertEqual(forwarded, ['-c', 'check_for_update_on_startup=false', *arguments])
+                self.assertEqual(policy.mode, 'manual')
+                self.assertEqual(policy.auto, {})
+                policy.model_list(catalog())
+                policy.response({'result': {'thread': {'id': 'thread'}, 'model': 'gpt-6-astra',
+                                           'reasoningEffort': 'high'}}, 'thread/start', {})
+                task = {'threadId': 'thread', 'model': 'gpt-6-astra', 'effort': 'high',
+                        'sandboxPolicy': {'type': 'readOnly'}, 'approvalPolicy': 'on-request',
+                        'input': [{'type': 'text', 'text': 'Fix a README typo.'}]}
+                self.assertEqual(policy.request('turn/start', task), task)
+                policy.response({'result': {}}, 'thread/settings/update',
+                                {'threadId': 'thread', 'model': auto_relay.ALIAS})
+                self.assertTrue(policy.enabled('thread'))
+                routed = policy.request('turn/start', {**task, 'model': auto_relay.ALIAS,
+                    'input': [{'type': 'text', 'text': 'New task: Fix a typo in README.'}]})
+                self.assertEqual(routed['effort'], 'low')
+                self.assertEqual(routed['sandboxPolicy'], task['sandboxPolicy'])
+                self.assertEqual(routed['approvalPolicy'], task['approvalPolicy'])
+                return 0
+            with self.subTest(arguments=arguments), \
+                 mock.patch.object(main, 'default_data_root', return_value=self.root), \
+                 mock.patch.object(codex_integration, 'read', return_value={'schema': 2}), \
+                 mock.patch.object(entry, 'update_choices', return_value=False), \
+                 mock.patch.object(entry.official_codex, 'binary', return_value=self.root / 'codex'), \
+                 mock.patch.object(entry.official_codex, 'read', return_value={}), \
+                 mock.patch.object(entry, 'compatible'), \
+                 mock.patch.object(entry.dist, '_read_json', return_value={'mode': 'auto'}), \
+                 mock.patch.object(entry, 'sessions', return_value={'thread': True}), \
+                 mock.patch.object(entry, 'remember'), \
+                 mock.patch.object(workspace_context, 'PATH', 'fixture-no-context.json'), \
+                 mock.patch('harness_cli.routing_feedback.Observer', return_value=None), \
+                 mock.patch.object(auto_relay, 'run', side_effect=launch):
+                self.assertEqual(entry.main(arguments), 0)
+
+    def test_model_override_detection_does_not_interpret_values_or_escaped_arguments(self):
+        for arguments in (['-c', 'model=provider/future-model'], ['--config', 'model="unknown=value"'],
+                          ['--model', auto_relay.ALIAS]):
+            with self.subTest(arguments=arguments):
+                self.assertTrue(auto_relay.model_requested(arguments))
+        for arguments in (['-c', 'model_reasoning_effort="high"'], ['--config', 'profiles.work.model="custom"'],
+                          ['-c', 'model_provider="custom"'], ['-C', '-cmodel="directory"'],
+                          ['--', '--config', 'model="literal prompt"'], ['--config', 'model']):
+            with self.subTest(arguments=arguments):
+                self.assertFalse(auto_relay.model_requested(arguments))
+
     def test_release_progress_precedes_both_probes_and_failure_is_not_success(self):
         def codex(*args, **kwargs):
             self.assertIn('Checking Codex and Harness updates', self.output.getvalue())

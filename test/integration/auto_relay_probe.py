@@ -55,6 +55,10 @@ def footer_lines(screen):
     return [line.strip() for line in lines[prompts[-1] + 1:] if line.strip()] if prompts else []
 
 
+def settings_picker_ready(screen):
+    return all(value in screen for value in ('Project:', 'Maintenance:', 'Adaptive Auto:', 'Keep current', 'Back'))
+
+
 def turn_evidence(relay, provider, thread_id, prompt):
     digest = input_digest(prompt)
     decisions = [item for item in relay.policy.decisions
@@ -401,7 +405,7 @@ def drive(binary, env, project, output, port, relay, provider):
             terminal.wait(lambda text: 'by sholee-pt' in text and 'Project harness:' in text, 60)
             terminal.snapshot('01-harness-status')
             terminal.command('/harness/settings')
-            terminal.wait(lambda text: 'Project preferences' in text and 'Back' in text, 30)
+            terminal.wait(settings_picker_ready, 30)
             terminal.select('Back')
             terminal.wait(lambda text: 'No settings changed.' in text, 30)
             terminal.snapshot('01-harness-settings')

@@ -13,6 +13,18 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def graph_snapshot(storage):
+    """Keep graph and project receipts without traversing any owned runtime tree."""
+    snapshot = {}
+    for directory, names, files in os.walk(storage):
+        names[:] = [name for name in names if name != '.runtime']
+        for name in files:
+            if name != '.sync.lock':
+                path = Path(directory) / name
+                snapshot[path] = (path.read_bytes(), path.stat().st_mtime_ns)
+    return snapshot
+
+
 def verify_advice(base, env, package, node):
     """Real graph and adapter, fixture Jev response: this does not evaluate Jev quality."""
     sys.path.insert(0, str(ROOT))
@@ -91,8 +103,7 @@ def verify(package=None):
             assert first['nodes'] >= 1, first
         env['NODE_OPTIONS'] = '--import ' + json.dumps(guard.as_uri())
         # Graph and project receipts only: do not rehash the unrelated Node runtime.
-        graph_files = {p: (p.read_bytes(), p.stat().st_mtime_ns) for directory in (base / 'storage').iterdir()
-                       if directory.name != '.runtime' for p in directory.rglob('*') if p.is_file() and p.name != '.sync.lock'}
+        graph_files = graph_snapshot(base / 'storage')
         if package is None:
             init()
         else:

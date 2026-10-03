@@ -1,13 +1,39 @@
 """Host-local retrieval choices and revocation fence optional external work."""
 import shutil
+from pathlib import Path
+import tempfile
 from unittest import mock
 import unittest
 
 from harness_cli import graft, graft_setup, graft_sources, jev, main, workspace_context
+from integration import verify_graft_retrieval
 from test_cli_jev import CANDIDATES, QUESTION, response
 import test_graft_sources as source_fixtures
 
 REPO = source_fixtures.REPO
+
+
+class RetrievalSmokeSnapshotTests(unittest.TestCase):
+    def test_snapshot_prunes_legacy_and_host_runtimes_but_keeps_graph_receipts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            storage = Path(directory)
+            ignored = ['.runtime/node', 'hosts/host-a/.runtime/node/bin/node',
+                       'hosts/host-b/.runtime/package/node_modules/index.js',
+                       'project/hosts/host-a/graph/.sync.lock']
+            retained = ['project/hosts/host-a/graph/graph.json',
+                        'project/hosts/host-a/settings.json', 'project/hosts/host-a/jev/state.json']
+            for name in ignored + retained:
+                path = storage / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(name.encode())
+            expected = {storage / name: ((storage / name).read_bytes(), (storage / name).stat().st_mtime_ns)
+                        for name in retained}
+            original = Path.read_bytes
+            def read(path):
+                self.assertNotIn('.runtime', path.parts)
+                return original(path)
+            with mock.patch.object(Path, 'read_bytes', read):
+                self.assertEqual(verify_graft_retrieval.graph_snapshot(storage), expected)
 
 
 class RetrievalLifecycleTests(unittest.TestCase):

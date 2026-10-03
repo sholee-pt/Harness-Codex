@@ -481,7 +481,7 @@ class Maintenance:
     def _claim(self, state, session, *, bound=False, pending=None, selection=None):
         self._expire(state)
         now = self.clock()
-        state['attempts'] = [t for t in state['attempts'] if now - t < 86400]
+        state['attempts'] = [t for t in state['attempts'] if now - t < 86400] or state['attempts'][-1:]
         if state['lease'] or self._application_active() or self._busy(state, session, pending) or history.summary(state['changes'])['automaticChangesPaused']:
             return None
         candidates = self._eligible(state, session if bound else None)
@@ -496,7 +496,7 @@ class Maintenance:
                           'candidates': candidates, 'evidence': {key: state['candidates'][key]['evidence'] for key in candidates},
                           'session': session, 'started': now,
                           'deadline': now + schedule['applicationSeconds']}
-        state['attempts'].append(now)
+        state['attempts'] = [t for t in state['attempts'] if now - t < 86400] + [now]
         state['metrics']['reviews'] += 1
         return state['lease']
 
@@ -754,7 +754,8 @@ class Maintenance:
                             f'Review lease {lease["id"]}; deadline {int(lease["deadline"])} UTC Unix seconds. '
                             'Finish or defer before the user task; do not start a separate model, remove verification, '
                             'add agents, change permissions or run GPU training. Resolve using harness-codex maintenance finish. '
-                            'This does not authorize commit/push. If no relevant evidence is available, choose unchanged.')
+                            'This does not authorize commit/push. If relevant evidence or review time is insufficient, choose deferred. '
+                            'Choose unchanged only after reviewing the concern and finding no justified correction.')
                 else:
                     fingerprint = digest(sorted(eligible))
                     if state['notified'] != fingerprint:

@@ -36,6 +36,17 @@ class InstructionAuditTests(unittest.TestCase):
         self.assertEqual(report['discoveryDescriptionCharacters'], 2)
         self.assertEqual({item['kind'] for item in report['surfaces']}, {'on-demand-skill', 'unparsed-instructions'})
 
+    def test_description_dashes_do_not_hide_the_first_duplicate_body_paragraph(self):
+        paragraph = 'Project-specific source evidence must be checked before changing the existing evaluator. ' * 3
+        for newline in ('\n', '\r\n'):
+            with self.subTest(newline=newline):
+                content = newline.join(['---', 'name: example', 'description: before---after', '---', paragraph])
+                report = audit.summarize({'.agents/skills/example/SKILL.md': content, 'AGENTS.md': paragraph})
+                self.assertEqual(report['discoveryDescriptionCharacters'], len('before---after'))
+                self.assertEqual(len(report['duplicateParagraphs']), 1)
+                self.assertEqual(report['duplicateParagraphs'][0]['paths'], ['.agents/skills/example/SKILL.md', 'AGENTS.md'])
+                self.assertEqual(report['duplicateParagraphs'][0]['characters'], len(paragraph.strip()))
+
     def test_doctor_inventory_is_bounded_and_preserves_project_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

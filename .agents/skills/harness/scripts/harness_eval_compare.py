@@ -456,6 +456,11 @@ def _compare_runs_v2(
             )
         if not record["result"]["processCleanupVerified"]:
             gaps.append(f"{arm}-process-cleanup")
+        bundle = record["configuration"]["declaredConfiguration"]["bundleFingerprint"]
+        if (bundle.get("state") != "measured" or bundle.get("completeness") != "complete"
+                or bundle.get("fidelity") != "exact" or not isinstance(bundle.get("value"), str)
+                or not types.HASH_RE.fullmatch(bundle["value"])):
+            gaps.append(f"{arm}-configuration-content-unavailable")
     isolation_failed = any(record["comparison"]["isolationStatus"] == "failed" for record in (baseline, treatment))
     isolation_status = "failed" if isolation_failed else "complete" if not gaps else "partial"
 
@@ -499,6 +504,10 @@ def _compare_runs_v2(
         "taskStratum": plan["taskStratum"],
         "primaryOutcome": plan["primaryOutcome"],
         "configurationDeltaFingerprint": configuration_delta["deltaFingerprint"],
+        "configurationBundleFingerprints": [
+            _observation_value(record["configuration"]["declaredConfiguration"]["bundleFingerprint"])
+            for record in (baseline, treatment)
+        ],
         "runtime": [
             {
                 "harnessVersion": record["runtime"]["harnessVersion"],

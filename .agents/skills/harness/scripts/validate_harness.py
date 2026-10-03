@@ -435,7 +435,7 @@ class Validator:
                 self.error("topology.agents entries must be objects")
                 continue
             name = item.get("name")
-            if name in known_agents:
+            if isinstance(name, str) and name in known_agents:
                 self.error(f"duplicate agent name: {name}")
             elif isinstance(name, str):
                 known_agents.add(name)
@@ -461,6 +461,9 @@ class Validator:
                 self.error("managedFiles entries must be objects")
                 continue
             relative = entry.get("path")
+            if not isinstance(relative, str):
+                self.error(f"managed path must be a string: {relative!r}")
+                continue
             if not harness_transaction.is_allowed_target(relative, root=self.root):
                 self.error(f"managed path is outside project artifact ownership: {relative!r}")
             if harness_state.is_instruction_relative(self.root, relative) and entry.get("kind") != "managed-block":
@@ -502,7 +505,7 @@ class Validator:
             except (OSError, UnicodeError, ValueError) as exc:
                 self.error(str(exc))
         contents = {}
-        dedicated_paths = {item.get("path") for item in entry_items if isinstance(item, dict) and item.get("kind", "file") == "file"}
+        dedicated_paths = {item.get("path") for item in entry_items if isinstance(item, dict) and isinstance(item.get("path"), str) and item.get("kind", "file") == "file"}
         for relative in sorted((managed_paths & dedicated_paths) - set(self.pending_retirement)):
             if relative.endswith(".md"):
                 try:

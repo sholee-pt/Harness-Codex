@@ -127,11 +127,15 @@ def _cleanup_transaction(root: Path, journal: dict) -> None:
 
 def inspect_transaction(root: Path) -> dict:
     """Return non-mutating details for a journal or an orphaned staging workspace."""
+    try:
+        _resolve_inside(root, JOURNAL_RELATIVE)
+        workspace = _resolve_inside(root, TRANSACTIONS_RELATIVE)
+    except (OSError, harness_state.StateError) as exc:
+        return {"state": "invalid", "detail": str(exc), "workspaces": [], "cleanupAllowed": False}
     status = harness_state.transaction_status(root)
     if status is None:
         return {"state": "none", "workspaces": []}
     if status.get("state") == "orphaned-workspace":
-        workspace = root / TRANSACTIONS_RELATIVE
         if workspace.is_symlink() or not workspace.is_dir():
             return {**status, "workspaces": [], "cleanupAllowed": False}
         workspaces = sorted(path.name for path in workspace.iterdir())
@@ -156,13 +160,15 @@ def inspect_transaction(root: Path) -> dict:
 @project_locked
 def clean_orphaned_workspace(root: Path) -> dict:
     """Remove the reserved staging root only when no recovery journal exists."""
+    _resolve_inside(root, JOURNAL_RELATIVE)
+    workspace = _resolve_inside(root, TRANSACTIONS_RELATIVE)
     status = harness_state.transaction_status(root)
     if status is None or status.get("state") != "orphaned-workspace":
         raise TransactionError("no orphaned Harness transaction workspace was found")
-    workspace = root / TRANSACTIONS_RELATIVE
     if workspace.is_symlink() or not workspace.is_dir():
         raise TransactionError("orphaned transaction workspace is not a regular directory")
     workspaces = sorted(path.name for path in workspace.iterdir())
+    workspace = _resolve_inside(root, TRANSACTIONS_RELATIVE)
     shutil.rmtree(workspace)
     harness_state.sync_directory(workspace.parent)
     return {"state": "orphaned-workspace", "cleaned": True, "workspaces": workspaces}
@@ -549,6 +555,7 @@ def apply_transaction(root: Path, journal: dict) -> dict:
     try:
         _write_journal(root, journal)
         for operation, target, desired in prepared:
+            target = _resolve_inside(root, operation["path"])
             if operation["hadOriginal"]:
                 if (
                     not target.is_file()

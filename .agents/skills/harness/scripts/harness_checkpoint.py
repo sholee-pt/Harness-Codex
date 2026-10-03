@@ -9,12 +9,12 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import secrets
-import signal
 import subprocess
 import tempfile
 import time
 
 from harness_eval_lock import FileLock
+from harness_eval_capture import _terminate_process_tree
 import harness_state
 
 MAX_BYTES = 128 * 1024 * 1024
@@ -191,25 +191,13 @@ def save(path, state):
 
 def run_check(command, root, timeout):
     process = subprocess.Popen(command, cwd=root, stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=os.name != 'nt')
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=os.name != 'nt',
+        creationflags=getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0) if os.name == 'nt' else 0)
     try:
-        return process.wait(timeout=timeout) == 0
-    except BaseException:
-        if os.name != 'nt':
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-        else:
-            try:
-                subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
-                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
-            except (OSError, subprocess.TimeoutExpired):
-                pass
-            if process.poll() is None:
-                process.kill()
-        process.wait(timeout=5)
-        raise
+        passed = process.wait(timeout=timeout) == 0
+    finally:
+        cleanup_verified = _terminate_process_tree(process)
+    return passed and cleanup_verified
 
 
 def operate(root, store, plan, action, run, *, task=None, previous=None, keep_days=None, observed=None, timeout=60, attempt=None):

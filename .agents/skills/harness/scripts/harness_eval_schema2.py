@@ -296,11 +296,15 @@ def validate_run_record(value: Any, *, verify_hash: bool = True) -> dict[str, An
     record = types._require_object(value, "run record")
     if record.get("schemaVersion") != 2:
         raise types.EvaluationError("run record schemaVersion must be 2")
+    runtime = types._require_object(record.get("runtime"), "runtime")
+    types._require_keys(runtime, runtime, {"harnessVersion"}, "runtime")
+    configuration = _validate_configuration(record.get("configuration"))
+    result = _validate_result(record.get("result"))
     legacy = copy.deepcopy(record)
     legacy["schemaVersion"] = 1
     legacy["runtime"]["harnessVersion"] = "5.5"
     legacy["runtime"].pop("evaluationContract", None)
-    arm = record.get("configuration", {}).get("arm", "unpaired")
+    arm = configuration["arm"]
     legacy["configuration"] = {
         "arm": arm,
         "configuredExecutionClass": "unknown",
@@ -318,8 +322,8 @@ def validate_run_record(value: Any, *, verify_hash: bool = True) -> dict[str, An
     }
     legacy["result"] = {
         "resultFingerprint": None,
-        "verificationProfileFingerprint": record.get("result", {}).get("verificationProfileFingerprint"),
-        "processCleanupVerified": record.get("result", {}).get("processCleanupVerified"),
+        "verificationProfileFingerprint": result["verificationProfileFingerprint"],
+        "processCleanupVerified": result["processCleanupVerified"],
     }
     types._validate_run_record_v1(legacy, verify_hash=False)
     version = record["runtime"]["harnessVersion"]
@@ -334,8 +338,6 @@ def validate_run_record(value: Any, *, verify_hash: bool = True) -> dict[str, An
     if (record["runtime"]["harnessVersion"] not in READABLE_HARNESS_VERSIONS
             and contract not in harness_metadata.READABLE_EVALUATION_MEASUREMENT_CONTRACTS):
         raise types.EvaluationError("runtime.harnessVersion must be a readable Schema 2 Harness version")
-    _validate_configuration(record["configuration"])
-    _validate_result(record["result"])
     if verify_hash:
         types.verify_integrity(record)
     return record
@@ -408,6 +410,7 @@ def validate_comparison_record(value: Any, *, verify_hash: bool = True) -> dict[
         "evaluationStratumFingerprint",
         "derivedViewFingerprints",
     }
+    types._require_keys(record, record, additional, "comparison record")
     legacy = copy.deepcopy(record)
     for key in additional:
         legacy.pop(key, None)

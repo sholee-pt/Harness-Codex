@@ -1,5 +1,8 @@
 """Regression checks for the isolated probe, not proof of native TUI compatibility."""
+import asyncio
 import copy
+import json
+from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest import mock
@@ -21,6 +24,20 @@ def request(thread='main', model=probe.ALIAS, prompt='New task: Fix a typo in RE
 
 
 class AutoRelayProbeTests(unittest.TestCase):
+    def test_settings_gate_recognizes_the_actual_current_values_question(self):
+        from harness_cli.management_wizard import settings
+        controls = SimpleNamespace(
+            cli=mock.AsyncMock(return_value=json.dumps({'features': {
+                'maintenance': {'mode': 'suggest'}, 'routing': {'enabled': False}}})),
+            choose=mock.AsyncMock(return_value='Back'),
+            queued_action=lambda: 'No action queued.')
+        self.assertIsNone(asyncio.run(settings(controls, 'thread', 'turn', Path('/fixture/project'))))
+        question, options = controls.choose.call_args.args[2:]
+        screen = question + '\n' + '\n'.join(label for label, description in options)
+        self.assertTrue(probe.settings_picker_ready(screen))
+        self.assertFalse(probe.settings_picker_ready('Project preferences\nBack'))
+        self.assertFalse(probe.settings_picker_ready(screen.replace('Adaptive Auto:', '')))
+
     def test_auto_state_is_thread_local_and_survives_routed_model_echo(self):
         policy = probe.Policy()
         original = catalog()

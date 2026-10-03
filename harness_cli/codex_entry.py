@@ -148,7 +148,7 @@ def main(args):
     from .main import default_data_root
     from . import codex_integration
     from .environment import codex_environment
-    from .auto_relay import Policy, run, profile_requested, native_arguments, working_directory
+    from .auto_relay import Policy, run, profile_requested, model_requested, working_directory
     root = default_data_root()
     integration = codex_integration.read(root)
     if not integration or integration['schema'] != 2:
@@ -204,7 +204,7 @@ def main(args):
         from .routing import read_json
         profiles = read_json(dist._storage_path(settings['profiles']))
     modes = sessions(root)
-    explicit_model = any(option in {'-m', '--model'} for option, _ in native_arguments(args))
+    explicit_model = model_requested(args)
     from .routing_feedback import Observer
     from .auto_relay import working_directory
     observer = Observer(Path(__file__).resolve().parents[1], working_directory(args), (official_codex.read(root) or {}).get('version'))

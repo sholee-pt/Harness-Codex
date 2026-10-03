@@ -334,6 +334,8 @@ def _read_events(
     for path in store.records(root):
         try:
             value = _read_event(path)
+            if value['repositoryId'] != repository_id or path.name != value['eventId'] + '.json':
+                raise OperationsError('operations event does not match its repository or filename')
             events.append(value)
         except (OSError, UnicodeError, json.JSONDecodeError, OperationsError) as exc:
             errors.append(f"{path.name}: {exc}")

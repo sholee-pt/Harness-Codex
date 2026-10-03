@@ -187,6 +187,28 @@ class CheckpointTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'single-writer'):
             self.call('start', task='beta')
 
+    def test_successful_verifier_needs_confirmed_process_cleanup(self):
+        self.call('start', task='alpha')
+        (self.root / 'alpha.out').write_text('ok')
+        with mock.patch.object(checkpoint, '_terminate_process_tree', return_value=False) as cleanup:
+            result = self.call('record', task='alpha')
+        cleanup.assert_called_once()
+        self.assertEqual(result['status'], 'blocked')
+        self.assertEqual(result['verification'], 'failed')
+        self.assertFalse(self.call('status')['complete'])
+
+    @unittest.skipIf(os.name == 'nt', 'Linux process-group containment; Windows release is paused')
+    def test_successful_verifier_cannot_leave_a_child_writing_later(self):
+        child = "import time; from pathlib import Path; time.sleep(.6); Path('escaped').write_text('late')"
+        parent = "import subprocess, sys; subprocess.Popen([sys.executable, '-c', " + repr(child) + "])"
+        self.plan['tasks'][0]['checks'] = [[sys.executable, '-c', parent]]
+        self.call('init', run='background', keep_days=1)
+        self.call('start', run='background', task='alpha')
+        (self.root / 'alpha.out').write_text('ok')
+        self.call('record', run='background', task='alpha')
+        time.sleep(.8)
+        self.assertFalse((self.root / 'escaped').exists())
+
     def test_added_task_keeps_independent_verified_work(self):
         self.finish('alpha')
         self.plan['tasks'].append(self.task('new-task'))

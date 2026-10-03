@@ -95,6 +95,70 @@ def _measured_refs(refs: list[str], *, source: str = "run-configuration-snapshot
     )
 
 
+def _configuration_file(root: Path, relative: str, remaining: int) -> tuple[bytes, int]:
+    path, _ = harness_state.resolve_lexical_regular_inside(root, relative, must_exist=True, label="configuration")
+    before = path.stat()
+    if before.st_size > remaining:
+        raise types.EvaluationError("configuration content exceeds the byte limit")
+    with path.open("rb") as stream:
+        data = stream.read(remaining + 1)
+    after = path.stat()
+    if (len(data) > remaining or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_mode)
+            != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_mode)):
+        raise types.EvaluationError("configuration content changed during capture")
+    harness_state.resolve_lexical_regular_inside(root, relative, must_exist=True, label="configuration")
+    return data, stat.S_IMODE(after.st_mode)
+
+
+def _configuration_content(root: Path, manifest: dict[str, Any] | None) -> tuple[list[dict[str, Any]], bytes | None]:
+    """Bind owned agent files and complete managed skill resources, not manifest metadata."""
+    if manifest is None:
+        _, present = harness_state.resolve_lexical_regular_inside(root, ".agents/skills/project-harness/SKILL.md", label="project harness")
+        if present:
+            raise types.EvaluationError("project harness content has no ownership manifest")
+        return [], None
+    topology = manifest.get("topology")
+    entries = manifest.get("managedFiles")
+    if not isinstance(topology, dict) or not isinstance(entries, list) or len(entries) > PAIRED_OVERLAY_MAX_FILES:
+        raise types.EvaluationError("configuration ownership is unavailable")
+    required, skill_roots = set(), set()
+    for kind, prefix in (("agents", ".codex/agents/"), ("skills", ".agents/skills/")):
+        components = topology.get(kind)
+        if not isinstance(components, list):
+            raise types.EvaluationError("configuration component paths are unavailable")
+        for component in components:
+            relative = component.get("path") if isinstance(component, dict) else None
+            if not isinstance(relative, str) or not relative.startswith(prefix):
+                raise types.EvaluationError("configuration component path is invalid")
+            harness_state.portable_path_key(relative)
+            required.add(relative)
+            if kind == "skills":
+                if Path(relative).name != "SKILL.md" or relative.startswith(".agents/skills/harness/"):
+                    raise types.EvaluationError("configuration skill path is invalid")
+                skill_roots.add(str(Path(relative).parent).replace("\\", "/") + "/")
+    paths = [entry.get("path") if isinstance(entry, dict) else None for entry in entries]
+    if any(not isinstance(relative, str) for relative in paths):
+        raise types.EvaluationError("configuration managed paths are unavailable")
+    harness_state.validate_file_namespace(paths, label="configuration managed files")
+    selected = [entry for entry in entries if entry["path"] in required
+                or any(entry["path"].startswith(prefix) for prefix in skill_roots)]
+    if not required.issubset({entry["path"] for entry in selected}):
+        raise types.EvaluationError("configuration component ownership is unavailable")
+    material, project_data, remaining = [], None, PAIRED_OVERLAY_MAX_BYTES
+    for entry in sorted(selected, key=lambda item: item["path"]):
+        expected = entry.get("sha256")
+        if entry.get("kind", "file") != "file" or not isinstance(expected, str) or not types.HASH_RE.fullmatch(expected):
+            raise types.EvaluationError("configuration managed content hash is unavailable")
+        data, mode = _configuration_file(root, entry["path"], remaining)
+        if types.digest_bytes(data) != expected:
+            raise types.EvaluationError("configuration managed content differs from its ownership receipt")
+        remaining -= len(data)
+        material.append({"path": entry["path"], "sha256": expected, "mode": mode})
+        if entry["path"] == ".agents/skills/project-harness/SKILL.md":
+            project_data = data
+    return material, project_data
+
+
 def _configuration_snapshot(
     evaluation_store: store_module.EvaluationStore,
     repository_id: str,
@@ -102,17 +166,19 @@ def _configuration_snapshot(
     args: argparse.Namespace,
     arm: str,
 ) -> dict[str, Any]:
-    manifest_path = root / ".harness" / "manifest.json"
     manifest: dict[str, Any] | None = None
-    if manifest_path.is_file():
-        try:
-            loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest_bytes = None
+    try:
+        _, manifest_present = harness_state.resolve_lexical_regular_inside(root, ".harness/manifest.json", label="configuration manifest")
+        if manifest_present:
+            manifest_bytes, _ = _configuration_file(root, ".harness/manifest.json", PAIRED_OVERLAY_MAX_BYTES)
+            loaded = json.loads(manifest_bytes)
             if isinstance(loaded, dict):
                 manifest = loaded
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            manifest = None
+    except (OSError, ValueError):
+        manifest_present = True
 
-    if manifest is None and manifest_path.exists():
+    if manifest is None and manifest_present:
         declared = {
             "executionClass": schema2.unavailable_value(),
             "route": schema2.unavailable_references(),
@@ -152,11 +218,19 @@ def _configuration_snapshot(
                 for policy in quality_policies
             )
         )
-        project_harness = root / ".agents" / "skills" / "project-harness" / "SKILL.md"
-        if project_harness.is_file():
-            project_fingerprint = _measured_value(evaluation_store.fingerprint(project_harness.read_bytes()))
+        try:
+            content_material, project_data = _configuration_content(root, manifest)
+            if manifest_bytes is not None and _configuration_file(root, ".harness/manifest.json", PAIRED_OVERLAY_MAX_BYTES)[0] != manifest_bytes:
+                raise types.EvaluationError("configuration manifest changed during capture")
+        except (OSError, ValueError):
+            content_material, project_data = None, None
+        if content_material is None:
+            project_fingerprint = schema2.unavailable_value()
+            discipline = schema2.unavailable_value()
+        elif project_data is not None:
+            project_fingerprint = _measured_value(evaluation_store.fingerprint(project_data))
             try:
-                skill_text = project_harness.read_text(encoding="utf-8")
+                skill_text = project_data.decode("utf-8")
             except (OSError, UnicodeError):
                 discipline = schema2.unavailable_value()
             else:
@@ -180,6 +254,7 @@ def _configuration_snapshot(
             "independentReview": independent_review,
             "changeDisciplineVersion": discipline.get("value"),
             "projectHarnessFingerprint": project_fingerprint.get("value"),
+            "managedContent": content_material,
         }
         declared = {
             "executionClass": schema2.unavailable_value(),
@@ -190,7 +265,7 @@ def _configuration_snapshot(
             "independentReview": _measured_value(independent_review),
             "changeDisciplineVersion": discipline,
             "projectHarnessFingerprint": project_fingerprint,
-            "bundleFingerprint": _measured_value(
+            "bundleFingerprint": schema2.unavailable_value() if content_material is None else _measured_value(
                 evaluation_store.fingerprint(types.canonical_bytes(bundle_material))
             ),
         }
@@ -2768,33 +2843,51 @@ def _probe_suite(args: argparse.Namespace, *, kind: str) -> int:
                 selected = json.loads(summary.final_message)
             except json.JSONDecodeError:
                 selected = {"selection": "unknown", "ambiguity": True}
+        capture_complete = summary.terminal_event_observed and summary.parser_compatibility == "supported" and cleanup
+        quality_measured = exit_code == 0 and summary.completion == "completed" and capture_complete
+        score = _score_probe_case(
+            selected=selected,
+            expected=case["expected"],
+            kind=kind,
+            behavior_tags=behavior_tags,
+        )
+        if quality_measured:
+            outcome = "matched" if score["matched"] else "mismatched"
+        else:
+            outcome = "execution-failed" if exit_code not in {0, None} or summary.completion in {"failed", "interrupted"} else "unconfirmed"
+            score["matched"] = False
+            if "behaviorsMatched" in score:
+                score["behaviorsMatched"] = None
         result = {
             "caseId": case["caseId"],
-            **_score_probe_case(
-                selected=selected,
-                expected=case["expected"],
-                kind=kind,
-                behavior_tags=behavior_tags,
-            ),
-            "captureCompleteness": "complete" if summary.terminal_event_observed and summary.parser_compatibility == "supported" else "partial",
+            **score,
+            "caseOutcome": outcome,
+            "qualityMeasured": quality_measured,
+            "captureCompleteness": "complete" if capture_complete else "partial",
+            "completion": summary.completion,
+            "parserCompatibility": summary.parser_compatibility,
             "processExitCode": exit_code,
             "processCleanupVerified": cleanup,
             "codexVersion": version,
         }
         results.append(result)
     matched = sum(item["matched"] for item in results)
+    measured = sum(item["qualityMeasured"] for item in results)
     _print(
         {
             "schemaVersion": 1,
             "probeType": f"{kind}-selection-probe",
             "caseCount": len(results),
             "matchedCount": matched,
+            "measuredCaseCount": measured,
+            "unmeasuredCaseCount": len(results) - measured,
             "accuracy": matched / len(results) if results else None,
+            "accuracyBasis": "confirmed matches / all planned cases; unmeasured cases are not quality failures",
             "results": results,
             "rawPromptsStored": False,
         }
     )
-    return 0
+    return 0 if measured == len(results) else 1
 
 
 def command_skill_suite(args: argparse.Namespace) -> int:

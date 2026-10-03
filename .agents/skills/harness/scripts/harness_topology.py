@@ -395,7 +395,7 @@ def _validate_dependency_graph(boundaries: list[dict]) -> None:
 def _validate_classification(classification: object, boundaries: list[dict]) -> list[str]:
     value = require_object(classification, "topology.classification")
     topology_class = value.get("class")
-    if topology_class not in TOPOLOGY_CLASSES:
+    if not isinstance(topology_class, str) or topology_class not in TOPOLOGY_CLASSES:
         raise TopologyError("topology.classification.class is unsupported")
     count = value.get("materialBoundaryCount")
     if not isinstance(count, int) or isinstance(count, bool) or count != len(boundaries):

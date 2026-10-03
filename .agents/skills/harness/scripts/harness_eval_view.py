@@ -67,24 +67,17 @@ def observation_graph(
         if len(children) > 1:
             conflicts.append({"code": "supersession-branch-conflict", "refs": [target, *sorted(children)]})
 
-    visiting: set[str] = set()
     visited: set[str] = set()
-
-    def visit(node: str) -> None:
-        if node in visiting:
-            conflicts.append({"code": "supersession-cycle", "refs": [node]})
-            return
-        if node in visited:
-            return
-        visiting.add(node)
-        target = by_id[node]["lifecycle"]["supersedesObservationId"]
-        if target in by_id:
-            visit(target)
-        visiting.remove(node)
-        visited.add(node)
-
     for observation_id in by_id:
-        visit(observation_id)
+        path: set[str] = set()
+        node = observation_id
+        while node in by_id and node not in visited:
+            if node in path:
+                conflicts.append({"code": "supersession-cycle", "refs": [node]})
+                break
+            path.add(node)
+            node = by_id[node]["lifecycle"]["supersedesObservationId"]
+        visited.update(path)
     active = [
         record
         for observation_id, record in by_id.items()
@@ -132,25 +125,18 @@ def annotation_state(
     for target, children in successors.items():
         if len(children) > 1:
             conflicts.append({"code": "annotation-branch-conflict", "refs": [target, *sorted(children)]})
-    visiting: set[str] = set()
     visited: set[str] = set()
-
-    def visit(annotation_id: str) -> None:
-        if annotation_id in visiting:
-            conflicts.append({"code": "annotation-cycle", "refs": [annotation_id]})
-            return
-        if annotation_id in visited:
-            return
-        visiting.add(annotation_id)
-        record = valid[annotation_id]
-        target = record.get("supersedesAnnotationId") if record.get("schemaVersion") == 2 else None
-        if target in valid:
-            visit(target)
-        visiting.remove(annotation_id)
-        visited.add(annotation_id)
-
     for annotation_id in valid:
-        visit(annotation_id)
+        path: set[str] = set()
+        node = annotation_id
+        while node in valid and node not in visited:
+            if node in path:
+                conflicts.append({"code": "annotation-cycle", "refs": [node]})
+                break
+            path.add(node)
+            record = valid[node]
+            node = record.get("supersedesAnnotationId") if record.get("schemaVersion") == 2 else None
+        visited.update(path)
     if len(roots) > 1:
         conflicts.append({"code": "annotation-conflict", "refs": sorted(roots)})
     active_ids = [annotation_id for annotation_id in valid if not successors[annotation_id]]

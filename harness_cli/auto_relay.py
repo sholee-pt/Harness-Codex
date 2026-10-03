@@ -329,6 +329,17 @@ def profile_requested(args):
     return any(option in {'-p', '--profile'} for option, _ in native_arguments(args))
 
 
+def model_requested(args):
+    for option, value in native_arguments(args):
+        if option in {'-m', '--model'}:
+            return True
+        if option in {'-c', '--config'} and isinstance(value, str):
+            key, separator, _ = value.partition('=')
+            if separator and key.strip() == 'model':
+                return True
+    return False
+
+
 def server_arguments(args):
     """Forward native configuration flags, never invent sandbox or approval settings."""
     result = []

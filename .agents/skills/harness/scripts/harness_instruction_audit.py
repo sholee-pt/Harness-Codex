@@ -26,7 +26,8 @@ def summarize(contents, skipped=None):
             if path.endswith('/SKILL.md'):
                 kind = 'on-demand-skill'
                 description = harness_frontmatter.parse(content)['description']
-                body = content.split('---', 2)[2]
+                lines = content.replace('\r\n', '\n').split('\n')
+                body = '\n'.join(lines[lines.index('---', 1) + 1:])
             elif path.startswith('.codex/agents/') and path.endswith('.toml'):
                 kind = 'on-demand-agent'
                 body = tomllib.loads(content).get('developer_instructions', '')

@@ -27,6 +27,7 @@ Keep a reviewed contract in a temporary file. For delegated work, derive its tas
 - `context` accepts named SHA-256 identities for external data, split/feature order, environment, checkpoint specification or evaluator versions. Obtain actual identities; do not invent hashes or claim undeclared dependencies are unchanged.
 - `inputs` and `outputs` are exact project-relative POSIX file paths, not directories or glob patterns. Declare a producer's output through `dependsOn`; do not also freeze that changing output as a consumer's independent input at initialization.
 - Verification commands must be reviewed, bounded and read-only with respect to inputs and outputs. `record` runs them with `shell=False`; an exit code of zero alone is insufficient if inputs or outputs changed during verification. It does not elevate permissions.
+- 검증 명령이 종료되어도 같은 프로세스 그룹의 후손 종료를 확인한 뒤에만 통과로 기록할 것. 종료를 확인하지 못하면 작업은 `blocked`로 남는 것임. 현재 Windows에서는 해당 종료 증거를 확보하지 못하므로 자동 통과를 지원하지 않는 것임.
 - No task can prove correctness outside its declared acceptance checks. Hashes detect changes, not scientific validity. Include meaningful project-native checks and a final integration task where appropriate.
 - Limits: 32 tasks, 64 inputs/outputs per task, 128 MiB hashing per plan scan, 4 MiB state, 64 retained runs, 3 attempts per task, and a shared verification timeout of 1-300 seconds. Use content-addressed metadata for large datasets/checkpoints, not recursive hashing of training outputs.
 

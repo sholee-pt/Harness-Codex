@@ -57,7 +57,7 @@ def schedule(state, now, candidates):
     reported = sum(item['tokens'] or 0 for item in today)
     blocked = budget is not None and (unmeasured > 0 or reported >= budget)
     attempts = [at for at in state['attempts'] if now - at < 86400]
-    interval_remaining = max(0, interval - (now - attempts[-1])) if attempts else 0
+    interval_remaining = max(0, interval - (now - state['attempts'][-1])) if state['attempts'] else 0
     return {'schedule': policy['schedule'], 'intervalSeconds': interval, 'applicationSeconds': seconds,
             'reportedTokensLastDay': reported, 'unmeasuredReviewsLastDay': unmeasured,
             'budgetBlocked': blocked, 'reviewsPerDay': policy['reviewsPerDay'],

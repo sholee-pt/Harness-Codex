@@ -73,6 +73,24 @@ class MaintenanceReviewTests(unittest.TestCase):
         self.assertEqual(disabled.begin(evidence='pyproject.toml')['status'], 'disabled')
         self.assertFalse(state.exists())
 
+    def test_interval_longer_than_one_day_survives_daily_quota_pruning(self):
+        self.now = 1000000
+        self.manager.configure(policy={'maxIntervalSeconds': 604800})
+        self.signal('workflow-gap', 'one')
+        self.signal('workflow-gap', 'two')
+        with self.manager.transaction() as state:
+            state['attempts'] = [self.now - 90000]
+            state['recentReviews'] = [{'at': self.now - 90000 - index * 3600, 'duration': 30,
+                'tokens': 1, 'decision': 'unchanged'} for index in range(6)]
+        scheduling = self.manager.status()['scheduling']
+        self.assertEqual(scheduling['reviewsLastDay'], 0)
+        self.assertEqual(scheduling['intervalRemainingSeconds'], 140400)
+        self.assertEqual(self.manager.begin()['status'], 'deferred')
+        self.assertEqual(self.manager.status()['scheduling']['intervalRemainingSeconds'], 140400)
+        self.now += 140400
+        self.assertEqual(self.manager.begin()['status'], 'claimed')
+        self.assertEqual(self.manager._read(self.manager._location())['attempts'], [self.now])
+
     def test_manual_begin_can_use_its_observed_active_session_without_rebinding_on_failure(self):
         self.hook()
         self.signal(session='original')
@@ -165,6 +183,19 @@ class MaintenanceReviewTests(unittest.TestCase):
         context = self.hook()
         self.assertIn('Review lease', context)
         self.assertNotIn('pyproject.toml', context)
+
+    def test_incomplete_hook_review_defers_instead_of_resolving_the_concern(self):
+        self.hook('SessionStart')
+        self.signal(session='original')
+        context = self.hook()
+        self.assertIn('evidence or review time is insufficient, choose deferred', context)
+        self.assertIn('unchanged only after reviewing the concern', context)
+        lease = self.manager._read(self.manager._location())['lease']
+        self.manager.finish(lease['id'], 'deferred')
+        self.assertEqual(self.manager.status()['pending'], 1)
+        self.hook('Stop')
+        self.now += 3700
+        self.assertIn('Review lease', self.hook())
 
     def test_unbound_and_compacted_context_require_explicit_evidence_reselection(self):
         self.signal()

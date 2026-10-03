@@ -360,6 +360,27 @@ class OperationsEvidenceTests(unittest.TestCase):
             with self.assertRaisesRegex(harness_ops.OperationsError, "refusing to overwrite"):
                 harness_ops.command_hooks_template(args)
 
+    def test_event_repository_and_filename_must_match_the_selected_store(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root, other = self._workspace(parent / 'first'), self._workspace(parent / 'second')
+            state = parent / 'state'
+            first = harness_ops.record_hook_event(self._hook(root, 'UserPromptSubmit'), state_root=state)
+            second = harness_ops.record_hook_event(self._hook(other, 'UserPromptSubmit'), state_root=state)
+            store = harness_ops.harness_eval_store.EvaluationStore(state)
+            source = next(harness_ops._events_root(store, first['repositoryId']).glob('*.json'))
+            foreign = harness_ops._events_root(store, second['repositoryId']) / source.name
+            foreign.write_bytes(source.read_bytes())
+            report = harness_ops.audit(other, state_root=state)
+            self.assertFalse(report['valid'])
+            self.assertEqual(report['invalidEventCount'], 1)
+            foreign.unlink()
+            copied = source.with_name('00000000-0000-4000-8000-000000000000.json')
+            copied.write_bytes(source.read_bytes())
+            report = harness_ops.audit(root, state_root=state)
+            self.assertFalse(report['valid'])
+            self.assertEqual(report['invalidEventCount'], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

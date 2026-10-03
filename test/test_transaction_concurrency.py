@@ -126,6 +126,87 @@ class TransactionConcurrencyTests(unittest.TestCase):
                     self.assertEqual(list(self.root.iterdir()), [])
             self.assertEqual(len(list(self.root.parent.glob('harness-project-locks-*/*.lock'))), 1)
 
+    @unittest.skipUnless(os.name == 'posix', 'native symlink fixture')
+    def test_orphan_cleanup_refuses_a_linked_control_parent_or_workspace(self):
+        external = self.root.parent / 'external'
+        (external / 'transactions').mkdir(parents=True)
+        original = external / 'transactions/user-backup.txt'
+        original.write_bytes(b'preserve outside backup')
+        for linked_parent in (True, False):
+            with self.subTest(linked_parent=linked_parent):
+                if linked_parent:
+                    link = self.root / '.harness'
+                    link.symlink_to(external, target_is_directory=True)
+                else:
+                    (self.root / '.harness').mkdir()
+                    link = self.root / '.harness/transactions'
+                    link.symlink_to(external / 'transactions', target_is_directory=True)
+                try:
+                    self.assertFalse(transaction.inspect_transaction(self.root)['cleanupAllowed'])
+                    with self.assertRaisesRegex(ValueError, 'symlink or reparse point'):
+                        transaction.clean_orphaned_workspace(self.root)
+                    self.assertEqual(original.read_bytes(), b'preserve outside backup')
+                finally:
+                    link.unlink()
+
+    @unittest.skipUnless(os.name == 'posix', 'native symlink fixture')
+    def test_apply_rechecks_parent_links_and_defers_rollback_until_the_path_is_restored(self):
+        external = self.root.parent / 'external'
+        external.mkdir()
+        sentinel = external / 'user.txt'
+        sentinel.write_bytes(b'preserve outside content')
+        journal = self.prepare('alpha', 'beta')
+        link = self.root / '.agents/skills/beta'
+        write = harness_state.atomic_write_bytes
+        def redirect_next_parent(path, data, **kwargs):
+            write(path, data, **kwargs)
+            if path == self.root / '.agents/skills/alpha/SKILL.md':
+                link.symlink_to(external, target_is_directory=True)
+        with mock.patch.object(harness_state, 'atomic_write_bytes', side_effect=redirect_next_parent):
+            with self.assertRaisesRegex(transaction.TransactionError, 'automatic recovery failed.*symlink or reparse point'):
+                transaction.apply_transaction(self.root, journal)
+        self.assertEqual(list(external.iterdir()), [sentinel])
+        self.assertEqual(sentinel.read_bytes(), b'preserve outside content')
+        pending = json.loads((self.root / '.harness/transaction.json').read_text())
+        self.assertEqual(pending['state'], 'recovery-required')
+        link.unlink()
+        self.assertEqual(transaction.recover_transaction(self.root)['removed'], 1)
+        self.assertFalse((self.root / '.agents/skills/alpha/SKILL.md').exists())
+        self.assertFalse((external / 'SKILL.md').exists())
+
+    @unittest.skipUnless(os.name == 'posix', 'native symlink fixture')
+    def test_recovery_rechecks_parent_links_after_each_restoration(self):
+        paths = ['.agents/skills/alpha/SKILL.md', '.agents/skills/beta/SKILL.md']
+        for relative in paths:
+            target = self.root / relative
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b'original')
+        external = self.root.parent / 'external'
+        external.mkdir()
+        (external / 'SKILL.md').write_bytes(b'updated')
+        modes = {path: harness_state.current_mode(self.root / path) for path in paths}
+        transaction.prepare_transaction(self.root, dict.fromkeys(paths, 'updated'), dict.fromkeys(paths, 'update'),
+            dict.fromkeys(paths, harness_state.digest_bytes(b'original')), modes, modes, [])
+        for relative in paths:
+            (self.root / relative).write_bytes(b'updated')
+        parent = (self.root / paths[0]).parent
+        saved = parent.with_name('saved-alpha')
+        write = harness_state.atomic_write_bytes
+        def redirect_next_parent(path, data, **kwargs):
+            write(path, data, **kwargs)
+            if path == self.root / paths[1]:
+                parent.rename(saved)
+                parent.symlink_to(external, target_is_directory=True)
+        with mock.patch.object(harness_state, 'atomic_write_bytes', side_effect=redirect_next_parent):
+            with self.assertRaisesRegex(ValueError, 'symlink or reparse point'):
+                transaction.recover_transaction(self.root)
+        self.assertEqual((external / 'SKILL.md').read_bytes(), b'updated')
+        self.assertTrue((self.root / '.harness/transaction.json').is_file())
+        parent.unlink()
+        saved.rename(parent)
+        self.assertEqual(transaction.recover_transaction(self.root)['restored'], 1)
+        self.assertEqual((self.root / paths[0]).read_bytes(), b'original')
+
 
 if __name__ == '__main__':
     unittest.main()

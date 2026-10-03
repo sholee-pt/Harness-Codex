@@ -12,6 +12,7 @@ from test_harness_evaluation import (
 class EvaluationCompatibilityTests(unittest.TestCase):
     def test_previous_measurement_contract_remains_readable_without_retroactive_attribution(self) -> None:
         for version, contract in (("0.32.4-beta", None), ("0.33.0-beta", "schema2-parser1-attribution2"),
+                                  ("0.35.0-beta", "schema2-parser1-attribution3"),
                                   ("99.0.0-beta", "schema2-parser1-attribution2")):
             with self.subTest(version=version, contract=contract):
                 record = manual_record(uuid_text(1), uuid_text(2), harness_version=version)

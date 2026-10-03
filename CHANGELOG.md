@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.35.1‑beta`](#harness-for-codex-v0351-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve transaction boundaries, explicit model choices, maintenance timing and evaluation integrity |
 | [`v0.35.0‑beta`](#harness-for-codex-v0350-beta) | Schema 3 | Schema 7 | Schema 2 | Clarify project status, preserve settings and queued actions, and improve terminal management navigation. |
 | [`v0.34.0‑beta`](#harness-for-codex-v0340-beta) | Schema 3 | Schema 7 | Schema 2 | Repair runtime and evaluation boundaries, reduce repeated work, and make bounded collaboration more flexible. |
 | [`v0.33.0‑beta`](#harness-for-codex-v0330-beta) | Schema 3 | Schema 7 | Schema 2 | Relax unnecessary generation and maintenance gates, preserve native update choices, and add fresh-generation comparison. |
@@ -100,6 +101,16 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.35.1-beta
+
+- Recheck transaction destinations before each write and orphan cleanup; retain external files when a managed parent is redirected. Diagnose malformed manifest fields without crashing doctor.
+- Preserve explicit native model configuration and align the official Settings smoke check with the current menu. Include the actual project in configuration resume and recovery commands.
+- Keep insufficient maintenance evidence deferred, honor review intervals longer than one day, verify checkpoint process cleanup, and reject operations records copied from another project.
+- Keep failed or incomplete probe executions out of successful quality measurements. Diagnose malformed evaluation records and traverse long immutable histories without recursion limits.
+- Bind evaluation groups to actual managed agent and skill content. Measurement contract attribution4 keeps earlier records readable without pooling different implementations into one concrete improvement signal.
+- Exclude host-local Node/npm runtimes from Graft smoke snapshots and parse instruction frontmatter using complete delimiter lines.
+- Compare upgrades against v0.35.0-beta; preserve published release links, tags and assets. Live task quality and cost effects remain unmeasured.
 
 ## Harness for Codex v0.35.0-beta
 

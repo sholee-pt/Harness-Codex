@@ -17,6 +17,7 @@ import threading
 import time
 
 from .environment import codex_environment
+from . import presentation as ui
 from .presentation import Progress, clean
 
 MAX_MESSAGE = 4 * 1024 * 1024
@@ -37,9 +38,9 @@ class Result:
         if self.message:
             print(clean(self.message), flush=True)
 
-    def show_resume(self):
+    def show_resume(self, root):
         if self.session_id:
-            print(f'To continue in this project: harness-codex config --resume {clean(self.session_id)}', flush=True)
+            print(clean('To continue in this project: ' + ui.command(['harness-codex', 'config', '--project', root, '--resume', self.session_id])), flush=True)
 
 
 class Server:
@@ -430,5 +431,5 @@ def run(command: list[str], root: Path, prompt: str, *, timeout=1800, resume_id=
             return Result(130, server.thread_id)
         finally:
             if server.thread_id and not completed:
-                progress.line(f'To continue configuration: harness-codex config --resume {server.thread_id}')
+                progress.line('To continue configuration: ' + ui.command(['harness-codex', 'config', '--project', root, '--resume', server.thread_id]))
             server.close()

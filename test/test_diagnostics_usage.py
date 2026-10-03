@@ -92,6 +92,33 @@ class ActivationDiagnosticsTests(unittest.TestCase):
             self.assertFalse(report["environment"]["harnessCondaEnvironment"])
             self.assertFalse(report["codexInvoked"])
 
+    def test_malformed_manifest_fields_block_activation_without_breaking_diagnostics(self) -> None:
+        for field, expected in (("agent-name", "invalid agent name"),
+                                ("managed-path", "managed path must be a string"),
+                                ("classification", "topology.classification.class is unsupported")):
+            for value in ([], {}):
+                with self.subTest(field=field, value=value), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    harness_apply.apply_application(harness_apply.build_application(root, minimal_plan(root)))
+                    path = root / ".harness/manifest.json"
+                    manifest = json.loads(path.read_text(encoding="utf-8"))
+                    if field == "agent-name":
+                        manifest["topology"]["agents"].append({"name": value})
+                    elif field == "managed-path":
+                        manifest["managedFiles"].append({"path": value, "kind": "file"})
+                    else:
+                        manifest["topology"]["classification"]["class"] = value
+                    path.write_text(json.dumps(manifest), encoding="utf-8")
+                    before = snapshot(root)
+                    report = harness_doctor.diagnose(root)
+                    self.assertFalse(report["valid"])
+                    self.assertEqual(report["installationStatus"], "invalid")
+                    self.assertEqual(report["activation"]["status"], "blocked")
+                    self.assertTrue(any(expected in error for error in report["errors"]), report["errors"])
+                    self.assertFalse(report["workspaceWrites"])
+                    self.assertFalse(report["codexInvoked"])
+                    self.assertEqual(before, snapshot(root))
+
 
 class UsageCoverageTests(unittest.TestCase):
     def record(self) -> dict:

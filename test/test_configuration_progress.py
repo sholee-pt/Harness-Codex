@@ -5,6 +5,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shlex
 import sys
 import tempfile
 import time
@@ -147,7 +148,7 @@ class ConfigurationProgressTests(unittest.TestCase):
         self.assertNotIn('"method"', output)
         self.assertIn('native-configured-model', output)
         self.assertNotIn('Configuration result from Codex.', output)
-        self.assertNotIn('config --resume', output)
+        self.assertNotIn('--resume', output)
         self.assertEqual(self.result.message, 'Configuration result from Codex.')
         self.assertEqual(list(self.root.iterdir()), [])
 
@@ -158,6 +159,41 @@ class ConfigurationProgressTests(unittest.TestCase):
                          {'cwd': str(self.root), 'threadId': 'earlier-native-session'})
         self.assertFalse(any(r['method'] == 'thread/start' for r in records))
         self.assertEqual(list(self.root.iterdir()), [])
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX command parsing; PowerShell quoting is tested separately')
+    def test_resume_guidance_keeps_project_and_session_literal_from_another_directory(self):
+        from harness_cli.main import build_parser
+        self.root = self.base / "project with spaces ' $HOME `name`"
+        self.root.mkdir()
+        self.assertNotEqual(Path.cwd(), self.root)
+        for mode in ('needs-input', 'interrupted'):
+            with self.subTest(mode=mode):
+                self.output.seek(0)
+                self.output.truncate()
+                self.error.seek(0)
+                self.error.truncate()
+                self.assertEqual(self.invoke(mode), 1 if mode == 'needs-input' else 130)
+                if mode == 'needs-input':
+                    with contextlib.redirect_stdout(self.output):
+                        self.result.show_resume(self.root)
+                    text = self.output.getvalue()
+                else:
+                    text = self.error.getvalue()
+                line = next(line for line in text.splitlines() if line.startswith('To continue'))
+                arguments = shlex.split(line.split(': ', 1)[1])
+                self.assertEqual(arguments, ['harness-codex', 'config', '--project', str(self.root), '--resume', 'native-thread'])
+                parsed = build_parser(ROOT).parse_args(arguments[1:])
+                self.assertEqual(parsed.project, self.root)
+                self.assertEqual(parsed.resume, 'native-thread')
+        session = "session ' $HOME `literal`"
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            configuration.Result(1, session).show_resume(self.root)
+        self.assertEqual(shlex.split(output.getvalue().split(': ', 1)[1])[-1], session)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            configuration.Result(1, 'session\x1b[31m').show_resume(self.root)
+        self.assertNotIn('\x1b', output.getvalue())
 
     def test_early_completion_and_foreign_thread_events(self):
         for mode in ('early', 'foreign'):
@@ -428,7 +464,7 @@ class ConfigurationProgressTests(unittest.TestCase):
                 self.assertEqual(project.run_project_command(args, source_root=ROOT), 0)
             clean_output = self.output.getvalue()
             self.assertNotIn('Configuration result from Codex.', clean_output)
-            self.assertNotIn('config --resume', clean_output)
+            self.assertNotIn('--resume', clean_output)
             self.output.seek(0)
             self.output.truncate()
             args = parser.parse_args(['config', '--no-codex-integration', '--project', str(self.root), '--settings', 'native'])
@@ -436,7 +472,7 @@ class ConfigurationProgressTests(unittest.TestCase):
                 self.assertEqual(project.run_project_command(args, source_root=ROOT), 1)
             self.assertEqual(sum(r['method'] == 'thread/archive' for r in self.records()), 1)
             self.assertIn('Which dataset should be used?', self.output.getvalue())
-            self.assertIn('config --resume native-thread', self.output.getvalue())
+            self.assertIn(presentation.command(['harness-codex', 'config', '--project', self.root, '--resume', 'native-thread']), self.output.getvalue())
             self.assertNotIn('Configuration complete.', self.output.getvalue())
             self.output.seek(0)
             self.output.truncate()
