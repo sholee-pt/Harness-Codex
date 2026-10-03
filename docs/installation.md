@@ -6,6 +6,8 @@ For the transition from a patched Codex installation, run the current release in
 
 Interactive `codex` launches check both release channels and require a selection before downloads. Both historical `compatible` and `check` settings now request consent; `off` and `HARNESS_NO_UPDATE_CHECK=1` skip checks. Help, version, doctor, dry runs and noninteractive Codex commands do not check releases. For private GitHub access, an explicitly configured `HARNESS_GITHUB_TOKEN` or `GH_TOKEN` can authorize API calls; Git user.name/email are not authentication. Credentials are never forwarded to asset redirects.
 
+Interactive launch shows progress while checking releases and Auto compatibility. A failed release check keeps installed files available. Native fallback preserves Codex settings and history, but disables both Harness Auto and `/harness/` management for that session. The terminal displays `status`, `init` and `config` commands for the selected project; run them after exiting Codex. An explicit native profile or `HARNESS_CODEX_NATIVE=1` keeps its original arguments and receives the same management guidance. Help and automation remain quiet native commands.
+
 Current releases and CI target Linux. Windows installation code and the option references below are retained for future work; no Windows installer or native package is published while Windows validation is paused.
 
 ## Options
@@ -49,7 +51,7 @@ For Windows source development, run from an existing checkout:
 ## Source installation
 
 ```bash
-git clone --branch v0.34.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
+git clone --branch v0.35.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git
 bash Harness-Codex/installer/install.sh
 source ~/.bashrc
 ```
@@ -159,5 +161,7 @@ The CLI removes only verified files from its own installation. Unowned files, em
 Project harnesses survive tool uninstall. Reinstall, select the same project and run `status`: no global registry is needed because its manifest is stored in the project. Use native `codex` for a compatible harness, update its generator and run `config` when needed, or explicitly `reset`. `remove --include-generator --yes` removes the unchanged owned project installation before tool uninstall if desired. Native Codex history and credentials belong to Codex and remain untouched.
 
 Confirmed uninstall removes the owned saved TypeSafe credential, while preserving project harnesses and Graft/Jev observations. Environment keys are not changed. Unsafe or unrecognized credential storage is preserved and reported. Use `harness-codex jev login` after reinstall to connect TypeSafe again; see [Jev authentication](jev.md#login-and-saved-credentials).
+
+If credential cleanup fails after tool removal, the report identifies that completed step and the preserved credential path (or the unresolved configured directory). No key is printed and ownership checks are not bypassed. Inspect that location and its ownership/permissions; reinstall Harness before using `harness-codex jev logout` for assisted removal.
 
 Owned maintenance hooks and recorded automatic trust changes participate in uninstall rollback. Unchanged trust additions are removed and prior values are restored; user-modified and legacy unrecorded trust stays untouched. Review any preservation warning or recovery-copy location reported by uninstall. See [maintenance ownership](maintenance.md).

@@ -11,7 +11,7 @@ import sys
 import time
 
 from . import distribution as dist, official_codex, release_updates
-from .presentation import Progress, clean
+from .presentation import Progress, clean, command
 from .terminal_menu import choose
 
 
@@ -33,15 +33,16 @@ def interactive(args):
     return True
 
 
-def update_choices(root):
+def update_choices(root, *, project=None):
     state = dist.installed_status(root)
     if state['auto_update'] == 'off' or os.environ.get('HARNESS_NO_UPDATE_CHECK') == '1':
         return False
     findings = {}
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        channels = [('Codex', official_codex.check)]
-        if not state.get('branch'):
-            channels.append(('Harness', release_updates.check))
+    channels = [('Codex', official_codex.check)]
+    if not state.get('branch'):
+        channels.append(('Harness', release_updates.check))
+    label = 'Checking ' + ' and '.join(name for name, _ in channels) + ' updates'
+    with Progress(label, compact=True) as progress, ThreadPoolExecutor(max_workers=2) as executor:
         pending = {name: executor.submit(check, root, timeout=5) for name, check in channels}
         for name, future in pending.items():
             try:
@@ -49,7 +50,8 @@ def update_choices(root):
                 if value['updateAvailable']:
                     findings[name] = value
             except (OSError, ValueError, TimeoutError):
-                print(name + ' update check unavailable; continuing with installed files.', file=sys.stderr)
+                progress.outcome = 'partly unavailable'
+                progress.line(name + ' update check unavailable; continuing with installed files.', style='warning')
     if not findings:
         return False
     progress = Progress('Updates available')
@@ -66,7 +68,7 @@ def update_choices(root):
             with Progress('Updating ' + name) as progress:
                 if name == 'Codex':
                     official_codex.install(root, selected=findings[name],
-                        native_fallback=lambda version, error: choose_native_install(version, error, progress=progress))
+                        native_fallback=lambda version, error: choose_native_install(version, error, progress=progress, project=project))
                 else:
                     result = release_updates.update(root, selected=findings[name])
                     changed = result['updated']
@@ -75,12 +77,22 @@ def update_choices(root):
     return changed
 
 
-def choose_native_install(version, error, *, progress=None):
+def native_guidance(*, progress=None, project=None):
+    progress = progress or Progress('Native Codex')
+    progress.line('Harness Auto and /harness/ management are unavailable in this native Codex session.')
+    root = Path(project if project is not None else Path.cwd()).expanduser().resolve()
+    progress.line('After exiting Codex, use status to inspect, init to initialize, or config to review this project:')
+    for action in ('status', 'init', 'config'):
+        progress.line('  ' + command(['harness-codex', action, '--project', str(root)]))
+
+
+def choose_native_install(version, error, *, progress=None, project=None):
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         return False
     progress = progress or Progress('Official Codex is available without the Harness adapter')
     progress.line('Auto compatibility check failed: ' + clean(error))
-    progress.line('Native mode preserves Codex permissions and history. Harness Auto and /harness/ controls remain disabled until codex update --auto succeeds.')
+    progress.line('Native mode preserves Codex permissions and history. Run codex update --auto later to check adapter compatibility again.')
+    native_guidance(progress=progress, project=project)
     return choose(progress, 'Install official Codex ' + version + ' in native mode?', [
         'Keep the current installation', 'Install this version in native mode']) == 1
 
@@ -111,7 +123,7 @@ def remember(root, thread, enabled):
         dist._write_json(root / 'relay-sessions.json', {'schema': 1, 'threads': modes})
 
 
-def compatible(binary, args):
+def compatible(binary, args, *, progress=None):
     """Probe available operations, not a numeric Codex version allowlist."""
     from .auto_relay import dependency, server_arguments, working_directory, Policy
     from .configuration import Server
@@ -119,7 +131,8 @@ def compatible(binary, args):
     result = subprocess.run([str(binary), '--help'], capture_output=True, text=True, timeout=10, check=True)
     if '--remote' not in result.stdout or '--remote-auth-token-env' not in result.stdout:
         raise ValueError('This Codex does not advertise an authenticated remote app-server connection')
-    server = Server([str(binary), *server_arguments(args)], working_directory(args), Progress('Checking Auto compatibility', compact=True))
+    server = Server([str(binary), *server_arguments(args)], working_directory(args),
+                    progress or Progress('Checking Auto compatibility', compact=True))
     try:
         server.initialize(timeout=10)
         from .session_settings import model_catalog
@@ -135,7 +148,7 @@ def main(args):
     from .main import default_data_root
     from . import codex_integration
     from .environment import codex_environment
-    from .auto_relay import Policy, run, profile_requested, native_arguments
+    from .auto_relay import Policy, run, profile_requested, native_arguments, working_directory
     root = default_data_root()
     integration = codex_integration.read(root)
     if not integration or integration['schema'] != 2:
@@ -145,7 +158,7 @@ def main(args):
             official_codex.install(root, prefer_auto='--auto' in args,
                 native_fallback=lambda version, error: choose_native_install(version, error, progress=progress))
         return 0
-    if interactive(args) and update_choices(root):
+    if interactive(args) and update_choices(root, project=working_directory(args)):
         # Load new Python source only between conversations, once per launch.
         state = dist.installed_status(root)
         env = {**os.environ, 'HARNESS_NO_UPDATE_CHECK': '1'}
@@ -160,22 +173,29 @@ def main(args):
             if (project / context_path).is_file():
                 prepare(project, [str(binary)])
                 break
-    if not interactive(args) or os.environ.get('HARNESS_CODEX_NATIVE') == '1':
+    if not interactive(args):
+        os.execve(str(binary), [str(binary), *args], env)
+    if os.environ.get('HARNESS_CODEX_NATIVE') == '1':
+        native_guidance(project=working_directory(args))
         os.execve(str(binary), [str(binary), *args], env)
     if profile_requested(args):
         print('Using native Codex to preserve the selected profile. Harness Auto is unavailable for this launch.', file=sys.stderr)
+        native_guidance(project=working_directory(args))
         os.execve(str(binary), [str(binary), *args], env)
     if (official_codex.read(root) or {}).get('mode') == 'native':
         print('Using the selected native Codex mode. Run codex update --auto to check and re-enable the Harness adapter.', file=sys.stderr)
+        native_guidance(project=working_directory(args))
         os.execve(str(binary), [str(binary), *args], env)
     # Harness owns this package's update transaction; avoid a second native prompt.
     args = ['-c', 'check_for_update_on_startup=false', *args]
     try:
-        compatible(binary, args)
+        with Progress('Checking Auto compatibility', compact=True) as progress:
+            compatible(binary, args, progress=progress)
     except (OSError, ValueError, ImportError, TimeoutError, subprocess.SubprocessError) as error:
         progress = Progress('Auto unavailable')
         progress.line('Auto compatibility check failed: ' + clean(error))
-        if choose(progress, 'Continue with official Codex?', ['Use native Codex without Harness Auto', 'Exit']) == 1:
+        native_guidance(progress=progress, project=working_directory(args))
+        if choose(progress, 'Continue with official Codex?', ['Use native Codex', 'Exit']) == 1:
             return 1
         os.execve(str(binary), [str(binary), *args], env)
     settings = dist._read_json(root / 'codex-relay.json')

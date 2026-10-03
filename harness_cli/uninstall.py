@@ -330,13 +330,20 @@ def run(data_root: Path, *, dry_run=False) -> int:
     cleanup_source = None
     if plan['runtime'] and os.name == 'nt':
         cleanup_source = Path(__file__).with_name('runtime_cleanup.ps1').read_bytes()
-    from .jev_auth import forget
+    from .jev_auth import forget, home as credential_home
     with ui.Progress('Removing owned Harness files and settings', stream=sys.stdout, compact=True) as progress:
         result = remove(plan)
         try:
             forget()
-        except (OSError, ValueError):
-            progress.line('The TypeSafe credential could not be safely removed; preserved. Use jev logout before uninstalling to inspect this separately.', style='warning')
+        except (OSError, ValueError, RuntimeError):
+            progress.line('The tool removal step completed. TypeSafe credential cleanup could not be verified; the configured storage was preserved.', style='warning')
+            try:
+                location = str(credential_home() / 'typesafe.json')
+                progress.line('Credential file to inspect: ' + location, style='warning')
+            except (OSError, ValueError, RuntimeError):
+                configured = os.environ.get('HARNESS_CREDENTIAL_HOME', '~/.local/share/harness-codex-credentials')
+                progress.line('Configured credential directory (not resolved): ' + configured, style='warning')
+            progress.line('Inspect the preserved location and its ownership/permissions. Reinstall Harness before using harness-codex jev logout for removal.', style='warning')
         if plan['runtime']:
             from . import footprint
             progress.phase('Cleaning the installer-owned runtime')

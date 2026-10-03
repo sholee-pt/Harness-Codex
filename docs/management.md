@@ -6,16 +6,27 @@ the composer. Use `/harness/` for a small management menu.
 
 Default Linux installation prepares this integration before any project has a
 harness. Apply the installer's PATH change in a new shell, run `codex` from any
-existing working directory, and choose **Init** in `/harness/`. Tool-only installs
+existing working directory, and choose **Project → Init** in `/harness/`. Tool-only installs
 (`--no-codex-integration` or `--no-modify-path`) skip that connection. Codex still
 handles account login and project trust. Windows installation is unchanged while
 its release path is paused.
 
 ## Guided setup
 
-The menu includes Status, Settings, Init, Config, Maintenance, Doctor, Routing,
-Jev, Graft, Switch, Remove, Reset, Tool, Help and Back. Init and Config without
-arguments open a guided workflow:
+The menu shows the selected project and current after-exit reservation, then
+groups related actions:
+
+| Group | Actions |
+| --- | --- |
+| Project | Init, Config, Switch, Remove, Reset |
+| Settings | Preferences, Jev, Graft |
+| Diagnostics | Status, Doctor, Maintenance, Routing |
+| Tools | Check updates, Update, Uninstall, Queued action |
+| Help | Existing qualified command names |
+
+Back returns to the containing menu; Back at the top returns to the conversation.
+The existing qualified commands remain available directly. Init and Config
+without arguments open a guided workflow:
 
 1. Keep the current project or enter another directory. Relative directory paths
    are based on the current project; missing directories require final confirmation
@@ -25,8 +36,19 @@ arguments open a guided workflow:
 3. Enter a single-line description, enter a Markdown path, or select existing
    project evidence. Markdown paths are relative to the target project; contents
    are referenced instead of copied into a bootstrap prompt.
-4. Review the project, action and brief, then confirm. Back revisits the earlier
-   choice; `:back` leaves a text input. Native keyboard handling is unchanged.
+4. Review the project, action and brief, then confirm. Back revisits the previous
+   input or selection; `:back` leaves a text input. Entered paths and descriptions
+   remain available through **Keep entered value** or **Keep entered brief**.
+   Briefs are retained separately for each selected project during this wizard.
+   Native keyboard handling is unchanged.
+
+Preferences displays the selected project, current maintenance mode, adaptive
+Auto setting and recorded hook state. **Keep current** is the first option.
+Selecting a different preference shows its current and proposed values before
+**Apply change**. Selecting the current value makes no preference write. Back
+from the value picker returns to preferences; Back from confirmation returns to
+the value picker. Hook preparation still uses the native policy checks for only
+the exact owned definitions.
 
 Selection and status inspection make no model request. Confirmed configuration
 uses a real turn with the current model, reasoning and permissions. If the target
@@ -34,7 +56,9 @@ differs from the conversation directory, finish active work and use `/quit`:
 Harness opens a fresh target conversation and submits the approved configuration
 there. A missing target is prepared only after normal exit. Source permissions,
 transcripts and Conda activation are not copied. Interrupted or failed exit
-discards the reservation. `/harness/switch --cancel` clears a pending action.
+discards the reservation. **Tools → Queued action** reviews or cancels the
+displayed reservation. `/harness/switch --cancel` cancels only a project switch;
+it does not cancel configuration, authentication, update or uninstall requests.
 
 Jev's menu can queue private login/logout; Tool can queue updates or uninstall.
 After `/quit`, the existing terminal flow starts automatically. Credentials are
@@ -55,8 +79,8 @@ profiles, and a standalone Codex launch without the adapter use terminal
 
 | In the Codex composer | Effect |
 | --- | --- |
-| `/harness/status` | Local status box: version, author, project, maintenance, adaptive routing, Jev, Graft and hook registration. No inference request. |
-| `/harness/settings` | Native question picker for maintenance, adaptive Auto and exact owned hook trust. Does not regenerate project artifacts. |
+| `/harness/status` | Local status box plus the current conversation's after-exit reservation. No inference request. |
+| `/harness/settings` | Current project/preferences, Keep current default, then explicit change confirmation. Does not regenerate project artifacts. |
 | `/harness/init` or `/harness/config` | Guided project, brief and confirmation steps. |
 | `/harness/init --goal "Project purpose"` | Install the generator, refresh skill metadata and ask the current conversation to configure a missing harness. An existing manifest is reported instead of replaced. |
 | `/harness/init --goal-file "PROJECT.md"` | Reference a Markdown brief relative to the selected project. Its full text is not copied into a bootstrap prompt. |
@@ -72,9 +96,11 @@ profiles, and a standalone Codex launch without the adapter use terminal
 | `/harness/doctor` | Run static project validation; does not establish live agent discovery or quality. |
 | `/harness/switch` | Choose a reachable project from recent native conversation metadata. |
 | `/harness/switch "PROJECT_PATH"` | Select another existing project and choose its resume picker or a new conversation. |
+| `/harness/switch --cancel` | Cancel a queued switch only; retain other kinds of reservations. |
 | `/harness/update --check` | Check the published Harness version; a network request, not a model request. |
 | `/harness/update` | Check, then optionally queue the terminal updater after normal Codex exit. |
-| `/harness/tool` | Update checks, update scheduling and confirmed terminal uninstall after exit. |
+| `/harness/update --cancel` | Cancel a queued Harness update only. |
+| `/harness/tool` | Update checks, update scheduling, terminal uninstall and queued-action review. |
 | `/harness/remove` | Preview and confirm unchanged owned project file removal, then separately offer empty component-directory cleanup. |
 | `/harness/remove --include-generator` | Also include unchanged generator files in the preview. |
 | `/harness/reset` | Confirm removal first; then explicitly use `/harness/init` to create a new design. Unlike terminal `reset`, this is a two-step workflow. |
@@ -95,7 +121,11 @@ message renderer; it is not the built-in `/status` implementation or a model
 answer. Local control turns are transient and are not added to native saved
 conversation history. Configuration and explicit maintenance review are real
 model turns and remain in that history. A status box cannot establish that
-every skill loaded or that token use or task quality improved.
+every skill loaded or that token use or task quality improved. Successful local
+controls complete normally, interrupted controls report `interrupted`, and local
+operation errors report `failed` with an error message. If forwarding a real
+model task is not confirmed, a separate warning requests checking the native
+conversation before retrying; the adapter does not replay it automatically.
 
 Successful in-conversation `init` validates files, refreshes the single owned
 guide, prepares host diagnostics and optional retrieval, and attempts native
@@ -127,9 +157,14 @@ when generation is wanted. There is no automatic transcript copying or inherited
 source-project permission override. To hand off information, explicitly provide
 only the relevant summary in the target conversation. A missing mount path is
 not rebound by guessing: provide the actual path on the current host. Queued
-actions are in memory only, replaced by another queued action, and discarded on
-a failed or interrupted native exit. Use `/harness/switch --cancel` or
-`/harness/update --cancel` to clear the pending action while staying in Codex.
+actions are in memory only and discarded on a failed or interrupted native exit.
+A different request displays the existing and requested actions, with **Keep
+queued action** selected first; replacing it requires **Replace queued action**.
+Choosing **Later** in update scheduling preserves an existing reservation and
+reports what remains queued. `/harness/status` and the management menus display
+the reservation. Use **Tools → Queued action** to cancel the displayed action of
+any kind, or `/harness/switch --cancel` and `/harness/update --cancel` for their
+respective kinds. These controls stay inside the current conversation.
 The target keeps the launching shell's environment; project switching does not
 activate a different Conda environment automatically. Native menus retain native
 keyboard handling, including Esc interruption; Harness does not intercept keys.

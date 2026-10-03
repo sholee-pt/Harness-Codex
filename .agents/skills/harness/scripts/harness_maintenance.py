@@ -7,6 +7,7 @@ project. The native agent reviews an eligible batch at a subsequent turn boundar
 from __future__ import annotations
 
 import argparse
+import copy
 from contextlib import contextmanager
 import hashlib
 import json
@@ -267,7 +268,12 @@ class Maintenance:
 
     def status(self):
         state = self._read(self._location())
-        expired = state['lease'] is not None and self.clock() > state['lease']['deadline']
+        now = self.clock()
+        expired = state['lease'] is not None and now > state['lease']['deadline']
+        scheduling_state = state
+        if expired:
+            scheduling_state = copy.deepcopy(state)
+            self._expire(scheduling_state, now=now)
         changes = history.summary(state['changes'])
         incomplete = self._tracking_incomplete(state) or self._pending_hooks()
         applying = self._application_active()
@@ -279,7 +285,7 @@ class Maintenance:
                 'automaticScope': 'existing-skill-content-only', 'qualityBenefit': 'not-established',
                 'tokenBudgetEnforcement': 'not-available-in-native-interactive-session',
                 'reviewTimeLimitSeconds': state['policy']['reviewSeconds'], 'reviewsPerDay': state['policy']['reviewsPerDay'],
-                'policy': state['policy'], 'scheduling': cadence.schedule(state, self.clock(), [state['candidates'][key] for key in self._eligible(state)]),
+                'policy': state['policy'], 'scheduling': cadence.schedule(scheduling_state, now, [state['candidates'][key] for key in self._eligible(state)]),
                 **changes, 'trackingIncomplete': incomplete, 'applicationMarkerPresent': applying,
                 'automaticChangesPaused': incomplete or applying or changes['automaticChangesPaused']}
 
@@ -448,9 +454,9 @@ class Maintenance:
         return (self._tracking_incomplete(state) or self._pending_hooks(pending)
                 or any(item['children'] or (key != session and item['active']) for key, item in state['sessions'].items()))
 
-    def _expire(self, state):
+    def _expire(self, state, *, now=None):
         lease = state['lease']
-        if lease and self.clock() > lease['deadline']:
+        if lease and (self.clock() if now is None else now) > lease['deadline']:
             state['metrics']['reviewSeconds'] += lease['deadline'] - lease['started']
             state['metrics']['unmeasuredReviews'] += 1
             cadence.record(state, lease['deadline'], lease['deadline'] - lease['started'], None, 'expired')
@@ -482,8 +488,8 @@ class Maintenance:
         if selection is not None:
             candidates = [key for key in candidates if key in selection]
         schedule = cadence.schedule(state, now, [state['candidates'][key] for key in candidates])
-        if (not candidates or schedule['budgetBlocked'] or len(state['attempts']) >= schedule['reviewsPerDay']
-                or (state['attempts'] and now - state['attempts'][-1] < schedule['intervalSeconds'])):
+        if (not candidates or schedule['budgetBlocked'] or schedule['reviewLimitReached']
+                or schedule['intervalRemainingSeconds'] > 0):
             return None
         manifest = self.manifest()
         state['lease'] = {'id': uuid.uuid4().hex, 'revision': digest(manifest),

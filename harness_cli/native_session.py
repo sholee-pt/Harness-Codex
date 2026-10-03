@@ -38,11 +38,18 @@ def settings_arguments(command, root, mode):
         result += ['--model', overrides['model']]
     if overrides.get('effort'):
         result += ['-c', 'model_reasoning_effort=' + json.dumps(overrides['effort'])]
-    sandbox = overrides.get('sandboxPolicy', {}).get('type')
+    policy = overrides.get('sandboxPolicy', {})
+    sandbox = policy.get('type')
     if sandbox:
         result += ['--sandbox', {'readOnly': 'read-only', 'workspaceWrite': 'workspace-write',
                                 'dangerFullAccess': 'danger-full-access'}[sandbox],
-                   '--ask-for-approval', overrides['approvalPolicy'], '-c', 'approvals_reviewer="user"']
+                   '--ask-for-approval', overrides['approvalPolicy'], '-c',
+                   'approvals_reviewer=' + json.dumps(overrides['approvalsReviewer'])]
+        if sandbox == 'workspaceWrite':
+            # Replace inherited workspace permissions with the user's conversation selection.
+            for source, key in (('writableRoots', 'writable_roots'), ('networkAccess', 'network_access'),
+                                ('excludeSlashTmp', 'exclude_slash_tmp'), ('excludeTmpdirEnvVar', 'exclude_tmpdir_env_var')):
+                result += ['-c', 'sandbox_workspace_write.' + key + '=' + json.dumps(policy[source], ensure_ascii=False)]
     return result
 
 

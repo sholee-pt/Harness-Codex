@@ -8,11 +8,12 @@ from .terminal_menu import choose
 def mode_choice(progress, mode):
     if mode != 'ask':
         return mode
-    return ('auto', 'manual', 'native')[choose(progress, 'Model selection', [
-        'Automatic — use Codex recommended defaults; preserve a resumed session',
+    return ('auto', 'manual', 'native')[choose(progress, 'Configuration model selection', [
+        'Codex defaults — use recommended defaults; preserve a resumed session',
         'Manual — choose model, reasoning and permissions',
         'Keep native settings',
-    ])]
+    ], summary=['These settings apply to this configuration conversation.',
+                'Harness Auto routing is selected separately in /model.'])]
 
 
 def current_settings(server, root, deadline):
@@ -34,7 +35,7 @@ def automatic(server, deadline, *, resume=False, current=None):
     retained = next((m for m in models if m['model'] == current.get('model')), None) if resume else None
     if retained and (current.get('reasoningEffort') is None or current['reasoningEffort'] in
                      [item.get('reasoningEffort') for item in retained.get('supportedReasoningEfforts', [])]):
-        server.progress.line('Automatic: keep the available resumed conversation model and reasoning.')
+        server.progress.line('Codex defaults: keep the available resumed conversation model and reasoning.')
         return {}
     model = retained or next((m for m in models if m.get('isDefault') is True), None)
     if model is None:
@@ -51,7 +52,7 @@ def automatic(server, deadline, *, resume=False, current=None):
         server.progress.line('No supported default reasoning level; keeping native settings.')
         return {}
     reason = 'replaces unavailable or unknown saved settings' if resume else 'Codex recommended default'
-    server.progress.line(f"Automatic: {model['model']} / {effort} ({reason}).")
+    server.progress.line(f"Codex defaults: {model['model']} / {effort} ({reason}).")
     return {'model': model['model'], 'effort': effort}
 
 
@@ -100,9 +101,9 @@ def select(server, current, root, deadline):
     current_label += ' / ' + (approval if isinstance(approval, str) else 'custom approval policy')
     permission_labels = [
         'Keep current: ' + current_label,
-        'Read-only files; restricted network; ask for extra access',
-        'Project/temp writes; restricted network; ask for extra access',
-        'Full access; unrestricted files/network; no command approval prompts',
+        'Read-only files; block command network access; ask for extra access',
+        'Project and temp writes; block command network access; ask for extra access',
+        'Full access; unrestricted command files/network; no command approval prompts',
     ]
     step = selected = reasoning = permission = 0
     overrides = {}

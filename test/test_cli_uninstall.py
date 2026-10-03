@@ -90,6 +90,39 @@ class UninstallTests(unittest.TestCase):
             self.invoke()
             forget.assert_called_once()
 
+    @unittest.skipUnless(os.name == 'posix', 'Saved credentials require POSIX ownership checks')
+    def test_preserved_credential_reports_post_removal_location_without_secret(self):
+        from harness_cli import jev_auth
+        key = 'private-fixture-value-not-for-output'
+        jev_auth.save(key)
+        home = jev_auth.home()
+        before = files(home)
+        home.chmod(0o755)
+        status, output, _ = self.invoke()
+        self.assertEqual(status, 0)
+        self.assertFalse((self.data / 'launcher.py').exists())
+        self.assertEqual(files(home), before)
+        self.assertIn('tool removal step completed', output)
+        self.assertIn(str(home / 'typesafe.json'), output)
+        self.assertIn('Reinstall Harness before using harness-codex jev logout', output)
+        self.assertNotIn('before uninstalling', output)
+        self.assertNotIn(key, output)
+
+    @unittest.skipUnless(os.name == 'posix', 'Requires POSIX symlinks')
+    def test_unresolved_credential_location_is_reported_without_following_it(self):
+        outside = self.base / 'user-owned'
+        outside.mkdir()
+        (outside / 'typesafe.json').write_text('private unowned fixture')
+        home = self.base / 'credentials'
+        home.symlink_to(outside, target_is_directory=True)
+        before = files(outside)
+        status, output, _ = self.invoke()
+        self.assertEqual(status, 0)
+        self.assertEqual(files(outside), before)
+        self.assertTrue(home.is_symlink())
+        self.assertIn('Configured credential directory (not resolved): ' + str(home), output)
+        self.assertNotIn('private unowned fixture', output)
+
     def hooks(self):
         from harness_cli import hook_state, maintenance
         maintenance.install_hooks(self.source, tool_home=self.data)

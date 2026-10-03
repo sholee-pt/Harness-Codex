@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sholee-pt/Harness-Codex/tree/v0.34.0-beta"><img src="https://img.shields.io/badge/Version-v0.34.0--beta-2563EB.svg?style=flat-square" alt="Version: v0.34.0-beta"></a>
+  <a href="https://github.com/sholee-pt/Harness-Codex/tree/v0.35.0-beta"><img src="https://img.shields.io/badge/Version-v0.35.0--beta-2563EB.svg?style=flat-square" alt="Version: v0.35.0-beta"></a>
   <a href="#agent-editions"><img src=".github/badges/agent-codex.svg" alt="Agent: Codex"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Proprietary-64748B.svg?style=flat-square" alt="License: Proprietary"></a>
 </p>
@@ -41,7 +41,7 @@ Previous releases retain their version tags and installation commands on the [Re
 To install the development source instead:
 
 ```bash
-git clone --branch v0.34.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git Harness-Codex
+git clone --branch v0.35.0-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git Harness-Codex
 bash Harness-Codex/installer/install.sh
 harness-codex --version
 ```
@@ -52,7 +52,7 @@ Supports Linux x86_64 and aarch64. Source cloning requires Git; installation req
 
 Windows release assets are not currently available. Windows support remains in the source tree, but publication is paused until its separate validation passes. Use Windows release installation only when the [release assets](https://github.com/sholee-pt/Harness-Codex/releases) include `install_harness_codex.ps1`, `harness-codex-VERSION-windows.zip` and the matching Windows native package. See [source installation options](docs/installation.md) for development use.
 
-When migrating from 0.10.0-beta, run this installer once: its updater cannot discover the new unprefixed branches. If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness-Codex/blob/v0.34.0-beta/docs/installation.md).
+When migrating from 0.10.0-beta, run this installer once: its updater cannot discover the new unprefixed branches. If installation traces exist, choose **`reuse`** to retain tool preferences or **`reset`** to reset Harness update preferences, its check cache and managed PATH registration. Project harnesses and unrelated settings are preserved. Unattended installation accepts `--existing reuse|reset` on Linux or `-Existing reuse|reset` on Windows. See [installation options](https://github.com/sholee-pt/Harness-Codex/blob/v0.35.0-beta/docs/installation.md).
 
 ## Quick Start
 
@@ -84,7 +84,7 @@ codex resume --last
 
 On Linux, `init` also prepares local Graft retrieval and enables Jev shadow advice automatically. The first setup downloads Graft's isolated runtime; subsequent projects reuse it. If no TypeSafe key is available, init guides you to its key page and accepts hidden input once, saving it for later projects without shell exports or restart. A newly entered key uses one small authentication request; existing credentials make no init API call. You can skip login and continue ordinary retrieval. Eligible Jev queries may send bounded code snippets to TypeSafe. Use `--retrieval off` to skip both setups, or `harness-codex jev disable` to keep only local retrieval. Explicit opt-outs survive repeated init. See [retrieval controls](docs/retrieval.md) and [Jev authentication and behavior](docs/jev.md).
 
-Choose **Automatic** or **Manual** with the arrow keys and Enter. Automatic uses the recommended default from your Codex catalog for configuration. Manual offers the available models, reasoning levels and permissions. `--settings auto|manual|native` selects a mode directly. Three concise stages show configuration progress and file validation. Questions and approvals stay visible. See [session settings](docs/sessions.md#session-settings).
+Choose **Codex defaults** or **Manual** with the arrow keys and Enter. Codex defaults uses the recommended model and reasoning from your Codex catalog for configuration; it does not enable per-request Harness Auto routing. Manual offers the available models, reasoning levels and permissions. `--settings auto|manual|native` selects a mode directly. Three concise stages show configuration progress and file validation. Questions and approvals stay visible. See [session settings](docs/sessions.md#session-settings).
 
 After successful setup, interactive `init` offers two project preferences: **maintenance** (`off`, `suggest`, `auto`) and **observed-outcome advice for Auto** (`off`, `on`). Each menu explains its effect; Enter keeps the current setting. New projects start with both off. Maintenance reviews can use conversation tokens; local Auto advice makes no extra model call and needs recorded quality feedback. Change either later with `harness-codex maintenance --mode suggest` or `harness-codex routing --adaptive on`. These commands and status checks are also listed in `.harness/GUIDE.md`. See [maintenance](docs/maintenance.md) and [Auto advice](docs/routing.md#optional-outcome-based-auto-advice).
 
@@ -187,19 +187,19 @@ After reinstalling, run `status` in a project to recognize its retained harness.
 ## Documentation
 
 - [Native Codex integration and automatic model routing](docs/routing.md)
-- [Installation, reinstall choices and troubleshooting](https://github.com/sholee-pt/Harness-Codex/blob/v0.34.0-beta/docs/installation.md)
-- [Project and conversation lifecycle](https://github.com/sholee-pt/Harness-Codex/blob/v0.34.0-beta/docs/sessions.md)
+- [Installation, reinstall choices and troubleshooting](https://github.com/sholee-pt/Harness-Codex/blob/v0.35.0-beta/docs/installation.md)
+- [Project and conversation lifecycle](https://github.com/sholee-pt/Harness-Codex/blob/v0.35.0-beta/docs/sessions.md)
 - [Bounded maintenance and local records](docs/maintenance.md)
 - [Optional task checkpoints and selective resume](.agents/skills/harness/references/task-checkpoints.md)
 - [Optional local Graft retrieval](docs/retrieval.md)
 - [Optional Jev advice, local observations and evaluation limits](docs/jev.md)
 - [Dependency and optimization review](docs/optimization-review.md)
 - [Beta versioning and migration](docs/versioning.md)
-- [Generated structure and design](https://github.com/sholee-pt/Harness-Codex/blob/v0.34.0-beta/docs/architecture.md)
-- [Quality evaluation and optional local evidence](https://github.com/sholee-pt/Harness-Codex/blob/v0.34.0-beta/docs/evaluation.md)
+- [Generated structure and design](https://github.com/sholee-pt/Harness-Codex/blob/v0.35.0-beta/docs/architecture.md)
+- [Quality evaluation and optional local evidence](https://github.com/sholee-pt/Harness-Codex/blob/v0.35.0-beta/docs/evaluation.md)
 - [Workflow efficiency, instruction inventory and selected OMX concepts](docs/workflow-efficiency.md)
 - [External specialist skills and selected upstream improvements](docs/external-skills.md)
-- [Release assets and verification](https://github.com/sholee-pt/Harness-Codex/blob/v0.34.0-beta/docs/distribution.md)
+- [Release assets and verification](https://github.com/sholee-pt/Harness-Codex/blob/v0.35.0-beta/docs/distribution.md)
 - [Changelog](CHANGELOG.md) · [GitHub Releases](https://github.com/sholee-pt/Harness-Codex/releases) · [Contributing](CONTRIBUTING.md)
 
 ## Agent editions

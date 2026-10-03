@@ -348,7 +348,7 @@ class ProjectCliTests(unittest.TestCase):
         self.assertEqual(snapshot(self.root), before)
         report = json.loads(self.run_cli('status')[1])
         self.assertEqual(report['state'], 'stale-evidence')
-        self.assertEqual(report['nextCommand'], 'codex')
+        self.assertEqual(report['nextCommand'], project.ui.command(['codex', '--cd', self.root]))
 
     def test_configure_repairs_deleted_evidence_through_reviewed_generation(self):
         self.assertEqual(self.run_cli("init", "--install-only")[0], 0)
@@ -502,7 +502,7 @@ class ProjectCliTests(unittest.TestCase):
         code, out, err = self.run_cli("status", tty=False)
         report = json.loads(out)
         self.assertEqual(report["state"], "stale-evidence", err)
-        self.assertEqual(report["nextCommand"], "codex")
+        self.assertEqual(report["nextCommand"], project.ui.command(['codex', '--cd', self.root]))
         self.assertEqual(report["summary"]["managedArtifacts"], "passed")
         self.assertEqual(report["summary"]["sourceEvidence"], "failed")
         self.assertEqual(snapshot(self.root), before)
@@ -515,7 +515,7 @@ class ProjectCliTests(unittest.TestCase):
         code, out, err = self.run_cli("status", tty=False)
         report = json.loads(out)
         self.assertEqual(report["state"], "stale-evidence", err)
-        self.assertEqual(report["nextCommand"], "codex")
+        self.assertEqual(report["nextCommand"], project.ui.command(['codex', '--cd', self.root]))
         self.assertEqual(snapshot(self.root), before)
         self.assertFalse(self.log.exists())
 
@@ -527,7 +527,7 @@ class ProjectCliTests(unittest.TestCase):
         code, out, err = self.run_cli("status", tty=False)
         report = json.loads(out)
         self.assertEqual((code, report["state"]), (1, "invalid"), err)
-        self.assertEqual(report["nextCommand"], "harness-codex doctor --project PATH")
+        self.assertEqual(report["nextCommand"], project.ui.command(['harness-codex', 'doctor', '--project', self.root]))
         self.assertEqual(report["summary"]["managedArtifacts"], "failed")
         self.assertEqual(report["summary"]["sourceEvidence"], "failed")
         code, out, err = self.run_cli("doctor", tty=False)

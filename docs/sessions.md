@@ -102,7 +102,9 @@ and `--reload-harness` flags do not configure native work sessions; use `/model`
 
 ## Session settings
 
-`init` and `config` first offer Automatic, Manual or Keep native settings. Use Up/Down and Enter on an interactive terminal; redirected or limited terminals use numbered choices. Manual selection displays the chosen model and reasoning above the next step, then reviews all settings before starting. Use Left or the Back option to return to the preceding step; numbered menus also accept `b`. Back navigation preserves choices until changed and never starts a conversation. Only Enter accepts a highlighted choice. Esc and Right do nothing; Left at the first step stays there. Ctrl+C cancels. `NO_COLOR` disables color. Closed terminal input stops safely without accepting a choice.
+`init` and `config` first offer Codex defaults, Manual or Keep native settings. Use Up/Down and Enter on an interactive terminal; limited interactive terminals use numbered choices. Redirected input cannot approve a selection. Manual selection displays the chosen model and reasoning above the next step, then reviews all settings before starting. Use Left or the Back option to return to the preceding step; numbered menus also accept `b`. Back navigation preserves choices until changed and never starts a conversation. Only Enter accepts a highlighted choice. Esc and Right do nothing; Left at the first step stays there. Ctrl+C cancels. `NO_COLOR` disables color. Closed terminal input stops safely without accepting a choice.
+
+Long choices show an ellipsis in the list. Press Tab to read the complete selected choice and its context; further Tab presses advance through detail pages and return to the list. Up/Down still changes the selected choice, and Enter accepts it. A terminal too small for the interactive controls switches to numbered choices, retaining the highlighted choice and showing the full text.
 
 ```bash
 harness-codex init --settings auto --goal-file PROJECT.md
@@ -111,7 +113,7 @@ harness-codex config --settings manual
 codex
 ```
 
-Automatic selects the catalog's recommended model and its advertised supported default reasoning level for new/configuration work. Resume reads saved settings without loading turns and preserves an available model/effort pair. If that pair is removed or unknown, it selects and reports a supported default before opening the session. No usable resume default requires manual selection. It does not run a separate model to choose a model, infer pricing, or claim command-specific optimal performance. For new work, a catalog with no supported recommendation retains native settings; an empty catalog or connection failure reports an error with the `--settings native` fallback.
+Codex defaults selects the catalog's recommended model and its advertised supported default reasoning level for new/configuration work. Resume reads saved settings without loading turns and preserves an available model/effort pair. If that pair is removed or unknown, it selects and reports a supported default before opening the session. No usable resume default requires manual selection. This configuration choice is separate from per-request Harness Auto routing. It does not run a separate model to choose a model, infer pricing, or claim command-specific optimal performance. For new work, a catalog with no supported recommendation retains native settings; an empty catalog or connection failure reports an error with the `--settings native` fallback.
 
 Manual lists visible models and supported reasoning levels from the installed Codex catalog. A removed saved model requires a current choice; a removed effort or changed model offers its supported default effort. Choices apply only to this native conversation; global settings remain unchanged. Changing a model after generating a harness does not require regenerating the harness. Supported tools, reasoning choices and output quality may differ by model.
 

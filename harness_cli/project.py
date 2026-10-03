@@ -47,7 +47,7 @@ def register_project_commands(subparsers) -> None:
             parser.add_argument("--codex-binary", default="codex",
                                 help="Codex executable name or path (default: codex on PATH).")
             parser.add_argument('--settings', choices=('ask', 'auto', 'manual', 'native'), default='ask',
-                                help='Ask for automatic/manual selection (default), select a mode directly, or keep native settings.')
+                                help='Ask for Codex defaults/manual selection (default), select a mode directly, or keep native settings.')
         if command in {"init", "configure", "reset"}:
             parser.add_argument('--routing-profiles', type=Path, help='Optional JSON model preferences for the native Auto extension.')
             parser.add_argument('--native-ui-archive', type=Path, help='Verified native Codex extension archive for offline integration setup.')
@@ -363,8 +363,8 @@ def project_status(source_root: Path, root: Path, installer) -> dict:
             result["errors"].append("Recovery data exists without its journal; preserve it for manual ownership review.")
             result["nextCommand"] = None
         else:
-            result["nextCommand"] = ("harness-codex remove --project PATH --recover" if pending == "removal-pending"
-                                     else "harness-codex doctor --project PATH")
+            result["nextCommand"] = ui.command(["harness-codex", "remove", "--project", root, "--recover"] if pending == "removal-pending"
+                                               else ["harness-codex", "doctor", "--project", root])
         return result
     if result["harnessPresent"]:
         code, report = _report(source_root, root)
@@ -391,10 +391,10 @@ def project_status(source_root: Path, root: Path, installer) -> dict:
         result["state"] = "invalid"
     can_reread = (result["state"] == "stale-evidence"
                   and _only_stale_evidence(report, root=root, source_root=source_root))
-    result["nextCommand"] = ("codex" if result["state"] == "configured" or can_reread
-                             else "harness-codex config --project PATH" if result["state"] in {"generator-only", "stale-evidence", "upgrade-required"}
-                             else "harness-codex init --project PATH" if result["state"] == "absent"
-                             else "harness-codex doctor --project PATH")
+    result["nextCommand"] = ui.command(["codex", "--cd", root] if result["state"] == "configured" or can_reread
+                                      else ["harness-codex", "config", "--project", root] if result["state"] in {"generator-only", "stale-evidence", "upgrade-required"}
+                                      else ["harness-codex", "init", "--project", root] if result["state"] == "absent"
+                                      else ["harness-codex", "doctor", "--project", root])
     if result["state"] == "stale-evidence":
         result["guidance"] = (
             "New conversations can re-read changed source without regenerating the harness. Review configuration only if responsibilities or verification risks changed."

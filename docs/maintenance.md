@@ -15,6 +15,19 @@ Inspect or change them later with the commands below and `harness-codex routing
 --adaptive status|on|off`. Adaptive Auto is a separate option; it neither selects
 Auto in `/model` nor automatically judges task quality.
 
+`harness-codex status --project "선택한 프로젝트 경로"`는 저장된 설정과 자동 유지보수의
+현재 전제조건을 구분해 표시하는 오프라인 조회임. hook 정의 누락·수정·중복, 기록된
+trust 일치 개수, 활동 추적 미완료, 적용 marker, 미해결 변경 이력, 근거 문맥 부족,
+활동 중인 세션·자식, 토큰 예산, 최근 24시간 검토 횟수와 간격 대기를 확인하는 화면임.
+`static-prerequisites-met`은 관찰한 정적 조건에 차단 요소가 없다는 의미이며 native
+hook 실행이나 현재 세션의 검토 자격을 검증했다는 뜻이 아님. `/hooks`에서 현재
+프로젝트의 실제 trust와 native 정책을 확인할 것. `off`는 설정이 꺼진 상태이고,
+`paused`와 `waiting`은 표시된 사유 때문에 자동 처리의 전제조건을 확인해야 하는 상태임.
+Adaptive evidence의 on/off는 현재 `/model`의 Auto 선택과 별개이며, 상태 조회만으로
+현재 대화의 모델 선택은 미확인 상태임. `Runtime loading: not-tested`와
+`Task quality: not-measured`는 그대로 유지하는 값임. 표시되는 다음 명령은 선택한 실제 경로를
+포함하며 POSIX shell 또는 Windows PowerShell용 인용을 적용한 명령임.
+
 ```sh
 harness-codex init --goal-file PROJECT.md --maintenance suggest
 harness-codex maintenance --mode auto

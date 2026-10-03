@@ -4,6 +4,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 import json
 import os
+import shlex
 import shutil
 import sys
 import threading
@@ -11,6 +12,16 @@ import time
 import unicodedata
 
 JSON_MODE = ContextVar('harness_json_output', default=False)
+
+
+def command(arguments, *, windows=None) -> str:
+    """Format literal argv for POSIX shells, or PowerShell on Windows."""
+    values = [str(value) for value in arguments]
+    if windows is None:
+        windows = os.name == 'nt'
+    if windows:
+        return '& ' + ' '.join("'" + value.replace("'", "''") + "'" for value in values)
+    return shlex.join(values)
 
 
 def confirm(message, *, progress=None) -> bool:

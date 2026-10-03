@@ -2,6 +2,7 @@
 
 | Version | Plan | Manifest | Transaction | Main change or patch |
 | --- | --- | --- | --- | --- |
+| [`v0.35.0‑beta`](#harness-for-codex-v0350-beta) | Schema 3 | Schema 7 | Schema 2 | Clarify project status, preserve settings and queued actions, and improve terminal management navigation. |
 | [`v0.34.0‑beta`](#harness-for-codex-v0340-beta) | Schema 3 | Schema 7 | Schema 2 | Repair runtime and evaluation boundaries, reduce repeated work, and make bounded collaboration more flexible. |
 | [`v0.33.0‑beta`](#harness-for-codex-v0330-beta) | Schema 3 | Schema 7 | Schema 2 | Relax unnecessary generation and maintenance gates, preserve native update choices, and add fresh-generation comparison. |
 | [`v0.32.4‑beta`](#harness-for-codex-v0324-beta) | Schema 3 | Schema 7 | Schema 2 | Preserve incomplete orphan runtimes before reinstalling and report bootstrap errors in the installation log. |
@@ -99,6 +100,15 @@
 | [`v0.2.1‑beta`](#harness-for-codex-v021-beta) | Schema 1 | Schema 2 | None | True no-op updates, complete action-map checks, CI and fixture dry-run corrections |
 | [`v0.2.0‑beta`](#harness-for-codex-v020-beta) | Schema 1 | Schema 2 | None | JSON proposal, no-write dry-run, guarded deterministic apply, instruction precedence |
 | [`v0.1.0‑beta`](#harness-for-codex-v010-beta) | Direct generation | Schema 1 | None | Project-adaptive agents and skills, native Codex paths, initial ownership manifest |
+
+## Harness for Codex v0.35.0-beta
+
+- Preserve the selected native sandbox details in configuration launches and distinguish Codex defaults from per-request Harness Auto.
+- Show project settings, static execution prerequisites, maintenance pause reasons and actionable commands without treating untested runtime loading as success.
+- Group management menus, return to the previous step, retain entered project descriptions, and make pending exit actions visible with explicit replacement and scoped cancellation.
+- Keep long choices and permission descriptions available in narrow terminals; treat closed input as cancellation and retain existing keyboard navigation.
+- Show prelaunch update and compatibility progress, explain native fallback limitations, and provide usable recovery guidance when credentials remain after tool removal.
+- Compare upgrades against v0.34.0-beta; preserve published release links, tags and assets. Live task quality and cost effects remain unmeasured.
 
 ## Harness for Codex v0.34.0-beta
 

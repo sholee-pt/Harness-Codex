@@ -78,9 +78,18 @@ class Controls:
 
     async def cli(self, root, arguments, *, timeout=60, global_command=False, output_limit=96 * 1024):
         env = {**self.relay.env, 'HARNESS_NO_UPDATE_CHECK': '1', 'PYTHONIOENCODING': 'utf-8'}
-        process = await asyncio.create_subprocess_exec(sys.executable, '-B', str(self.source / 'harness.py'),
+        starting = asyncio.create_task(asyncio.create_subprocess_exec(sys.executable, '-B', str(self.source / 'harness.py'),
             '--no-update-check', *arguments, *([] if global_command else ['--project', str(root)]), stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=env, cwd=root, start_new_session=True)
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=env, cwd=root, start_new_session=True))
+        interrupted = False
+        while True:
+            try:
+                process = await asyncio.shield(starting)
+                break
+            except asyncio.CancelledError:
+                if starting.cancelled():
+                    raise
+                interrupted = True
         chunks, length, truncated = [], 0, False
         async def output():
             nonlocal length, truncated
@@ -118,14 +127,21 @@ class Controls:
                         pass
                     await asyncio.wait_for(process.wait(), 5)
         try:
+            if interrupted:
+                raise asyncio.CancelledError
             await asyncio.wait_for(output(), timeout)
         finally:
             cleanup = asyncio.create_task(stop())
-            try:
-                await asyncio.shield(cleanup)
-            except asyncio.CancelledError:
-                await cleanup
-                raise
+            while True:
+                try:
+                    await asyncio.shield(cleanup)
+                    break
+                except asyncio.CancelledError:
+                    if cleanup.cancelled():
+                        raise
+                    interrupted = True
+            if interrupted:
+                raise asyncio.CancelledError
         text = ui.clean(b''.join(chunks).decode('utf-8', errors='replace').replace('\r\n', '\n'))
         if truncated:
             raise ValueError('Management output exceeded its display limit. Inspect the project with the terminal CLI before continuing.')
@@ -164,6 +180,36 @@ class Controls:
             if '\n' not in value and '\r' not in value and '\t' not in value:
                 return value
             await self.text(thread, turn, 'Use one line for this input. Choose a Markdown brief for longer project descriptions.')
+
+    def queued_action(self, action=None):
+        action = self.relay.after_exit if action is None else action
+        if not action:
+            return 'After exit: no action queued.'
+        kind = action.get('action')
+        label = {'switch': 'Open project conversation', 'configure': 'Configure project',
+                 'update': 'Update Harness', 'uninstall': 'Uninstall Harness', 'jev': 'Private Jev ' + action.get('operation', '')}.get(kind, 'Unknown action')
+        if action.get('root'):
+            label += ': ' + ui.clean(action['root'])
+        if kind == 'switch':
+            label += ' (resume picker)' if action.get('resume') else ' (new conversation)'
+        return 'After exit: ' + label + '. Use /quit when ready.'
+
+    async def queue(self, thread, turn, action):
+        current = self.relay.after_exit
+        if current and current != action:
+            choice = await self.choose(thread, turn, self.queued_action(current) + '\nRequested: ' + self.queued_action(action),
+                [('Keep queued action', 'Preserve the existing reservation'), ('Replace queued action', 'Replace it with the displayed request')])
+            if choice != 'Replace queued action':
+                return False
+        self.relay.after_exit = action
+        return True
+
+    def cancel_queued(self, kind):
+        current = self.relay.after_exit
+        if not current or current.get('action') != kind:
+            return 'No ' + kind + ' action was cancelled.\n' + self.queued_action()
+        self.relay.after_exit = None
+        return 'Queued ' + kind + ' action cancelled.\n' + self.queued_action()
 
     async def configuration(self, params, root, command, arguments):
         from .management_wizard import goal_arguments
@@ -241,16 +287,23 @@ class Controls:
         try:
             text = await self.execute(thread, turn, root, command, arguments)
             if isinstance(text, dict) and 'configuration' in text:
+                if self.submit is None:
+                    raise ValueError('Native configuration submission is unavailable; no model task was started.')
                 submission = await self.configuration(params, *text['configuration'])
                 text = 'Settings confirmed. Starting project configuration with this conversation model and permissions.'
             elif isinstance(text, dict) and 'review' in text:
+                if self.submit is None:
+                    raise ValueError('Native review submission is unavailable; no model task was started.')
                 submission = {**params, 'input': [{'type': 'text', 'text': REVIEW_PROMPT}]}
                 text = 'Starting the requested maintenance review with the current model and permissions.'
             await self.text(thread, turn, 'Harness management · local command\n\n```text\n' + text.replace('```', "'''") + '\n```')
         except asyncio.CancelledError:
             status = 'interrupted'
             self.configuring.pop(thread, None)
-        except (OSError, ValueError, TimeoutError) as exc:
+        except Exception as exc:
+            status = 'failed'
+            value['error'] = {'message': ui.clean(exc), 'codexErrorInfo': None, 'additionalDetails': None}
+            self.configuring.pop(thread, None)
             await self.text(thread, turn, 'Harness management: ' + ui.clean(exc))
         finally:
             await self.event('turn/completed', threadId=thread, turn={**value, 'status': status})
@@ -263,49 +316,16 @@ class Controls:
                 self.configuring.pop(thread, None)
                 await self.event('warning', threadId=thread, message='Configuration submission was not confirmed. Check the conversation before retrying; no automatic replay. ' + ui.clean(exc))
 
-    async def execute(self, thread, turn, root, command, arguments):
+    async def execute(self, thread, turn, root, command, arguments, *, from_menu=False):
         if command == 'help':
             if arguments:
                 raise ValueError('Use /harness/help without arguments.')
-            command = await self.choose(thread, turn, 'Harness management — select an action. Queries do not call a model.',
-                [('Status', 'Project, Jev, Graft, hooks and settings'), ('Settings', 'Change maintenance and adaptive Auto'),
-                 ('Init', 'Choose a project and description to create its harness'), ('Config', 'Review and update an existing harness'),
-                 ('Maintenance', 'Inspect observations without launching a review'), ('Doctor', 'Validate project files'),
-                 ('Routing', 'Inspect adaptive Auto evidence'), ('Jev', 'Advice settings and private login'), ('Graft', 'Project graph and external sources'),
-                 ('Switch', 'Choose another project conversation'), ('Remove', 'Preview owned project file removal'), ('Reset', 'Remove before creating a new design'),
-                 ('Tool', 'Updates and uninstall'),
-                 ('Help', 'List all command names'), ('Back', 'Return to your conversation')])
-            if command == 'Back':
-                return 'Returned to the conversation. No settings changed.'
-            if command == 'Help':
-                return '\n'.join('/harness/' + name for name in COMMANDS) + '\nUse init/config --goal "DESCRIPTION" or --goal-file "PATH".\nMaintenance review uses the current model; all status commands are local.\nSettings change preferences; config reviews generated artifacts.'
-            command = command.lower()
-            if command in {'jev', 'graft', 'tool'}:
-                from .management_wizard import tools
-                return await tools(self, thread, turn, root, command)
-            if command == 'maintenance':
-                choice = await self.choose(thread, turn, 'Maintenance',
-                    [('Status', 'Inspect observations without a model request'), ('Settings', 'Change review preferences'),
-                     ('Review', 'Request a model review under current policy; uses conversation tokens'), ('Back', 'Return')])
-                if choice == 'Back':
-                    return 'No maintenance changes.'
-                if choice == 'Settings':
-                    command = 'settings'
-                if choice == 'Review':
-                    return {'review': True}
+            from .management_wizard import menu
+            return await menu(self, thread, turn, root)
         if command == 'settings' and not arguments:
-            selected = await self.choose(thread, turn, 'Project preferences',
-                [('Maintenance', 'Off, suggest, or bounded automatic changes'), ('Adaptive Auto', 'Use recorded quality/cost observations'),
-                 ('Hook trust', 'Prepare exact Harness hooks through native policy'), ('Back', 'Return without changes')])
-            if selected == 'Back':
-                return 'No settings changed.'
-            if selected == 'Hook trust':
-                return await self.cli(root, ['settings', '--prepare-hooks', '--codex-binary', self.relay.binary])
-            choices = ('off', 'suggest', 'auto') if selected == 'Maintenance' else ('off', 'on')
-            choice = await self.choose(thread, turn, selected, [(name, name) for name in choices] + [('Back', 'Return without changes')])
-            if choice == 'Back':
-                return 'No settings changed.'
-            arguments = ['--maintenance' if selected == 'Maintenance' else '--adaptive', choice]
+            from .management_wizard import settings
+            result = await settings(self, thread, turn, root)
+            return result if result is not None or from_menu else 'No settings changed.'
         if command in {'remove', 'reset'}:
             if arguments not in ([], ['--include-generator']) or command == 'reset' and arguments:
                 raise ValueError('Removal accepts only --include-generator; reset accepts no arguments.')
@@ -316,7 +336,7 @@ class Controls:
             await self.text(thread, turn, '```text\n' + preview.replace('```', "'''") + '\n```')
             choice = await self.choose(thread, turn, 'Remove only the displayed owned project files?', [('Remove', 'Apply the reviewed removal'), ('Back', 'Preserve all files')])
             if choice == 'Back':
-                return 'Removal cancelled; no files changed.'
+                return None if from_menu else 'Removal cancelled; no files changed.'
             self.configuring.pop(thread, None)
             await self.cancel_completion(thread)
             result = await self.cli(root, ['remove', *arguments, '--yes', '--json', '--expected-plan', plan['planDigest']], output_limit=4 * 1024 * 1024)
@@ -339,11 +359,10 @@ class Controls:
                 return 'Owned files removed. ' + result + '\nRun /harness/init to review the new design with the current model and permissions. No replacement was generated yet.'
             return 'Owned files removed. ' + result + '\nExisting conversation context may still contain old instructions; use a fresh conversation before further project work.'
         if command == 'switch':
-            return await self.switch(thread, turn, root, arguments)
+            return await self.switch(thread, turn, root, arguments, from_menu=from_menu)
         if command == 'update':
             if arguments == ['--cancel']:
-                self.relay.after_exit = None
-                return 'Queued session action cancelled.'
+                return self.cancel_queued('update')
             if arguments not in ([], ['--check']):
                 raise ValueError('Use /harness/update or /harness/update --check.')
             value = json.loads(await self.cli(root, ['update', '--check', '--json'], timeout=45, global_command=True))
@@ -353,20 +372,23 @@ class Controls:
                 ui.update_report(value)
             report = output.getvalue()
             if arguments or not value.get('updateAvailable'):
-                return report
+                return report + '\n' + self.queued_action()
             await self.text(thread, turn, report)
             choice = await self.choose(thread, turn, 'Install a Harness update after leaving this Codex screen?',
                 [('Later', 'Keep this installation and conversation running'), ('Update after exit', 'Run the updater when you exit Codex normally')])
             if choice == 'Update after exit':
-                self.relay.after_exit = {'action': 'update'}
+                if not await self.queue(thread, turn, {'action': 'update'}):
+                    return 'Existing reservation retained.\n' + self.queued_action()
                 return 'Update queued. Finish active work, then use /quit. Harness will update outside the conversation; launch codex again afterwards.'
-            return 'No update queued.'
+            return 'No new update was queued.\n' + self.queued_action()
         if command in {'init', 'config'}:
             from .management_wizard import configure
-            return await configure(self, thread, turn, root, command)
+            result = await configure(self, thread, turn, root, command)
+            return result if result is not None or from_menu else 'Returned without configuring a project.'
         if command == 'tool' and not arguments:
             from .management_wizard import tools
-            return await tools(self, thread, turn, root, command)
+            result = await tools(self, thread, turn, root, command)
+            return result if result is not None or from_menu else 'No tool changes.'
         if command not in {'status', 'settings', 'doctor', 'maintenance', 'routing', 'jev', 'graft'}:
             raise ValueError('Unsupported local command')
         # Do not let command options redirect work away from the active conversation.
@@ -378,50 +400,15 @@ class Controls:
             arguments = ['--adaptive', 'status']
         if command == 'graft' and not arguments:
             arguments = ['status']
-        return await self.cli(root, [command, *arguments], timeout=180 if command == 'graft' else 60)
+        result = await self.cli(root, [command, *arguments], timeout=180 if command == 'graft' else 60)
+        return result + '\n' + self.queued_action() if command == 'status' else result
 
-    async def switch(self, thread, turn, root, arguments):
+    async def switch(self, thread, turn, root, arguments, *, from_menu=False):
         if arguments == ['--cancel']:
-            self.relay.after_exit = None
-            return 'Queued session action cancelled.'
-        if len(arguments) > 1:
-            raise ValueError('Use /harness/switch "PROJECT_PATH", or omit the path to choose a recent project.')
-        if arguments:
-            target = project_root(root / Path(arguments[0]).expanduser())
-        else:
-            result = await self.call('thread/list', {'limit': 50, 'archived': False})
-            paths = {}
-            for item in result.get('data', []):
-                try:
-                    location = project_root(item['cwd'])
-                except (OSError, ValueError, KeyError, TypeError):
-                    continue
-                if location != root:
-                    paths[str(location)] = location
-            choice = await self.choose(thread, turn, 'Select a reachable project. Each project keeps its own conversation and instructions.',
-                [('Another directory', 'Enter a project path')] + [(name, 'Open this project after exiting the current screen') for name in list(paths)[:12]] + [('Back', 'Stay in this project')])
-            if choice == 'Back':
-                return 'Project unchanged.'
-            if choice == 'Another directory':
-                value = await self.enter(thread, turn, 'Existing project path. Enter :back to return.')
-                if value == ':back':
-                    return 'Project unchanged.'
-                target = project_root(root / Path(value).expanduser())
-            else:
-                target = paths[choice]
-        if target == root:
-            return 'This project is already selected. Describe the new task normally; another agent or regeneration is not required.'
-        choice = await self.choose(thread, turn, 'Open ' + ui.clean(target) + ' after this screen closes?',
-            [('Resume picker', 'Choose a saved conversation in the target project'), ('New conversation', 'Start with the target project instructions'), ('Back', 'Keep the current project')])
-        if choice == 'Back':
-            return 'Project unchanged.'
-        self.relay.after_exit = {'action': 'switch', 'root': str(target), 'resume': choice == 'Resume picker'}
-        configured = (target / '.harness/manifest.json').is_file()
-        return ('Project switch queued. Finish any active agents or background work, then use /quit. '
-                'Codex will open the selected project in this terminal; this conversation remains saved. '
-                'No transcript or permission overrides are copied.\n' +
-                ('The target harness will be loaded by its native conversation.' if configured else
-                 'No target harness is confirmed. In the new conversation, use /harness/init to generate one, or continue with ordinary Codex.'))
+            return self.cancel_queued('switch')
+        from .management_wizard import switch
+        result = await switch(self, thread, turn, root, arguments)
+        return result if result is not None or from_menu else 'Project unchanged.'
 
     async def observe(self, message):
         method, params = message.get('method'), message.get('params') or {}

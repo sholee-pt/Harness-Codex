@@ -295,7 +295,7 @@ class LocalControls(unittest.IsolatedAsyncioTestCase):
         self.assertIn('--dry-run', self.controls.cli.call_args.args[1])
 
     async def test_init_menu_keeps_permissions_and_submits_only_after_confirmation(self):
-        self.controls.choose = mock.AsyncMock(side_effect=['Init', 'Current project', 'Describe the project', 'Confirm'])
+        self.controls.choose = mock.AsyncMock(side_effect=['Project', 'Init', 'Current project', 'Describe the project', 'Confirm'])
         self.controls.enter = mock.AsyncMock(return_value='A small analysis project')
         self.controls.cli = mock.AsyncMock(return_value='ready')
         self.controls.submit = mock.AsyncMock()
@@ -313,7 +313,7 @@ class LocalControls(unittest.IsolatedAsyncioTestCase):
         self.controls.cli.assert_awaited_once()
 
     async def test_wizard_back_preserves_files_and_starts_no_model(self):
-        self.controls.choose = mock.AsyncMock(side_effect=['Current project', 'Describe the project', 'Back', 'Back', 'Back'])
+        self.controls.choose = mock.AsyncMock(side_effect=['Current project', 'Describe the project', 'Back', 'Back', 'Back', 'Back'])
         self.controls.enter = mock.AsyncMock(return_value='Unused description')
         self.controls.cli = mock.AsyncMock()
         result = await self.controls.execute('thread', 'turn', self.root, 'init', [])
@@ -372,7 +372,7 @@ class LocalControls(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.controls.cli.call_args.args[0], nested)
 
     async def test_private_login_is_queued_without_chat_secret_or_cli_execution(self):
-        self.controls.choose = mock.AsyncMock(side_effect=['Jev', 'Login'])
+        self.controls.choose = mock.AsyncMock(side_effect=['Settings', 'Jev', 'Login'])
         self.controls.cli = mock.AsyncMock()
         result = await self.controls.execute('thread', 'turn', self.root, 'help', [])
         self.assertEqual(self.relay.after_exit['action'], 'jev')

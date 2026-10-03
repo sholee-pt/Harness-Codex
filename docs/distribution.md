@@ -25,4 +25,6 @@ Checks and releases are currently on a manual hold: branch pushes do not start A
 
 This establishes tested terminal and protocol behavior, not paid account compatibility, model quality, token savings or all future Codex APIs. Runtime capabilities are checked at launch, with an explicit native-mode fallback. The retained `build/native_ui` code and its tests support legacy package ownership and potential Windows maintenance; they are not the current Linux release path. Windows releases remain paused until separately authorized.
 
+Interactive prelaunch checks display their progress. Native fallback guidance explicitly identifies both unavailable features—Harness Auto and `/harness/` management—and supplies terminal commands for the selected project. These messages do not change Codex arguments, settings or permissions, and do not add checks to help, automation or disabled update channels.
+
 Workflows publish `Harness / verification` and `Harness / release` commit statuses against their exact `GITHUB_SHA`. A release alone does not create a commit checkmark. Cancelled, skipped or failed required jobs cannot produce a successful release status. After dispatch, provide the Actions link and stop; the repository owner checks progress. Do not poll, watch or schedule monitoring without a new request.
