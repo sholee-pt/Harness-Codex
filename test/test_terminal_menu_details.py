@@ -117,11 +117,11 @@ class TerminalMenuDetails(unittest.TestCase):
 
     def test_plain_fallback_keeps_full_text_and_normalizes_eof_to_cancellation(self):
         output = Terminal()
-        progress = presentation.Progress('settings', stream=output)
-        with mock.patch.object(sys, 'stdin', Terminal()), mock.patch.dict(os.environ, {'TERM': 'dumb'}), \
-                mock.patch.object(progress, 'ask', side_effect=EOFError):
-            with self.assertRaisesRegex(KeyboardInterrupt, 'Terminal input closed'):
-                terminal_menu.choose(progress, 'Model', ['A complete model identifier'], summary=['Permissions: read-only / on-request'])
+        with mock.patch.object(sys, 'stdin', Terminal()), mock.patch.dict(os.environ, {'TERM': 'dumb'}):
+            progress = presentation.Progress('settings', stream=output)
+            with mock.patch.object(progress, 'ask', side_effect=EOFError):
+                with self.assertRaisesRegex(KeyboardInterrupt, 'Terminal input closed'):
+                    terminal_menu.choose(progress, 'Model', ['A complete model identifier'], summary=['Permissions: read-only / on-request'])
         self.assertIn('A complete model identifier', output.getvalue())
         self.assertIn('Permissions: read-only / on-request', output.getvalue())
         self.assertNotIn('\x1b', output.getvalue())
