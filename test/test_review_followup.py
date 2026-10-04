@@ -130,7 +130,8 @@ class ReviewBoundaries(unittest.TestCase):
 
     @unittest.skipUnless(os.name == 'nt', 'Windows staging path expansion')
     def test_long_project_path_can_apply_and_reapply_without_pending_transaction(self):
-        root = self.project / ('a' * 75) / ('b' * 35)
+        parent = self.project / ('a' * 75)
+        root = parent / ('b' * max(35, 160 - len(str(parent)) - 1))
         root.mkdir(parents=True)
         plan = minimal_plan(root)
         self.assertGreater(len(str(root)), 150)

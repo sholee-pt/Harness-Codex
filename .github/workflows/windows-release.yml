@@ -40,6 +40,9 @@ jobs:
         working-directory: .
         run: '[[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]'
       - uses: actions/checkout@v7.0.1
+        with:
+          path: validation
+          fetch-depth: 0
       - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.source_commit }}
@@ -63,14 +66,21 @@ jobs:
       - name: Verify source identity and preview installation
         run: |
           test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          test "$(git -C ../validation rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          test -z "$(git -C ../validation status --porcelain=v1 --untracked-files=all)"
+          git -C ../validation diff --exit-code "$SOURCE_COMMIT" "$GITHUB_SHA" -- . ':(exclude)test' ':(exclude).github/workflows/windows-release.yml'
           conda run -n harness python -B build/native_ui/source.py
+          conda run -n harness python -B -c 'import json,os,pathlib; pathlib.Path(os.environ["RUNNER_TEMP"], "windows-validation-source.json").write_text(json.dumps({"sourceCommit": os.environ["SOURCE_COMMIT"], "validationCommit": os.environ["GITHUB_SHA"]}, indent=2) + "\n", encoding="utf-8")'
           conda run -n harness python -B -c 'import pathlib,tempfile; p=pathlib.Path(tempfile.gettempdir()); assert p == p.resolve(), "Windows test temporary directory must use its canonical path"'
           conda run -n harness python -B install.py --root "$RUNNER_TEMP" --dry-run
       - name: Run complete Windows regression tests
         timeout-minutes: 20
+        working-directory: validation
         run: conda run --no-capture-output -n harness python -B -m unittest discover -s test -v
       - name: Verify the interpreter and previous version upgrade
         timeout-minutes: 15
+        working-directory: validation
         run: |
           conda run --no-capture-output -n harness python -B test/integration/verify_interpreter_selection.py --output "$RUNNER_TEMP/windows-interpreter.json"
           conda run -n harness python -B test/integration/prepare_release_baselines.py --output "$RUNNER_TEMP/windows-baselines"
@@ -82,7 +92,15 @@ jobs:
       - name: Verify cold Windows installation, PATH and uninstall
         timeout-minutes: 30
         shell: pwsh
+        working-directory: validation
         run: ./test/integration/verify_windows_install.ps1 -Dist "$env:RUNNER_TEMP/windows-dist" -Cold
+      - name: Recheck both source checkouts after Windows verification
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          test "$(git -C ../validation rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          test -z "$(git -C ../validation status --porcelain=v1 --untracked-files=all)"
+          git -C ../validation diff --exit-code "$SOURCE_COMMIT" "$GITHUB_SHA" -- . ':(exclude)test' ':(exclude).github/workflows/windows-release.yml'
       - name: Prepare pinned upstream and preserve original native helpers
         run: |
           upstream_tag=$(conda run -n harness python -B -c 'import json; print(json.load(open("build/native_ui/upstream.json"))["tag"])')

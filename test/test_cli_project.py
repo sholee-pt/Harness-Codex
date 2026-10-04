@@ -17,7 +17,7 @@ from unittest import mock
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from harness_cli import project
+from harness_cli import presentation, project
 from test_harness_tools import harness_apply, minimal_plan
 
 
@@ -219,7 +219,7 @@ class ProjectCliTests(unittest.TestCase):
     def test_configure_requires_generator_installation(self):
         code, out, err = self.run_cli("configure")
         self.assertEqual(code, 1)
-        self.assertIn("harness-codex init", err)
+        self.assertIn(presentation.command(['harness-codex', 'init', '--project', self.root]), err)
         self.assertEqual(list(self.root.iterdir()), [])
         self.assertFalse(self.log.exists())
 

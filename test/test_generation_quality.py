@@ -52,6 +52,17 @@ class GenerationQualityTests(unittest.TestCase):
             {'command': 1, 'subagent': 2, 'file': 1}, 0, 0, 'supported', None)
         return summary, 0, 20, True, 'fixture-version'
 
+    def verification_fixture(self, *, cleanup=True):
+        run_verification = runner.evaluation._run_verification
+        def verify(**kwargs):
+            result, _ = run_verification(**kwargs)
+            self.assertEqual(kwargs['profile']['argv'], self.profile['argv'])
+            self.assertEqual(result['exitCode']['value'], 0)
+            # These controlled checks spawn no children. This fixture evidence
+            # does not establish Windows descendant-cleanup assurance.
+            return result, cleanup
+        return mock.patch.object(runner.evaluation, '_run_verification', side_effect=verify)
+
     def test_default_dry_run_reads_inputs_without_cloning_inference_verification_or_writes(self):
         with mock.patch.object(runner.capture, 'run_codex_jsonl') as call, mock.patch.object(runner, 'materialize') as clone, mock.patch.object(runner, 'verify') as verify:
             report = runner.run(self.args('--output', str(self.base / 'report.json')))
@@ -180,7 +191,7 @@ class GenerationQualityTests(unittest.TestCase):
         self.assertEqual(report['pairs'][1]['generation']['state'], 'skipped-experiment-sources-changed')
 
     def test_live_generation_uses_only_brief_then_same_task_with_isolated_auth(self):
-        with mock.patch.object(runner.capture, 'run_codex_jsonl', side_effect=self.capture), mock.patch.object(runner.evaluation, 'VERIFICATION_QUIESCENCE_SECONDS', 0):
+        with self.verification_fixture(), mock.patch.object(runner.capture, 'run_codex_jsonl', side_effect=self.capture), mock.patch.object(runner.evaluation, 'VERIFICATION_QUIESCENCE_SECONDS', 0):
             report = runner.run(self.args('--live', '--repetitions', '2'))
         self.assertEqual(report['generationPassed'], 2)
         self.assertEqual(report['endToEndHarnessPassed'], 2)
@@ -220,7 +231,7 @@ class GenerationQualityTests(unittest.TestCase):
                     summary = runner.capture.CaptureSummary(True, 'failed', {'input_tokens': 9}, {'subagent': 0}, 0, 0, 'supported', None)
                     return summary, 1, 30, True, 'fixture-version'
             return self.capture(**kwargs)
-        with mock.patch.object(runner.capture, 'run_codex_jsonl', side_effect=fail_first), mock.patch.object(runner.evaluation, 'VERIFICATION_QUIESCENCE_SECONDS', 0):
+        with self.verification_fixture(), mock.patch.object(runner.capture, 'run_codex_jsonl', side_effect=fail_first), mock.patch.object(runner.evaluation, 'VERIFICATION_QUIESCENCE_SECONDS', 0):
             report = runner.run(self.args('--live', '--repetitions', '2'))
         self.assertEqual(report['generationDenominator'], 2)
         self.assertEqual(report['generationFailed'], 1)
@@ -247,11 +258,30 @@ class GenerationQualityTests(unittest.TestCase):
     def test_mutating_verification_is_not_counted_as_task_success(self):
         self.profile['argv'] = [sys.executable, '-B', '-c', 'from pathlib import Path; Path("app.py").write_text("modified by check")']
         (self.base / 'check.json').write_text(json.dumps(self.profile))
-        with mock.patch.object(runner.capture, 'run_codex_jsonl', side_effect=self.capture), mock.patch.object(runner.evaluation, 'VERIFICATION_QUIESCENCE_SECONDS', 0):
+        with self.verification_fixture(), mock.patch.object(runner.capture, 'run_codex_jsonl', side_effect=self.capture), mock.patch.object(runner.evaluation, 'VERIFICATION_QUIESCENCE_SECONDS', 0):
             report = runner.run(self.args('--live'))
         self.assertEqual(report['baselineVerifiedPassed'], 0)
         self.assertEqual(report['endToEndHarnessPassed'], 0)
         self.assertFalse(report['pairs'][0]['arms']['baseline']['verification']['workspaceUnchanged'])
+
+    def test_completed_verification_with_unverified_cleanup_stops_later_arms_and_pairs(self):
+        with self.verification_fixture(cleanup=False), mock.patch.object(runner.capture, 'run_codex_jsonl', side_effect=self.capture), mock.patch.object(runner.evaluation, 'VERIFICATION_QUIESCENCE_SECONDS', 0):
+            report = runner.run(self.args('--live', '--repetitions', '3'))
+        first, peer = report['orders'][0]
+        verification = report['pairs'][0]['arms'][first]['verification']
+        self.assertEqual(verification['result'], 'passed')
+        self.assertTrue(verification['workspaceUnchanged'])
+        self.assertFalse(verification['cleanupVerified'])
+        self.assertFalse(verification['passed'])
+        self.assertEqual(report['stoppedReason'], 'process-cleanup-unverified')
+        self.assertEqual(report['pairs'][0]['arms'][peer]['state'], 'skipped-cleanup-unverified')
+        self.assertEqual(report['generationDenominator'], 3)
+        self.assertEqual(report['generationPassed'], 1)
+        self.assertEqual(report['codexRunAttempts'], 2)
+        self.assertEqual(report['baselineVerifiedPassed'], 0)
+        self.assertEqual(report['endToEndHarnessPassed'], 0)
+        self.assertTrue(all(pair['generation']['state'] == 'skipped-cleanup-unverified' for pair in report['pairs'][1:]))
+        self.assertEqual(runner.snapshot(self.project), self.before)
 
     def test_input_bounds_preconfigured_projects_and_dirty_codex_homes_are_rejected(self):
         for extra in (('--repetitions', '0'), ('--repetitions', '11'), ('--timeout', 'nan'), ('--timeout', '3601')):
@@ -345,7 +375,7 @@ class GenerationQualityTests(unittest.TestCase):
     def test_generated_files_have_separate_snapshot_headroom(self):
         for i in range(28):
             (self.project / f'input-{i}').write_text('')
-        with mock.patch.object(runner, 'MAX_FILES', 32), mock.patch.object(runner.capture, 'run_codex_jsonl', side_effect=self.capture), mock.patch.object(runner.evaluation, 'VERIFICATION_QUIESCENCE_SECONDS', 0):
+        with self.verification_fixture(), mock.patch.object(runner, 'MAX_FILES', 32), mock.patch.object(runner.capture, 'run_codex_jsonl', side_effect=self.capture), mock.patch.object(runner.evaluation, 'VERIFICATION_QUIESCENCE_SECONDS', 0):
             report = runner.run(self.args('--live'))
         self.assertEqual(report['generationPassed'], 1)
         self.assertEqual(report['endToEndHarnessPassed'], 1)

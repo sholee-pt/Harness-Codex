@@ -25,6 +25,16 @@ class CheckpointTests(unittest.TestCase):
         self.root.mkdir()
         self.store = self.root.parent / 'state'
         self.attempts = {}
+        self.real_cleanup = checkpoint._terminate_process_tree
+        if os.name == 'nt':
+            # These state-transition fixtures do not spawn children. Inject their
+            # cleanup evidence without claiming native Windows tree containment.
+            def fixture_cleanup(process):
+                self.real_cleanup(process)
+                return process.poll() is not None
+            cleanup = mock.patch.object(checkpoint, '_terminate_process_tree', side_effect=fixture_cleanup)
+            cleanup.start()
+            self.addCleanup(cleanup.stop)
         self.plan = {'schemaVersion': 1, 'tasks': [self.task('alpha'), self.task('beta'), self.task('qa', ['alpha', 'beta'])]}
         for name in ('alpha', 'beta', 'qa'):
             (self.root / (name + '.in')).write_text(name)
@@ -193,9 +203,25 @@ class CheckpointTests(unittest.TestCase):
         with mock.patch.object(checkpoint, '_terminate_process_tree', return_value=False) as cleanup:
             result = self.call('record', task='alpha')
         cleanup.assert_called_once()
+        self.assertEqual(cleanup.call_args.args[0].returncode, 0)
         self.assertEqual(result['status'], 'blocked')
         self.assertEqual(result['verification'], 'failed')
         self.assertFalse(self.call('status')['complete'])
+        self.call('quiesce', task='alpha', observed='idle')
+        self.assertNotIn('alpha', self.call('status')['reusable'])
+
+    @unittest.skipUnless(os.name == 'nt', 'native Windows cleanup assurance')
+    def test_windows_real_cleanup_keeps_successful_verification_unverified(self):
+        self.call('start', task='alpha')
+        (self.root / 'alpha.out').write_text('ok')
+        with mock.patch.object(checkpoint, '_terminate_process_tree', side_effect=self.real_cleanup) as cleanup:
+            result = self.call('record', task='alpha')
+        cleanup.assert_called_once()
+        self.assertEqual(cleanup.call_args.args[0].returncode, 0)
+        self.assertEqual(result['status'], 'blocked')
+        self.assertEqual(result['verification'], 'failed')
+        self.call('quiesce', task='alpha', observed='idle')
+        self.assertNotIn('alpha', self.call('status')['reusable'])
 
     @unittest.skipIf(os.name == 'nt', 'Linux process-group containment; Windows release is paused')
     def test_successful_verifier_cannot_leave_a_child_writing_later(self):

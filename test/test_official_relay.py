@@ -510,6 +510,7 @@ for line in sys.stdin:
                     stdout=SimpleNamespace(readline=mock.AsyncMock(return_value=b'')),
                     wait=mock.AsyncMock(side_effect=[asyncio.TimeoutError(), 0] if escalation else [0, 0]))
                 signal_process = mock.Mock(side_effect=[None, ProcessLookupError()] if escalation else ProcessLookupError())
+                signals = SimpleNamespace(SIGTERM=object(), SIGKILL=object())
 
                 class Socket:
                     request = SimpleNamespace(path='/', headers={'Authorization': 'Bearer ' + adapter.token})
@@ -521,14 +522,42 @@ for line in sys.stdin:
 
                 socket = Socket()
                 with mock.patch.object(relay.asyncio, 'create_subprocess_exec', return_value=process), \
-                     mock.patch.object(relay, 'os', SimpleNamespace(name='posix', killpg=signal_process)):
+                     mock.patch.object(relay, 'os', SimpleNamespace(name='posix', killpg=signal_process)), \
+                     mock.patch.object(relay, 'signal', signals):
                     await adapter.connect(socket)
                 self.assertIsNone(adapter.error)
                 self.assertFalse(adapter.connection_lock.locked())
                 socket.close.assert_awaited_once_with()
                 self.assertEqual(process.wait.await_count, 2)
-                expected = [mock.call(process.pid, relay.signal.SIGTERM), mock.call(process.pid, relay.signal.SIGKILL)]
+                expected = [mock.call(process.pid, signals.SIGTERM), mock.call(process.pid, signals.SIGKILL)]
                 self.assertEqual(signal_process.call_args_list, expected)
+
+    async def test_windows_cleanup_uses_process_methods_without_posix_signals(self):
+        adapter = relay.Relay('codex', {})
+        process = SimpleNamespace(pid=1234, returncode=None,
+            stdout=SimpleNamespace(readline=mock.AsyncMock(return_value=b'')),
+            wait=mock.AsyncMock(side_effect=[asyncio.TimeoutError(), 0]),
+            terminate=mock.Mock(), kill=mock.Mock(side_effect=ProcessLookupError()))
+
+        class Socket:
+            request = SimpleNamespace(path='/', headers={'Authorization': 'Bearer ' + adapter.token})
+            close = mock.AsyncMock()
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                raise StopAsyncIteration
+
+        socket = Socket()
+        with mock.patch.object(relay.asyncio, 'create_subprocess_exec', return_value=process), \
+             mock.patch.object(relay, 'os', SimpleNamespace(name='nt')), \
+             mock.patch.object(relay, 'signal', SimpleNamespace()):
+            await adapter.connect(socket)
+        process.terminate.assert_called_once_with()
+        process.kill.assert_called_once_with()
+        self.assertEqual(process.wait.await_count, 2)
+        self.assertIsNone(adapter.error)
+        self.assertFalse(adapter.connection_lock.locked())
+        socket.close.assert_awaited_once_with()
 
     async def test_real_websocket_reconnect_keeps_authentication_and_new_request_ids(self):
         try:
