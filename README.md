@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/sholee-pt/Harness-Codex/tree/v0.35.1-beta"><img src="https://img.shields.io/badge/Version-v0.35.1--beta-2563EB.svg?style=flat-square" alt="Version: v0.35.1-beta"></a>
+  <a href="https://github.com/sholee-pt/Harness-Codex/actions/workflows/codex-beta.yml"><img src="https://github.com/sholee-pt/Harness-Codex/actions/workflows/codex-beta.yml/badge.svg?branch=v0.35.1-beta&amp;event=workflow_dispatch" alt="Linux verification and release status"></a>
   <a href="#agent-editions"><img src=".github/badges/agent-codex.svg" alt="Agent: Codex"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Proprietary-64748B.svg?style=flat-square" alt="License: Proprietary"></a>
 </p>
@@ -24,13 +25,13 @@
 
 Generate and maintain one shared project harness with Codex-native agents and skills. **Harness-Codex configures and maintains the project harness. Codex owns conversations and interactive work.** Plain folders, Git worktrees and workspaces containing multiple repositories are supported.
 
-**Development beta:** Harness is still under development and testing.
+**Development beta:** The current source is **v0.35.1-beta**. The version badge identifies development source; the Linux installation command below uses the latest published release. Development changes become available in release downloads only after the required Linux and official Codex compatibility checks pass.
 
 ## Installation Guide
 
 ### For Linux
 
-**Latest release: [v0.32.4-beta](https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.32.4-beta)**
+**Latest release: [v0.32.4-beta](https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.32.4-beta)** (published Linux assets)
 
 ```bash
 curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.32.4-beta/install_harness_codex.sh | sh
@@ -38,7 +39,7 @@ curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.32.4-
 
 Previous releases retain their version tags and installation commands on the [Releases page](https://github.com/sholee-pt/Harness-Codex/releases).
 
-To install the development source instead:
+To install the current **v0.35.1-beta development source**, including changes not yet published as release assets:
 
 ```bash
 git clone --branch v0.35.1-beta --single-branch https://github.com/sholee-pt/Harness-Codex.git Harness-Codex
