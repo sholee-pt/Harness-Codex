@@ -4,7 +4,7 @@ The [README installation guide](../README.md#installation-guide) provides the st
 
 For the transition from a patched Codex installation, run the current release installer with `--existing reuse`, then `harness-codex config` once. This preserves project artifacts and moves the owned PATH entry to the official-release adapter. An older updater can install the new management source but still report a missing old-style native package; running the now-updated `config` completes that transition. Subsequent official Codex updates require no Harness rebuild. Auto's WebSocket dependency is prepared in the selected Harness interpreter during integration setup.
 
-Interactive `codex` launches check both release channels and require a selection before downloads. Both historical `compatible` and `check` settings now request consent; `off` and `HARNESS_NO_UPDATE_CHECK=1` skip checks. Help, version, doctor, dry runs and noninteractive Codex commands do not check releases. For private GitHub access, an explicitly configured `HARNESS_GITHUB_TOKEN` or `GH_TOKEN` can authorize API calls; Git user.name/email are not authentication. Credentials are never forwarded to asset redirects.
+Interactive `codex` launches without a branch pin check both release channels and require a selection before downloads. Branch-pinned installations check official Codex only; run `harness-codex update` explicitly to update Harness from the selected source branch. Both historical `compatible` and `check` settings now request consent; `off` and `HARNESS_NO_UPDATE_CHECK=1` skip checks. Help, version, doctor, dry runs and noninteractive Codex commands do not check releases. For private GitHub access, an explicitly configured `HARNESS_GITHUB_TOKEN` or `GH_TOKEN` can authorize API calls; Git user.name/email are not authentication. Credentials are never forwarded to asset redirects.
 
 Interactive launch shows progress while checking releases and Auto compatibility. A failed release check keeps installed files available. Native fallback preserves Codex settings and history, but disables both Harness Auto and `/harness/` management for that session. The terminal displays `status`, `init` and `config` commands for the selected project; run them after exiting Codex. An explicit native profile or `HARNESS_CODEX_NATIVE=1` keeps its original arguments and receives the same management guidance. Help and automation remain quiet native commands.
 
@@ -13,8 +13,8 @@ Current releases and CI target Linux. Windows installation code and the option r
 ## Options
 
 The default Linux install prepares the official Codex package and registers the
-Harness-aware `codex` entry point. After applying PATH, run `codex` and select Init
-from `/harness/`; no project CLI command is required first. Native account login
+Harness-aware `codex` entry point. After applying PATH, run `codex` and select
+Project → Init from `/harness/`; no project CLI command is required first. Native account login
 and project trust still belong to Codex. Downloads or integration failures stop
 the installer before its completion message; rerun with `--existing reuse` after
 resolving them. `--no-codex-integration` keeps a tool-only install, while

@@ -30,10 +30,10 @@ Generate and maintain one shared project harness with Codex-native agents and sk
 
 ### For Linux
 
-**Latest release: [v0.32.3-beta](https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.32.3-beta)**
+**Latest release: [v0.32.4-beta](https://github.com/sholee-pt/Harness-Codex/releases/tag/v0.32.4-beta)**
 
 ```bash
-curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.32.3-beta/install_harness_codex.sh | sh
+curl -fsSL https://github.com/sholee-pt/Harness-Codex/releases/download/v0.32.4-beta/install_harness_codex.sh | sh
 ```
 
 Previous releases retain their version tags and installation commands on the [Releases page](https://github.com/sholee-pt/Harness-Codex/releases).
@@ -62,13 +62,13 @@ Default Linux installation also prepares the official Codex command. Codex handl
 codex
 ```
 
-Enter `/harness/`, select **Init**, choose a project directory and supply a description or Markdown path. Confirm the summary to configure that project. An existing harness offers review and update. For another directory, finish the current work and use `/quit`; Harness opens the target conversation and continues setup there. Use **Settings** for project preferences, **Jev** for private login, and **Tool** for updates or uninstall. Credential entry and tool removal open their terminal flows after exiting Codex. See [in-conversation management](docs/management.md).
+Enter `/harness/`, select **Project → Init**, choose a project directory and supply a description or Markdown path. Confirm the summary to configure that project. An existing harness offers review and update. For another directory, finish the current work and use `/quit`; Harness opens the target conversation and continues setup there. Use **Settings → Preferences** for project preferences, **Settings → Jev** for private login, and **Tools** for updates or uninstall. Credential entry and tool removal open their terminal flows after exiting Codex. See [in-conversation management](docs/management.md).
 
 The terminal workflow remains available:
 
 The configuration picker and login prompts described below apply to terminal
 `harness-codex init`. In the Codex menu, configuration uses the current conversation
-settings; use **Settings** for maintenance/routing and **Jev → Login** for credentials.
+settings; use **Settings → Preferences** for maintenance/routing and **Settings → Jev → Login** for credentials.
 
 ```bash
 cd /path/to/project
@@ -105,7 +105,10 @@ original terminal to a local Auto adapter. The composer, colors, shortcuts,
 approvals and native history remain Codex-owned. Your separately installed Codex
 is preserved. Codex updates no longer require a Harness-specific Codex build.
 
-Each interactive launch checks official Codex and published Harness releases.
+When update checks are enabled, interactive launches check official Codex and,
+for release-channel installations, published Harness releases. Branch-pinned
+installations check only Codex; use `harness-codex update` to update the pinned
+Harness source branch. `--auto-update off` or `HARNESS_NO_UPDATE_CHECK=1` skips both checks.
 An arrow-key menu offers **update both**, **Codex only**, **Harness only**, or
 **skip this time** when applicable. Downloads begin only after your selection,
 before the conversation opens. Offline checks continue with installed files.

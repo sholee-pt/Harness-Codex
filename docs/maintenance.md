@@ -177,9 +177,11 @@ Use the separately requested paired evaluator to measure any benefit.
 
 Tool uninstall removes its exact registered hook handler but retains project-local
 policies and user-local observations so reinstall can recognize them. `maintenance
-clear --yes` resets this selected project's observations and disables maintenance;
-it does not touch project files, other projects or native Codex history. Use it to
-recover from stale session observations after an interrupted native process.
+clear --yes` intentionally resets this selected project's observations and disables
+maintenance; it does not touch project files, other projects or native Codex history.
+For stale session observations after an interrupted native process, use
+[`recover-session`](#change-outcomes-and-recovery) after confirming the session
+and its children have stopped; this preserves concerns, history and preferences.
 
 Automatic trust records the native configuration fragments it changes. Uninstall
 removes unchanged additions or restores their recorded prior values, preserving

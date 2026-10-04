@@ -60,7 +60,7 @@ discards the reservation. **Tools → Queued action** reviews or cancels the
 displayed reservation. `/harness/switch --cancel` cancels only a project switch;
 it does not cancel configuration, authentication, update or uninstall requests.
 
-Jev's menu can queue private login/logout; Tool can queue updates or uninstall.
+Jev's menu can queue private login/logout; **Tools** can queue updates or uninstall.
 After `/quit`, the existing terminal flow starts automatically. Credentials are
 never requested in conversation history, and uninstall retains its terminal
 preview and confirmation. No additional CLI command needs to be typed, but these

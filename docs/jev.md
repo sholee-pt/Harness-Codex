@@ -68,12 +68,15 @@ harness-codex jev logout                   # Confirm removal with yes
 
 `TYPESAFE_API_KEY` takes precedence and is never copied into storage. Otherwise,
 Harness reads `~/.local/share/harness-codex-credentials/typesafe.json` directly.
-`HARNESS_CREDENTIAL_HOME` can select a different user-owned storage directory.
-Linux enforces directory 0700 and file 0600, current-user ownership, a bounded
-regular file and no symbolic/hard links. Foreign, malformed or overly accessible
-files are preserved and not used. The file is plaintext with restricted access,
-not an encrypted keyring. Keys never enter `.bashrc`, a project, a manifest,
-observations, logs or command arguments. No `source` or terminal restart is needed;
+`HARNESS_CREDENTIAL_HOME` can select a different absolute, user-owned storage directory.
+Choose a dedicated location outside project folders; Harness does not enforce
+that separation for an override. New directories and files use 0700 and 0600.
+Linux accepts more restrictive owner-only permissions and checks current-user
+ownership, a bounded regular file, no group/other access and no symbolic/hard
+links. Foreign, malformed or overly accessible files are preserved and not used.
+The file is plaintext with restricted access, not an encrypted keyring. Harness
+does not copy keys into `.bashrc`, project settings, manifests, observations,
+logs or command arguments. No `source` or terminal restart is needed;
 projects on the same machine and OS account reuse the key. Project opt-outs remain
 independent. Windows persistent login is not provided while Windows work is paused;
 environment keys remain supported.

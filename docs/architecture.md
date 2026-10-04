@@ -11,7 +11,7 @@ target-project/
 │   └── <project-skill>/           # Reusable project procedures, when justified
 ├── .harness/manifest.json         # Ownership, topology, and content hashes
 ├── .harness/transaction.json      # Present only while recovery or cleanup is required
-└── AGENTS.md or AGENTS.override.md # Optional local pointer when the path is safe to manage
+└── <active root instruction>      # Optional pointer: AGENTS.md, AGENTS.override.md, or configured fallback
 ```
 
 Simple projects may receive only `project-harness`. Harness does not create a fixed team or assume a frontend/backend architecture. It classifies persistent project topology independently from the execution complexity of any one task.
